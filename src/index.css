@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Variables de tema del tenant (se sobreescriben desde ThemeContext) */
+:root {
+  --p50:  239 246 255;
+  --p100: 219 234 254;
+  --p200: 191 219 254;
+  --p300: 147 197 253;
+  --p400: 96  165 250;
+  --p500: 59  130 246;
+  --p600: 37  99  235;
+  --p700: 29  78  216;
+  --p800: 30  64  175;
+  --p900: 30  58  138;
+  --sidebar-bg: #0f172a;
+}
+
+/* Scrollbar personalizado */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+/* Lista horizontal arrastrable (touch + ratón): scroll con inercia en iOS */
+.scroll-drag-x {
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
+}
+
+/* Animación entrada de página */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-enter { animation: fadeIn 0.2s ease forwards; }
+
+body { @apply bg-gray-100 text-gray-800 font-sans antialiased; }

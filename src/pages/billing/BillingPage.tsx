@@ -1,0 +1,1089 @@
+import { useEffect, useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
+import { useSearchParams } from 'react-router-dom'
+import { toast } from 'sonner'
+import { Send, Eye, RefreshCw, X, FileText, FileCode, Archive, Download, FileSignature, FileBarChart, Ban, Search, Ticket, FileDown, ChevronDown } from 'lucide-react'
+import { salesService, type Sale, type SaleDetail } from '@/services/sales.service'
+import { billingService, type SunatSummary, type SunatVoided, type VoidedDetailInput, type InvoiceStatusResult } from '@/services/billing.service'
+import { companyService } from '@/services/company.service'
+import RequireModule from '@/components/ui/RequireModule'
+import SunatRequiredMessage from '@/components/ui/SunatRequiredMessage'
+import { Modal } from '@/components/ui/Modal'
+import { DocumentViewerModal } from '@/components/ui/DocumentViewerModal'
+import { getTodayPeru, formatDisplayDatePeru } from '@/utils/datesPeru'
+import { generateReceiptPdf, downloadReceiptPdf } from '@/utils/receiptPdf'
+import { shareReceiptPngViaWhatsApp } from '@/utils/receiptPng'
+import { WhatsAppGlyph } from '@/components/icons/WhatsAppGlyph'
+
+const STATUS_COLORS: Record<string, string> = {
+  pending: 'bg-yellow-100 text-yellow-700', sent: 'bg-blue-100 text-blue-700',
+  accepted: 'bg-green-100 text-green-700', rejected: 'bg-red-100 text-red-600',
+  error: 'bg-orange-100 text-orange-700',
+}
+const STATUS_LABELS: Record<string, string> = {
+  pending: 'Pendiente', sent: 'Enviado', accepted: 'Aceptado', rejected: 'Rechazado',
+  error: 'Error envío',
+}
+
+const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
+const TABLE_SKELETON_ROWS = 6
+const STATUS_FILTER_OPTIONS = [
+  { value: '', label: 'Todos los estados' },
+  { value: 'pending', label: 'Pendiente' },
+  { value: 'error', label: 'Error envío' },
+  { value: 'sent', label: 'Enviados' },
+  { value: 'accepted', label: 'Aceptados' },
+  { value: 'rejected', label: 'Rechazados' },
+] as const
+
+const getCurrentMonthRange = () => {
+  const today = getTodayPeru()
+  const [year, month] = today.split('-')
+  return { from: `${year}-${month}-01`, to: today }
+}
+
+export default function BillingPage() {
+  return <RequireModule moduleKey="billing"><BillingContent /></RequireModule>
+}
+
+function BillingContent() {
+  const [sunatEnabled, setSunatEnabled] = useState<boolean | null>(null)
+  const [invoicingMode, setInvoicingMode] = useState<string | null>(null)
+  const [searchParams] = useSearchParams()
+  const [viewMode, setViewMode] = useState<'invoices' | 'credit_notes' | 'summaries_voided'>('invoices')
+  const [filterStatus, setFilterStatus] = useState<string>(() => searchParams.get('status') || 'pending')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [dateRange, setDateRange] = useState(() => getCurrentMonthRange())
+  const [sales, setSales] = useState<Sale[]>([])
+  const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [perPage, setPerPage] = useState(10)
+  const [total, setTotal] = useState(0)
+  const [sending, setSending] = useState<number | null>(null)
+  const [resending, setResending] = useState<number | null>(null)
+  const [voiding, setVoiding] = useState<number | null>(null)
+  const [waBusyId, setWaBusyId] = useState<number | null>(null)
+  const [waMenu, setWaMenu] = useState<{ saleId: number; top: number; left: number } | null>(null)
+  const [detail, setDetail] = useState<SaleDetail | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [viewingPdfSaleId, setViewingPdfSaleId] = useState<number | null>(null)
+  const [downloadingPdfSaleId, setDownloadingPdfSaleId] = useState<number | null>(null)
+  const [viewingTicketPdfSaleId, setViewingTicketPdfSaleId] = useState<number | null>(null)
+  const [downloadingTicketPdfSaleId, setDownloadingTicketPdfSaleId] = useState<number | null>(null)
+  const [downloadingDoc, setDownloadingDoc] = useState<{ saleId: number; type: 'xml' | 'xml-generated' | 'cdr' } | null>(null)
+  const [documentViewerOpen, setDocumentViewerOpen] = useState(false)
+  const [documentViewerUrl, setDocumentViewerUrl] = useState<string | null>(null)
+  const documentViewerUrlRef = useRef<string | null>(null)
+
+  // Resúmenes y comunicaciones de baja
+  const [summaries, setSummaries] = useState<SunatSummary[]>([])
+  const [voidedList, setVoidedList] = useState<SunatVoided[]>([])
+  const [summariesLoading, setSummariesLoading] = useState(false)
+  const [voidedLoading, setVoidedLoading] = useState(false)
+  const [creatingSummary, setCreatingSummary] = useState(false)
+  const [summaryDate, setSummaryDate] = useState(() => getTodayPeru())
+  const [summaryStatusLoading, setSummaryStatusLoading] = useState<number | null>(null)
+  const [voidedStatusLoading, setVoidedStatusLoading] = useState<number | null>(null)
+  const [voidedModalOpen, setVoidedModalOpen] = useState(false)
+  const [voidedDetails, setVoidedDetails] = useState<VoidedDetailInput[]>([{ tipo_doc: '03', serie: 'B001', correlativo: '', des_motivo_baja: '' }])
+  const [creatingVoided, setCreatingVoided] = useState(false)
+  const [invoiceStatusQuery, setInvoiceStatusQuery] = useState({ tipo: '03', serie: 'B001', numero: '' })
+  const [invoiceStatusResult, setInvoiceStatusResult] = useState<InvoiceStatusResult | null>(null)
+  const [invoiceStatusLoading, setInvoiceStatusLoading] = useState(false)
+
+  const load = () => {
+    if (viewMode === 'summaries_voided') {
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    if (viewMode === 'credit_notes') {
+      return salesService.list({
+        doc_type: 'NOTA_CREDITO',
+        q: searchTerm.trim() || undefined,
+        from: dateRange.from || undefined,
+        to: dateRange.to || undefined,
+        billing_status: filterStatus || undefined,
+        page,
+        per_page: perPage,
+      })
+        .then(({ data, total: t }) => {
+          setSales(data ?? [])
+          setTotal(t ?? 0)
+        })
+        .catch(() => toast.error('Error'))
+        .finally(() => setLoading(false))
+    }
+    return salesService.list({
+      q: searchTerm.trim() || undefined,
+      from: dateRange.from || undefined,
+      to: dateRange.to || undefined,
+      billing_status: filterStatus || undefined,
+      sunat_code: '01,03',
+      page,
+      per_page: perPage,
+    })
+      .then(({ data, total: t }) => {
+        setSales(data ?? [])
+        setTotal(t ?? 0)
+      })
+      .catch(() => toast.error('Error'))
+      .finally(() => setLoading(false))
+  }
+
+  const loadSummaries = () => {
+    setSummariesLoading(true)
+    billingService.listSummaries()
+      .then(({ summaries: list }) => setSummaries(list ?? []))
+      .catch(() => toast.error('Error al cargar resúmenes'))
+      .finally(() => setSummariesLoading(false))
+  }
+  const loadVoided = () => {
+    setVoidedLoading(true)
+    billingService.listVoided()
+      .then(({ voided: list }) => setVoidedList(list ?? []))
+      .catch(() => toast.error('Error al cargar comunicaciones de baja'))
+      .finally(() => setVoidedLoading(false))
+  }
+
+  useEffect(() => {
+    companyService.getSunat().then(d => setSunatEnabled(d.sunat_enabled ?? false)).catch(() => setSunatEnabled(false))
+    companyService.getInvoicing().then(d => setInvoicingMode(d.invoicing_mode ?? 'legacy_backend')).catch(() => setInvoicingMode('legacy_backend'))
+  }, [])
+
+  useEffect(() => {
+    const status = searchParams.get('status')
+    if (status && ['pending', 'error', 'rejected', 'sent', 'accepted'].includes(status)) setFilterStatus(status)
+  }, [searchParams])
+
+  useEffect(() => { load() }, [viewMode, filterStatus, searchTerm, dateRange.from, dateRange.to, page, perPage])
+
+  useEffect(() => {
+    if (sunatEnabled !== true) return
+    if (viewMode === 'summaries_voided') {
+      loadSummaries()
+      loadVoided()
+    }
+  }, [viewMode, sunatEnabled])
+
+  useEffect(() => {
+    if (!waMenu) return
+    const close = (e: MouseEvent) => {
+      const t = e.target as HTMLElement
+      if (t.closest('[data-wa-portal-menu]')) return
+      if (t.closest(`[data-wa-trigger="${waMenu.saleId}"]`)) return
+      setWaMenu(null)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [waMenu])
+
+  if (sunatEnabled === null) return <div className="flex justify-center py-16"><div className="w-6 h-6 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" /></div>
+  if (!sunatEnabled) return <SunatRequiredMessage />
+
+  const handleSend = async (saleId: number) => {
+    setSending(saleId)
+    try {
+      const res = await billingService.send(saleId)
+      if (res.success) { toast.success('Enviado a SUNAT correctamente') }
+      else { toast.error(res.message ?? 'Error al enviar') }
+      load()
+    } catch (e: any) { toast.error(e.response?.data?.error ?? 'Error enviando') }
+    finally { setSending(null) }
+  }
+
+  const handleResend = async (saleId: number) => {
+    setResending(saleId)
+    try {
+      const res = await billingService.resend(saleId)
+      if (res.success) { toast.success('Reenviado a SUNAT') }
+      else { toast.error(res.message ?? 'Error al reenviar') }
+      load()
+    } catch (e: any) { toast.error(e.response?.data?.error ?? 'Error reenviando') }
+    finally { setResending(null) }
+  }
+
+  const handleVoidWithCreditNote = async (saleId: number) => {
+    setVoiding(saleId)
+    try {
+      const res = await billingService.voidWithCreditNote(saleId)
+      if (res.success) {
+        toast.success(res.message ?? 'Nota de crédito emitida y venta anulada')
+        setViewMode('credit_notes')
+        setPage(1)
+        load()
+      } else {
+        toast.error('Error al anular')
+      }
+    } catch (e: any) {
+      toast.error(e.response?.data?.error ?? 'Error al anular con nota de crédito')
+    } finally {
+      setVoiding(null)
+    }
+  }
+
+  const openDetail = async (id: number) => {
+    setDetailLoading(true)
+    try { setDetail(await salesService.get(id)) }
+    catch { toast.error('Error') }
+    finally { setDetailLoading(false) }
+  }
+
+  const handleWhatsAppReceipt = async (saleId: number, format: 'a4' | 'ticket') => {
+    setWaBusyId(saleId)
+    const tid = toast.loading(
+      format === 'ticket' ? 'Generando imagen ticket para WhatsApp…' : 'Generando imagen A4 para WhatsApp…',
+    )
+    try {
+      const d = await salesService.get(saleId)
+      if (!d.print_data) {
+        toast.error('No hay datos para generar el comprobante (misma base que el PDF).', { id: tid })
+        return
+      }
+      const label = viewMode === 'credit_notes' ? 'Nota de crédito' : 'Comprobante'
+      await shareReceiptPngViaWhatsApp({
+        printData: d.print_data,
+        format,
+        phone: d.contact?.phone,
+        message: `${label} ${d.sale.series}-${String(d.sale.number).padStart(8, '0')} (${format === 'ticket' ? 'formato ticket' : 'formato A4'})`,
+      })
+      toast.success('Imagen lista: complete el envío en WhatsApp (o pegue la imagen si se copió al portapapeles).', {
+        id: tid,
+      })
+    } catch (e: unknown) {
+      const msg = (e as Error)?.message ?? 'No se pudo generar o compartir el comprobante'
+      toast.error(msg, { id: tid })
+    } finally {
+      setWaBusyId(null)
+    }
+  }
+
+  const openPdfViewer = async (saleId: number) => {
+    if (documentViewerUrlRef.current) {
+      URL.revokeObjectURL(documentViewerUrlRef.current)
+      documentViewerUrlRef.current = null
+    }
+    setViewingPdfSaleId(saleId)
+    setDocumentViewerOpen(true)
+    setDocumentViewerUrl(null)
+    try {
+      const url = await billingService.getPdfObjectUrl(saleId)
+      documentViewerUrlRef.current = url
+      setDocumentViewerUrl(url)
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Error al cargar PDF')
+      setDocumentViewerOpen(false)
+    } finally {
+      setViewingPdfSaleId(null)
+    }
+  }
+
+  const openPsePdfViewer = async (saleId: number, format: 'a4' | 'ticket' = 'a4') => {
+    if (documentViewerUrlRef.current) {
+      URL.revokeObjectURL(documentViewerUrlRef.current)
+      documentViewerUrlRef.current = null
+    }
+    if (format === 'ticket') {
+      setViewingTicketPdfSaleId(saleId)
+    } else {
+      setViewingPdfSaleId(saleId)
+    }
+    setDocumentViewerOpen(true)
+    setDocumentViewerUrl(null)
+    try {
+      const d = await salesService.get(saleId)
+      if (!d.print_data) throw new Error('No hay datos para generar el PDF')
+      const doc = await generateReceiptPdf(d.print_data, format)
+      const blob = doc.output('blob')
+      const url = URL.createObjectURL(blob)
+      documentViewerUrlRef.current = url
+      setDocumentViewerUrl(url)
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Error al generar PDF')
+      setDocumentViewerOpen(false)
+    } finally {
+      if (format === 'ticket') {
+        setViewingTicketPdfSaleId(null)
+      } else {
+        setViewingPdfSaleId(null)
+      }
+    }
+  }
+
+  const downloadPsePdf = async (saleId: number, format: 'a4' | 'ticket' = 'a4') => {
+    if (format === 'ticket') {
+      setDownloadingTicketPdfSaleId(saleId)
+    } else {
+      setDownloadingPdfSaleId(saleId)
+    }
+    try {
+      const d = await salesService.get(saleId)
+      if (!d.print_data) throw new Error('No hay datos para generar el PDF')
+      await downloadReceiptPdf(d.print_data, format)
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Error al descargar')
+    } finally {
+      if (format === 'ticket') {
+        setDownloadingTicketPdfSaleId(null)
+      } else {
+        setDownloadingPdfSaleId(null)
+      }
+    }
+  }
+
+  const closeDocumentViewer = () => {
+    if (documentViewerUrlRef.current) {
+      URL.revokeObjectURL(documentViewerUrlRef.current)
+      documentViewerUrlRef.current = null
+    }
+    setDocumentViewerUrl(null)
+    setDocumentViewerOpen(false)
+  }
+
+  const isPSE = invoicingMode === 'pse'
+
+  if (viewMode === 'summaries_voided') {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <h2 className="text-lg font-bold text-gray-800">Resúmenes y comunicaciones de baja</h2>
+          <div className="flex items-center gap-2">
+            <button onClick={() => { setViewMode('invoices'); setPage(1) }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium bg-white border border-gray-200 text-gray-600 hover:border-[rgb(var(--p300))]">Facturas y boletas</button>
+            <button onClick={() => { setViewMode('credit_notes'); setPage(1) }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium bg-white border border-gray-200 text-gray-600 hover:border-[rgb(var(--p300))]"><FileSignature size={16} /> Notas de crédito</button>
+            <button onClick={() => { setViewMode('summaries_voided') }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium bg-[rgb(var(--p600))] text-white"><FileBarChart size={16} /> Resúmenes y bajas</button>
+          </div>
+        </div>
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
+            <h3 className="font-semibold text-gray-800">Resumen diario de boletas</h3>
+            <div className="flex items-center gap-2">
+              <input type="date" value={summaryDate} onChange={e => setSummaryDate(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-2 text-sm" />
+              <button onClick={() => { setCreatingSummary(true); billingService.createSummary(summaryDate).then(({ summary }) => { toast.success('Resumen enviado'); setSummaries(s => [summary, ...s]); }).catch((e: any) => toast.error(e.response?.data?.error ?? 'Error')).finally(() => setCreatingSummary(false)) }} disabled={creatingSummary} className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-50">{creatingSummary ? <RefreshCw size={14} className="animate-spin" /> : <FileBarChart size={14} />} Generar resumen</button>
+              <button onClick={loadSummaries} disabled={summariesLoading} className="p-2 text-gray-500 hover:text-gray-700"><RefreshCw size={16} className={summariesLoading ? 'animate-spin' : ''} /></button>
+            </div>
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100"><tr>{['Fecha resumen', 'Correlativo', 'Ticket', 'Estado', 'Detalles', 'Acción'].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>)}</tr></thead>
+            <tbody>
+              {summariesLoading ? <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400"><RefreshCw size={20} className="animate-spin inline" /> Cargando...</td></tr> : summaries.length === 0 ? <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Sin resúmenes.</td></tr> : summaries.map(s => (
+              <tr key={s.id} className="border-b border-gray-50 hover:bg-gray-50">
+                <td className="px-4 py-3">{formatDisplayDatePeru(s.fec_resumen)}</td>
+                <td className="px-4 py-3 font-mono">{s.correlativo}</td>
+                <td className="px-4 py-3 text-xs">{s.ticket || '—'}</td>
+                <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[s.status] ?? 'bg-gray-100 text-gray-600'}`}>{STATUS_LABELS[s.status] ?? s.status}</span></td>
+                <td className="px-4 py-3">{s.details_count}</td>
+                <td className="px-4 py-3">{s.ticket ? <button onClick={() => { setSummaryStatusLoading(s.id); billingService.getSummaryStatus(s.id).then(updated => { setSummaries(prev => prev.map(x => x.id === updated.id ? updated : x)); }).catch(() => toast.error('Error')).finally(() => setSummaryStatusLoading(null)) }} disabled={summaryStatusLoading === s.id} className="text-xs px-2 py-1 rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200 disabled:opacity-50">{summaryStatusLoading === s.id ? <RefreshCw size={12} className="animate-spin inline" /> : <Search size={12} className="inline" />} Consultar estado</button> : null}</td>
+              </tr>
+            ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
+            <h3 className="font-semibold text-gray-800">Comunicaciones de baja</h3>
+            <div className="flex items-center gap-2">
+              <button onClick={() => { setVoidedDetails([{ tipo_doc: '03', serie: 'B001', correlativo: '', des_motivo_baja: '' }]); setVoidedModalOpen(true) }} className="flex items-center gap-1.5 px-4 py-2 bg-orange-600 text-white rounded-xl text-sm font-medium hover:bg-orange-700"><Ban size={14} /> Nueva comunicación de baja</button>
+              <button onClick={loadVoided} disabled={voidedLoading} className="p-2 text-gray-500 hover:text-gray-700"><RefreshCw size={16} className={voidedLoading ? 'animate-spin' : ''} /></button>
+            </div>
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100"><tr>{['Fecha', 'Correlativo', 'Ticket', 'Estado', 'Detalles', 'Acción'].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>)}</tr></thead>
+            <tbody>
+              {voidedLoading ? <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400"><RefreshCw size={20} className="animate-spin inline" /> Cargando...</td></tr> : voidedList.length === 0 ? <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Sin comunicaciones de baja.</td></tr> : voidedList.map(v => (
+              <tr key={v.id} className="border-b border-gray-50 hover:bg-gray-50">
+                <td className="px-4 py-3">{new Date(v.fec_comunicacion).toLocaleString()}</td>
+                <td className="px-4 py-3 font-mono">{v.correlativo}</td>
+                <td className="px-4 py-3 text-xs">{v.ticket || '—'}</td>
+                <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[v.status] ?? 'bg-gray-100 text-gray-600'}`}>{STATUS_LABELS[v.status] ?? v.status}</span></td>
+                <td className="px-4 py-3">{v.details_count}</td>
+                <td className="px-4 py-3">{v.ticket ? <button onClick={() => { setVoidedStatusLoading(v.id); billingService.getVoidedStatus(v.id).then(updated => { setVoidedList(prev => prev.map(x => x.id === updated.id ? updated : x)); }).catch(() => toast.error('Error')).finally(() => setVoidedStatusLoading(null)) }} disabled={voidedStatusLoading === v.id} className="text-xs px-2 py-1 rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200 disabled:opacity-50">{voidedStatusLoading === v.id ? <RefreshCw size={12} className="animate-spin inline" /> : <Search size={12} className="inline" />} Consultar estado</button> : null}</td>
+              </tr>
+            ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="bg-white rounded-2xl shadow-sm p-4">
+          <h3 className="font-semibold text-gray-800 mb-3">Consulta estado comprobante (CDR)</h3>
+          <div className="flex flex-wrap items-end gap-3 mb-4">
+            <select value={invoiceStatusQuery.tipo} onChange={e => setInvoiceStatusQuery(q => ({ ...q, tipo: e.target.value }))} className="border rounded-xl px-3 py-2 text-sm w-24"><option value="01">01 Factura</option><option value="03">03 Boleta</option><option value="07">07 NC</option><option value="08">08 ND</option></select>
+            <input type="text" value={invoiceStatusQuery.serie} onChange={e => setInvoiceStatusQuery(q => ({ ...q, serie: e.target.value }))} placeholder="Serie" className="border rounded-xl px-3 py-2 text-sm w-24" />
+            <input type="text" value={invoiceStatusQuery.numero} onChange={e => setInvoiceStatusQuery(q => ({ ...q, numero: e.target.value }))} placeholder="Número" className="border rounded-xl px-3 py-2 text-sm w-24" />
+            <button onClick={() => { if (!invoiceStatusQuery.numero.trim()) return toast.error('Indique número'); setInvoiceStatusLoading(true); setInvoiceStatusResult(null); billingService.consultInvoiceStatus(invoiceStatusQuery.tipo, invoiceStatusQuery.serie, invoiceStatusQuery.numero.trim()).then(setInvoiceStatusResult).catch((e: any) => { toast.error(e.response?.data?.error ?? 'Error'); setInvoiceStatusResult(null); }).finally(() => setInvoiceStatusLoading(false)); }} disabled={invoiceStatusLoading} className="flex items-center gap-1.5 px-4 py-2 bg-gray-800 text-white rounded-xl text-sm font-medium hover:bg-gray-900 disabled:opacity-50">{invoiceStatusLoading ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />} Consultar</button>
+          </div>
+          {invoiceStatusResult && <div className={`rounded-xl p-4 text-sm ${invoiceStatusResult.success ? 'bg-green-50 text-green-900' : 'bg-red-50 text-red-900'}`}><p className="font-medium">{invoiceStatusResult.success ? 'Consulta exitosa' : 'Error o sin CDR'}</p>{invoiceStatusResult.cdrResponse && <><p>Código: {invoiceStatusResult.cdrResponse.code} — {invoiceStatusResult.cdrResponse.description}</p>{invoiceStatusResult.cdrResponse.accepted && <p className="text-green-700">Aceptado por SUNAT.</p>}</>}{invoiceStatusResult.error && <p>{invoiceStatusResult.error.message}</p>}</div>}
+        </div>
+        <Modal open={voidedModalOpen} onClose={() => setVoidedModalOpen(false)} contentClassName="max-w-2xl">
+          <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-4"><h3 className="font-bold text-gray-800">Nueva comunicación de baja</h3><button onClick={() => setVoidedModalOpen(false)} className="p-1.5 hover:bg-gray-100 rounded-lg"><X size={16} /></button></div>
+          <div className="space-y-3">
+            {voidedDetails.map((d, i) => (
+              <div key={i} className="grid grid-cols-12 gap-2 items-end">
+                <div className="col-span-2"><select value={d.tipo_doc} onChange={e => setVoidedDetails(prev => prev.map((x, j) => j === i ? { ...x, tipo_doc: e.target.value } : x))} className="w-full border rounded-lg px-2 py-1.5 text-sm"><option value="01">01</option><option value="03">03</option><option value="07">07</option><option value="08">08</option></select></div>
+                <div className="col-span-2"><input type="text" value={d.serie} onChange={e => setVoidedDetails(prev => prev.map((x, j) => j === i ? { ...x, serie: e.target.value } : x))} placeholder="Serie" className="w-full border rounded-lg px-2 py-1.5 text-sm" /></div>
+                <div className="col-span-2"><input type="text" value={d.correlativo} onChange={e => setVoidedDetails(prev => prev.map((x, j) => j === i ? { ...x, correlativo: e.target.value } : x))} placeholder="Nro" className="w-full border rounded-lg px-2 py-1.5 text-sm" /></div>
+                <div className="col-span-4"><input type="text" value={d.des_motivo_baja} onChange={e => setVoidedDetails(prev => prev.map((x, j) => j === i ? { ...x, des_motivo_baja: e.target.value } : x))} placeholder="Motivo baja" className="w-full border rounded-lg px-2 py-1.5 text-sm" /></div>
+                <div className="col-span-2"><button type="button" onClick={() => setVoidedDetails(prev => prev.filter((_, j) => j !== i))} className="text-red-600 text-xs">Quitar</button></div>
+              </div>
+            ))}
+            <button type="button" onClick={() => setVoidedDetails(prev => [...prev, { tipo_doc: '03', serie: 'B001', correlativo: '', des_motivo_baja: '' }])} className="text-sm text-[rgb(var(--p600))]">+ Añadir comprobante</button>
+          </div>
+          <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-gray-100">
+            <button onClick={() => setVoidedModalOpen(false)} className="px-4 py-2 rounded-xl border border-gray-200 text-sm">Cancelar</button>
+            <button onClick={() => { const valid = voidedDetails.every(d => d.serie.trim() && d.correlativo.trim() && d.des_motivo_baja.trim()); if (!valid) { toast.error('Complete todos los campos'); return; } setCreatingVoided(true); billingService.createVoided(voidedDetails).then(({ voided }) => { toast.success('Enviado'); setVoidedList(prev => [voided, ...prev]); setVoidedModalOpen(false); }).catch((e: any) => toast.error(e.response?.data?.error ?? 'Error')).finally(() => setCreatingVoided(false)); }} disabled={creatingVoided} className="px-4 py-2 bg-orange-600 text-white rounded-xl text-sm font-medium hover:bg-orange-700 disabled:opacity-50">{creatingVoided ? <RefreshCw size={14} className="animate-spin inline" /> : null} Enviar a SUNAT</button>
+          </div>
+        </Modal>
+        <div className="flex gap-2"><button onClick={() => setViewMode('invoices')} className="text-sm text-gray-500 hover:text-gray-700">← Volver a facturas y boletas</button></div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-gray-800">Comprobantes electrónicos</h2>
+          <p className="text-sm text-gray-500">
+            {viewMode === 'invoices'
+              ? 'Facturas y boletas de venta.'
+              : 'Notas de crédito (anulaciones)'}
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => { setViewMode('invoices'); setPage(1) }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium ${viewMode === 'invoices' ? 'bg-[rgb(var(--p600))] text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-[rgb(var(--p300))]'}`}
+          >
+            Facturas y boletas
+          </button>
+          <button
+            onClick={() => { setViewMode('credit_notes'); setPage(1) }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium ${viewMode === 'credit_notes' ? 'bg-[rgb(var(--p600))] text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-[rgb(var(--p300))]'}`}
+          >
+            <FileSignature size={16} /> Notas de crédito
+          </button>
+          <button
+            onClick={() => { setViewMode('summaries_voided'); setPage(1) }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium bg-white border border-gray-200 text-gray-600 hover:border-[rgb(var(--p300))]"
+          >
+            <FileBarChart size={16} /> Resúmenes y bajas
+          </button>
+          <button onClick={load} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-50 flex-shrink-0">
+            <RefreshCw size={14} /> Actualizar
+          </button>
+        </div>
+      </div>
+
+      {/* Filtros */}
+      <div className="flex gap-2 flex-wrap items-center">
+        <select
+          className="border border-gray-200 rounded-xl px-3 py-2 text-sm min-w-[180px]"
+          value={filterStatus}
+          onChange={(e) => {
+            setFilterStatus(e.target.value)
+            setPage(1)
+          }}
+        >
+          {STATUS_FILTER_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+        <div className="relative flex-1 min-w-[240px]">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            className="w-full border border-gray-200 rounded-xl pl-8 pr-3 py-2 text-sm"
+            placeholder="Buscar por cliente, serie o número..."
+            value={searchTerm}
+            onChange={(e) => {
+              setSearchTerm(e.target.value)
+              setPage(1)
+            }}
+          />
+        </div>
+        <input
+          type="date"
+          className="border border-gray-200 rounded-xl px-3 py-2 text-sm"
+          value={dateRange.from}
+          onChange={(e) => {
+            setDateRange((prev) => ({ ...prev, from: e.target.value }))
+            setPage(1)
+          }}
+        />
+        <input
+          type="date"
+          className="border border-gray-200 rounded-xl px-3 py-2 text-sm"
+          value={dateRange.to}
+          onChange={(e) => {
+            setDateRange((prev) => ({ ...prev, to: e.target.value }))
+            setPage(1)
+          }}
+        />
+        <div className="flex items-center gap-2 ml-auto">
+          <span className="text-sm text-gray-600 whitespace-nowrap">Mostrar</span>
+          <select
+            className="border border-gray-200 rounded-xl px-3 py-2 text-sm"
+            value={perPage}
+            onChange={e => { setPerPage(Number(e.target.value)); setPage(1) }}
+          >
+            {PER_PAGE_OPTIONS.map(n => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+          <span className="text-sm text-gray-600 whitespace-nowrap">por página</span>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+        <div className="w-full overflow-x-auto">
+          <table className="w-full text-sm min-w-[860px]">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                {viewMode === 'credit_notes' ? (
+                  <>
+                    {['Fecha','Nota de crédito','Doc. afectado','Cliente','Total','Estado SUNAT','PDF','XML','CDR','Detalle'].map(h => (
+                      <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">{h}</th>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    {['Fecha','Comprobante','Cliente','Total','Estado SUNAT','PDF','XML','CDR','Acciones'].map(h => (
+                      <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">{h}</th>
+                    ))}
+                  </>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+            {loading ? (
+              Array.from({ length: TABLE_SKELETON_ROWS }).map((_, idx) => (
+                <tr key={`billing-skeleton-${idx}`} className="border-b border-gray-50">
+                  <td colSpan={viewMode === 'credit_notes' ? 10 : 9} className="px-4 py-3">
+                    <div className="h-4 w-full max-w-[780px] animate-pulse rounded bg-gray-100" />
+                  </td>
+                </tr>
+              ))
+            ) : sales.map(s => {
+              const hasDoc = s.billing_status !== 'pending'
+              const hasCdr = s.billing_status === 'accepted' || s.billing_status === 'rejected'
+              return (
+              <tr key={s.id} className="border-b border-gray-50 hover:bg-gray-50">
+                <td className="px-4 py-3 text-gray-500 text-xs">{formatDisplayDatePeru(s.issue_date)}</td>
+                <td className="px-4 py-3">
+                  <p className="text-xs text-gray-400">{s.doc_type}</p>
+                  <p className="font-mono font-bold text-gray-800">{s.series}-{String(s.number).padStart(8,'0')}</p>
+                </td>
+                {viewMode === 'credit_notes' && (
+                  <td className="px-4 py-3 text-gray-500 text-xs">
+                    {s.original_sale_id != null ? `Venta #${s.original_sale_id}` : '—'}
+                  </td>
+                )}
+                <td className="px-4 py-3 text-gray-600 text-sm">{s.contact_name ?? 'Sin cliente'}</td>
+                <td className="px-4 py-3 font-semibold text-gray-800">S/ {Number(s.total).toFixed(2)}</td>
+                <td className="px-4 py-3">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[s.billing_status] ?? ''}`}>
+                    {STATUS_LABELS[s.billing_status] ?? s.billing_status}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      disabled={viewingPdfSaleId === s.id}
+                      onClick={() => {
+                        if (isPSE || s.billing_status === 'pending') {
+                          void openPsePdfViewer(s.id, 'a4')
+                        } else {
+                          void openPdfViewer(s.id)
+                        }
+                      }}
+                      className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
+                      title={
+                        s.billing_status === 'pending'
+                          ? 'Ver PDF (vista previa local, antes de SUNAT)'
+                          : 'Ver PDF'
+                      }
+                    >
+                      {viewingPdfSaleId === s.id ? <RefreshCw size={14} className="animate-spin" /> : <Eye size={14} />}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={downloadingPdfSaleId === s.id}
+                      onClick={() => {
+                        if (isPSE || s.billing_status === 'pending') {
+                          void downloadPsePdf(s.id, 'a4')
+                          return
+                        }
+                        setDownloadingPdfSaleId(s.id)
+                        billingService
+                          .downloadDocument(s.id, 'pdf')
+                          .catch((e) => toast.error(e?.message ?? 'Error al descargar'))
+                          .finally(() => setDownloadingPdfSaleId(null))
+                      }}
+                      className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
+                      title={
+                        s.billing_status === 'pending'
+                          ? 'Descargar PDF (vista previa local, antes de SUNAT)'
+                          : 'Descargar PDF'
+                      }
+                    >
+                      {downloadingPdfSaleId === s.id ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={viewingTicketPdfSaleId === s.id}
+                      onClick={() => void openPsePdfViewer(s.id, 'ticket')}
+                      className="p-1.5 text-orange-700 hover:bg-orange-50 rounded-lg disabled:opacity-40"
+                      title="Ver PDF formato ticket (80 mm, desde datos del comprobante)"
+                    >
+                      {viewingTicketPdfSaleId === s.id ? <RefreshCw size={14} className="animate-spin" /> : <Ticket size={14} />}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={downloadingTicketPdfSaleId === s.id}
+                      onClick={() => void downloadPsePdf(s.id, 'ticket')}
+                      className="p-1.5 text-orange-700 hover:bg-orange-50 rounded-lg disabled:opacity-40"
+                      title="Descargar PDF formato ticket"
+                    >
+                      {downloadingTicketPdfSaleId === s.id ? <RefreshCw size={14} className="animate-spin" /> : <FileDown size={14} />}
+                    </button>
+                  </div>
+                </td>
+                <td className="px-4 py-3">
+                  {hasDoc ? (
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        disabled={downloadingDoc?.saleId === s.id && downloadingDoc?.type === 'xml'}
+                        onClick={() => {
+                          setDownloadingDoc({ saleId: s.id, type: 'xml' })
+                          billingService.downloadDocument(s.id, 'xml')
+                            .catch(e => toast.error(e?.message ?? 'Error al descargar'))
+                            .finally(() => setDownloadingDoc(null))
+                        }}
+                        className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg"
+                        title={isPSE ? 'XML' : 'XML enviado a SUNAT'}
+                      >
+                        {(downloadingDoc?.saleId === s.id && downloadingDoc?.type === 'xml') ? <RefreshCw size={14} className="animate-spin" /> : <FileCode size={14} />}
+                      </button>
+                      {!isPSE && (
+                        <button
+                          type="button"
+                          disabled={downloadingDoc?.saleId === s.id && downloadingDoc?.type === 'xml-generated'}
+                          onClick={() => {
+                            setDownloadingDoc({ saleId: s.id, type: 'xml-generated' })
+                            billingService.downloadDocument(s.id, 'xml-generated')
+                              .catch(e => toast.error(e?.message ?? 'Error al descargar'))
+                              .finally(() => setDownloadingDoc(null))
+                          }}
+                          className="p-1.5 text-amber-500 hover:bg-amber-50 rounded-lg"
+                          title="XML generado (sin envío)"
+                        >
+                          {(downloadingDoc?.saleId === s.id && downloadingDoc?.type === 'xml-generated') ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    isPSE ? (
+                      <span className="text-gray-300 text-xs">—</span>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={downloadingDoc?.saleId === s.id && downloadingDoc?.type === 'xml-generated'}
+                        onClick={() => {
+                          setDownloadingDoc({ saleId: s.id, type: 'xml-generated' })
+                          billingService.downloadDocument(s.id, 'xml-generated')
+                            .catch(e => toast.error(e?.message ?? 'Error al descargar'))
+                            .finally(() => setDownloadingDoc(null))
+                        }}
+                        className="p-1.5 text-amber-500 hover:bg-amber-50 rounded-lg"
+                        title="XML generado (sin envío)"
+                      >
+                        {(downloadingDoc?.saleId === s.id && downloadingDoc?.type === 'xml-generated') ? <RefreshCw size={14} className="animate-spin" /> : <FileCode size={14} />}
+                      </button>
+                    )
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  {hasCdr ? (
+                    <button
+                      type="button"
+                      disabled={downloadingDoc?.saleId === s.id && downloadingDoc?.type === 'cdr'}
+                      onClick={() => {
+                        setDownloadingDoc({ saleId: s.id, type: 'cdr' })
+                        billingService.downloadDocument(s.id, 'cdr')
+                          .catch(e => toast.error(e?.message ?? 'Error al descargar'))
+                          .finally(() => setDownloadingDoc(null))
+                      }}
+                      className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"
+                      title="Descargar CDR"
+                    >
+                      {(downloadingDoc?.saleId === s.id && downloadingDoc?.type === 'cdr') ? <RefreshCw size={14} className="animate-spin" /> : <Archive size={14} />}
+                    </button>
+                  ) : (
+                    <span className="text-gray-300 text-xs">—</span>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex gap-1 flex-wrap items-center">
+                    <div className="relative shrink-0">
+                      <button
+                        type="button"
+                        data-wa-trigger={s.id}
+                        disabled={waBusyId === s.id}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          if (waMenu?.saleId === s.id) {
+                            setWaMenu(null)
+                            return
+                          }
+                          const r = (e.currentTarget as HTMLButtonElement).getBoundingClientRect()
+                          const w = 168
+                          setWaMenu({
+                            saleId: s.id,
+                            top: r.bottom + 6,
+                            left: Math.min(window.innerWidth - w - 8, Math.max(8, r.right - w)),
+                          })
+                        }}
+                        className="inline-flex items-center gap-0.5 p-1.5 text-green-600 hover:bg-green-50 rounded-lg ring-1 ring-green-200/80 disabled:opacity-40"
+                        title="WhatsApp: enviar imagen (elegir A4 o ticket)"
+                      >
+                        {waBusyId === s.id ? (
+                          <RefreshCw size={14} className="animate-spin" />
+                        ) : (
+                          <>
+                            <WhatsAppGlyph className="w-5 h-5" />
+                            <ChevronDown size={12} className="text-green-700/90" aria-hidden />
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    {viewMode === 'invoices' && s.billing_status === 'pending' && (
+                      <button onClick={() => handleSend(s.id)} disabled={sending === s.id}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-50">
+                        {sending === s.id ? <RefreshCw size={11} className="animate-spin" /> : <Send size={11} />}
+                        Enviar
+                      </button>
+                    )}
+                    {viewMode === 'invoices' && s.billing_status === 'accepted' && (
+                      <button onClick={() => handleVoidWithCreditNote(s.id)} disabled={voiding === s.id}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-orange-600 text-white rounded-lg text-xs font-medium hover:bg-orange-700 disabled:opacity-50"
+                        title="Anular con nota de crédito (genera la NC y anula la venta)">
+                        {voiding === s.id ? <RefreshCw size={11} className="animate-spin" /> : <FileSignature size={11} />}
+                        Anular (NC)
+                      </button>
+                    )}
+                    {s.billing_status === 'error' && (
+                      <button onClick={() => handleResend(s.id)} disabled={resending === s.id}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium hover:bg-amber-700 disabled:opacity-50"
+                        title="Reenviar el mismo comprobante (solo cuando falló el envío)">
+                        {resending === s.id ? <RefreshCw size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                        Reenviar
+                      </button>
+                    )}
+                    <button onClick={() => openDetail(s.id)}
+                      className="p-1.5 text-gray-400 hover:text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] rounded-lg"
+                      title={viewMode === 'credit_notes' ? 'Ver detalle' : undefined}>
+                      <Eye size={14} />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            );
+            })}
+          </tbody>
+        </table>
+        </div>
+        {!loading && sales.length === 0 && (
+          <div className="text-center py-10 text-gray-400 text-sm">
+            {viewMode === 'credit_notes' ? 'Sin notas de crédito para este filtro' : 'Sin comprobantes para este filtro'}
+          </div>
+        )}
+      </div>
+
+      {/* Paginación */}
+      {total > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 py-2 px-1">
+          <p className="text-sm text-gray-600">
+            Mostrando {(page - 1) * perPage + 1}-{Math.min(page * perPage, total)} de {total} {viewMode === 'credit_notes' ? 'notas de crédito' : 'comprobantes'}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="px-3 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Anterior
+            </button>
+            <span className="text-sm text-gray-600">
+              Página {page} de {Math.max(1, Math.ceil(total / perPage))}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage(p => Math.min(Math.ceil(total / perPage), p + 1))}
+              disabled={page >= Math.ceil(total / perPage)}
+              className="px-3 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Siguiente
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de detalle SUNAT */}
+      <Modal
+        open={detailLoading || !!detail}
+        onClose={() => setDetail(null)}
+        contentClassName="max-w-4xl"
+      >
+        <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+          <h3 className="font-bold text-gray-800">Detalle SUNAT</h3>
+          <button
+            onClick={() => setDetail(null)}
+            className="p-1.5 hover:bg-gray-100 rounded-lg"
+          >
+            <X size={16} />
+          </button>
+        </div>
+        {detailLoading ? (
+          <div className="flex justify-center py-12"><div className="w-6 h-6 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" /></div>
+        ) : detail && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div><p className="text-xs text-gray-400">Comprobante</p><p className="font-mono font-bold">{detail.sale.series}-{String(detail.sale.number).padStart(8,'0')}</p></div>
+              <div><p className="text-xs text-gray-400">Estado</p><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[detail.sale.billing_status] ?? ''}`}>{STATUS_LABELS[detail.sale.billing_status] ?? detail.sale.billing_status}</span></div>
+              <div><p className="text-xs text-gray-400">Total</p><p className="font-bold">S/ {Number(detail.sale.total).toFixed(2)}</p></div>
+              <div><p className="text-xs text-gray-400">Fecha</p><p>{formatDisplayDatePeru(detail.sale.issue_date)}</p></div>
+            </div>
+
+            {detail.invoice ? (
+              <>
+                <p className="text-xs font-semibold text-gray-600 uppercase">Respuesta SUNAT</p>
+                {(detail.invoice.sunat_message ?? detail.invoice.sunat_response) && (
+                  <div className="bg-gray-50 rounded-xl p-3 text-xs text-gray-600 font-mono">
+                    {detail.invoice.sunat_message ?? detail.invoice.sunat_response}
+                  </div>
+                )}
+                {detail.invoice.sunat_cdr_code != null && detail.invoice.sunat_cdr_code !== '' && (
+                  <p className="text-xs text-gray-500">
+                    <span className="font-medium">Código SUNAT:</span>{' '}
+                    <span className="font-mono">{detail.invoice.sunat_cdr_code}</span>
+                    {detail.invoice.sunat_cdr_code === '0' && ' (Aceptado)'}
+                  </p>
+                )}
+                {detail.invoice.sunat_cdr_notes && (() => {
+                  try {
+                    const notes = JSON.parse(detail.invoice.sunat_cdr_notes) as string[]
+                    if (Array.isArray(notes) && notes.length > 0) {
+                      return (
+                        <div className="bg-amber-50/80 rounded-xl p-3 text-xs text-amber-800">
+                          <p className="font-medium mb-1">Detalle (notas CDR):</p>
+                          <ul className="list-disc list-inside space-y-0.5">
+                            {notes.map((n, i) => (
+                              <li key={i}>{n}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )
+                    }
+                  } catch {
+                    if (detail.invoice.sunat_cdr_notes) {
+                      return (
+                        <p className="text-xs text-gray-500">
+                          <span className="font-medium">Notas:</span> {detail.invoice.sunat_cdr_notes}
+                        </p>
+                      )
+                    }
+                  }
+                  return null
+                })()}
+                {detail.sale.billing_status === 'error' && (
+                  <button onClick={() => { handleResend(detail.sale.id); setDetail(null) }} disabled={resending === detail.sale.id}
+                    className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-xl text-sm font-medium hover:bg-amber-700 disabled:opacity-50">
+                    {resending === detail.sale.id ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                    Reenviar a SUNAT
+                  </button>
+                )}
+
+                {/* Comprobantes electrónicos: lista de botones */}
+                <div className="border-t border-gray-100 pt-4">
+                  <p className="text-xs font-semibold text-gray-600 uppercase mb-3">Comprobantes electrónicos</p>
+                  <ul className="space-y-2">
+                    <li className="flex items-center gap-2 flex-wrap">
+                      <FileText size={16} className="text-red-600 shrink-0" />
+                      <span className="text-sm text-gray-600 w-12 shrink-0">PDF:</span>
+                      <button
+                        type="button"
+                        disabled={viewingPdfSaleId === detail.sale.id}
+                        onClick={() => {
+                          if (isPSE || detail.sale.billing_status === 'pending') {
+                            void openPsePdfViewer(detail.sale.id, 'a4')
+                          } else {
+                            void openPdfViewer(detail.sale.id)
+                          }
+                        }}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-100 text-red-800 hover:bg-red-200 text-xs font-medium disabled:opacity-70 disabled:cursor-wait"
+                        title={
+                          detail.sale.billing_status === 'pending'
+                            ? 'Abrir PDF (vista previa local, antes de SUNAT)'
+                            : 'Abrir en ventana de documento'
+                        }
+                      >
+                        {viewingPdfSaleId === detail.sale.id ? <RefreshCw size={14} className="animate-spin" /> : <Eye size={14} />}
+                        Ver
+                      </button>
+                      <button
+                        type="button"
+                        disabled={downloadingPdfSaleId === detail.sale.id}
+                        onClick={() => {
+                          if (isPSE || detail.sale.billing_status === 'pending') {
+                            void downloadPsePdf(detail.sale.id, 'a4')
+                            return
+                          }
+                          setDownloadingPdfSaleId(detail.sale.id)
+                          billingService.downloadDocument(detail.sale.id, 'pdf')
+                            .catch(e => toast.error(e?.message ?? 'Error al descargar'))
+                            .finally(() => setDownloadingPdfSaleId(null))
+                        }}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-100 text-red-800 hover:bg-red-200 text-xs font-medium disabled:opacity-70 disabled:cursor-wait"
+                        title={
+                          detail.sale.billing_status === 'pending'
+                            ? 'Descargar PDF (vista previa local, antes de SUNAT)'
+                            : 'Descargar PDF'
+                        }
+                      >
+                        {downloadingPdfSaleId === detail.sale.id ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
+                        Descargar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={viewingTicketPdfSaleId === detail.sale.id}
+                        onClick={() => void openPsePdfViewer(detail.sale.id, 'ticket')}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-orange-100 text-orange-900 hover:bg-orange-200 text-xs font-medium disabled:opacity-70 disabled:cursor-wait"
+                        title="Abrir PDF formato ticket (80 mm)"
+                      >
+                        {viewingTicketPdfSaleId === detail.sale.id ? <RefreshCw size={14} className="animate-spin" /> : <Ticket size={14} />}
+                        Ticket
+                      </button>
+                      <button
+                        type="button"
+                        disabled={downloadingTicketPdfSaleId === detail.sale.id}
+                        onClick={() => void downloadPsePdf(detail.sale.id, 'ticket')}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-orange-100 text-orange-900 hover:bg-orange-200 text-xs font-medium disabled:opacity-70 disabled:cursor-wait"
+                        title="Descargar PDF formato ticket"
+                      >
+                        {downloadingTicketPdfSaleId === detail.sale.id ? <RefreshCw size={14} className="animate-spin" /> : <FileDown size={14} />}
+                        Ticket ↓
+                      </button>
+                    </li>
+                    <li className="flex items-center gap-2 flex-wrap">
+                      <FileCode size={16} className="text-amber-600 shrink-0" />
+                      <span className="text-sm text-gray-600 w-12 shrink-0">XML:</span>
+                      <button
+                        type="button"
+                        onClick={() => billingService.downloadDocument(detail.sale.id, 'xml').catch(e => toast.error(e?.message ?? 'Error al descargar'))}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-100 text-amber-900 hover:bg-amber-200 text-xs font-medium"
+                        title={isPSE ? 'XML' : 'XML enviado a SUNAT'}
+                      >
+                        <Download size={14} />
+                        {isPSE ? 'Descargar' : 'Enviado a SUNAT'}
+                      </button>
+                      {!isPSE && (
+                        <button
+                          type="button"
+                          onClick={() => billingService.downloadDocument(detail.sale.id, 'xml-generated').catch(e => toast.error(e?.message ?? 'Error al descargar'))}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-100 text-amber-900 hover:bg-amber-200 text-xs font-medium"
+                          title="XML generado sin envío"
+                        >
+                          <Download size={14} />
+                          Generado (sin envío)
+                        </button>
+                      )}
+                    </li>
+                    <li className="flex items-center gap-2 flex-wrap">
+                      <Archive size={16} className="text-blue-600 shrink-0" />
+                      <span className="text-sm text-gray-600 w-12 shrink-0">CDR:</span>
+                      <button
+                        type="button"
+                        onClick={() => billingService.downloadDocument(detail.sale.id, 'cdr').catch(e => toast.error(e?.message ?? 'Error al descargar'))}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200 text-xs font-medium"
+                        title="Descargar CDR (ZIP)"
+                      >
+                        <Download size={14} />
+                        Descargar
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-6">
+                <p className="text-gray-400 text-sm">Sin respuesta SUNAT disponible</p>
+                {detail.sale.billing_status === 'pending' && (
+                  <button onClick={() => { handleSend(detail.sale.id); setDetail(null) }}
+                    className="mt-3 flex items-center gap-2 mx-auto px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700">
+                    <Send size={14} /> Enviar a SUNAT
+                  </button>
+                )}
+                {detail.sale.billing_status === 'error' && (
+                  <button onClick={() => { handleResend(detail.sale.id); setDetail(null) }}
+                    className="mt-3 flex items-center gap-2 mx-auto px-4 py-2 bg-amber-600 text-white rounded-xl text-sm font-medium hover:bg-amber-700"
+                    title="Reenviar el mismo comprobante">
+                    <RefreshCw size={14} /> Reenviar a SUNAT
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      {waMenu &&
+        createPortal(
+          <div
+            data-wa-portal-menu
+            className="fixed z-[300] w-[168px] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 text-sm shadow-xl"
+            style={{ top: waMenu.top, left: waMenu.left }}
+            role="menu"
+            aria-label="Enviar por WhatsApp"
+          >
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-800 hover:bg-gray-50"
+              onClick={() => {
+                const id = waMenu.saleId
+                setWaMenu(null)
+                void handleWhatsAppReceipt(id, 'a4')
+              }}
+            >
+              <FileText size={14} className="text-gray-500 shrink-0" aria-hidden />
+              Formato A4
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-800 hover:bg-gray-50"
+              onClick={() => {
+                const id = waMenu.saleId
+                setWaMenu(null)
+                void handleWhatsAppReceipt(id, 'ticket')
+              }}
+            >
+              <Ticket size={14} className="text-orange-600 shrink-0" aria-hidden />
+              Formato ticket
+            </button>
+          </div>,
+          document.body,
+        )}
+
+      {/* Modal independiente para visualizar PDF (reutilizable para otros documentos después) */}
+      <DocumentViewerModal
+        open={documentViewerOpen}
+        onClose={closeDocumentViewer}
+        src={documentViewerUrl}
+        title={viewMode === 'credit_notes' ? 'Nota de crédito (PDF)' : 'Comprobante PDF'}
+      />
+    </div>
+  )
+}
