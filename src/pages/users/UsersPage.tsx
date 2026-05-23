@@ -294,13 +294,15 @@ export default function UsersPage() {
           {editing ? 'Editar usuario' : 'Nuevo usuario'}
         </h3>
         <div className="space-y-4">
-          {[['name', 'Nombre *'], ['email', 'Email *']].map(([k, l]) => (
+          {(['name', 'email'] as const).map((k) => (
             <div key={k}>
-              <label className="block text-xs font-medium text-gray-600 mb-1">{l}</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                {k === 'name' ? 'Nombre *' : 'Email *'}
+              </label>
               <input
                 type={k === 'email' ? 'email' : 'text'}
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-                value={(form as Record<string, string>)[k]}
+                value={form[k]}
                 onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
               />
             </div>

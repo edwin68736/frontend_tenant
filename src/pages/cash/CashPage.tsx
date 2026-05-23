@@ -185,18 +185,18 @@ function CashContent() {
   const load = async () => {
     try {
       const branchId = activeBranchId || session?.branch_id
-      const promises: Promise<unknown>[] = [
+      const [sess, hist] = await Promise.all([
         cashbankService.getOpenSession(branchId || undefined),
         cashbankService.listSessions(branchId || undefined),
-      ]
+      ])
       if (branchId) {
-        promises.push(cashbankService.listOpenSessionsInBranch(branchId).then(setOpenInBranch))
+        const openList = await cashbankService.listOpenSessionsInBranch(branchId)
+        setOpenInBranch(openList)
       } else {
         setOpenInBranch([])
       }
-      const [sess, hist] = await Promise.all(promises)
-      setSession((sess as CashSession | null) ?? null)
-      setHistory((hist as CashSession[]) ?? [])
+      setSession(sess ?? null)
+      setHistory(hist ?? [])
       if (sess?.id != null) {
         const movs = await cashbankService.listMovements(sess.id)
         setMovements(movs ?? [])
