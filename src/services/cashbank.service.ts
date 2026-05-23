@@ -1,8 +1,22 @@
 import api from './api'
 
+export interface OpenCashSessionRow {
+  id: number
+  branch_id: number
+  user_id: number
+  user_name: string
+  opening_balance: number
+  current_balance: number
+  opened_at: string
+  register_code?: string | null
+  register_name?: string | null
+}
+
 export interface CashSession {
   id: number
   branch_id: number
+  register_code?: string | null
+  register_name?: string | null
   branch_name?: string
   opened_by: number
   opening_balance: number
@@ -155,6 +169,11 @@ export const cashbankService = {
     api.get('/api/cashbank/sessions/open', { params: { branch_id } })
       .then(r => (r.data?.data != null ? r.data.data : null) as CashSession | null)
       .catch(() => null),
+
+  listOpenSessionsInBranch: (branch_id: number): Promise<OpenCashSessionRow[]> =>
+    api
+      .get('/api/cashbank/sessions/open/list', { params: { branch_id } })
+      .then(r => r.data.data ?? []),
 
   openSession: (data: { branch_id: number; opening_balance: number; notes?: string }): Promise<CashSession> =>
     api.post('/api/cashbank/sessions', data).then(r => r.data.data ?? r.data),

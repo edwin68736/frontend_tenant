@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Settings2, Package, Upload, Layers, RefreshCw } from 'lucide-react'
+import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Settings2, Package, Upload, Layers, RefreshCw, FileSpreadsheet } from 'lucide-react'
+import { ProductImportModal } from '@/components/products/ProductImportModal'
 import { productsService, getProductImageUrl, type Product, type Category, type CreateProductInput, type ModifierGroup, type ProductCatalogType } from '@/services/products.service'
 import { PRODUCT_UNIT_FORM_OPTIONS, productUnitFormDisplayName, isProductUnitFormCode } from '@/constants/sunatUnits'
 import { inventoryService, type StockByBranch } from '@/services/inventory.service'
@@ -138,6 +139,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   // Stock en lista (total por producto) y modal de ajuste
   const [stockByProductId, setStockByProductId] = useState<Record<string, number>>({})
   const [adjustmentProduct, setAdjustmentProduct] = useState<Product | null>(null)
+  const [importModalOpen, setImportModalOpen] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -380,13 +382,22 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         </div>
         <div className="flex items-center gap-2">
           {pageMode === 'product' && (
-            <button
-              type="button"
-              onClick={() => setShowModifierGroups(true)}
-              className="flex items-center gap-1.5 px-4 py-2 border border-[rgb(var(--p300))] text-[rgb(var(--p700))] rounded-xl text-sm font-medium hover:bg-[rgb(var(--p50))]"
-            >
-              <Layers size={15} /> Grupos de modificadores
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => setImportModalOpen(true)}
+                className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50"
+              >
+                <FileSpreadsheet size={15} /> Importar Excel
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowModifierGroups(true)}
+                className="flex items-center gap-1.5 px-4 py-2 border border-[rgb(var(--p300))] text-[rgb(var(--p700))] rounded-xl text-sm font-medium hover:bg-[rgb(var(--p50))]"
+              >
+                <Layers size={15} /> Grupos de modificadores
+              </button>
+            </>
           )}
           <button
             onClick={openNew}
@@ -1003,6 +1014,15 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           </>
         )}
       </Modal>
+
+      <ProductImportModal
+        open={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        onImported={() => {
+          setImportModalOpen(false)
+          load()
+        }}
+      />
     </div>
   )
 }

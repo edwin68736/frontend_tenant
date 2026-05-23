@@ -9,6 +9,7 @@ import { salesService } from '@/services/sales.service'
 import { cashbankService, type CashSession, type PaymentMethodRecord } from '@/services/cashbank.service'
 import { companyService, type SunatConfig } from '@/services/company.service'
 import { useAuth } from '@/contexts/AuthContext'
+import { useBranch } from '@/contexts/BranchContext'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { ReceiptPrintModal } from '@/components/ui/ReceiptPrintModal'
@@ -73,6 +74,7 @@ export default function POSPage() {
 
 function POSContent() {
   const { hasModule } = useAuth()
+  const { activeBranchId } = useBranch()
   // Caja (null en sesión hasta saber si hay caja abierta o no)
   const [session, setSession] = useState<CashSession | null>(null)
   /** Solo hasta terminar getOpenSession (no espera series/SUNAT/etc.). */
@@ -133,7 +135,7 @@ function POSContent() {
     setPosBootstrapLoading(true)
 
     cashbankService
-      .getOpenSession()
+      .getOpenSession(activeBranchId || undefined)
       .then(sess => setSession(sess))
       .catch(() => {
         setSession(null)
@@ -172,7 +174,7 @@ function POSContent() {
       .catch(() => {})
 
     companyService.getConfig().then(c => setTenantRuc(c?.ruc ?? '')).catch(() => setTenantRuc(''))
-  }, [hasModule])
+  }, [hasModule, activeBranchId])
 
   useEffect(() => {
     if (!session) return
@@ -355,7 +357,9 @@ function POSContent() {
   const handleOpenSession = async () => {
     setOpeningSession(true)
     try {
-      const sess = await cashbankService.openSession({ branch_id: 1, opening_balance: openingBalance })
+      const branchId = activeBranchId
+      if (!branchId) { toast.error('Seleccione una sucursal activa'); return }
+      const sess = await cashbankService.openSession({ branch_id: branchId, opening_balance: openingBalance })
       setSession(sess)
       toast.success('Caja abierta')
     } catch { toast.error('Error abriendo caja') }

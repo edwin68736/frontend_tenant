@@ -38,9 +38,9 @@ import CashReportPage from '@/pages/reports/CashReportPage'
 import RestaurantTablesPage from '@/pages/restaurant/RestaurantTablesPage'
 import RestaurantFloorsPage from '@/pages/restaurant/RestaurantFloorsPage'
 import RestaurantProductsPage from '@/pages/restaurant/RestaurantProductsPage'
-import RestaurantWaitersPage from '@/pages/restaurant/RestaurantWaitersPage'
 import RestaurantSettingsPage from '@/pages/restaurant/RestaurantSettingsPage'
 import ProfilePage from '@/pages/profile/ProfilePage'
+import SubscriptionPage from '@/pages/subscription/SubscriptionPage'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth()
@@ -125,13 +125,13 @@ export default function App() {
         <Route path="restaurant" element={<RestaurantTablesPage />} />
         <Route path="restaurant/floors"   element={<RestaurantFloorsPage />} />
         <Route path="restaurant/products" element={<RestaurantProductsPage />} />
-        <Route path="restaurant/waiters"  element={<RestaurantWaitersPage />} />
         <Route path="restaurant/settings" element={<RestaurantSettingsPage />} />
 
         {/* Usuarios */}
         <Route path="users" element={<UsersPage />} />
         <Route path="roles" element={<RolesPage />} />
         <Route path="profile" element={<ProfilePage />} />
+        <Route path="subscription" element={<SubscriptionPage />} />
 
         {/* Empresa */}
         <Route path="company/config"    element={<CompanyConfigPage />} />

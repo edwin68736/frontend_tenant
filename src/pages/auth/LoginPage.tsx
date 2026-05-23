@@ -14,7 +14,11 @@ const DEV_MODE = !import.meta.env.VITE_TENANT_SLUG && window.location.hostname =
 function isSlugFromSubdomain(): boolean {
   if (typeof window === 'undefined') return false
   const hostname = window.location.hostname
-  if (hostname === 'localhost' || hostname.endsWith('.localhost')) return false
+  if (hostname.endsWith('.localhost')) {
+    const sub = hostname.replace(/\.localhost$/i, '')
+    return sub.length > 0 && sub !== 'localhost'
+  }
+  if (hostname === 'localhost') return false
   const parts = hostname.split('.')
   return parts.length > 2 && parts[0] !== 'www' && parts[0] !== 'api'
 }
@@ -51,8 +55,15 @@ export default function LoginPage() {
   })
 
   const onSubmit = async (data: FormData) => {
-    // Guardar el slug en localStorage para próximas sesiones
-    const slug = data.slug?.trim() ?? import.meta.env.VITE_TENANT_SLUG ?? ''
+    // Slug: subdominio (*.localhost / producción) o campo manual en localhost
+    let slug = data.slug?.trim() ?? ''
+    if (!slug && typeof window !== 'undefined') {
+      const host = window.location.hostname
+      if (host.endsWith('.localhost')) {
+        slug = host.replace(/\.localhost$/i, '')
+      }
+    }
+    if (!slug) slug = import.meta.env.VITE_TENANT_SLUG ?? ''
     if (slug) localStorage.setItem('tenantSlug', slug)
 
     try {

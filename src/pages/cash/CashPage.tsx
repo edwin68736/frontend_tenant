@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Plus, X, TrendingUp, TrendingDown, Wallet, History } from 'lucide-react'
-import { cashbankService, type CashSession, type CashMovement } from '@/services/cashbank.service'
+import { cashbankService, type CashSession, type CashMovement, type OpenCashSessionRow } from '@/services/cashbank.service'
+import { useBranch } from '@/contexts/BranchContext'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 
@@ -145,7 +146,9 @@ export default function CashPage() {
 }
 
 function CashContent() {
+  const { activeBranchId } = useBranch()
   const [session, setSession] = useState<CashSession | null | undefined>(undefined)
+  const [openInBranch, setOpenInBranch] = useState<OpenCashSessionRow[]>([])
   const [movements, setMovements] = useState<CashMovement[]>([])
   const [history, setHistory] = useState<CashSession[]>([])
   const [loading, setLoading] = useState(true)
@@ -181,14 +184,19 @@ function CashContent() {
 
   const load = async () => {
     try {
-      // Si ya tenemos sesión, usar su branch_id para no mezclar con otras sucursales al recargar
-      const branchId = session?.branch_id
-      const [sess, hist] = await Promise.all([
-        cashbankService.getOpenSession(branchId),
+      const branchId = activeBranchId || session?.branch_id
+      const promises: Promise<unknown>[] = [
+        cashbankService.getOpenSession(branchId || undefined),
         cashbankService.listSessions(branchId || undefined),
-      ])
-      setSession(sess ?? null)
-      setHistory(hist ?? [])
+      ]
+      if (branchId) {
+        promises.push(cashbankService.listOpenSessionsInBranch(branchId).then(setOpenInBranch))
+      } else {
+        setOpenInBranch([])
+      }
+      const [sess, hist] = await Promise.all(promises)
+      setSession((sess as CashSession | null) ?? null)
+      setHistory((hist as CashSession[]) ?? [])
       if (sess?.id != null) {
         const movs = await cashbankService.listMovements(sess.id)
         setMovements(movs ?? [])
@@ -199,7 +207,9 @@ function CashContent() {
     finally { setLoading(false) }
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    if (activeBranchId) load()
+  }, [activeBranchId])
 
   useEffect(() => {
     if (session?.arqueo_json) setArqueoDraft(parseArqueoJson(session.arqueo_json))
@@ -207,7 +217,13 @@ function CashContent() {
 
   const handleOpen = async () => {
     setSaving(true)
-    try { await cashbankService.openSession({ branch_id: 1, opening_balance: openBalance, notes: openNotes }); toast.success('Caja abierta'); setShowOpen(false); load() }
+    if (!activeBranchId) { toast.error('Seleccione una sucursal activa'); return }
+    try {
+      await cashbankService.openSession({ branch_id: activeBranchId, opening_balance: openBalance, notes: openNotes })
+      toast.success('Caja abierta')
+      setShowOpen(false)
+      load()
+    }
     catch (e: any) { toast.error(e.response?.data?.error ?? 'Error') }
     finally { setSaving(false) }
   }
@@ -286,7 +302,7 @@ function CashContent() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-gray-800">Caja</h2>
-          <p className="text-sm text-gray-500">Control de caja del día</p>
+          <p className="text-sm text-gray-500">Mi caja — una sesión abierta por usuario en la sucursal</p>
         </div>
         <button
           onClick={() => setShowHistory(!showHistory)}
@@ -295,6 +311,35 @@ function CashContent() {
           <History size={14} /> Historial
         </button>
       </div>
+
+      {openInBranch.length > 0 && (
+        <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
+          <h3 className="text-sm font-semibold text-gray-700 mb-2">Cajas abiertas en sucursal</h3>
+          <p className="text-xs text-gray-500 mb-3">Solo lectura — cada cajero gestiona su propia caja.</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-gray-500 border-b">
+                  <th className="py-2 pr-3">Usuario</th>
+                  <th className="py-2 pr-3">Apertura</th>
+                  <th className="py-2 pr-3 text-right">Saldo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {openInBranch.map((row) => (
+                  <tr key={row.id} className="border-b border-gray-50">
+                    <td className="py-2 pr-3 font-medium text-gray-800">{row.user_name || `#${row.user_id}`}</td>
+                    <td className="py-2 pr-3 text-gray-600">
+                      {row.opened_at ? new Date(row.opened_at).toLocaleString() : '—'}
+                    </td>
+                    <td className="py-2 text-right font-medium">S/ {Number(row.current_balance).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {session ? (
         <>

@@ -243,7 +243,7 @@ export default function SalesReportPage() {
     try {
       const { data: rows } = await salesService.list({ ...buildFilterParams(), export_all: '1' })
       const withDoc = (rows ?? []).map((s) => ({ ...s, doc_display: formatSaleComprobante(s.doc_type, s.series, s.number) }))
-      exportTableToExcel<Sale & { doc_display?: string }>('Ventas', COLS, withDoc, `reporte-ventas-${filters.from || 'todo'}-${filters.to || 'todo'}.xlsx`)
+      await exportTableToExcel<Sale & { doc_display?: string }>('Ventas', COLS, withDoc, `reporte-ventas-${filters.from || 'todo'}-${filters.to || 'todo'}.xlsx`)
       toast.success('Excel descargado')
     } catch {
       toast.error('Error al exportar')

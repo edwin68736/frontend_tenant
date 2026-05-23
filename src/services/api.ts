@@ -13,12 +13,17 @@ function getApiBaseUrl(): string {
 
 export const API_BASE_URL = getApiBaseUrl()
 
-// Detectar el slug del tenant:
-// 1. En producción: desde el subdominio (demo.app.tukifac.cloud → demo)
-// 2. En desarrollo: desde .env o localStorage
+// Detectar el slug del tenant (alineado con backend ExtractSubdomain):
+// 1. Subdominio producción: demo.app.tukifac.cloud → demo
+// 2. Desarrollo: angel.localhost → angel
+// 3. localhost plano: .env o localStorage
 function getTenantSlug(): string {
   if (typeof window === 'undefined') return ''
   const hostname = window.location.hostname
+  if (hostname.endsWith('.localhost')) {
+    const sub = hostname.replace(/\.localhost$/i, '')
+    if (sub && sub !== 'localhost') return sub
+  }
   const parts = hostname.split('.')
   if (parts.length > 2 && parts[0] !== 'www' && parts[0] !== 'api') return parts[0]
   return import.meta.env.VITE_TENANT_SLUG || localStorage.getItem('tenantSlug') || ''
@@ -48,7 +53,23 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    if (error.response?.status === 409 && error.response?.data?.code === 'SESSION_UPDATED') {
+      localStorage.removeItem('token')
+      localStorage.removeItem('user')
+      localStorage.removeItem('active_branch')
+      localStorage.removeItem('can_switch_branch')
+      import('sonner').then(({ toast }) => {
+        toast.error('Tu acceso fue actualizado. Vuelve a iniciar sesión.')
+      })
+      window.location.href = '/login'
+      return Promise.reject(error)
+    }
     if (error.response?.status === 401) {
+      const url = String(error.config?.url ?? '')
+      // No recargar en fallo de login (mostrar toast en LoginPage)
+      if (url.includes('/api/login')) {
+        return Promise.reject(error)
+      }
       localStorage.removeItem('token')
       localStorage.removeItem('user')
       window.location.href = '/login'

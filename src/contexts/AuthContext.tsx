@@ -77,6 +77,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     localStorage.setItem('token', data.token)
     localStorage.setItem('user', JSON.stringify(data.user))
+    if (data.active_branch) {
+      localStorage.setItem('active_branch', JSON.stringify(data.active_branch))
+    }
+    localStorage.setItem('can_switch_branch', data.can_switch_branch ? 'true' : 'false')
 
     setState({
       user: data.user,
@@ -93,6 +97,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     authService.logout()
+    localStorage.removeItem('active_branch')
+    localStorage.removeItem('can_switch_branch')
     setState({ user: null, token: null, modules: [], permissions: [], tenantStatus: '', isAuthenticated: false, isLoading: false })
     toast.info('Sesión cerrada')
     window.location.href = '/login'

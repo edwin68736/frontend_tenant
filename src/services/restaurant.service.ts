@@ -17,11 +17,14 @@ export interface RestaurantTable {
   active: boolean
 }
 
-export interface Waiter {
+export interface RestaurantStaffRow {
   id: number
-  name: string
-  code: string
-  active: boolean
+  user_id: number
+  employee_type: string
+  staff_code?: string
+  display_name?: string
+  is_active: boolean
+  has_pin: boolean
 }
 
 export interface ExternalModuleConfig {
@@ -33,8 +36,16 @@ export interface ExternalModuleConfig {
   config_json?: string
 }
 
+export const EMPLOYEE_TYPES = [
+  { value: '', label: 'Sin acceso restaurante' },
+  { value: 'admin', label: 'Administrador' },
+  { value: 'cashier', label: 'Cajero' },
+  { value: 'waiter', label: 'Mozo' },
+  { value: 'cook', label: 'Cocinero' },
+  { value: 'driver', label: 'Repartidor / Delivery' },
+] as const
+
 export const restaurantService = {
-  // Pisos
   listFloors: (): Promise<Floor[]> =>
     api.get('/api/restaurant/floors').then(r => r.data.data ?? r.data ?? []),
 
@@ -47,7 +58,6 @@ export const restaurantService = {
   deleteFloor: (id: number) =>
     api.delete(`/api/restaurant/floors/${id}`).then(r => r.data),
 
-  // Mesas
   listTables: (floor_id?: number): Promise<RestaurantTable[]> =>
     api.get('/api/restaurant/tables', { params: { floor_id } }).then(r => r.data.data ?? r.data ?? []),
 
@@ -60,26 +70,12 @@ export const restaurantService = {
   deleteTable: (id: number) =>
     api.delete(`/api/restaurant/tables/${id}`).then(r => r.data),
 
-  // Mozos
-  listWaiters: (): Promise<Waiter[]> =>
-    api.get('/api/restaurant/waiters').then(r => r.data.data ?? r.data ?? []),
-
-  createWaiter: (data: { name: string; code: string }) =>
-    api.post('/api/restaurant/waiters', data).then(r => r.data.data ?? r.data),
-
-  updateWaiter: (id: number, data: { name?: string; code?: string; active?: boolean }) =>
-    api.put(`/api/restaurant/waiters/${id}`, data).then(r => r.data),
-
-  deleteWaiter: (id: number) =>
-    api.delete(`/api/restaurant/waiters/${id}`).then(r => r.data),
-
   getSettings: (): Promise<{ has_deletion_pin: boolean }> =>
     api.get('/api/restaurant/settings').then(r => r.data),
 
   updateSettings: (data: { deletion_pin: string }) =>
     api.put('/api/restaurant/settings', data).then(r => r.data),
 
-  // Config del módulo externo
   getExternalModule: (key: string): Promise<ExternalModuleConfig | null> =>
     api.get(`/api/modules/${key}/ping`).then(r => r.data).catch(() => null),
 
@@ -89,10 +85,26 @@ export const restaurantService = {
   toggleModule: (key: string, enabled: boolean) =>
     api.post(`/api/modules/${key}/toggle`, { enabled }).then(r => r.data),
 
-  // Roles operativos del restaurante (solo para tenants con módulo restaurant)
-  listRestaurantRoleAssignments: (): Promise<Record<string, string>> =>
-    api.get('/api/restaurant/roles/assignments').then(r => r.data.data ?? r.data ?? {}),
+  listStaff: (): Promise<RestaurantStaffRow[]> =>
+    api.get('/api/restaurant/staff').then(r => r.data.data ?? r.data ?? []),
 
-  setUserRestaurantRole: (userId: number, role: string) =>
-    api.put(`/api/restaurant/users/${userId}/restaurant-role`, { role }).then(r => r.data),
+  setUserStaff: (
+    userId: number,
+    body: {
+      employee_type: string
+      pin?: string
+      clear_pin?: boolean
+      staff_code?: string
+      display_name?: string
+    },
+  ) => api.put<{ success: boolean; has_pin?: boolean }>(`/api/restaurant/users/${userId}/staff`, body).then(r => r.data),
+}
+
+export const EMPLOYEE_TYPE_LABELS: Record<string, string> = {
+  admin: 'Administrador',
+  cashier: 'Cajero',
+  waiter: 'Mozo',
+  cook: 'Cocinero',
+  driver: 'Delivery',
+  supervisor: 'Supervisor',
 }

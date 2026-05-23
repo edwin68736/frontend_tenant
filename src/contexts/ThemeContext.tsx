@@ -4,6 +4,8 @@ import { useAuth } from './AuthContext'
 
 // Paletas de colores predefinidas por theme name
 const THEMES: Record<string, Record<string, string>> = {
+  /** Verde corporativo (Tailwind green-600 = #16a34a). */
+  green:  { '--p50':'240 253 244','--p100':'220 252 231','--p200':'187 247 208','--p300':'134 239 172','--p400':'74 222 128','--p500':'34 197 94','--p600':'22 163 74','--p700':'21 128 61','--p800':'22 101 52','--p900':'20 83 45','--sidebar-bg':'#14532d' },
   blue:   { '--p50':'239 246 255','--p100':'219 234 254','--p200':'191 219 254','--p300':'147 197 253','--p400':'96 165 250','--p500':'59 130 246','--p600':'37 99 235','--p700':'29 78 216','--p800':'30 64 175','--p900':'30 58 138','--sidebar-bg':'#0f172a' },
   violet: { '--p50':'245 243 255','--p100':'237 233 254','--p200':'221 214 254','--p300':'196 181 253','--p400':'167 139 250','--p500':'139 92 246','--p600':'124 58 237','--p700':'109 40 217','--p800':'91 33 182','--p900':'76 29 149','--sidebar-bg':'#1e1b4b' },
   emerald:{ '--p50':'236 253 245','--p100':'209 250 229','--p200':'167 243 208','--p300':'110 231 183','--p400':'52 211 153','--p500':'16 185 129','--p600':'5 150 105','--p700':'4 120 87','--p800':'6 95 70','--p900':'6 78 59','--sidebar-bg':'#022c22' },
@@ -17,14 +19,14 @@ interface ThemeContextType {
   setTheme: (name: string) => void
 }
 
-const ThemeContext = createContext<ThemeContextType>({ colorTheme: 'blue', setTheme: () => {} })
+const ThemeContext = createContext<ThemeContextType>({ colorTheme: 'green', setTheme: () => {} })
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth()
-  const [colorTheme, setColorTheme] = useState('blue')
+  const [colorTheme, setColorTheme] = useState('green')
 
   const applyTheme = (name: string) => {
-    const palette = THEMES[name] ?? THEMES.blue
+    const palette = THEMES[name] ?? THEMES.green
     const root = document.documentElement
     Object.entries(palette).forEach(([key, val]) => {
       root.style.setProperty(key, val)
@@ -33,10 +35,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
+    applyTheme('green')
     if (!isAuthenticated) return
     companyService.getConfig()
-      .then(cfg => applyTheme(cfg.color_theme || 'blue'))
-      .catch(() => applyTheme('blue'))
+      .then(cfg => applyTheme(cfg.color_theme || 'green'))
+      .catch(() => applyTheme('green'))
   }, [isAuthenticated])
 
   return (

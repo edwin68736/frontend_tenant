@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import {
   Menu,
   Bell,
@@ -16,29 +16,9 @@ import {
 import { useAuth } from '@/contexts/AuthContext'
 import { billingService } from '@/services/billing.service'
 import { membershipsService } from '@/services/memberships.service'
-
-const TITLES: Record<string, string> = {
-  '/home': 'Inicio',
-  '/dashboard': 'Dashboard',
-  '/sales/pos': 'Punto de Venta',
-  '/sales': 'Notas de venta',
-  '/billing': 'Comprobantes electrónicos',
-  '/purchases': 'Compras',
-  '/products': 'Productos',
-  '/inventory': 'Inventario',
-  '/contacts': 'Clientes y Proveedores',
-  '/cashbank/cash': 'Caja',
-  '/cashbank/bank': 'Bancos',
-  '/restaurant': 'Restaurante',
-  '/users': 'Usuarios',
-  '/roles': 'Roles y Permisos',
-  '/company/config': 'Configuración de Empresa',
-  '/company/sunat': 'Configuración SUNAT',
-  '/company/branches': 'Sucursales',
-  '/company/series': 'Series y Correlativos',
-  '/profile': 'Mi perfil',
-  '/memberships': 'Membresías',
-}
+import SubscriptionHeaderWidget from '@/components/SubscriptionHeaderWidget'
+import HeaderQuickActions from '@/components/HeaderQuickActions'
+import { BranchSwitcherUserMenu } from '@/components/BranchSwitcher'
 
 interface Props {
   onMenuClick: () => void
@@ -48,12 +28,6 @@ interface Props {
 
 export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar }: Props) {
   const { user, logout, hasModule } = useAuth()
-  const { pathname } = useLocation()
-  const title = pathname.startsWith('/billing/docs')
-    ? 'Documentos avanzados'
-    : pathname.startsWith('/memberships')
-      ? 'Membresías'
-      : (TITLES[pathname] ?? 'Tukifac ERP')
 
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
@@ -108,7 +82,7 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
   const notifBadgeTotal = billingBadgeTotal + memBadgeTotal
 
   return (
-    <header className="bg-white border-b border-gray-100/80 px-4 py-2.5 flex items-center gap-3 flex-shrink-0 min-h-[4rem] rounded-2xl">
+    <header className="bg-white border-b border-gray-100/80 px-4 py-1.5 flex items-center gap-2 sm:gap-3 flex-shrink-0 min-h-[3.25rem] rounded-2xl">
       {/* Toggle sidebar (móvil) */}
       <button
         onClick={onMenuClick}
@@ -127,7 +101,10 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
         {sidebarCollapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
       </button>
 
-      <h1 className="text-base font-bold text-gray-800 flex-1 truncate">{title}</h1>
+      <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 overflow-hidden">
+        <HeaderQuickActions />
+        <SubscriptionHeaderWidget />
+      </div>
 
       {/* Notificaciones */}
       <div className="relative" ref={notifRef}>
@@ -248,7 +225,8 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
           <ChevronDown size={16} className="text-gray-500 flex-shrink-0" />
         </button>
         {userMenuOpen && (
-          <div className="absolute right-0 top-full mt-1.5 w-52 rounded-2xl border border-gray-100 bg-white shadow-xl ring-1 ring-black/5 py-1.5 z-50">
+          <div className="absolute right-0 top-full mt-1.5 w-56 rounded-2xl border border-gray-100 bg-white shadow-xl ring-1 ring-black/5 py-1.5 z-50">
+            <BranchSwitcherUserMenu onClose={() => setUserMenuOpen(false)} />
             <Link
               to="/profile"
               onClick={() => setUserMenuOpen(false)}

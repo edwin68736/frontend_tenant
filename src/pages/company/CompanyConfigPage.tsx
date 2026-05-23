@@ -6,9 +6,10 @@ import { UbigeoSelects } from '@/components/UbigeoSelects'
 import { ubigeoToIds } from '@/services/ubigeo.service'
 
 const THEMES = [
+  { key: 'green',   label: 'Verde',   color: '#16a34a' },
   { key: 'blue',    label: 'Azul',    color: '#3b82f6' },
   { key: 'violet',  label: 'Violeta', color: '#8b5cf6' },
-  { key: 'emerald', label: 'Verde',   color: '#10b981' },
+  { key: 'emerald', label: 'Esmeralda', color: '#10b981' },
   { key: 'rose',    label: 'Rosa',    color: '#f43f5e' },
   { key: 'amber',   label: 'Ámbar',   color: '#f59e0b' },
   { key: 'slate',   label: 'Gris',    color: '#64748b' },

@@ -141,14 +141,18 @@ export default function SalesByProductReportPage() {
     toast.success('PDF descargado')
   }
 
-  const exportExcel = () => {
-    exportTableToExcel<SalesByProductRow>(
-      'Ventas por producto',
-      EXPORT_COLS,
-      data,
-      `ventas-por-producto-${filters.from || 'todo'}-${filters.to || 'todo'}.xlsx`
-    )
-    toast.success('Excel descargado')
+  const exportExcel = async () => {
+    try {
+      await exportTableToExcel<SalesByProductRow>(
+        'Ventas por producto',
+        EXPORT_COLS,
+        data,
+        `ventas-por-producto-${filters.from || 'todo'}-${filters.to || 'todo'}.xlsx`
+      )
+      toast.success('Excel descargado')
+    } catch {
+      toast.error('Error al exportar Excel')
+    }
   }
 
   const tableCols = 8

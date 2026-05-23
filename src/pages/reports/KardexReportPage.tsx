@@ -161,7 +161,7 @@ export default function KardexReportPage() {
         toast.error('No hay datos para exportar')
         return
       }
-      exportTableToExcel<Row>('Kardex', COLS, rows, `reporte-kardex-${filters.date_from || 'todo'}-${filters.date_to || 'todo'}.xlsx`)
+      await exportTableToExcel<Row>('Kardex', COLS, rows, `reporte-kardex-${filters.date_from || 'todo'}-${filters.date_to || 'todo'}.xlsx`)
       toast.success('Excel descargado')
     } catch {
       toast.error('Error al exportar')

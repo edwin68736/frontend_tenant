@@ -5,7 +5,6 @@ import { useAuth } from '@/contexts/AuthContext'
 import RestaurantTablesPage from '@/pages/restaurant/RestaurantTablesPage'
 import RestaurantFloorsPage from '@/pages/restaurant/RestaurantFloorsPage'
 import RestaurantProductsPage from '@/pages/restaurant/RestaurantProductsPage'
-import RestaurantWaitersPage from '@/pages/restaurant/RestaurantWaitersPage'
 import RestaurantSettingsPage from '@/pages/restaurant/RestaurantSettingsPage'
 
 export default function ModulesPage() {
@@ -14,7 +13,7 @@ export default function ModulesPage() {
   const restaurantEnabled = hasModule('restaurant')
   const membershipsEnabled = hasModule('memberships')
   const [activeModule, setActiveModule] = useState<'restaurant' | null>(null)
-  const [restaurantSection, setRestaurantSection] = useState<'tables' | 'floors' | 'products' | 'waiters' | 'settings'>('tables')
+  const [restaurantSection, setRestaurantSection] = useState<'tables' | 'floors' | 'products' | 'settings'>('tables')
 
   return (
     <div className="space-y-5">
@@ -135,13 +134,6 @@ export default function ModulesPage() {
               Carta
             </ModuleTab>
             <ModuleTab
-              active={restaurantSection === 'waiters'}
-              onClick={() => setRestaurantSection('waiters')}
-              icon={<UserCog size={13} />}
-            >
-              Mozos
-            </ModuleTab>
-            <ModuleTab
               active={restaurantSection === 'settings'}
               onClick={() => setRestaurantSection('settings')}
               icon={<Grid3x3 size={13} />}
@@ -154,7 +146,6 @@ export default function ModulesPage() {
             {restaurantSection === 'tables' && <RestaurantTablesPage />}
             {restaurantSection === 'floors' && <RestaurantFloorsPage />}
             {restaurantSection === 'products' && <RestaurantProductsPage />}
-            {restaurantSection === 'waiters' && <RestaurantWaitersPage />}
             {restaurantSection === 'settings' && <RestaurantSettingsPage />}
           </div>
         </div>

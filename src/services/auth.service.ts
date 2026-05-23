@@ -10,6 +10,8 @@ export interface AuthUser {
   name: string
   email: string
   role: string
+  home_branch_id?: number
+  can_switch_branch?: boolean
 }
 
 export interface SubscriptionInfo {
@@ -19,12 +21,20 @@ export interface SubscriptionInfo {
   end_date: string
 }
 
+export interface BranchBrief {
+  id: number
+  name: string
+  is_main?: boolean
+}
+
 export interface LoginResponse {
   token: string
   user: AuthUser
   modules: string[]
   permissions?: string[]
   subscription: SubscriptionInfo | null
+  active_branch?: BranchBrief | null
+  can_switch_branch?: boolean
 }
 
 // Decodifica el payload del JWT sin verificar firma (solo lectura cliente).
@@ -50,6 +60,8 @@ export interface JWTPayload {
   plan_id: number
   modules: string[]
   permissions?: string[]
+  active_branch_id?: number
+  branch_session_version?: number
   status: string
   type: string
   exp: number

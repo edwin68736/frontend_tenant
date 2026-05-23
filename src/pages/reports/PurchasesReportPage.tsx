@@ -116,7 +116,7 @@ export default function PurchasesReportPage() {
         toast.error('No hay datos para exportar')
         return
       }
-      exportTableToExcel<Purchase>('Compras', COLS, rows, `reporte-compras-${filters.from || 'todo'}-${filters.to || 'todo'}.xlsx`)
+      await exportTableToExcel<Purchase>('Compras', COLS, rows, `reporte-compras-${filters.from || 'todo'}-${filters.to || 'todo'}.xlsx`)
       toast.success('Excel descargado')
     } catch {
       toast.error('Error al exportar')

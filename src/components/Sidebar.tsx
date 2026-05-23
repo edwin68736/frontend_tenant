@@ -251,9 +251,9 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
   )
 
   const sidebarClass = clsx(
-    'relative flex flex-col flex-shrink-0 h-full transition-transform duration-300 z-40',
+    'relative flex min-h-0 flex-col flex-shrink-0 h-full transition-transform duration-300 z-40',
     embedded
-      ? 'lg:relative lg:translate-x-0 lg:!left-0 lg:!inset-y-0 lg:w-full lg:h-full'
+      ? 'lg:relative lg:translate-x-0 lg:w-full lg:h-full'
       : 'lg:relative lg:translate-x-0',
     mobileOpen ? 'fixed inset-y-0 left-0 translate-x-0 w-64' : 'fixed inset-y-0 left-0 -translate-x-full lg:translate-x-0 w-64',
     !embedded && 'lg:fixed lg:inset-y-0 lg:left-0',
@@ -327,7 +327,7 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
     <>
       <aside className={clsx(sidebarClass, 'shadow-xl shadow-black/20')} style={{ background: 'var(--sidebar-bg, #0f172a)' }}>
       {/* Logo / empresa */}
-      <div className={clsx('px-4 py-4 flex items-center border-b border-white/10', isCollapsed ? 'justify-center gap-2' : 'gap-3')}>
+      <div className={clsx('shrink-0 px-4 py-4 flex items-center border-b border-white/10', isCollapsed ? 'justify-center gap-2' : 'gap-3')}>
         <div
           className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
           style={{ background: 'rgb(var(--p600))' }}
@@ -458,8 +458,8 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
         )}
       </nav>
 
-      {/* Usuario y logout */}
-      <div className="px-3 py-3 border-t border-white/10">
+      {/* Usuario y logout — siempre al pie del sidebar */}
+      <div className="mt-auto shrink-0 px-3 py-3 border-t border-white/10">
         <div className={clsx('flex items-center px-3 py-2.5 rounded-xl bg-white/10 ring-1 ring-white/10', isCollapsed ? 'justify-center gap-2' : 'gap-2.5')}>
           <div
             className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"

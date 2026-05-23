@@ -183,13 +183,29 @@ function BillingContent() {
 
   const handleSend = async (saleId: number) => {
     setSending(saleId)
+    const tid = toast.loading('Factura en proceso…')
     try {
       const res = await billingService.send(saleId)
-      if (res.success) { toast.success('Enviado a SUNAT correctamente') }
-      else { toast.error(res.message ?? 'Error al enviar') }
+      if (res.async || !res.safe_to_print) {
+        const { pollBillingStatus, billingStatusLabel } = await import('@/utils/billingPoll')
+        toast.loading('Consultando estado SUNAT…', { id: tid })
+        const st = await pollBillingStatus(saleId, {
+          onTick: s => toast.loading(billingStatusLabel(s.status), { id: tid }),
+        })
+        if (st.safe_to_print) {
+          toast.success('Aceptada por SUNAT', { id: tid })
+        } else {
+          toast.error(st.sunat_message || billingStatusLabel(st.status), { id: tid })
+        }
+      } else if (res.safe_to_print) {
+        toast.success('Aceptada por SUNAT', { id: tid })
+      } else {
+        toast.error(res.message ?? 'Sin confirmación SUNAT', { id: tid })
+      }
       load()
-    } catch (e: any) { toast.error(e.response?.data?.error ?? 'Error enviando') }
-    finally { setSending(null) }
+    } catch (e: any) {
+      toast.error(e.response?.data?.error ?? e.message ?? 'Error enviando', { id: tid })
+    } finally { setSending(null) }
   }
 
   const handleResend = async (saleId: number) => {

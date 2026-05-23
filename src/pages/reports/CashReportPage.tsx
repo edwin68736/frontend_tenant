@@ -167,7 +167,7 @@ export default function CashReportPage() {
     setLoading(true)
     try {
       const { data: rows } = await cashbankService.listMovementsReport(exportParamsAllRows())
-      exportTableToExcel<MovementReportRow>('Caja', buildExportCols(), rows, `reporte-caja-${filters.date_from || 'todo'}-${filters.date_to || 'todo'}.xlsx`)
+      await exportTableToExcel<MovementReportRow>('Caja', buildExportCols(), rows, `reporte-caja-${filters.date_from || 'todo'}-${filters.date_to || 'todo'}.xlsx`)
       toast.success('Excel descargado')
     } catch {
       toast.error('Error al exportar')

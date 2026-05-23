@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Plus, Trash2, Search, X, Package } from 'lucide-react'
 import { salesService, type CreateSaleInput } from '@/services/sales.service'
@@ -7,6 +7,7 @@ import { contactsService, type Contact } from '@/services/contacts.service'
 import { productsService, type Product } from '@/services/products.service'
 import { companyService } from '@/services/company.service'
 import { useAuth } from '@/contexts/AuthContext'
+import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { ReceiptPrintModal } from '@/components/ui/ReceiptPrintModal'
@@ -55,6 +56,13 @@ function docTypeToSunatCode(docType: string): string {
   return ''
 }
 
+const VALID_TIPO_URL = new Set(['00', '01', '03'])
+
+function tipoFromSearchParams(params: URLSearchParams): string | null {
+  const t = params.get('tipo')?.trim()
+  return t && VALID_TIPO_URL.has(t) ? t : null
+}
+
 export default function SalesRegisterPage() {
   return (
     <RequireModule moduleKey="sales">
@@ -65,8 +73,9 @@ export default function SalesRegisterPage() {
 
 function SalesRegisterContent() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { hasModule } = useAuth()
-  const [branches, setBranches] = useState<{ id: number; name: string }[]>([])
+  const { activeBranch, activeBranchId } = useBranch()
   const [series, setSeries] = useState<SeriesRow[]>([])
   const [customers, setCustomers] = useState<Contact[]>([])
   const [taxRate, setTaxRate] = useState(18)
@@ -105,29 +114,28 @@ function SalesRegisterContent() {
 
   useEffect(() => {
     Promise.all([
-      companyService.listBranches(),
-      companyService.listSeries({ category: 'venta' }),
+      companyService.listSeries({ branch_id: activeBranchId, category: 'venta' }),
       companyService.getSunat(),
       contactsService.list('', 'customer'),
       contactsService.getDefault(),
       cashbankService.listPaymentMethods(),
     ])
-      .then(([branchList, seriesList, sunat, customerList, defaultClient, methods]) => {
-        setBranches(Array.isArray(branchList) ? branchList : [])
+      .then(([seriesList, sunat, customerList, defaultClient, methods]) => {
         setSunatEnabled(sunat?.sunat_enabled ?? true)
         const ventaSeries = (seriesList ?? []) as SeriesRow[]
         setSeries(ventaSeries)
         setTaxRate(sunat?.tax_rate ?? 18)
         setTaxConfig({ taxRate: sunat?.tax_rate ?? 18, igvRegime: sunat?.igv_regime, taxBenefitZone: sunat?.tax_benefit_zone })
         setCustomers(Array.isArray(customerList) ? customerList : [])
-        const firstBranch = Array.isArray(branchList) && branchList.length ? (branchList[0] as { id: number }).id : 0
         let codes = [...new Set(ventaSeries.map(s => (s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)).filter(Boolean))]
         if (!hasModule('billing') || !(sunat?.sunat_enabled ?? true)) codes = codes.filter(c => c === '00')
-        const defaultCode = codes.includes('00') ? '00' : (codes.includes('03') ? '03' : codes[0] ?? '03')
+        const urlTipo = tipoFromSearchParams(searchParams)
+        let defaultCode = codes.includes('00') ? '00' : (codes.includes('03') ? '03' : codes[0] ?? '03')
+        if (urlTipo && codes.includes(urlTipo)) defaultCode = urlTipo
         const matchSeries = ventaSeries.find(s => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === defaultCode)
         setForm(f => ({
           ...f,
-          branch_id: firstBranch,
+          branch_id: activeBranchId,
           sunat_code: defaultCode,
           series_id: matchSeries?.id ?? null,
           contact_id: defaultClient?.id ?? f.contact_id,
@@ -136,9 +144,41 @@ function SalesRegisterContent() {
       })
       .catch(() => toast.error('Error cargando datos'))
       .finally(() => setLoading(false))
-  }, [hasModule])
+  }, [hasModule, searchParams, activeBranchId])
+
+  useOnBranchChange(() => {
+    setLoading(true)
+    setItems([])
+    setForm((f) => ({ ...f, branch_id: activeBranchId }))
+    Promise.all([
+      companyService.listSeries({ branch_id: activeBranchId, category: 'venta' }),
+      companyService.getSunat(),
+      contactsService.list('', 'customer'),
+      contactsService.getDefault(),
+      cashbankService.listPaymentMethods(),
+    ])
+      .then(([seriesList, sunat, customerList, defaultClient, methods]) => {
+        setSunatEnabled(sunat?.sunat_enabled ?? true)
+        const ventaSeries = (seriesList ?? []) as SeriesRow[]
+        setSeries(ventaSeries)
+        setTaxRate(sunat?.tax_rate ?? 18)
+        setCustomers(Array.isArray(customerList) ? customerList : [])
+        if (Array.isArray(methods) && methods.length > 0) setPaymentMethods(methods as PaymentMethodRecord[])
+        setForm((f) => ({ ...f, contact_id: defaultClient?.id ?? f.contact_id, branch_id: activeBranchId }))
+      })
+      .finally(() => setLoading(false))
+  })
 
   const seriesFiltered = series.filter(s => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === form.sunat_code)
+
+  useEffect(() => {
+    if (loading || series.length === 0) return
+    const urlTipo = tipoFromSearchParams(searchParams)
+    if (!urlTipo) return
+    const codes = [...new Set(series.map(s => (s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)).filter(Boolean))]
+    if (!codes.includes(urlTipo)) return
+    setForm(f => (f.sunat_code === urlTipo ? f : { ...f, sunat_code: urlTipo }))
+  }, [searchParams, loading, series])
 
   useEffect(() => {
     const first = seriesFiltered[0]
@@ -218,8 +258,8 @@ function SalesRegisterContent() {
   const selectedContact = form.contact_id ? customers.find(c => c.id === form.contact_id!) : null
 
   const handleSave = async () => {
-    if (!form.branch_id) {
-      toast.error('Seleccione una sucursal')
+    if (!activeBranchId) {
+      toast.error('No hay sucursal activa')
       return
     }
     if (!form.contact_id) {
@@ -277,7 +317,7 @@ function SalesRegisterContent() {
     setSaving(true)
     try {
       const payload: CreateSaleInput = {
-        branch_id: form.branch_id,
+        branch_id: activeBranchId,
         contact_id: form.contact_id || null,
         doc_type: series.find(s => s.id === form.series_id)?.doc_type ?? 'BOLETA',
         series_id: form.series_id,
@@ -327,16 +367,9 @@ function SalesRegisterContent() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Sucursal</label>
-            <select
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-              value={form.branch_id || ''}
-              onChange={e => setForm(f => ({ ...f, branch_id: Number(e.target.value) }))}
-            >
-              <option value="">Seleccionar...</option>
-              {branches.map(b => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
+            <p className="w-full border border-gray-100 bg-gray-50 rounded-xl px-3 py-2 text-sm text-gray-800">
+              {activeBranch?.name ?? '—'}
+            </p>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Cliente *</label>

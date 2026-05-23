@@ -134,7 +134,7 @@ export default function ProductsReportPage() {
         toast.error('No hay datos para exportar')
         return
       }
-      exportTableToExcel<ProductReportRow>('Productos', COLS, rows, 'reporte-productos.xlsx')
+      await exportTableToExcel<ProductReportRow>('Productos', COLS, rows, 'reporte-productos.xlsx')
       toast.success('Excel descargado')
     } catch {
       toast.error('Error al exportar')

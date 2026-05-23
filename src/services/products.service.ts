@@ -84,6 +84,29 @@ export interface ProductDetailResponse {
   modifier_group_ids: number[]
 }
 
+export interface BulkImportItemPayload {
+  row_number: number
+  name: string
+  code?: string
+  description?: string
+  sale_price: number
+  unit?: string
+  category_name?: string
+  igv_affectation_type?: string
+  price_includes_igv?: boolean
+  manage_stock?: boolean
+  initial_stock?: number
+  is_restaurant?: boolean
+  preparation_area?: string
+  type?: string
+}
+
+export interface BulkImportResultPayload {
+  created: number
+  stock_registered: number
+  failed: { row: number; name: string; error: string }[]
+}
+
 export const productsService = {
   /** Lista productos. Con per_page se usa paginación en backend y se devuelve total. manage_stock_only para transferencias/inventario. */
   list: (
@@ -145,6 +168,14 @@ export const productsService = {
 
   get: (id: number) =>
     api.get<ProductDetailResponse>('/api/products/' + id).then(r => ({ data: r.data.data, modifier_group_ids: r.data.modifier_group_ids ?? [] })),
+
+  bulkImportCatalog: (items: BulkImportItemPayload[]) =>
+    api
+      .post<{ success: boolean; data: BulkImportResultPayload }>(
+        '/api/products/bulk-import/catalog',
+        { items },
+      )
+      .then((r) => r.data.data),
 
   create: (data: CreateProductInput) =>
     api.post<{ data: Product }>('/api/products', data).then(r => r.data.data),

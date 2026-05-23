@@ -8,7 +8,7 @@ SPA React del ERP multi-tenant: ventas, POS, inventario, facturación, restauran
 - **Tailwind CSS v3** + PostCSS
 - **React Router 6**
 - **Axios** · **RHF** + **zod 3** · **sonner**
-- Utilidades: jspdf, qrcode, xlsx, date-fns, recharts 2
+- Utilidades: jspdf, qrcode, hucre (Excel), date-fns, recharts 2
 
 ## Puerto y proxy
 
@@ -118,3 +118,10 @@ Operación en sala (POS cocina, comandas) → `restaurant_frontend_tenant/`.
 - Formularios: RHF + Zod
 - Toasts: `sonner`
 - Normalizar arrays: `data.items ?? []`
+
+
+CODIGOS PARA MIGRACIONES.
+cd E:\tukifac\tukifac_premium\backend_go
+go run . migrate-bump-target
+go run . migrate-fleet
+go run . migrate-backfill-fleet --version=37

@@ -2,11 +2,31 @@ import api from './api'
 
 export interface BillingResult {
   success: boolean
-  status: string
+  async?: boolean
+  safe_to_print?: boolean
+  status?: BillingStatusResponse
   message: string
+  job_status?: string
+  invoice?: unknown
   xml_url?: string
   pdf_url?: string
   cdr_url?: string
+}
+
+/** Estado verificable (GET /api/billing/status/:saleId). */
+export interface BillingStatusResponse {
+  status: string
+  sunat_code: string
+  cdr_received: boolean
+  sunat_message: string
+  xml_signed: boolean
+  safe_to_print: boolean
+  last_attempt_at: string
+  retry_count: number
+  job_status: string
+  billing_status: string
+  pipeline_status: string
+  async_in_progress: boolean
 }
 
 export interface InvoiceInfo {
@@ -30,6 +50,12 @@ export interface InvoiceInfo {
 export const billingService = {
   send: (saleId: number): Promise<BillingResult> =>
     api.post(`/api/billing/send/${saleId}`).then(r => r.data),
+
+  getStatus: (saleId: number): Promise<BillingStatusResponse> =>
+    api.get(`/api/billing/status/${saleId}`).then(r => r.data),
+
+  getJobStatus: (saleId: number): Promise<{ invoice: InvoiceInfo }> =>
+    api.get(`/api/billing/job/${saleId}`).then(r => r.data),
 
   /** Reenviar el mismo comprobante (solo cuando falló el envío, no si fue rechazado por SUNAT). */
   resend: (saleId: number): Promise<BillingResult & { invoice?: unknown }> =>
