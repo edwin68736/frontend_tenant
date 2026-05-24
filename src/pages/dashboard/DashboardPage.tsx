@@ -31,7 +31,6 @@ import {
   AlertCircle,
   RefreshCw,
   CalendarRange,
-  Sparkles,
   ArrowRight,
   PiggyBank,
   ShoppingCart,
@@ -149,12 +148,83 @@ function saleStatusLabel(k: string) {
 
 type BranchOpt = { id: number; name: string }
 
+type KpiTone = 'brand' | 'blue' | 'emerald' | 'violet' | 'rose' | 'amber' | 'teal' | 'cyan' | 'indigo'
+
+const KPI_TONE_STYLES: Record<
+  KpiTone,
+  { card: string; icon: string; title: string; value: string; glow: string }
+> = {
+  brand: {
+    card: 'border-[rgb(var(--p600))]/15 bg-gradient-to-br from-[rgb(var(--p600))]/10 via-white to-white',
+    icon: 'bg-[rgb(var(--p600))]/15 text-[rgb(var(--p600))] ring-[rgb(var(--p600))]/20',
+    title: 'text-[rgb(var(--p700))]/70',
+    value: 'text-gray-900',
+    glow: 'to-[rgb(var(--p600))]/15',
+  },
+  blue: {
+    card: 'border-blue-100 bg-gradient-to-br from-blue-50 via-white to-white',
+    icon: 'bg-blue-100 text-blue-600 ring-blue-200/70',
+    title: 'text-blue-700/70',
+    value: 'text-blue-950',
+    glow: 'to-blue-100/50',
+  },
+  emerald: {
+    card: 'border-emerald-100 bg-gradient-to-br from-emerald-50 via-white to-white',
+    icon: 'bg-emerald-100 text-emerald-600 ring-emerald-200/70',
+    title: 'text-emerald-700/70',
+    value: 'text-emerald-950',
+    glow: 'to-emerald-100/50',
+  },
+  violet: {
+    card: 'border-violet-100 bg-gradient-to-br from-violet-50 via-white to-white',
+    icon: 'bg-violet-100 text-violet-600 ring-violet-200/70',
+    title: 'text-violet-700/70',
+    value: 'text-violet-950',
+    glow: 'to-violet-100/50',
+  },
+  rose: {
+    card: 'border-rose-100 bg-gradient-to-br from-rose-50 via-white to-white',
+    icon: 'bg-rose-100 text-rose-600 ring-rose-200/70',
+    title: 'text-rose-700/70',
+    value: 'text-rose-950',
+    glow: 'to-rose-100/50',
+  },
+  amber: {
+    card: 'border-amber-100 bg-gradient-to-br from-amber-50 via-white to-white',
+    icon: 'bg-amber-100 text-amber-600 ring-amber-200/70',
+    title: 'text-amber-700/70',
+    value: 'text-amber-950',
+    glow: 'to-amber-100/50',
+  },
+  teal: {
+    card: 'border-teal-100 bg-gradient-to-br from-teal-50 via-white to-white',
+    icon: 'bg-teal-100 text-teal-600 ring-teal-200/70',
+    title: 'text-teal-700/70',
+    value: 'text-teal-950',
+    glow: 'to-teal-100/50',
+  },
+  cyan: {
+    card: 'border-cyan-100 bg-gradient-to-br from-cyan-50 via-white to-white',
+    icon: 'bg-cyan-100 text-cyan-600 ring-cyan-200/70',
+    title: 'text-cyan-700/70',
+    value: 'text-cyan-950',
+    glow: 'to-cyan-100/50',
+  },
+  indigo: {
+    card: 'border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-white',
+    icon: 'bg-indigo-100 text-indigo-600 ring-indigo-200/70',
+    title: 'text-indigo-700/70',
+    value: 'text-indigo-950',
+    glow: 'to-indigo-100/50',
+  },
+}
+
 function KpiCard({
   title,
   value,
   subtitle,
   icon,
-  accentClass,
+  tone,
   trend,
   loading,
 }: {
@@ -162,23 +232,25 @@ function KpiCard({
   value: string
   subtitle?: string
   icon: React.ReactNode
-  accentClass: string
+  tone: KpiTone
   trend?: { pct: number; label?: string }
   loading?: boolean
 }) {
+  const styles = KPI_TONE_STYLES[tone]
+
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl border border-slate-100/80 bg-white p-4 shadow-sm transition-all duration-300 hover:shadow-md ${accentClass}`}
+      className={`relative overflow-hidden rounded-2xl border p-4 shadow-sm transition-all duration-300 hover:shadow-md ${styles.card}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{title}</p>
+          <p className={`text-[11px] font-semibold uppercase tracking-wider ${styles.title}`}>{title}</p>
           {loading ? (
-            <div className="mt-2 h-8 w-28 animate-pulse rounded-lg bg-slate-100" />
+            <div className="mt-2 h-8 w-28 animate-pulse rounded-lg bg-white/60" />
           ) : (
-            <p className="mt-1 truncate text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">{value}</p>
+            <p className={`mt-1 truncate text-xl font-bold tracking-tight sm:text-2xl ${styles.value}`}>{value}</p>
           )}
-          {subtitle && !loading && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
+          {subtitle && !loading && <p className="mt-0.5 text-xs text-gray-500">{subtitle}</p>}
           {trend && !loading && (
             <div
               className={`mt-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -191,11 +263,11 @@ function KpiCard({
             </div>
           )}
         </div>
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/70 text-slate-600 shadow-inner ring-1 ring-slate-100">
+        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-sm ring-1 ${styles.icon}`}>
           {icon}
         </div>
       </div>
-      <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-gradient-to-br from-white/0 to-slate-50 opacity-90" />
+      <div className={`pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-gradient-to-br from-white/0 ${styles.glow} opacity-90`} />
     </div>
   )
 }
@@ -311,46 +383,33 @@ export default function DashboardPage() {
   const p = analytics?.period
 
   return (
-    <div className="min-h-[calc(100vh-6rem)] space-y-6 pb-10">
-      {/* Hero header */}
-      <div className="relative overflow-hidden rounded-3xl border border-slate-200/80 bg-gradient-to-br from-slate-900 via-slate-800 to-[rgb(var(--p700,29_78_216))] px-5 py-6 text-white shadow-xl sm:px-8 sm:py-8">
-        <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10 blur-3xl" />
-        <div className="pointer-events-none absolute bottom-0 left-1/3 h-32 w-32 rounded-full bg-cyan-400/20 blur-2xl" />
-        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-medium backdrop-blur">
-              <Sparkles size={14} className="text-amber-300" />
-              Panel analítico
-            </div>
-            <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">Dashboard</h1>
-            <p className="mt-1 max-w-xl text-sm text-slate-300">
-              Ventas, facturación electrónica y operación en un solo vistazo. Ajusta el período y la sucursal para
-              explorar tus datos.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void load()}
-              disabled={loading}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium backdrop-blur transition hover:bg-white/20 disabled:opacity-50"
-            >
-              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-              Actualizar
-            </button>
-          </div>
+    <div className="space-y-4 pb-10">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-gray-800">Dashboard</h2>
         </div>
+        <button
+          type="button"
+          onClick={() => void load()}
+          disabled={loading}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-50 flex-shrink-0 disabled:opacity-50"
+        >
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          Actualizar
+        </button>
+      </div>
 
-        {/* Filters */}
-        <div className="relative mt-6 flex flex-col gap-4 rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-md sm:flex-row sm:flex-wrap sm:items-end">
-          <div className="flex flex-wrap gap-2">
-            {PRESETS.map((pr) => (
+      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between">
+        <div className="flex flex-wrap gap-2">
+          {PRESETS.map((pr) => (
               <button
                 key={pr.id}
                 type="button"
                 onClick={() => applyPreset(pr.id)}
                 className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                  preset === pr.id ? 'bg-white text-slate-900 shadow' : 'bg-white/10 text-white hover:bg-white/20'
+                  preset === pr.id
+                    ? 'bg-[rgb(var(--p600))] text-white shadow-sm'
+                    : 'border border-gray-200 bg-white text-gray-600 hover:border-[rgb(var(--p300))] hover:text-gray-900'
                 }`}
               >
                 {pr.label}
@@ -360,63 +419,65 @@ export default function DashboardPage() {
               type="button"
               onClick={() => setPreset('custom')}
               className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                preset === 'custom' ? 'bg-white text-slate-900 shadow' : 'bg-white/10 text-white hover:bg-white/20'
+                preset === 'custom'
+                  ? 'bg-[rgb(var(--p600))] text-white shadow-sm'
+                  : 'border border-gray-200 bg-white text-gray-600 hover:border-[rgb(var(--p300))] hover:text-gray-900'
               }`}
             >
               Personalizado
             </button>
-          </div>
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="flex flex-col gap-1 text-[11px] font-medium text-slate-300">
-              Desde
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => onCustomDateChange('from', e.target.value)}
-                className="rounded-xl border border-white/20 bg-white/90 px-3 py-2 text-sm text-slate-900 shadow-sm"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-[11px] font-medium text-slate-300">
-              Hasta
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => onCustomDateChange('to', e.target.value)}
-                className="rounded-xl border border-white/20 bg-white/90 px-3 py-2 text-sm text-slate-900 shadow-sm"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-[11px] font-medium text-slate-300">
-              Sucursal
-              <select
-                value={branchId === '' ? '' : String(branchId)}
-                onChange={(e) => {
-                  setBranchId(e.target.value ? Number(e.target.value) : '')
-                  setPreset('custom')
-                }}
-                className="min-w-[160px] rounded-xl border border-white/20 bg-white/90 px-3 py-2 text-sm text-slate-900 shadow-sm"
-              >
-                <option value="">Todas</option>
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="hidden items-center gap-2 rounded-xl border border-white/15 bg-black/20 px-3 py-2 text-xs text-slate-200 sm:flex">
-              <CalendarRange size={14} />
-              <span>
-                {p?.date_from && p?.date_to ? (
-                  <>
-                    {formatDisplayDatePeru(p.date_from)} — {formatDisplayDatePeru(p.date_to)}
-                  </>
-                ) : (
-                  '—'
-                )}
-              </span>
             </div>
-          </div>
-        </div>
+
+            <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-end lg:justify-end xl:justify-between">
+              <label className="flex min-w-0 flex-1 flex-col gap-1 text-[11px] font-medium text-gray-500 lg:min-w-[9rem]">
+                Desde
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => onCustomDateChange('from', e.target.value)}
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm"
+                />
+              </label>
+              <label className="flex min-w-0 flex-1 flex-col gap-1 text-[11px] font-medium text-gray-500 lg:min-w-[9rem]">
+                Hasta
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => onCustomDateChange('to', e.target.value)}
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm"
+                />
+              </label>
+              <label className="flex min-w-0 flex-1 flex-col gap-1 text-[11px] font-medium text-gray-500 lg:min-w-[10rem]">
+                Sucursal
+                <select
+                  value={branchId === '' ? '' : String(branchId)}
+                  onChange={(e) => {
+                    setBranchId(e.target.value ? Number(e.target.value) : '')
+                    setPreset('custom')
+                  }}
+                  className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm"
+                >
+                  <option value="">Todas</option>
+                  {branches.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="hidden min-w-0 flex-1 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600 lg:flex lg:min-w-[12rem] xl:max-w-[16rem]">
+                <CalendarRange size={14} className="shrink-0 text-gray-400" />
+                <span className="truncate">
+                  {p?.date_from && p?.date_to ? (
+                    <>
+                      {formatDisplayDatePeru(p.date_from)} — {formatDisplayDatePeru(p.date_to)}
+                    </>
+                  ) : (
+                    '—'
+                  )}
+                </span>
+              </div>
+            </div>
       </div>
 
       {/* KPI grid */}
@@ -426,7 +487,7 @@ export default function DashboardPage() {
           value={fmtMoney(s?.sales_total ?? 0)}
           subtitle={`${s?.sales_count ?? 0} operaciones · Ticket ${fmtMoney(s?.avg_ticket ?? 0)}`}
           icon={<ShoppingCart size={20} />}
-          accentClass="ring-1 ring-blue-50"
+          tone="brand"
           trend={
             p && Math.abs(p.sales_change_pct) > 0.01
               ? { pct: p.sales_change_pct, label: 'vs período anterior' }
@@ -439,7 +500,7 @@ export default function DashboardPage() {
           value={fmtMoney(s?.sales_today ?? 0)}
           subtitle={`${s?.sales_today_count ?? 0} docs. · Mes calendario ${fmtMoney(s?.sales_month_calendar ?? 0)}`}
           icon={<TrendingUp size={20} />}
-          accentClass="ring-1 ring-emerald-50"
+          tone="emerald"
           trend={
             s && Math.abs(s.month_over_month_pct) > 0.01
               ? { pct: s.month_over_month_pct, label: 'vs mes anterior' }
@@ -452,7 +513,7 @@ export default function DashboardPage() {
           value={String(s?.new_contacts ?? 0)}
           subtitle="Registrados en el rango"
           icon={<Users size={20} />}
-          accentClass="ring-1 ring-violet-50"
+          tone="violet"
           loading={loading}
         />
         <KpiCard
@@ -460,7 +521,7 @@ export default function DashboardPage() {
           value={String(s?.cancelled_sales ?? 0)}
           subtitle="Ventas canceladas en el período"
           icon={<XCircle size={20} />}
-          accentClass="ring-1 ring-rose-50"
+          tone="rose"
           loading={loading}
         />
       </div>
@@ -471,7 +532,7 @@ export default function DashboardPage() {
           value={String(s?.pending_sunat ?? 0)}
           subtitle="Facturas / boletas por enviar"
           icon={<Send size={20} />}
-          accentClass="ring-1 ring-amber-50"
+          tone="amber"
           loading={loading}
         />
         <KpiCard
@@ -479,7 +540,7 @@ export default function DashboardPage() {
           value={String(s?.accepted_sunat ?? 0)}
           subtitle={`Enviados: ${s?.sent_sunat ?? 0} · Rechazados: ${s?.rejected_sunat ?? 0}`}
           icon={<CheckCircle2 size={20} />}
-          accentClass="ring-1 ring-teal-50"
+          tone="teal"
           loading={loading}
         />
         <KpiCard
@@ -487,7 +548,7 @@ export default function DashboardPage() {
           value={fmtMoney(s?.cash_net ?? 0)}
           subtitle={`Ingresos ${fmtMoney(s?.cash_income ?? 0)} · Egresos ${fmtMoney(s?.cash_expense ?? 0)}`}
           icon={<Wallet size={20} />}
-          accentClass="ring-1 ring-cyan-50"
+          tone="cyan"
           loading={loading}
         />
         <KpiCard
@@ -495,7 +556,7 @@ export default function DashboardPage() {
           value={String(s?.open_cash_sessions ?? 0)}
           subtitle="Estado actual"
           icon={<PiggyBank size={20} />}
-          accentClass="ring-1 ring-indigo-50"
+          tone="indigo"
           loading={loading}
         />
       </div>

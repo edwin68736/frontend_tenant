@@ -7,6 +7,7 @@ import {
 } from 'hucre'
 import type { BulkImportItemPayload } from '@/services/products.service'
 import { productsService } from '@/services/products.service'
+import { normalizeSunatUnit } from '@/constants/sunatUnits'
 
 type HucreRowError = {
   row: number
@@ -72,6 +73,18 @@ const HEADER_ALIASES: Record<string, (typeof CATALOG_IMPORT_COLUMNS)[number]> = 
   type: 'tipo',
 }
 
+function normalizeOptionalPreparationArea(value: unknown): string {
+  const s = String(value ?? '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+  if (!s || ['-', '—', 'na', 'n/a', 'ninguna', 'none', 'sin area', 'sin área'].includes(s)) {
+    return ''
+  }
+  return PREPARATION_AREA_VALUES.includes(s as (typeof PREPARATION_AREA_VALUES)[number]) ? s : ''
+}
+
 export const CATALOG_PRODUCT_IMPORT_SCHEMA: SchemaDefinition = {
   nombre: { column: 'nombre', type: 'string', required: true, min: 1, max: 255 },
   codigo: { column: 'codigo', type: 'string', max: 64 },
@@ -80,9 +93,11 @@ export const CATALOG_PRODUCT_IMPORT_SCHEMA: SchemaDefinition = {
   unidad: {
     column: 'unidad',
     type: 'string',
-    default: 'NIU',
     max: 10,
-    transform: (v) => String(v ?? 'NIU').trim().toUpperCase() || 'NIU',
+    transform: (v) => {
+      const s = String(v ?? '').trim().toUpperCase()
+      return s || ''
+    },
   },
   categoria: { column: 'categoria', type: 'string', max: 120 },
   afectacion_igv: {
@@ -119,14 +134,7 @@ export const CATALOG_PRODUCT_IMPORT_SCHEMA: SchemaDefinition = {
   area_preparacion: {
     column: 'area_preparacion',
     type: 'string',
-    transform: (v) => String(v ?? '').trim().toLowerCase(),
-    validate: (v) => {
-      const s = String(v ?? '').trim().toLowerCase()
-      if (!s) return true
-      return PREPARATION_AREA_VALUES.includes(s as (typeof PREPARATION_AREA_VALUES)[number])
-        ? true
-        : `Área inválida. Use: ${PREPARATION_AREA_VALUES.filter(Boolean).join(', ')}`
-    },
+    transform: normalizeOptionalPreparationArea,
   },
   tipo: {
     column: 'tipo',
@@ -264,7 +272,9 @@ export async function validateCatalogProductExcel(file: File): Promise<ImportVal
   )
 
   const parsed: ParsedCatalogImportRow[] = []
-  const extraErrors: ImportRowIssue[] = (schemaErrors as HucreRowError[]).map((e) => ({
+  const extraErrors: ImportRowIssue[] = (schemaErrors as HucreRowError[])
+    .filter((e) => e.field !== 'area_preparacion')
+    .map((e) => ({
     row: e.row,
     column: e.column,
     message: e.message,
@@ -293,21 +303,22 @@ export async function validateCatalogProductExcel(file: File): Promise<ImportVal
     const stockInicial = Math.max(0, Number(row.stock_inicial ?? 0) || 0)
     const controlStock = Boolean(row.control_stock) || stockInicial > 0
     const esRestaurante = Boolean(row.es_restaurante)
+    const tipo = String(row.tipo ?? 'product').trim().toLowerCase() === 'service' ? 'service' : 'product'
     parsed.push({
       rowNumber,
       nombre: String(row.nombre ?? '').trim(),
       codigo,
       descripcion: String(row.descripcion ?? '').trim(),
       precio_venta: Number(row.precio_venta),
-      unidad: String(row.unidad ?? 'NIU').trim().toUpperCase() || 'NIU',
+      unidad: normalizeSunatUnit(String(row.unidad ?? ''), tipo),
       categoria: String(row.categoria ?? '').trim(),
       afectacion_igv: String(row.afectacion_igv ?? '10').trim(),
       precio_incluye_igv: Boolean(row.precio_incluye_igv),
       control_stock: controlStock,
       stock_inicial: stockInicial,
       es_restaurante: esRestaurante,
-      area_preparacion: String(row.area_preparacion ?? '').trim().toLowerCase(),
-      tipo: String(row.tipo ?? 'product').trim().toLowerCase() === 'service' ? 'service' : 'product',
+      area_preparacion: normalizeOptionalPreparationArea(row.area_preparacion),
+      tipo,
     })
   })
 
@@ -330,7 +341,7 @@ function rowToBulkPayload(row: ParsedCatalogImportRow): BulkImportItemPayload {
     manage_stock: row.control_stock,
     initial_stock: row.stock_inicial > 0 ? row.stock_inicial : undefined,
     is_restaurant: row.es_restaurante,
-    preparation_area: row.es_restaurante ? row.area_preparacion : undefined,
+    preparation_area: row.es_restaurante && row.area_preparacion ? row.area_preparacion : undefined,
     type: row.tipo,
   }
 }

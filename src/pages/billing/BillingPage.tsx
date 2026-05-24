@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -11,30 +11,38 @@ import SunatRequiredMessage from '@/components/ui/SunatRequiredMessage'
 import { Modal } from '@/components/ui/Modal'
 import { DocumentViewerModal } from '@/components/ui/DocumentViewerModal'
 import { getTodayPeru, formatDisplayDatePeru } from '@/utils/datesPeru'
+import { formatSaleDocumentNumber } from '@/utils/format'
 import { generateReceiptPdf, downloadReceiptPdf } from '@/utils/receiptPdf'
 import { shareReceiptPngViaWhatsApp } from '@/utils/receiptPng'
 import { WhatsAppGlyph } from '@/components/icons/WhatsAppGlyph'
+import { useBillingEvents } from '@/hooks/useBillingEvents'
+import {
+  billingStatusForUI,
+  manualBillingMessage,
+  normalizeBillingStatus,
+  resolveManualBillingStatus,
+} from '@/utils/manualBilling'
+import {
+  BILLING_STATUS_COLORS,
+  BILLING_STATUS_FILTER_OPTIONS,
+  BILLING_STATUS_LABELS,
+  billingStatusColor,
+  billingStatusLabel,
+  canShowCdr,
+  canShowXmlGenerated,
+  canShowXmlSent,
+} from '@/constants/billingStatus'
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: 'bg-yellow-100 text-yellow-700', sent: 'bg-blue-100 text-blue-700',
-  accepted: 'bg-green-100 text-green-700', rejected: 'bg-red-100 text-red-600',
-  error: 'bg-orange-100 text-orange-700',
-}
-const STATUS_LABELS: Record<string, string> = {
-  pending: 'Pendiente', sent: 'Enviado', accepted: 'Aceptado', rejected: 'Rechazado',
-  error: 'Error envío',
-}
+const STATUS_COLORS = BILLING_STATUS_COLORS
+const STATUS_LABELS = BILLING_STATUS_LABELS
+const STATUS_FILTER_OPTIONS = BILLING_STATUS_FILTER_OPTIONS
 
 const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
 const TABLE_SKELETON_ROWS = 6
-const STATUS_FILTER_OPTIONS = [
-  { value: '', label: 'Todos los estados' },
-  { value: 'pending', label: 'Pendiente' },
-  { value: 'error', label: 'Error envío' },
-  { value: 'sent', label: 'Enviados' },
-  { value: 'accepted', label: 'Aceptados' },
-  { value: 'rejected', label: 'Rechazados' },
-] as const
+
+function normalizeSaleRow(s: Sale): Sale {
+  return { ...s, billing_status: normalizeBillingStatus(s.billing_status) }
+}
 
 const getCurrentMonthRange = () => {
   const today = getTodayPeru()
@@ -108,7 +116,7 @@ function BillingContent() {
         per_page: perPage,
       })
         .then(({ data, total: t }) => {
-          setSales(data ?? [])
+          setSales((data ?? []).map(normalizeSaleRow))
           setTotal(t ?? 0)
         })
         .catch(() => toast.error('Error'))
@@ -124,7 +132,7 @@ function BillingContent() {
       per_page: perPage,
     })
       .then(({ data, total: t }) => {
-        setSales(data ?? [])
+        setSales((data ?? []).map(normalizeSaleRow))
         setTotal(t ?? 0)
       })
       .catch(() => toast.error('Error'))
@@ -148,7 +156,7 @@ function BillingContent() {
 
   useEffect(() => {
     companyService.getSunat().then(d => setSunatEnabled(d.sunat_enabled ?? false)).catch(() => setSunatEnabled(false))
-    companyService.getInvoicing().then(d => setInvoicingMode(d.invoicing_mode ?? 'legacy_backend')).catch(() => setInvoicingMode('legacy_backend'))
+    companyService.getInvoicing().then(d => setInvoicingMode(d.send_mode ?? 'sunat_direct')).catch(() => setInvoicingMode('sunat_direct'))
   }, [])
 
   useEffect(() => {
@@ -157,6 +165,16 @@ function BillingContent() {
   }, [searchParams])
 
   useEffect(() => { load() }, [viewMode, filterStatus, searchTerm, dateRange.from, dateRange.to, page, perPage])
+
+  const applyBillingEvent = useCallback((evt: { sale_id: number; status: string }) => {
+    const billingStatus = normalizeBillingStatus(evt.status)
+    setSales(prev => prev.map(s => (s.id === evt.sale_id ? { ...s, billing_status: billingStatus } : s)))
+    setDetail(d => (d && d.sale.id === evt.sale_id
+      ? { ...d, sale: { ...d.sale, billing_status: billingStatus } }
+      : d))
+  }, [])
+
+  useBillingEvents(applyBillingEvent, sunatEnabled === true && viewMode === 'invoices')
 
   useEffect(() => {
     if (sunatEnabled !== true) return
@@ -183,40 +201,38 @@ function BillingContent() {
 
   const handleSend = async (saleId: number) => {
     setSending(saleId)
-    const tid = toast.loading('Factura en proceso…')
+    const tid = toast.loading('Enviando a SUNAT…')
     try {
       const res = await billingService.send(saleId)
-      if (res.async || !res.safe_to_print) {
-        const { pollBillingStatus, billingStatusLabel } = await import('@/utils/billingPoll')
-        toast.loading('Consultando estado SUNAT…', { id: tid })
-        const st = await pollBillingStatus(saleId, {
-          onTick: s => toast.loading(billingStatusLabel(s.status), { id: tid }),
-        })
-        if (st.safe_to_print) {
-          toast.success('Aceptada por SUNAT', { id: tid })
-        } else {
-          toast.error(st.sunat_message || billingStatusLabel(st.status), { id: tid })
-        }
-      } else if (res.safe_to_print) {
-        toast.success('Aceptada por SUNAT', { id: tid })
-      } else {
-        toast.error(res.message ?? 'Sin confirmación SUNAT', { id: tid })
-      }
-      load()
+      const status = resolveManualBillingStatus(res)
+      const msg = manualBillingMessage(res)
+      if (status === 'accepted' || status === 'already_accepted') toast.success(msg, { id: tid })
+      else if (status === 'rejected' || status === 'error') toast.error(msg, { id: tid })
+      else toast.info(msg, { id: tid })
+      applyBillingEvent({ sale_id: saleId, status: billingStatusForUI(res) })
     } catch (e: any) {
       toast.error(e.response?.data?.error ?? e.message ?? 'Error enviando', { id: tid })
-    } finally { setSending(null) }
+    } finally {
+      setSending(null)
+    }
   }
 
   const handleResend = async (saleId: number) => {
     setResending(saleId)
+    const tid = toast.loading('Reenviando a SUNAT…')
     try {
       const res = await billingService.resend(saleId)
-      if (res.success) { toast.success('Reenviado a SUNAT') }
-      else { toast.error(res.message ?? 'Error al reenviar') }
-      load()
-    } catch (e: any) { toast.error(e.response?.data?.error ?? 'Error reenviando') }
-    finally { setResending(null) }
+      const status = resolveManualBillingStatus(res)
+      const msg = manualBillingMessage(res)
+      if (status === 'accepted' || status === 'already_accepted') toast.success(msg, { id: tid })
+      else if (status === 'rejected' || status === 'error') toast.error(msg, { id: tid })
+      else toast.info(msg, { id: tid })
+      applyBillingEvent({ sale_id: saleId, status: billingStatusForUI(res) })
+    } catch (e: any) {
+      toast.error(e.response?.data?.error ?? e.message ?? 'Error reenviando', { id: tid })
+    } finally {
+      setResending(null)
+    }
   }
 
   const handleVoidWithCreditNote = async (saleId: number) => {
@@ -240,7 +256,13 @@ function BillingContent() {
 
   const openDetail = async (id: number) => {
     setDetailLoading(true)
-    try { setDetail(await salesService.get(id)) }
+    try {
+      const d = await salesService.get(id)
+      setDetail({
+        ...d,
+        sale: { ...d.sale, billing_status: normalizeBillingStatus(d.sale.billing_status) },
+      })
+    }
     catch { toast.error('Error') }
     finally { setDetailLoading(false) }
   }
@@ -261,7 +283,7 @@ function BillingContent() {
         printData: d.print_data,
         format,
         phone: d.contact?.phone,
-        message: `${label} ${d.sale.series}-${String(d.sale.number).padStart(8, '0')} (${format === 'ticket' ? 'formato ticket' : 'formato A4'})`,
+        message: `${label} ${formatSaleDocumentNumber(d.sale.series, d.sale.number)} (${format === 'ticket' ? 'formato ticket' : 'formato A4'})`,
       })
       toast.success('Imagen lista: complete el envío en WhatsApp (o pegue la imagen si se copió al portapapeles).', {
         id: tid,
@@ -386,7 +408,7 @@ function BillingContent() {
                 <td className="px-4 py-3">{formatDisplayDatePeru(s.fec_resumen)}</td>
                 <td className="px-4 py-3 font-mono">{s.correlativo}</td>
                 <td className="px-4 py-3 text-xs">{s.ticket || '—'}</td>
-                <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[s.status] ?? 'bg-gray-100 text-gray-600'}`}>{STATUS_LABELS[s.status] ?? s.status}</span></td>
+                <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${(STATUS_COLORS as Record<string, string>)[s.status] ?? 'bg-gray-100 text-gray-600'}`}>{(STATUS_LABELS as Record<string, string>)[s.status] ?? s.status}</span></td>
                 <td className="px-4 py-3">{s.details_count}</td>
                 <td className="px-4 py-3">{s.ticket ? <button onClick={() => { setSummaryStatusLoading(s.id); billingService.getSummaryStatus(s.id).then(updated => { setSummaries(prev => prev.map(x => x.id === updated.id ? updated : x)); }).catch(() => toast.error('Error')).finally(() => setSummaryStatusLoading(null)) }} disabled={summaryStatusLoading === s.id} className="text-xs px-2 py-1 rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200 disabled:opacity-50">{summaryStatusLoading === s.id ? <RefreshCw size={12} className="animate-spin inline" /> : <Search size={12} className="inline" />} Consultar estado</button> : null}</td>
               </tr>
@@ -410,7 +432,7 @@ function BillingContent() {
                 <td className="px-4 py-3">{new Date(v.fec_comunicacion).toLocaleString()}</td>
                 <td className="px-4 py-3 font-mono">{v.correlativo}</td>
                 <td className="px-4 py-3 text-xs">{v.ticket || '—'}</td>
-                <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[v.status] ?? 'bg-gray-100 text-gray-600'}`}>{STATUS_LABELS[v.status] ?? v.status}</span></td>
+                <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${(STATUS_COLORS as Record<string, string>)[v.status] ?? 'bg-gray-100 text-gray-600'}`}>{(STATUS_LABELS as Record<string, string>)[v.status] ?? v.status}</span></td>
                 <td className="px-4 py-3">{v.details_count}</td>
                 <td className="px-4 py-3">{v.ticket ? <button onClick={() => { setVoidedStatusLoading(v.id); billingService.getVoidedStatus(v.id).then(updated => { setVoidedList(prev => prev.map(x => x.id === updated.id ? updated : x)); }).catch(() => toast.error('Error')).finally(() => setVoidedStatusLoading(null)) }} disabled={voidedStatusLoading === v.id} className="text-xs px-2 py-1 rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200 disabled:opacity-50">{voidedStatusLoading === v.id ? <RefreshCw size={12} className="animate-spin inline" /> : <Search size={12} className="inline" />} Consultar estado</button> : null}</td>
               </tr>
@@ -579,14 +601,16 @@ function BillingContent() {
                 </tr>
               ))
             ) : sales.map(s => {
-              const hasDoc = s.billing_status !== 'pending'
-              const hasCdr = s.billing_status === 'accepted' || s.billing_status === 'rejected'
+              const bs = normalizeBillingStatus(s.billing_status)
+              const showXmlSigned = canShowXmlSent(bs)
+              const showXmlGenerated = canShowXmlGenerated(bs)
+              const showCdr = canShowCdr(bs)
               return (
               <tr key={s.id} className="border-b border-gray-50 hover:bg-gray-50">
                 <td className="px-4 py-3 text-gray-500 text-xs">{formatDisplayDatePeru(s.issue_date)}</td>
                 <td className="px-4 py-3">
                   <p className="text-xs text-gray-400">{s.doc_type}</p>
-                  <p className="font-mono font-bold text-gray-800">{s.series}-{String(s.number).padStart(8,'0')}</p>
+                  <p className="font-mono font-bold text-gray-800">{formatSaleDocumentNumber(s.series, s.number)}</p>
                 </td>
                 {viewMode === 'credit_notes' && (
                   <td className="px-4 py-3 text-gray-500 text-xs">
@@ -596,8 +620,8 @@ function BillingContent() {
                 <td className="px-4 py-3 text-gray-600 text-sm">{s.contact_name ?? 'Sin cliente'}</td>
                 <td className="px-4 py-3 font-semibold text-gray-800">S/ {Number(s.total).toFixed(2)}</td>
                 <td className="px-4 py-3">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[s.billing_status] ?? ''}`}>
-                    {STATUS_LABELS[s.billing_status] ?? s.billing_status}
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${billingStatusColor(s.billing_status)}`}>
+                    {billingStatusLabel(s.billing_status)}
                   </span>
                 </td>
                 <td className="px-4 py-3">
@@ -665,8 +689,9 @@ function BillingContent() {
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  {hasDoc ? (
+                  {showXmlSigned || showXmlGenerated ? (
                     <div className="flex items-center gap-1">
+                      {showXmlSigned && (
                       <button
                         type="button"
                         disabled={downloadingDoc?.saleId === s.id && downloadingDoc?.type === 'xml'}
@@ -677,11 +702,12 @@ function BillingContent() {
                             .finally(() => setDownloadingDoc(null))
                         }}
                         className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg"
-                        title={isPSE ? 'XML' : 'XML enviado a SUNAT'}
+                        title="XML firmado enviado a SUNAT"
                       >
                         {(downloadingDoc?.saleId === s.id && downloadingDoc?.type === 'xml') ? <RefreshCw size={14} className="animate-spin" /> : <FileCode size={14} />}
                       </button>
-                      {!isPSE && (
+                      )}
+                      {showXmlGenerated && (
                         <button
                           type="button"
                           disabled={downloadingDoc?.saleId === s.id && downloadingDoc?.type === 'xml-generated'}
@@ -692,35 +718,18 @@ function BillingContent() {
                               .finally(() => setDownloadingDoc(null))
                           }}
                           className="p-1.5 text-amber-500 hover:bg-amber-50 rounded-lg"
-                          title="XML generado (sin envío)"
+                          title="XML generado (vista previa local, sin envío)"
                         >
                           {(downloadingDoc?.saleId === s.id && downloadingDoc?.type === 'xml-generated') ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
                         </button>
                       )}
                     </div>
                   ) : (
-                    isPSE ? (
-                      <span className="text-gray-300 text-xs">—</span>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={downloadingDoc?.saleId === s.id && downloadingDoc?.type === 'xml-generated'}
-                        onClick={() => {
-                          setDownloadingDoc({ saleId: s.id, type: 'xml-generated' })
-                          billingService.downloadDocument(s.id, 'xml-generated')
-                            .catch(e => toast.error(e?.message ?? 'Error al descargar'))
-                            .finally(() => setDownloadingDoc(null))
-                        }}
-                        className="p-1.5 text-amber-500 hover:bg-amber-50 rounded-lg"
-                        title="XML generado (sin envío)"
-                      >
-                        {(downloadingDoc?.saleId === s.id && downloadingDoc?.type === 'xml-generated') ? <RefreshCw size={14} className="animate-spin" /> : <FileCode size={14} />}
-                      </button>
-                    )
+                    <span className="text-gray-300 text-xs">—</span>
                   )}
                 </td>
                 <td className="px-4 py-3">
-                  {hasCdr ? (
+                  {showCdr ? (
                     <button
                       type="button"
                       disabled={downloadingDoc?.saleId === s.id && downloadingDoc?.type === 'cdr'}
@@ -866,8 +875,8 @@ function BillingContent() {
         ) : detail && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3 text-sm">
-              <div><p className="text-xs text-gray-400">Comprobante</p><p className="font-mono font-bold">{detail.sale.series}-{String(detail.sale.number).padStart(8,'0')}</p></div>
-              <div><p className="text-xs text-gray-400">Estado</p><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[detail.sale.billing_status] ?? ''}`}>{STATUS_LABELS[detail.sale.billing_status] ?? detail.sale.billing_status}</span></div>
+              <div><p className="text-xs text-gray-400">Comprobante</p><p className="font-mono font-bold">{formatSaleDocumentNumber(detail.sale.series, detail.sale.number)}</p></div>
+              <div><p className="text-xs text-gray-400">Estado</p><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${billingStatusColor(detail.sale.billing_status)}`}>{billingStatusLabel(detail.sale.billing_status)}</span></div>
               <div><p className="text-xs text-gray-400">Total</p><p className="font-bold">S/ {Number(detail.sale.total).toFixed(2)}</p></div>
               <div><p className="text-xs text-gray-400">Fecha</p><p>{formatDisplayDatePeru(detail.sale.issue_date)}</p></div>
             </div>
@@ -992,43 +1001,49 @@ function BillingContent() {
                         Ticket ↓
                       </button>
                     </li>
-                    <li className="flex items-center gap-2 flex-wrap">
-                      <FileCode size={16} className="text-amber-600 shrink-0" />
-                      <span className="text-sm text-gray-600 w-12 shrink-0">XML:</span>
-                      <button
-                        type="button"
-                        onClick={() => billingService.downloadDocument(detail.sale.id, 'xml').catch(e => toast.error(e?.message ?? 'Error al descargar'))}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-100 text-amber-900 hover:bg-amber-200 text-xs font-medium"
-                        title={isPSE ? 'XML' : 'XML enviado a SUNAT'}
-                      >
-                        <Download size={14} />
-                        {isPSE ? 'Descargar' : 'Enviado a SUNAT'}
-                      </button>
-                      {!isPSE && (
+                    {(canShowXmlSent(detail.sale.billing_status) || canShowXmlGenerated(detail.sale.billing_status)) && (
+                      <li className="flex items-center gap-2 flex-wrap">
+                        <FileCode size={16} className="text-amber-600 shrink-0" />
+                        <span className="text-sm text-gray-600 w-12 shrink-0">XML:</span>
+                        {canShowXmlSent(detail.sale.billing_status) && (
+                          <button
+                            type="button"
+                            onClick={() => billingService.downloadDocument(detail.sale.id, 'xml').catch(e => toast.error(e?.message ?? 'Error al descargar'))}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-100 text-amber-900 hover:bg-amber-200 text-xs font-medium"
+                            title="XML firmado enviado a SUNAT"
+                          >
+                            <Download size={14} />
+                            Enviado a SUNAT
+                          </button>
+                        )}
+                        {canShowXmlGenerated(detail.sale.billing_status) && (
+                          <button
+                            type="button"
+                            onClick={() => billingService.downloadDocument(detail.sale.id, 'xml-generated').catch(e => toast.error(e?.message ?? 'Error al descargar'))}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-100 text-amber-900 hover:bg-amber-200 text-xs font-medium"
+                            title="XML generado (vista previa local, sin envío)"
+                          >
+                            <Download size={14} />
+                            Generado (sin envío)
+                          </button>
+                        )}
+                      </li>
+                    )}
+                    {canShowCdr(detail.sale.billing_status) && (
+                      <li className="flex items-center gap-2 flex-wrap">
+                        <Archive size={16} className="text-blue-600 shrink-0" />
+                        <span className="text-sm text-gray-600 w-12 shrink-0">CDR:</span>
                         <button
                           type="button"
-                          onClick={() => billingService.downloadDocument(detail.sale.id, 'xml-generated').catch(e => toast.error(e?.message ?? 'Error al descargar'))}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-100 text-amber-900 hover:bg-amber-200 text-xs font-medium"
-                          title="XML generado sin envío"
+                          onClick={() => billingService.downloadDocument(detail.sale.id, 'cdr').catch(e => toast.error(e?.message ?? 'Error al descargar'))}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200 text-xs font-medium"
+                          title="Descargar CDR (ZIP)"
                         >
                           <Download size={14} />
-                          Generado (sin envío)
+                          Descargar
                         </button>
-                      )}
-                    </li>
-                    <li className="flex items-center gap-2 flex-wrap">
-                      <Archive size={16} className="text-blue-600 shrink-0" />
-                      <span className="text-sm text-gray-600 w-12 shrink-0">CDR:</span>
-                      <button
-                        type="button"
-                        onClick={() => billingService.downloadDocument(detail.sale.id, 'cdr').catch(e => toast.error(e?.message ?? 'Error al descargar'))}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200 text-xs font-medium"
-                        title="Descargar CDR (ZIP)"
-                      >
-                        <Download size={14} />
-                        Descargar
-                      </button>
-                    </li>
+                      </li>
+                    )}
                   </ul>
                 </div>
               </>

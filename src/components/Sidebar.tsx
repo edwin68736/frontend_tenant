@@ -1,5 +1,7 @@
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, Link } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
+import { BRAND_APP_LOGO } from '@/config/branding'
+import { companyService } from '@/services/company.service'
 import {
   Home,
   LayoutDashboard, ShoppingCart, Receipt, Truck, Tag, Boxes,
@@ -39,7 +41,7 @@ const SIMPLE_ITEMS: SimpleItem[] = [
   {
     id: 'dashboard',
     to: '/dashboard',
-    label: 'Dashboard',
+    label: 'Admin dashboard',
     icon: <LayoutDashboard size={16} />,
     permission: 'dashboard.view',
   },
@@ -74,15 +76,16 @@ const NAV_GROUPS: NavGroup[] = [
         permission: 'memberships.view',
         exact: true,
       },
-      { id: 'ventas-pos', to: '/sales/pos', label: 'POS', icon: <ShoppingCart size={14} />, module: 'sales', permission: 'sales.pos' },
       {
         id: 'ventas-register',
         to: '/sales/register',
-        label: 'Registrar venta',
+        label: 'Nuevo comprobante',
         icon: <Receipt size={14} />,
         module: 'sales',
         permission: 'sales.view',
       },
+      { id: 'ventas-facturas', to: '/billing', label: 'Consulta de comprobantes', icon: <FileText size={14} />, module: 'billing', permission: 'billing.send', exact: true },
+      { id: 'ventas-pos', to: '/sales/pos', label: 'Punto de venta', icon: <ShoppingCart size={14} />, module: 'sales', permission: 'sales.pos' },
       {
         id: 'ventas-lista',
         to: '/sales',
@@ -92,18 +95,6 @@ const NAV_GROUPS: NavGroup[] = [
         permission: 'sales.view',
         exact: true,
       },
-      { id: 'ventas-facturas', to: '/billing', label: 'Facturación', icon: <FileText size={14} />, module: 'billing', permission: 'billing.send', exact: true },
-    ],
-  },
-  {
-    id: 'doc-avanzados',
-    label: 'Documentos avanzados',
-    icon: <Layers size={16} />,
-    children: [
-      { id: 'doc-guias', to: '/billing/docs/despatches', label: 'Guías de remisión', icon: <Truck size={14} />, module: 'billing', permission: 'billing.send' },
-      { id: 'doc-retenciones', to: '/billing/docs/retentions', label: 'Retenciones', icon: <Receipt size={14} />, module: 'billing', permission: 'billing.send' },
-      { id: 'doc-percepciones', to: '/billing/docs/perceptions', label: 'Percepciones', icon: <Receipt size={14} />, module: 'billing', permission: 'billing.send' },
-      { id: 'doc-reversiones', to: '/billing/docs/reversions', label: 'Reversiones', icon: <FileCode size={14} />, module: 'billing', permission: 'billing.send' },
     ],
   },
   {
@@ -142,6 +133,17 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'fin-bancos', to: '/cashbank/bank', label: 'Cuentas / Bancos', icon: <Building2 size={14} />, module: 'cashbank', permission: 'cashbank.view' },
       { id: 'fin-metodos', to: '/cashbank/payment-methods', label: 'Métodos de pago', icon: <Wallet size={14} />, module: 'cashbank', permission: 'cashbank.manage' },
       { id: 'fin-reporte-caja', to: '/cashbank/reports', label: 'Reporte de caja', icon: <FileText size={14} />, module: 'cashbank', permission: 'reports.view' },
+    ],
+  },
+  {
+    id: 'doc-avanzados',
+    label: 'Documentos avanzados',
+    icon: <Layers size={16} />,
+    children: [
+      { id: 'doc-guias', to: '/billing/docs/despatches', label: 'Guías de remisión', icon: <Truck size={14} />, module: 'billing', permission: 'billing.send' },
+      { id: 'doc-retenciones', to: '/billing/docs/retentions', label: 'Retenciones', icon: <Receipt size={14} />, module: 'billing', permission: 'billing.send' },
+      { id: 'doc-percepciones', to: '/billing/docs/perceptions', label: 'Percepciones', icon: <Receipt size={14} />, module: 'billing', permission: 'billing.send' },
+      { id: 'doc-reversiones', to: '/billing/docs/reversions', label: 'Reversiones', icon: <FileCode size={14} />, module: 'billing', permission: 'billing.send' },
     ],
   },
   {
@@ -196,16 +198,32 @@ function pathMatches(currentPath: string, to: string, exact?: boolean): boolean 
 }
 
 export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onToggleCollapsed }: Props) {
-  const { user, logout, modules, hasPermission } = useAuth()
+  const { user, logout, modules, hasPermission, isAuthenticated } = useAuth()
   const location = useLocation()
-  const company = (window as any).__tenantName__ ?? 'Tukifac ERP'
 
   const isDesktop = !!embedded
   const isCollapsed = isDesktop && !!collapsed
 
+  const [companyProfile, setCompanyProfile] = useState<{ business_name: string; ruc: string } | null>(null)
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
   const [flyout, setFlyout] = useState<{ groupId: string; top: number; left: number } | null>(null)
   const flyoutRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setCompanyProfile(null)
+      return
+    }
+    companyService
+      .getConfig()
+      .then((cfg) => {
+        setCompanyProfile({
+          business_name: (cfg.business_name || cfg.trade_name || '').trim(),
+          ruc: (cfg.ruc || '').trim(),
+        })
+      })
+      .catch(() => setCompanyProfile(null))
+  }, [isAuthenticated])
 
   const toggleGroup = (id: string) => {
     const group = visibleGroups.find(g => g.id === id)
@@ -293,7 +311,7 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
             return (
               <div
                 ref={flyoutRef}
-                className="fixed z-50 rounded-2xl bg-slate-900 text-white shadow-xl border border-slate-700 min-w-[220px] py-2"
+                className="fixed z-50 rounded-2xl bg-white text-gray-800 shadow-xl border border-gray-100 ring-1 ring-black/5 min-w-[220px] py-2"
                 style={{ top: flyout.top, left: flyout.left }}
               >
                 {group.children.map(child => (
@@ -307,13 +325,16 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
                     }}
                     className={({ isActive }) =>
                       clsx(
-                        'flex items-center gap-2 px-3 py-1.5 text-xs',
-                        isActive ? 'bg-slate-700 text-white' : 'text-slate-100 hover:bg-slate-800',
+                        'flex items-center gap-2 px-3 py-1.5 text-xs min-w-0 overflow-hidden',
+                        isActive
+                          ? 'bg-[rgb(var(--p600))] text-white'
+                          : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900',
                       )
                     }
+                    title={child.label}
                   >
-                    {child.icon}
-                    <span className="truncate">{child.label}</span>
+                    <span className="shrink-0">{child.icon}</span>
+                    <span className="truncate min-w-0">{child.label}</span>
                   </NavLink>
                 ))}
               </div>
@@ -325,29 +346,50 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
 
   return (
     <>
-      <aside className={clsx(sidebarClass, 'shadow-xl shadow-black/20')} style={{ background: 'var(--sidebar-bg, #0f172a)' }}>
-      {/* Logo / empresa */}
-      <div className={clsx('shrink-0 px-4 py-4 flex items-center border-b border-white/10', isCollapsed ? 'justify-center gap-2' : 'gap-3')}>
-        <div
-          className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-sm font-bold flex-shrink-0"
-          style={{ background: 'rgb(var(--p600))' }}
+      <aside className={clsx(sidebarClass, 'bg-white border-r border-gray-100 shadow-md')}>
+      {/* Logo */}
+      <div className="relative shrink-0 px-4 py-3 flex items-center justify-center border-b border-gray-100 min-h-[3.25rem]">
+        <Link
+          to="/home"
+          onClick={onClose}
+          className="flex items-center justify-center"
+          title="Inicio"
         >
-          {company.charAt(0).toUpperCase()}
-        </div>
-        {!isCollapsed && (
-          <span className="text-sm font-bold text-white truncate flex-1">
-            {company}
-          </span>
-        )}
-        {/* Botón cerrar (solo móvil) */}
-        <button onClick={onClose} className="lg:hidden text-gray-400 hover:text-white ml-auto">
+          <img
+            src={BRAND_APP_LOGO}
+            alt="Tukifac"
+            className={clsx('object-contain mx-auto', isCollapsed ? 'h-8 w-8' : 'h-9 w-auto max-w-[8.5rem]')}
+            decoding="async"
+          />
+        </Link>
+        <button
+          type="button"
+          onClick={onClose}
+          className="lg:hidden absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-800"
+          aria-label="Cerrar menú"
+        >
           <X size={16} />
         </button>
       </div>
 
+      {!isCollapsed && (companyProfile?.business_name || companyProfile?.ruc) && (
+        <div className="shrink-0 px-4 py-2 border-b border-gray-100 text-center">
+          {companyProfile?.business_name ? (
+            <p className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2">
+              {companyProfile.business_name}
+            </p>
+          ) : null}
+          {/*{companyProfile?.ruc ? (
+            <p className="text-xs text-gray-500 mt-0.5 font-mono tabular-nums">
+              RUC {companyProfile.ruc}
+            </p>
+          ) : null}*/}
+        </div>
+      )}
+
       {/* Navegación */}
       <nav className="flex-1 px-2 py-3 overflow-y-auto overflow-x-visible space-y-2">
-        {['home', 'dashboard', 'ventas', 'doc-avanzados', 'contacts', 'inventario', 'finanzas', 'reportes', 'compras', 'administracion', 'empresa', 'modules'].map(
+        {['home', 'dashboard', 'ventas', 'compras', 'contacts', 'inventario', 'finanzas', 'doc-avanzados', 'reportes', 'administracion', 'empresa', 'modules'].map(
           (entryId) => {
             const item = visibleSimpleItems.find(i => i.id === entryId)
             if (item) {
@@ -362,8 +404,8 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
                       'flex items-center rounded-xl font-medium transition-colors',
                       isCollapsed ? 'justify-center px-2 py-2 text-[13px]' : 'px-3 py-2 gap-2.5 text-[13px]',
                       isActive
-                        ? 'text-white bg-[rgb(var(--p600))] shadow-md shadow-black/20'
-                        : 'text-gray-300 hover:text-white hover:bg-white/10',
+                        ? 'text-white bg-[rgb(var(--p600))] shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50',
                     )
                   }
                   title={isCollapsed ? item.label : undefined}
@@ -401,8 +443,8 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
                       )
                     }}
                     className={clsx(
-                      'flex items-center justify-center w-full rounded-xl px-2 py-2 text-[13px] font-medium text-gray-300 hover:text-white hover:bg-white/10 transition-colors',
-                      (hasActiveChild || isFlyoutOpen) && 'bg-[rgb(var(--p600))] text-white shadow-md shadow-black/20',
+                      'flex items-center justify-center w-full rounded-xl px-2 py-2 text-[13px] font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors',
+                      (hasActiveChild || isFlyoutOpen) && 'bg-[rgb(var(--p600))] text-white shadow-sm',
                     )}
                     title={group.label}
                   >
@@ -420,7 +462,7 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
                   onClick={() => toggleGroup(group.id)}
                   className={clsx(
                     'w-full flex items-center justify-between px-3 py-2 rounded-xl text-[13px] font-medium transition-colors',
-                    hasActiveChild ? 'text-white bg-white/10' : 'text-gray-300 hover:text-white hover:bg-white/10',
+                    hasActiveChild ? 'text-gray-900 bg-gray-100' : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50',
                   )}
                 >
                   <span className="flex items-center gap-2.5">
@@ -431,24 +473,25 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
                     {isOpen ? '−' : '+'}
                   </span>
                 </button>
-                <div className={clsx('mt-1 space-y-0.5', !isOpen && 'hidden')}>
+                <div className={clsx('mt-1 space-y-0.5 min-w-0', !isOpen && 'hidden')}>
                   {group.children.map(child => (
                     <NavLink
                       key={child.id}
                       to={child.to}
                       end={!!child.exact}
                       onClick={onClose}
+                      title={child.label}
                       className={({ isActive }) =>
                         clsx(
-                          'flex items-center gap-2 rounded-xl px-9 py-1.5 text-[12px] font-medium transition-colors',
+                          'flex items-center gap-2 rounded-xl px-9 py-1.5 text-[12px] font-medium transition-colors min-w-0 overflow-hidden',
                           isActive
-                            ? 'bg-[rgb(var(--p600))] text-white shadow-sm shadow-black/15'
-                            : 'text-gray-300 hover:text-white hover:bg-white/10',
+                            ? 'bg-[rgb(var(--p600))] text-white shadow-sm'
+                            : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50',
                         )
                       }
                     >
-                      {child.icon}
-                      <span>{child.label}</span>
+                      <span className="shrink-0">{child.icon}</span>
+                      <span className="truncate min-w-0">{child.label}</span>
                     </NavLink>
                   ))}
                 </div>
@@ -459,8 +502,8 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
       </nav>
 
       {/* Usuario y logout — siempre al pie del sidebar */}
-      <div className="mt-auto shrink-0 px-3 py-3 border-t border-white/10">
-        <div className={clsx('flex items-center px-3 py-2.5 rounded-xl bg-white/10 ring-1 ring-white/10', isCollapsed ? 'justify-center gap-2' : 'gap-2.5')}>
+      <div className="mt-auto shrink-0 px-3 py-3 border-t border-gray-100">
+        <div className={clsx('flex items-center px-3 py-2.5 rounded-xl bg-gray-50 ring-1 ring-gray-100', isCollapsed ? 'justify-center gap-2' : 'gap-2.5')}>
           <div
             className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
             style={{ background: 'rgb(var(--p500))' }}
@@ -469,15 +512,15 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
           </div>
           {!isCollapsed && (
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-white truncate">{user?.name}</p>
-              <p className="text-xs text-gray-400 truncate">{user?.role}</p>
+              <p className="text-xs font-semibold text-gray-800 truncate">{user?.name}</p>
+              <p className="text-xs text-gray-500 truncate">{user?.role}</p>
             </div>
           )}
           <button
             onClick={logout}
             className={clsx(
               'transition-colors p-1',
-              isCollapsed ? 'text-gray-300 hover:text-red-400' : 'text-gray-400 hover:text-red-400',
+              isCollapsed ? 'text-gray-500 hover:text-red-600' : 'text-gray-500 hover:text-red-600',
             )}
             title="Cerrar sesión"
           >

@@ -11,6 +11,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { companyService } from '@/services/company.service'
 import { shareReceiptPngViaWhatsApp } from '@/utils/receiptPng'
 import { WhatsAppGlyph } from '@/components/icons/WhatsAppGlyph'
+import { formatSaleDocumentNumber } from '@/utils/format'
 import { downloadReceiptPdf, openReceiptPdfInNewTab } from '@/utils/receiptPdf'
 
 const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
@@ -194,7 +195,7 @@ function SalesContent() {
         issue_date: emitIssueDate.trim() || undefined,
       })
       toast.success(
-        `Comprobante generado: ${res.sale?.doc_type ?? ''} ${res.sale?.series ?? ''}-${String(res.sale?.number ?? '').padStart(8, '0')}. Envíelo a SUNAT desde Facturación.`,
+        `Comprobante generado: ${res.sale?.doc_type ?? ''} ${formatSaleDocumentNumber(res.sale?.series ?? '', res.sale?.number ?? '')}. Envíelo a SUNAT desde Facturación.`,
       )
       setEmitOpen(false)
       setEmitRow(null)
@@ -287,7 +288,7 @@ function SalesContent() {
         printData: d.print_data,
         format,
         phone: d.contact?.phone,
-        message: `Le envío la nota de venta ${d.sale.series}-${String(d.sale.number).padStart(8, '0')} (${format === 'ticket' ? 'formato ticket' : 'formato A4'})`,
+        message: `Le envío la nota de venta ${formatSaleDocumentNumber(d.sale.series, d.sale.number)} (${format === 'ticket' ? 'formato ticket' : 'formato A4'})`,
       })
       toast.success('Imagen lista: complete el envío en WhatsApp (o pegue la imagen si se copió al portapapeles).', {
         id: tid,
@@ -405,7 +406,7 @@ function SalesContent() {
                   <td className="px-4 py-3">
                     <p className="font-mono text-xs text-gray-700">{s.doc_type}</p>
                     <p className="font-bold text-gray-800 text-sm">
-                      {s.series}-{String(s.number).padStart(8, '0')}
+                      {formatSaleDocumentNumber(s.series, s.number)}
                     </p>
                   </td>
                   <td className="px-4 py-3 text-gray-600">{s.contact_name ?? '—'}</td>
@@ -612,7 +613,7 @@ function SalesContent() {
             <p className="text-xs text-gray-500">
               Nota de venta{' '}
               <span className="font-mono font-semibold text-gray-800">
-                {emitRow.series}-{String(emitRow.number).padStart(8, '0')}
+                {formatSaleDocumentNumber(emitRow.series, emitRow.number)}
               </span>
               . Se registra el comprobante electrónico (misma operación): no se vuelve a descontar{' '}
               <strong>stock ni seriales</strong> y no se duplican movimientos de <strong>caja o bancos</strong>.
@@ -779,7 +780,7 @@ function SalesContent() {
                 <div>
                   <p className="text-xs text-gray-400">N°</p>
                   <p className="font-mono font-medium">
-                    {detail.sale.series}-{String(detail.sale.number).padStart(8, '0')}
+                    {formatSaleDocumentNumber(detail.sale.series, detail.sale.number)}
                   </p>
                 </div>
                 <div className="col-span-2">

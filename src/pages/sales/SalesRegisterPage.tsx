@@ -14,9 +14,10 @@ import { ReceiptPrintModal } from '@/components/ui/ReceiptPrintModal'
 import type { PrintData } from '@/types/printData'
 import { getTipoComprobanteLabel } from '@/constants/sunat'
 import { SUNAT_MAX_MONTO_CLIENTE_SIN_RUC, SUNAT_RUC_LENGTH } from '@/constants/sunat'
-import { cashbankService, type PaymentMethodRecord } from '@/services/cashbank.service'
+import { cashbankService, type CashSession, type PaymentMethodRecord } from '@/services/cashbank.service'
 import { calcItem, getAfectacionGroup, type SunatAfectacionGroup } from '@/utils/taxCalc'
-import { getTodayPeru, getTodayPlusDaysPeru } from '@/utils/datesPeru'
+import { getTodayPeru } from '@/utils/datesPeru'
+import { normalizeSunatUnit } from '@/constants/sunatUnits'
 
 /** Tipo de serie de venta (desde API). */
 type SeriesRow = { id: number; series: string; doc_type: string; sunat_code?: string; branch_id?: number }
@@ -63,6 +64,13 @@ function tipoFromSearchParams(params: URLSearchParams): string | null {
   return t && VALID_TIPO_URL.has(t) ? t : null
 }
 
+function resolveCashMethodCode(methods: PaymentMethodRecord[]): string {
+  const cash = methods.find(
+    (m) => m.code === 'cash' || String(m.destination_type ?? '').toLowerCase() === 'cash',
+  )
+  return cash?.code ?? methods[0]?.code ?? 'cash'
+}
+
 export default function SalesRegisterPage() {
   return (
     <RequireModule moduleKey="sales">
@@ -75,7 +83,7 @@ function SalesRegisterContent() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { hasModule } = useAuth()
-  const { activeBranch, activeBranchId } = useBranch()
+  const { activeBranchId } = useBranch()
   const [series, setSeries] = useState<SeriesRow[]>([])
   const [customers, setCustomers] = useState<Contact[]>([])
   const [taxRate, setTaxRate] = useState(18)
@@ -97,7 +105,7 @@ function SalesRegisterContent() {
     sunat_code: '03',
     series_id: null,
     issue_date: getTodayPeru(),
-    due_date: getTodayPlusDaysPeru(8),
+    due_date: getTodayPeru(),
     currency: 'PEN',
     payment_method: 'efectivo',
     notes: '',
@@ -107,7 +115,8 @@ function SalesRegisterContent() {
   const [loading, setLoading] = useState(true)
   const [sunatEnabled, setSunatEnabled] = useState(true)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
-  const [payments, setPayments] = useState<{ method: string; amount: string }[]>([{ method: 'cash', amount: '' }])
+  const [payments, setPayments] = useState<{ method: string; amount: string }[]>([{ method: 'cash', amount: '0.00' }])
+  const [cashSession, setCashSession] = useState<CashSession | null>(null)
   const [printData, setPrintData] = useState<PrintData | null>(null)
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
   const [lastSale, setLastSale] = useState<{ id: number; number: string; total: number } | null>(null)
@@ -119,8 +128,10 @@ function SalesRegisterContent() {
       contactsService.list('', 'customer'),
       contactsService.getDefault(),
       cashbankService.listPaymentMethods(),
+      cashbankService.getOpenSession(activeBranchId || undefined),
     ])
-      .then(([seriesList, sunat, customerList, defaultClient, methods]) => {
+      .then(([seriesList, sunat, customerList, defaultClient, methods, session]) => {
+        setCashSession(session)
         setSunatEnabled(sunat?.sunat_enabled ?? true)
         const ventaSeries = (seriesList ?? []) as SeriesRow[]
         setSeries(ventaSeries)
@@ -140,7 +151,13 @@ function SalesRegisterContent() {
           series_id: matchSeries?.id ?? null,
           contact_id: defaultClient?.id ?? f.contact_id,
         }))
-        if (Array.isArray(methods) && methods.length > 0) setPaymentMethods(methods as PaymentMethodRecord[])
+        if (Array.isArray(methods) && methods.length > 0) {
+          const cashCode = resolveCashMethodCode(methods as PaymentMethodRecord[])
+          setPaymentMethods(methods as PaymentMethodRecord[])
+          setPayments((prev) =>
+            prev.length === 1 ? [{ method: cashCode, amount: prev[0].amount || '0.00' }] : prev,
+          )
+        }
       })
       .catch(() => toast.error('Error cargando datos'))
       .finally(() => setLoading(false))
@@ -156,14 +173,22 @@ function SalesRegisterContent() {
       contactsService.list('', 'customer'),
       contactsService.getDefault(),
       cashbankService.listPaymentMethods(),
+      cashbankService.getOpenSession(activeBranchId || undefined),
     ])
-      .then(([seriesList, sunat, customerList, defaultClient, methods]) => {
+      .then(([seriesList, sunat, customerList, defaultClient, methods, session]) => {
+        setCashSession(session)
         setSunatEnabled(sunat?.sunat_enabled ?? true)
         const ventaSeries = (seriesList ?? []) as SeriesRow[]
         setSeries(ventaSeries)
         setTaxRate(sunat?.tax_rate ?? 18)
         setCustomers(Array.isArray(customerList) ? customerList : [])
-        if (Array.isArray(methods) && methods.length > 0) setPaymentMethods(methods as PaymentMethodRecord[])
+        if (Array.isArray(methods) && methods.length > 0) {
+          const cashCode = resolveCashMethodCode(methods as PaymentMethodRecord[])
+          setPaymentMethods(methods as PaymentMethodRecord[])
+          setPayments((prev) =>
+            prev.length === 1 ? [{ method: cashCode, amount: prev[0].amount || '0.00' }] : prev,
+          )
+        }
         setForm((f) => ({ ...f, contact_id: defaultClient?.id ?? f.contact_id, branch_id: activeBranchId }))
       })
       .finally(() => setLoading(false))
@@ -200,7 +225,7 @@ function SalesRegisterContent() {
           product_id: p.id as number,
           code: p.code ?? '',
           description: p.name,
-          unit: p.unit ?? 'NIU',
+          unit: normalizeSunatUnit(p.unit ?? '', p.type ?? 'product'),
           quantity: 1,
           unit_price: p.sale_price ?? 0,
           igv_affectation_type: p.igv_affectation_type ?? '10',
@@ -254,6 +279,16 @@ function SalesRegisterContent() {
   const subtotalGlobal = items.reduce((s, it) => s + getItemTotals(it).subtotal, 0)
   const taxGlobal = items.reduce((s, it) => s + getItemTotals(it).taxAmount, 0)
   const totalGlobal = items.reduce((s, it) => s + getItemTotals(it).total, 0)
+
+  // Un solo método de pago: el monto efectivo sigue al total de la venta.
+  useEffect(() => {
+    if (payments.length !== 1) return
+    const formatted = totalGlobal.toFixed(2)
+    setPayments((prev) => {
+      if (prev.length !== 1 || prev[0].amount === formatted) return prev
+      return [{ ...prev[0], amount: formatted }]
+    })
+  }, [totalGlobal, payments.length])
 
   const selectedContact = form.contact_id ? customers.find(c => c.id === form.contact_id!) : null
 
@@ -322,6 +357,7 @@ function SalesRegisterContent() {
         doc_type: series.find(s => s.id === form.series_id)?.doc_type ?? 'BOLETA',
         series_id: form.series_id,
         currency: form.currency,
+        cash_session_id: cashSession?.id ?? null,
         issue_date: form.issue_date,
         due_date: form.due_date,
         payments: validPayments.map(p => ({ method: p.method, amount: Number(p.amount) })),
@@ -363,15 +399,11 @@ function SalesRegisterContent() {
         <h2 className="text-lg font-bold text-gray-800">Registrar venta</h2>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 space-y-4">
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Sucursal</label>
-            <p className="w-full border border-gray-100 bg-gray-50 rounded-xl px-3 py-2 text-sm text-gray-800">
-              {activeBranch?.name ?? '—'}
-            </p>
-          </div>
-          <div>
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 space-y-6">
+        <section>
+          <h3 className="text-sm font-semibold text-gray-700 mb-3">Datos generales</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
+          <div className="sm:col-span-2 lg:col-span-6">
             <label className="block text-xs font-medium text-gray-600 mb-1">Cliente *</label>
             <select
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
@@ -386,7 +418,7 @@ function SalesRegisterContent() {
               ))}
             </select>
           </div>
-          <div>
+          <div className="lg:col-span-3">
             <label className="block text-xs font-medium text-gray-600 mb-1">Tipo comprobante</label>
             <select
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
@@ -401,7 +433,7 @@ function SalesRegisterContent() {
               ))}
             </select>
           </div>
-          <div>
+          <div className="lg:col-span-3">
             <label className="block text-xs font-medium text-gray-600 mb-1">Serie</label>
             <select
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono"
@@ -414,16 +446,23 @@ function SalesRegisterContent() {
               ))}
             </select>
           </div>
-          <div>
+          <div className="lg:col-span-3">
             <label className="block text-xs font-medium text-gray-600 mb-1">Fecha</label>
             <input
               type="date"
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
               value={form.issue_date}
-              onChange={e => setForm(f => ({ ...f, issue_date: e.target.value }))}
+              onChange={e => {
+                const newIssue = e.target.value
+                setForm(f => ({
+                  ...f,
+                  issue_date: newIssue,
+                  due_date: f.due_date === f.issue_date ? newIssue : f.due_date,
+                }))
+              }}
             />
           </div>
-          <div>
+          <div className="lg:col-span-3">
             <label className="block text-xs font-medium text-gray-600 mb-1">Fecha de vencimiento</label>
             <input
               type="date"
@@ -435,41 +474,7 @@ function SalesRegisterContent() {
               <p className="text-xs text-gray-500 mt-0.5">Para factura se envía a SUNAT (cbc:DueDate).</p>
             )}
           </div>
-          <div className="col-span-2 md:col-span-5">
-            <label className="block text-xs font-medium text-gray-600 mb-1">Métodos de pago</label>
-            <div className="space-y-2">
-              {payments.map((p, idx) => (
-                <div key={idx} className="flex gap-2 items-center">
-                  <select
-                    className="flex-1 min-w-[140px] border border-gray-200 rounded-xl px-3 py-2 text-sm"
-                    value={p.method}
-                    onChange={e => setPayments(prev => prev.map((x, i) => i === idx ? { ...x, method: e.target.value } : x))}
-                  >
-                    {paymentMethods.map(m => (
-                      <option key={m.id} value={m.code}>{m.name}</option>
-                    ))}
-                  </select>
-                  <input
-                    type="number"
-                    min={0}
-                    step={0.01}
-                    placeholder="Monto"
-                    className="w-28 border border-gray-200 rounded-xl px-3 py-2 text-sm"
-                    value={p.amount}
-                    onChange={e => setPayments(prev => prev.map((x, i) => i === idx ? { ...x, amount: e.target.value } : x))}
-                  />
-                  {payments.length > 1 && (
-                    <button type="button" onClick={() => setPayments(prev => prev.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-700 p-1">
-                      <X size={16} />
-                    </button>
-                  )}
-                </div>
-              ))}
-              <button type="button" onClick={() => setPayments(prev => [...prev, { method: paymentMethods[0]?.code ?? 'cash', amount: '' }])}
-                className="text-xs text-[rgb(var(--p600))] hover:underline">+ Agregar método de pago</button>
-            </div>
-          </div>
-          <div className="col-span-2">
+          <div className="col-span-full">
             <label className="block text-xs font-medium text-gray-600 mb-1">Notas</label>
             <input
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
@@ -478,40 +483,41 @@ function SalesRegisterContent() {
               onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
             />
           </div>
-        </div>
+          </div>
+        </section>
 
-        <div>
-          <div className="flex items-center justify-between mb-2">
+        <section className="border-t border-gray-100 pt-5">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-3">
             <p className="text-sm font-semibold text-gray-700">Detalle de venta</p>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setShowProductPicker(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[rgb(var(--p300))] text-[rgb(var(--p600))] text-sm font-medium hover:bg-[rgb(var(--p50))]"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[rgb(var(--p300))] text-[rgb(var(--p600))] text-sm font-medium hover:bg-[rgb(var(--p50))] shrink-0"
               >
                 <Plus size={14} /> Agregar producto
               </button>
               <button
                 type="button"
                 onClick={addManualItem}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50 shrink-0"
               >
                 <Package size={14} /> Producto manual
               </button>
             </div>
           </div>
           <div className="overflow-x-auto rounded-xl border border-gray-200">
-            <table className="w-full text-sm min-w-[800px]">
+            <table className="w-full text-sm min-w-[720px] table-fixed">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">Descripción</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase w-20">Código</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase w-16">Unid.</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase w-24">Cant.</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase w-28">P. unit.</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase w-24">Afectación</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase w-20">IGV incl.</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase w-24">Total</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[32%]">Descripción</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[12%]">Código</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[7%]">Unid.</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[9%]">Cant.</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[11%]">P. unit.</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[13%]">Afectación</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[9%]">IGV incl.</th>
+                  <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[10%]">Total</th>
                   <th className="w-10" />
                 </tr>
               </thead>
@@ -560,7 +566,7 @@ function SalesRegisterContent() {
                           type="number"
                           min={0.001}
                           step={0.01}
-                          className="w-20 border border-gray-200 rounded-lg px-2 py-1 text-sm"
+                          className="w-full max-w-[4.5rem] border border-gray-200 rounded-lg px-2 py-1 text-sm"
                           value={it.quantity}
                           onChange={e => updateItem(idx, 'quantity', Number(e.target.value))}
                         />
@@ -570,7 +576,7 @@ function SalesRegisterContent() {
                           type="number"
                           min={0}
                           step={0.01}
-                          className="w-24 border border-gray-200 rounded-lg px-2 py-1 text-sm"
+                          className="w-full max-w-[5.5rem] border border-gray-200 rounded-lg px-2 py-1 text-sm"
                           value={it.unit_price}
                           onChange={e => updateItem(idx, 'unit_price', Math.max(0, Number(e.target.value) || 0))}
                         />
@@ -604,7 +610,7 @@ function SalesRegisterContent() {
                           <span className="text-gray-700">{it.price_includes_igv ? 'Sí' : 'No'}</span>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 font-medium text-gray-700">S/ {total.toFixed(2)}</td>
+                      <td className="px-3 py-2.5 font-medium text-gray-700 text-right tabular-nums">S/ {total.toFixed(2)}</td>
                       <td className="px-2 py-2.5">
                         <button type="button" onClick={() => removeItem(idx)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
                           <Trash2 size={14} />
@@ -621,15 +627,17 @@ function SalesRegisterContent() {
               </div>
             )}
           </div>
-        </div>
+        </section>
 
-        <div className="flex justify-end gap-4 text-sm border-t border-gray-100 pt-3">
-          <div className="text-right space-y-1 min-w-[220px]">
+        <section className="border-t border-gray-100 pt-5">
+          <p className="text-sm font-semibold text-gray-700 mb-3">Resumen</p>
+          <div className="flex justify-end">
+            <div className="w-full max-w-sm space-y-2 text-sm">
             {totalsByAfectacion.gravado.total > 0 && (
               <>
-                <div className="flex justify-between text-gray-600"><span>Op. gravada – Subtotal</span><span>S/ {totalsByAfectacion.gravado.subtotal.toFixed(2)}</span></div>
-                <div className="flex justify-between text-gray-600"><span>Op. gravada – IGV</span><span>S/ {totalsByAfectacion.gravado.taxAmount.toFixed(2)}</span></div>
-                <div className="flex justify-between font-medium text-gray-800"><span>Op. gravada – Total</span><span>S/ {totalsByAfectacion.gravado.total.toFixed(2)}</span></div>
+                <div className="flex justify-between text-gray-600"><span>Op. gravada – Subtotal</span><span className="tabular-nums">S/ {totalsByAfectacion.gravado.subtotal.toFixed(2)}</span></div>
+                <div className="flex justify-between text-gray-600"><span>Op. gravada – IGV</span><span className="tabular-nums">S/ {totalsByAfectacion.gravado.taxAmount.toFixed(2)}</span></div>
+                <div className="flex justify-between font-medium text-gray-800"><span>Op. gravada – Total</span><span className="tabular-nums">S/ {totalsByAfectacion.gravado.total.toFixed(2)}</span></div>
               </>
             )}
             {totalsByAfectacion.exonerado.total > 0 && (
@@ -639,17 +647,78 @@ function SalesRegisterContent() {
               <div className="flex justify-between text-gray-600"><span>Op. inafecta</span><span>S/ {totalsByAfectacion.inafecto.total.toFixed(2)}</span></div>
             )}
             {totalsByAfectacion.exportacion.total > 0 && (
-              <div className="flex justify-between text-gray-600"><span>Op. exportación</span><span>S/ {totalsByAfectacion.exportacion.total.toFixed(2)}</span></div>
+              <div className="flex justify-between text-gray-600"><span>Op. exportación</span><span className="tabular-nums">S/ {totalsByAfectacion.exportacion.total.toFixed(2)}</span></div>
             )}
-            <div className="flex justify-between font-bold text-gray-800 text-base pt-1 border-t border-gray-200 mt-1"><span>Total venta</span><span>S/ {totalGlobal.toFixed(2)}</span></div>
+            <div className="flex justify-between text-gray-600 pt-1">
+              <span>Subtotal</span>
+              <span className="tabular-nums">S/ {subtotalGlobal.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-gray-600">
+              <span>IGV</span>
+              <span className="tabular-nums">S/ {taxGlobal.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between items-baseline font-bold text-gray-900 text-base pt-2 mt-1 border-t border-gray-200">
+              <span>Total venta</span>
+              <span className="tabular-nums text-lg">S/ {totalGlobal.toFixed(2)}</span>
+            </div>
           </div>
-        </div>
+          </div>
+        </section>
 
-        <div className="flex gap-2 pt-2">
-          <button type="button" onClick={() => navigate('/sales')} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">
+        <section className="border-t border-gray-100 pt-5">
+          <p className="text-sm font-semibold text-gray-700 mb-3">Métodos de pago</p>
+          <div className="space-y-2 max-w-xl">
+            {payments.map((p, idx) => (
+              <div key={idx} className="flex flex-wrap gap-2 items-center">
+                <select
+                  className="w-40 sm:w-44 border border-gray-200 rounded-xl px-3 py-2 text-sm shrink-0"
+                  value={p.method}
+                  onChange={e => setPayments(prev => prev.map((x, i) => i === idx ? { ...x, method: e.target.value } : x))}
+                >
+                  {paymentMethods.map(m => (
+                    <option key={m.id} value={m.code}>{m.name}</option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  placeholder="Monto"
+                  className="w-28 border border-gray-200 rounded-xl px-3 py-2 text-sm tabular-nums"
+                  value={p.amount}
+                  onChange={e => setPayments(prev => prev.map((x, i) => i === idx ? { ...x, amount: e.target.value } : x))}
+                />
+                {payments.length > 1 && (
+                  <button type="button" onClick={() => setPayments(prev => prev.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-700 p-1 shrink-0">
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => setPayments(prev => [...prev, { method: paymentMethods[0]?.code ?? 'cash', amount: '' }])}
+              className="text-xs text-[rgb(var(--p600))] hover:underline"
+            >
+              + Agregar método de pago
+            </button>
+          </div>
+        </section>
+
+        <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-4 border-t border-gray-100">
+          <button
+            type="button"
+            onClick={() => navigate('/sales')}
+            className="inline-flex items-center justify-center px-5 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 sm:min-w-[7.5rem]"
+          >
             Cancelar
           </button>
-          <button type="button" onClick={handleSave} disabled={saving || items.length === 0} className="flex-1 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving || items.length === 0}
+            className="inline-flex items-center justify-center px-6 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50 sm:min-w-[9rem]"
+          >
             {saving ? 'Guardando...' : 'Registrar venta'}
           </button>
         </div>

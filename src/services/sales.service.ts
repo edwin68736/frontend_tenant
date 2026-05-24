@@ -1,4 +1,7 @@
 import api from './api'
+import type { SaleBillingStatus } from '@/constants/billingStatus'
+
+export type { SaleBillingStatus }
 
 export interface Sale {
   id: number
@@ -14,7 +17,7 @@ export interface Sale {
   currency: string
   payment_method?: string
   status: string
-  billing_status: 'pending' | 'sent' | 'accepted' | 'rejected' | 'error'
+  billing_status: SaleBillingStatus
   branch_id: number
   created_at: string
   /** Si es NOTA_CREDITO: ID de la venta que se anuló */

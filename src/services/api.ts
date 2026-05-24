@@ -78,4 +78,5 @@ api.interceptors.response.use(
   },
 )
 
+export { getApiBaseUrl, getTenantSlug }
 export default api

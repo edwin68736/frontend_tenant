@@ -22,12 +22,12 @@ export interface SunatConfig {
   tax_rate: number
   igv_regime: string
   tax_benefit_zone: boolean
-  tukifac_token_set?: boolean
 }
 
 export interface InvoicingSettings {
-  invoicing_mode: 'legacy_backend' | 'pse' | string
-  pse_configured: boolean
+  send_mode: 'sunat_direct' | 'pse' | string
+  fiscal_enabled: boolean
+  connection_status?: string
 }
 
 export const companyService = {

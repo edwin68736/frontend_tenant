@@ -1,13 +1,24 @@
 import api from './api'
 
+export type ManualBillingStatus =
+  | 'accepted'
+  | 'rejected'
+  | 'error'
+  | 'processing'
+  | 'already_accepted'
+  | 'queued'
+
 export interface BillingResult {
+  status?: ManualBillingStatus
   success: boolean
   async?: boolean
   safe_to_print?: boolean
-  status?: BillingStatusResponse
+  billing_status?: string
+  sunat_message?: string
+  status_detail?: BillingStatusResponse
+  invoice?: unknown
   message: string
   job_status?: string
-  invoice?: unknown
   xml_url?: string
   pdf_url?: string
   cdr_url?: string
@@ -47,9 +58,12 @@ export interface InvoiceInfo {
   created_at?: string
 }
 
+/** Envío manual síncrono: el backend puede esperar hasta ~90s la respuesta SUNAT. */
+const MANUAL_BILLING_TIMEOUT_MS = 120_000
+
 export const billingService = {
   send: (saleId: number): Promise<BillingResult> =>
-    api.post(`/api/billing/send/${saleId}`).then(r => r.data),
+    api.post(`/api/billing/send/${saleId}`, undefined, { timeout: MANUAL_BILLING_TIMEOUT_MS }).then(r => r.data),
 
   getStatus: (saleId: number): Promise<BillingStatusResponse> =>
     api.get(`/api/billing/status/${saleId}`).then(r => r.data),
@@ -59,7 +73,7 @@ export const billingService = {
 
   /** Reenviar el mismo comprobante (solo cuando falló el envío, no si fue rechazado por SUNAT). */
   resend: (saleId: number): Promise<BillingResult & { invoice?: unknown }> =>
-    api.post(`/api/billing/resend/${saleId}`).then(r => r.data),
+    api.post(`/api/billing/resend/${saleId}`, undefined, { timeout: MANUAL_BILLING_TIMEOUT_MS }).then(r => r.data),
 
   /** Anular la venta generando y enviando una nota de crédito a SUNAT; luego se anula la venta original. */
   voidWithCreditNote: (saleId: number): Promise<{ success: boolean; message?: string; nc_sale?: unknown; invoice?: unknown }> =>

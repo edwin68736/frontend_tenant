@@ -30,7 +30,7 @@ function categoryLabel(value: string): string {
   return found ? found.label : value
 }
 
-// Denominaciones para arqueo (PEN): una sola lista; centavos con dos decimales (0.50, 0.20, 0.10)
+// Denominaciones para arqueo (PEN): centavos con dos decimales (0.50 … 0.01)
 const ARQUEO_DENOMINATIONS: { value: string; label: string }[] = [
   { value: '200', label: 'S/ 200' },
   { value: '100', label: 'S/ 100' },
@@ -43,6 +43,8 @@ const ARQUEO_DENOMINATIONS: { value: string; label: string }[] = [
   { value: '0.5', label: 'S/ 0.50' },
   { value: '0.2', label: 'S/ 0.20' },
   { value: '0.1', label: 'S/ 0.10' },
+  { value: '0.05', label: 'S/ 0.05' },
+  { value: '0.01', label: 'S/ 0.01' },
 ]
 
 function sumArqueo(arqueo: Record<string, number>): number {

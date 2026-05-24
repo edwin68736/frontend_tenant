@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
 import {
   AlertCircle,
@@ -111,10 +112,23 @@ export function ProductImportModal({ open, onClose, onImported }: Props) {
   const importPct =
     importProgress.total > 0 ? Math.min(100, Math.round((importProgress.done / importProgress.total) * 100)) : 0
 
-  if (!open) return null
+  useEffect(() => {
+    if (!open) return
+    const original = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = original
+    }
+  }, [open])
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+  if (!open || typeof document === 'undefined') return null
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
+      role="dialog"
+      aria-modal="true"
+    >
       <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-gray-200 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
@@ -134,8 +148,9 @@ export function ProductImportModal({ open, onClose, onImported }: Props) {
         <div className="relative p-4 sm:p-5 overflow-y-auto min-h-0 space-y-4">
           <p className="text-sm text-gray-600">
             Catálogo general: por defecto <strong>no</strong> son de restaurante. Use{' '}
-            <strong>es_restaurante</strong> (si/no) y opcionalmente <strong>area_preparacion</strong>.
-            <strong> stock_inicial</strong> registra kardex en la sucursal activa.
+            <strong>es_restaurante</strong> (si/no). <strong>area_preparacion</strong> es opcional
+            (solo aplica si marca el producto como restaurante).{' '}
+            <strong>stock_inicial</strong> registra kardex en la sucursal activa.
           </p>
 
           <div className="flex flex-wrap gap-2">
@@ -233,7 +248,8 @@ export function ProductImportModal({ open, onClose, onImported }: Props) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

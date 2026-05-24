@@ -19,7 +19,7 @@ function isGravadoIgv(code: string): boolean {
   if (['20','21','30','31','32','33','34','35','36','40'].includes(c)) return false
   return true
 }
-const UNITS = ['NIU','ZZ','KGM','LTR','MTR','UND','POR','RCN']
+const UNITS = ['NIU','ZZ','KGM','LTR','MTR','POR','RCN']
 
 const empty = (): CreateProductInput => ({
   name: '', unit: 'NIU', sale_price: 0, purchase_price: 0,

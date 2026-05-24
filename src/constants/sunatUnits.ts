@@ -23,7 +23,6 @@ export const SUNAT_UNITS: SunatUnitRow[] = [
   { code: 'DZN', label: 'DZN — Docena' },
   { code: 'GRM', label: 'GRM — Gramo' },
   { code: 'C62', label: 'C62 — Unidad (pieza)' },
-  { code: 'UND', label: 'UND — Unidad (uso comercial)' },
   { code: 'BLT', label: 'BLT — Bulto' },
   { code: 'CJA', label: 'CJA — Caja (comercial)' },
   { code: 'PAQ', label: 'PAQ — Paquete (comercial)' },
@@ -72,4 +71,14 @@ export function sunatUnitLabel(code: string): string {
   const c = (code || '').trim().toUpperCase()
   const row = SUNAT_UNITS.find((u) => u.code === c)
   return row ? row.label : c
+}
+
+/** Código catálogo SUNAT 03 para comprobantes (NIU bienes, ZZ servicios). */
+export function normalizeSunatUnit(unit: string, type?: 'product' | 'service' | string): string {
+  const t = type === 'service' ? 'service' : 'product'
+  if (t === 'service') return 'ZZ'
+  const u = (unit || '').trim().toUpperCase()
+  if (!u || ['UND', 'UNIDAD', 'UNIDADES', 'UNIT', 'UNITS', 'U', 'UN'].includes(u)) return 'NIU'
+  if (u === 'ZZ') return 'NIU'
+  return u
 }
