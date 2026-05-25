@@ -1,4 +1,4 @@
-import api, { API_BASE_URL } from './api'
+import api, { getApiBaseUrl } from './api'
 
 export interface ContactPerson {
   id?: number
@@ -87,5 +87,5 @@ export const contactsService = {
 export function getContactPhotoUrl(url: string | null | undefined): string {
   if (!url) return ''
   if (url.startsWith('http://') || url.startsWith('https://')) return url
-  return `${API_BASE_URL.replace(/\/$/, '')}${url.startsWith('/') ? url : '/' + url}`
+  return `${getApiBaseUrl().replace(/\/$/, '')}${url.startsWith('/') ? url : '/' + url}`
 }

@@ -1,4 +1,4 @@
-import api, { API_BASE_URL } from './api'
+import api, { getApiBaseUrl } from './api'
 
 export interface TenantSubscriptionView {
   has_subscription?: boolean
@@ -152,7 +152,7 @@ export interface BillingHub {
 export function assetUrl(path: string): string {
   if (!path) return ''
   if (path.startsWith('http')) return path
-  const base = API_BASE_URL.replace(/\/$/, '')
+  const base = getApiBaseUrl().replace(/\/$/, '')
   return `${base}${path.startsWith('/') ? path : `/${path}`}`
 }
 

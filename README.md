@@ -50,11 +50,18 @@ constants/, types/, utils/
 
 ## Base URL API
 
-`VITE_API_URL` típico: `http://localhost:3000` (**sin** `/api` al final).
+Resolución centralizada en `src/config/apiBaseUrl.ts` (exportada vía `services/api.ts`).
 
-Los servicios llaman rutas como `/api/products`, `/api/login`.
+| Entorno | Host | API base |
+|---------|------|----------|
+| Dev | `localhost:5173` | `VITE_API_URL` → `http://localhost:3000` |
+| Dev | `demo.localhost:5173` | `VITE_API_URL` o `http://localhost:3000` |
+| Prod tenant | `demo.tukifac.com` | **same-origin** → `https://demo.tukifac.com/api/*` |
+| Prod reservado | `app.tukifac.com` | `https://api.tukifac.com` (no usar panel tenant aquí) |
 
-Prod fallback en código: `https://api.tukifac.cloud`.
+Prod **no** debe definir `VITE_API_URL=https://api.tukifac.com` (provoca 403 `missing_resolved_tenant`).
+
+Ver `.env.example` y `backend_go/docs/TENANT-ISOLATION.md`.
 
 ## Tema y diseño
 
