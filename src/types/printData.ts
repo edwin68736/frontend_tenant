@@ -5,6 +5,7 @@ export interface PrintData {
   series: string
   number: string
   issue_date: string
+  issue_time?: string
   currency: string
   sunat_hash?: string
   qr_data: string
@@ -19,6 +20,9 @@ export interface PrintData {
   total: number
   totals_by_affectation?: Record<string, PrintAffectTotal>
   payments: PrintPayment[]
+  seller_name?: string
+  payment_condition?: string
+  bank_accounts?: PrintBankAccount[]
 }
 
 export interface PrintClient {
@@ -33,7 +37,17 @@ export interface PrintCompany {
   business_name: string
   trade_name?: string
   address?: string
+  phone?: string
+  email?: string
+  website?: string
   logo_url?: string
+}
+
+export interface PrintBankAccount {
+  name?: string
+  bank_name: string
+  account_number: string
+  currency: string
 }
 
 export interface PrintBranch {

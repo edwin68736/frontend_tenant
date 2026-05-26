@@ -114,6 +114,9 @@ export async function generateReceiptPdf(
         y += ticketLineH
       }
     }
+    if (data.company.phone) addTicketWrapped(`Telf: ${data.company.phone}`, FONT_SIZE_SM)
+    if (data.company.email) addTicketWrapped(`Email: ${data.company.email}`, FONT_SIZE_SM)
+    if (data.company.website) addTicketWrapped(`Web: ${data.company.website}`, FONT_SIZE_SM)
     addSpace(2)
 
     // Título comprobante
@@ -125,7 +128,8 @@ export async function generateReceiptPdf(
     addSpace(2)
 
     // Datos cabecera
-    addTicketWrapped(`F. Emisión: ${data.issue_date}`, FONT_SIZE_SM)
+    addTicketWrapped(`Fecha Emisión: ${data.issue_date}`, FONT_SIZE_SM)
+    if (data.issue_time) addTicketWrapped(`Hora Emisión: ${data.issue_time}`, FONT_SIZE_SM)
     if (data.client) {
       addTicketWrapped(
         `Cliente: ${data.client.business_name}`,
