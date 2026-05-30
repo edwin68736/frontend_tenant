@@ -3,18 +3,18 @@ import { toast } from 'sonner'
 import { Plus, Pencil, Trash2, ToggleLeft, ToggleRight, Search } from 'lucide-react'
 import { usersService, type TenantUser, type Role } from '@/services/users.service'
 import { restaurantService } from '@/services/restaurant.service'
-import { companyService } from '@/services/company.service'
 import { useAuth } from '@/contexts/AuthContext'
 import { Modal } from '@/components/ui/Modal'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { SearchSelect, MIN_OPTIONS_FOR_SEARCH } from '@/components/ui/SearchSelect'
+import { UserBranchMultiSelect } from '@/components/users/UserBranchMultiSelect'
 import { UserModuleProfileCell } from './moduleProfiles/UserModuleProfileCell'
 import { RestaurantUserProfileModal } from './moduleProfiles/RestaurantUserProfileModal'
 import { restaurantProfileSummary } from './moduleProfiles/restaurantProfile'
 import { useModuleProfileColumns } from './moduleProfiles/useModuleProfileColumns'
 import type { RestaurantStaffState } from './moduleProfiles/types'
 
-const empty = () => ({ name: '', email: '', password: '', role_id: 0, branch_id: 0 })
+const empty = () => ({ name: '', email: '', password: '', role_id: 0, branchIds: [] as number[] })
 
 export default function UsersPage() {
   const { hasModule } = useAuth()
@@ -25,7 +25,6 @@ export default function UsersPage() {
   const [restaurantStaffByUser, setRestaurantStaffByUser] = useState<
     Record<string, RestaurantStaffState>
   >({})
-  const [branches, setBranches] = useState<{ id: number; name: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
   const [show, setShow] = useState(false)
@@ -40,7 +39,6 @@ export default function UsersPage() {
     const promises: Promise<unknown>[] = [
       usersService.listUsers(q).then(u => setUsers(u ?? [])),
       usersService.listRoles().then(r => setRoles(r ?? [])),
-      companyService.listBranches().then(b => setBranches(b ?? [])),
     ]
     if (hasRestaurant) {
       promises.push(
@@ -72,12 +70,14 @@ export default function UsersPage() {
   }
   const openEdit = (u: TenantUser) => {
     setEditing(u)
+    const ids =
+      u.branch_ids?.length ? [...u.branch_ids] : u.branch_id != null && u.branch_id > 0 ? [u.branch_id] : []
     setForm({
       name: u.name,
       email: u.email,
       password: '',
       role_id: u.role_id ?? 0,
-      branch_id: u.branch_id != null ? u.branch_id : 0,
+      branchIds: ids,
     })
     setShow(true)
   }
@@ -96,13 +96,19 @@ export default function UsersPage() {
           password?: string
           role_id: number
           branch_id?: number | null
+          branch_ids?: number[]
           active: boolean
         } = {
           name: form.name,
           email: form.email,
           role_id: form.role_id,
-          branch_id: form.branch_id === 0 ? null : form.branch_id,
           active: editing.active,
+        }
+        if (form.branchIds.length > 0) {
+          payload.branch_ids = form.branchIds
+          payload.branch_id = form.branchIds[0]
+        } else {
+          payload.branch_id = null
         }
         if (form.password.trim()) payload.password = form.password
         await usersService.updateUser(editing.id, payload)
@@ -113,7 +119,9 @@ export default function UsersPage() {
           email: form.email,
           password: form.password,
           role_id: form.role_id,
-          branch_id: form.branch_id === 0 ? undefined : form.branch_id,
+          ...(form.branchIds.length > 0
+            ? { branch_ids: form.branchIds, branch_id: form.branchIds[0] }
+            : {}),
         })
         toast.success('Usuario creado')
       }
@@ -172,7 +180,7 @@ export default function UsersPage() {
     return <span className="text-xs text-gray-400">—</span>
   }
 
-  const baseHeaders = ['Nombre', 'Email', 'Rol', 'Estado']
+  const baseHeaders = ['Nombre', 'Email', 'Rol', 'Sucursales', 'Estado']
   const tableHeaders = [...baseHeaders, ...moduleColumns.map(c => c.label), '']
 
   if (loading)
@@ -237,6 +245,11 @@ export default function UsersPage() {
                     <span className="bg-[rgb(var(--p100))] text-[rgb(var(--p700))] text-xs px-2 py-0.5 rounded-full whitespace-nowrap">
                       {u.role_name ?? `Rol #${u.role_id}`}
                     </span>
+                  </td>
+                  <td className="px-3 sm:px-4 py-3 text-xs text-gray-600 max-w-[200px]">
+                    {u.branch_names?.length
+                      ? u.branch_names.join(', ')
+                      : u.branch_name || 'Todas'}
                   </td>
                   <td className="px-3 sm:px-4 py-3">
                     <span
@@ -343,30 +356,14 @@ export default function UsersPage() {
                 </select>
               )}
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Sucursal</label>
-              {branches.length >= MIN_OPTIONS_FOR_SEARCH ? (
-                <SearchSelect
-                  options={branches.map(b => ({ value: String(b.id), label: b.name }))}
-                  value={form.branch_id > 0 ? String(form.branch_id) : ''}
-                  onChange={v => setForm(f => ({ ...f, branch_id: v ? Number(v) : 0 }))}
-                  placeholder="Todas"
-                />
-              ) : (
-                <select
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-                  value={form.branch_id > 0 ? form.branch_id : ''}
-                  onChange={e => setForm(f => ({ ...f, branch_id: Number(e.target.value) || 0 }))}
-                >
-                  <option value="">Todas</option>
-                  {branches.map(b => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Sucursales asignadas</label>
+            <UserBranchMultiSelect
+              value={form.branchIds}
+              onChange={(branchIds) => setForm((f) => ({ ...f, branchIds }))}
+              disabled={saving}
+            />
           </div>
           <div className="flex flex-col-reverse sm:flex-row gap-2 pt-1">
             <button

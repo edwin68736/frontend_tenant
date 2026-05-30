@@ -8,6 +8,8 @@ export interface TenantUser {
   role_name?: string
   branch_id: number | null
   branch_name?: string
+  branch_ids?: number[]
+  branch_names?: string[]
   active: boolean
 }
 
@@ -35,11 +37,27 @@ export const usersService = {
   getUser: (id: number) =>
     api.get(`/api/users/${id}`).then(r => r.data.data ?? r.data),
 
-  createUser: (data: { name: string; email: string; password: string; role_id: number; branch_id?: number }) =>
-    api.post('/api/users', data).then(r => r.data.data ?? r.data),
+  createUser: (data: {
+    name: string
+    email: string
+    password: string
+    role_id: number
+    branch_id?: number
+    branch_ids?: number[]
+  }) => api.post('/api/users', data).then(r => r.data.data ?? r.data),
 
-  updateUser: (id: number, data: { name?: string; email?: string; password?: string; role_id?: number; branch_id?: number | null; active?: boolean }) =>
-    api.put(`/api/users/${id}`, data).then(r => r.data),
+  updateUser: (
+    id: number,
+    data: {
+      name?: string
+      email?: string
+      password?: string
+      role_id?: number
+      branch_id?: number | null
+      branch_ids?: number[]
+      active?: boolean
+    },
+  ) => api.put(`/api/users/${id}`, data).then(r => r.data),
 
   deleteUser: (id: number) =>
     api.delete(`/api/users/${id}`).then(r => r.data),
