@@ -5,6 +5,7 @@ import { Toaster } from 'sonner'
 import App from './App'
 import { AuthProvider } from './contexts/AuthContext'
 import { BranchProvider } from './contexts/BranchContext'
+import { BranchCheckoutSeriesProvider } from './contexts/BranchCheckoutSeriesContext'
 import { FeatureProvider } from './contexts/FeatureContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import './index.css'
@@ -15,10 +16,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <AuthProvider>
         <FeatureProvider>
         <BranchProvider>
+          <BranchCheckoutSeriesProvider>
           <ThemeProvider>
             <App />
             <Toaster position="top-right" richColors closeButton />
           </ThemeProvider>
+          </BranchCheckoutSeriesProvider>
         </BranchProvider>
         </FeatureProvider>
       </AuthProvider>

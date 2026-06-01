@@ -1,4 +1,5 @@
-import api, { getApiBaseUrl } from './api'
+import api from './api'
+import { resolvePublicAssetUrl } from '@/config/apiBaseUrl'
 
 export interface ContactPerson {
   id?: number
@@ -85,7 +86,5 @@ export const contactsService = {
 }
 
 export function getContactPhotoUrl(url: string | null | undefined): string {
-  if (!url) return ''
-  if (url.startsWith('http://') || url.startsWith('https://')) return url
-  return `${getApiBaseUrl().replace(/\/$/, '')}${url.startsWith('/') ? url : '/' + url}`
+  return resolvePublicAssetUrl(url)
 }

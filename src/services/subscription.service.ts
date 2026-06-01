@@ -1,4 +1,5 @@
-import api, { getApiBaseUrl } from './api'
+import api from './api'
+import { resolvePublicAssetUrl } from '@/config/apiBaseUrl'
 
 export interface TenantSubscriptionView {
   has_subscription?: boolean
@@ -150,10 +151,7 @@ export interface BillingHub {
 
 /** URL absoluta para assets en /storage (QR SaaS). */
 export function assetUrl(path: string): string {
-  if (!path) return ''
-  if (path.startsWith('http')) return path
-  const base = getApiBaseUrl().replace(/\/$/, '')
-  return `${base}${path.startsWith('/') ? path : `/${path}`}`
+  return resolvePublicAssetUrl(path)
 }
 
 export const subscriptionService = {
