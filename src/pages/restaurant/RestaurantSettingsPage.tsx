@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { Save, KeyRound, Settings, Eye, EyeOff } from 'lucide-react'
 import RequireModule from '@/components/ui/RequireModule'
 import { restaurantService } from '@/services/restaurant.service'
+import { ReceiptWalletSettings } from '@/components/company/ReceiptWalletSettings'
 
 export default function RestaurantSettingsPage() {
   return <RequireModule moduleKey="restaurant"><RestaurantSettingsContent /></RequireModule>
@@ -93,6 +94,8 @@ function RestaurantSettingsContent() {
           </div>
         </div>
       </div>
+
+      <ReceiptWalletSettings />
 
       <div className="flex justify-end">
         <button onClick={handleSave} disabled={saving || form.deletion_pin.trim().length < 4}

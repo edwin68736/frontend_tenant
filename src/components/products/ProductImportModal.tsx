@@ -39,6 +39,7 @@ export function ProductImportModal({ open, onClose, onImported }: Props) {
   })
   const [importResult, setImportResult] = useState<{
     created: number
+    updated: number
     stockRegistered: number
     failed: { row: number; name: string; error: string }[]
   } | null>(null)
@@ -94,9 +95,12 @@ export function ProductImportModal({ open, onClose, onImported }: Props) {
       const result = await importCatalogProducts(validation.rows, setImportProgress)
       setImportResult(result)
       setStep('done')
-      if (result.created > 0) {
+      if (result.created > 0 || result.updated > 0) {
+        const parts: string[] = []
+        if (result.created > 0) parts.push(`${result.created} creado(s)`)
+        if (result.updated > 0) parts.push(`${result.updated} actualizado(s)`)
         const stockMsg = result.stockRegistered > 0 ? ` · ${result.stockRegistered} con stock en kardex` : ''
-        toast.success(`${result.created} producto(s) importados${stockMsg}`)
+        toast.success(`${parts.join(', ')}${stockMsg}`)
         onImported()
       }
       if (result.failed.length > 0) toast.error(`${result.failed.length} fila(s) con error`)
@@ -187,9 +191,15 @@ export function ProductImportModal({ open, onClose, onImported }: Props) {
           {step === 'done' && importResult && (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-3 text-sm">
               <p className="font-medium text-emerald-800">
-                {importResult.created} creado(s)
-                {importResult.stockRegistered > 0 && `, ${importResult.stockRegistered} con stock (kardex)`}
-                {importResult.failed.length > 0 && `, ${importResult.failed.length} con error`}.
+                {importResult.created > 0 && `${importResult.created} creado(s)`}
+                {importResult.created > 0 && importResult.updated > 0 && ', '}
+                {importResult.updated > 0 && `${importResult.updated} actualizado(s)`}
+                {(importResult.created > 0 || importResult.updated > 0) && (
+                  <>
+                    {importResult.stockRegistered > 0 && `, ${importResult.stockRegistered} con stock (kardex)`}
+                    {importResult.failed.length > 0 && `, ${importResult.failed.length} con error`}.
+                  </>
+                )}
               </p>
               {importResult.failed.length > 0 && (
                 <ul className="mt-2 max-h-32 overflow-y-auto text-xs text-red-700 space-y-1">

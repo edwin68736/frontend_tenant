@@ -3,12 +3,7 @@ import { toast } from 'sonner'
 import { Plus, Pencil, Trash2, FileText, Lock } from 'lucide-react'
 import { companyService, type SeriesRow } from '@/services/company.service'
 import { Modal } from '@/components/ui/Modal'
-<<<<<<< Updated upstream
-=======
-import SunatRequiredMessage from '@/components/ui/SunatRequiredMessage'
-import { useAuth } from '@/contexts/AuthContext'
 import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
->>>>>>> Stashed changes
 
 const CATEGORIES = ['venta', 'compra', 'nota_credito', 'nota_debito', 'guia_remision'] as const
 const DOC_TYPES = ['FACTURA', 'BOLETA', 'NOTA DE VENTA', 'NOTA DE CRÉDITO', 'NOTA DE DÉBITO', 'GUÍA DE REMISIÓN']
@@ -70,15 +65,9 @@ function groupSeriesByBranch(series: SeriesRow[], branches: { id: number; name: 
 }
 
 export default function CompanySeriesPage() {
-<<<<<<< Updated upstream
+  const { invalidateCheckoutSeries } = useBranchCheckoutSeries()
   const [sunatEnabled, setSunatEnabled] = useState(false)
   const [series, setSeries] = useState<SeriesRow[]>([])
-=======
-  const { hasModule } = useAuth()
-  const { invalidateCheckoutSeries } = useBranchCheckoutSeries()
-  const [sunatEnabled, setSunatEnabled] = useState<boolean | null>(null)
-  const [series, setSeries] = useState<Series[]>([])
->>>>>>> Stashed changes
   const [branches, setBranches] = useState<{ id: number; name: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [filterCategory, setFilterCategory] = useState('')
@@ -176,7 +165,7 @@ export default function CompanySeriesPage() {
         })
       }
       toast.success(editing ? 'Serie actualizada' : 'Serie creada')
-<<<<<<< Updated upstream
+      invalidateCheckoutSeries(form.branch_id)
       setShow(false)
       setLoading(true)
       load()
@@ -185,12 +174,6 @@ export default function CompanySeriesPage() {
     } finally {
       setSaving(false)
     }
-=======
-      invalidateCheckoutSeries(form.branch_id)
-      setShow(false); load()
-    } catch (e: any) { toast.error(e.response?.data?.error ?? 'Error') }
-    finally { setSaving(false) }
->>>>>>> Stashed changes
   }
 
   const handleDelete = async (s: SeriesRow) => {

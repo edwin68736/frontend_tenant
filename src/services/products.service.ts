@@ -26,6 +26,7 @@ export interface Product {
   active: boolean
   category_id: number | null
   category_name?: string
+  preparation_area?: string
 }
 
 /** Fila enriquecida cuando GET /api/products se llama con report=1 */
@@ -73,6 +74,7 @@ export interface CreateProductInput {
   has_modifiers?: boolean
   min_stock?: number
   is_restaurant?: boolean
+  preparation_area?: string
   category_id?: number | null
   modifier_group_ids?: number[]
   /** Solo para edición: enviar para no cambiar el estado activo por defecto */
@@ -104,6 +106,7 @@ export interface BulkImportItemPayload {
 
 export interface BulkImportResultPayload {
   created: number
+  updated?: number
   stock_registered: number
   failed: { row: number; name: string; error: string }[]
 }

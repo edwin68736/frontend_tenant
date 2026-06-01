@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf'
 import QRCode from 'qrcode'
 import type { PrintData } from '@/types/printData'
+import { paymentWalletVisible, renderPaymentWalletBlock } from '@/utils/receiptPaymentWallet'
 import { getTipoComprobanteLabel, getMedioPagoLabel } from '@/constants/sunat'
 import { ticketColumnLayoutMm } from '@/utils/receiptTicketLayout'
 import { getPrintIssuerAddress } from '@/utils/printIssuer'
@@ -239,6 +240,11 @@ export async function generateReceiptPdf(
       addSpace(2)
     }
 
+    if (paymentWalletVisible(data, 'ticket')) {
+      y = await renderPaymentWalletBlock(doc, data, 'ticket', y, pageW, margin)
+      addSpace(2)
+    }
+
     // QR + hash + pagos
     if (data.qr_data) {
       try {
@@ -434,6 +440,11 @@ export async function generateReceiptPdf(
     for (const p of data.payments) {
       addLine(`${getMedioPagoLabel(p.method) || p.method}: ${formatMoney(p.amount, data.currency)}`)
     }
+    addSpace(2)
+  }
+
+  if (paymentWalletVisible(data, 'a4')) {
+    y = await renderPaymentWalletBlock(doc, data, 'a4', y, pageW, margin)
     addSpace(2)
   }
 

@@ -13,6 +13,11 @@ export interface CompanyConfig {
   tax_rate: number
   color_theme: string
   logo_url: string
+  wallet_provider?: string
+  wallet_phone?: string
+  wallet_qr_url?: string
+  wallet_show_on_a4?: boolean
+  wallet_show_on_ticket?: boolean
 }
 
 export interface SunatConfig {
@@ -59,6 +64,13 @@ export interface SeriesRow {
 export const companyService = {
   getConfig: () => api.get<CompanyConfig>('/api/company/config').then((r) => r.data),
   updateConfig: (data: Partial<CompanyConfig>) => api.put('/api/company/config', data).then((r) => r.data),
+  updateReceiptWallet: (data: {
+    wallet_provider: string
+    wallet_phone: string
+    wallet_qr_url: string
+    wallet_show_on_a4: boolean
+    wallet_show_on_ticket: boolean
+  }) => api.put('/api/company/receipt-wallet', data).then((r) => r.data),
   getSunat: () => api.get<SunatConfig>('/api/company/sunat').then((r) => r.data),
   getInvoicing: () => api.get<InvoicingSettings>('/api/company/invoicing').then((r) => r.data),
   updateSunat: (data: Pick<SunatConfig, 'tax_rate' | 'igv_regime' | 'tax_benefit_zone'>) =>

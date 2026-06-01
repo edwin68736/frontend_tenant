@@ -69,6 +69,7 @@ function emptyForm(pageMode: ProductCatalogType): CreateProductInput {
     manage_stock: true,
     min_stock: 0,
     is_restaurant: false,
+    preparation_area: '',
     category_id: null,
     code: '',
     description: '',
@@ -81,6 +82,15 @@ function emptyForm(pageMode: ProductCatalogType): CreateProductInput {
 }
 
 const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
+
+const PREPARATION_AREAS = [
+  { value: '', label: 'Sin área' },
+  { value: 'cocina', label: 'Cocina' },
+  { value: 'bar', label: 'Bar' },
+  { value: 'barra', label: 'Barra' },
+  { value: 'postres', label: 'Postres' },
+  { value: 'otro', label: 'Otro' },
+] as const
 
 type AdvancedTab = 'datos' | 'modificadores' | 'stock'
 
@@ -202,6 +212,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       manage_stock: p.manage_stock,
       min_stock: p.min_stock ?? 0,
       is_restaurant: p.is_restaurant ?? false,
+      preparation_area: p.preparation_area ?? '',
       category_id: p.category_id,
       description: p.description ?? '',
       image_url: p.image_url ?? '',
@@ -215,7 +226,11 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     setShowMoreOptions(false)
     try {
       const detail = await productsService.get(p.id)
-      setForm(f => ({ ...f, modifier_group_ids: detail.modifier_group_ids ?? [] }))
+      setForm(f => ({
+        ...f,
+        modifier_group_ids: detail.modifier_group_ids ?? [],
+        preparation_area: detail.data.preparation_area ?? '',
+      }))
     } catch {
       // Si GET /products/:id falla (ej. backend en otro puerto), los datos ya vienen del listado
     }
@@ -276,6 +291,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       payload.modifier_group_ids = []
     }
     if (!isGravadoIgv(form.igv_affectation_type)) payload.price_includes_igv = false
+    if (!payload.is_restaurant) payload.preparation_area = ''
+    else if (payload.preparation_area) payload.preparation_area = payload.preparation_area.trim().toLowerCase()
     setSaving(true)
     try {
       if (editing) await productsService.update(editing.id, payload)
@@ -503,7 +520,9 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-gray-500 text-xs">{p.category_name ?? '-'}</td>
+                <td className="px-4 py-3 text-gray-500 text-xs">
+                  {p.category_name ?? categories.find((c) => c.id === p.category_id)?.name ?? '-'}
+                </td>
                 <td className="px-4 py-3 font-semibold text-gray-800">S/ {Number(p.sale_price).toFixed(2)}</td>
                 <td className="px-4 py-3"><span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-mono">{p.igv_affectation_type}</span></td>
                 {pageMode === 'product' && (
@@ -702,6 +721,20 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               <input type="checkbox" checked={form.is_restaurant ?? false} onChange={(e) => setF('is_restaurant', e.target.checked)} className="rounded" />
               <span className="text-sm text-gray-700">Producto de restaurante</span>
             </label>
+            {form.is_restaurant && (
+              <div className="flex items-center gap-2 min-w-[10rem]">
+                <span className="text-xs text-gray-600 shrink-0">Área prep.:</span>
+                <select
+                  className="border border-gray-200 rounded-lg px-2 py-1 text-sm flex-1 min-w-0"
+                  value={form.preparation_area ?? ''}
+                  onChange={(e) => setF('preparation_area', e.target.value)}
+                >
+                  {PREPARATION_AREAS.map((a) => (
+                    <option key={a.value || 'none'} value={a.value}>{a.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         )}
 

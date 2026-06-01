@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { Save, Building2, ImagePlus, X } from 'lucide-react'
 import { companyService, type CompanyConfig } from '@/services/company.service'
 import { UbigeoSelects } from '@/components/UbigeoSelects'
+import { ReceiptWalletSettings } from '@/components/company/ReceiptWalletSettings'
 import { ubigeoToIds } from '@/services/ubigeo.service'
 
 const THEMES = [
@@ -177,6 +178,8 @@ export default function CompanyConfigPage() {
           ))}
         </div>
       </div>
+
+      <ReceiptWalletSettings />
 
       <div className="flex justify-end">
         <button onClick={handleSave} disabled={saving}

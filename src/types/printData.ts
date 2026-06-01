@@ -23,6 +23,15 @@ export interface PrintData {
   seller_name?: string
   payment_condition?: string
   bank_accounts?: PrintBankAccount[]
+  payment_wallet?: PrintPaymentWallet
+}
+
+export interface PrintPaymentWallet {
+  provider: string
+  phone: string
+  qr_url: string
+  show_on_a4: boolean
+  show_on_ticket: boolean
 }
 
 export interface PrintClient {

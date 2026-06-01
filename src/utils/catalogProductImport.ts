@@ -287,23 +287,21 @@ export async function validateCatalogProductExcel(file: File): Promise<ImportVal
     const rowNumber = index + 2
     const codigo = String(row.codigo ?? '').trim()
     if (codigo) {
-      const prev = codesInFile.get(codigo)
-      if (prev != null) {
-        extraErrors.push({
-          row: rowNumber,
-          column: 'codigo',
-          field: 'codigo',
-          message: `Código duplicado en fila ${prev}`,
-          value: codigo,
-        })
-      } else {
-        codesInFile.set(codigo, rowNumber)
-      }
+      codesInFile.set(codigo, rowNumber)
     }
     const stockInicial = Math.max(0, Number(row.stock_inicial ?? 0) || 0)
     const controlStock = Boolean(row.control_stock) || stockInicial > 0
     const esRestaurante = Boolean(row.es_restaurante)
     const tipo = String(row.tipo ?? 'product').trim().toLowerCase() === 'service' ? 'service' : 'product'
+    if (tipo === 'service' && esRestaurante) {
+      extraErrors.push({
+        row: rowNumber,
+        column: 'es_restaurante',
+        field: 'es_restaurante',
+        message: 'Un servicio no puede ser de restaurante; use tipo product',
+        value: 'si',
+      })
+    }
     parsed.push({
       rowNumber,
       nombre: String(row.nombre ?? '').trim(),
@@ -353,11 +351,13 @@ export async function importCatalogProducts(
   onProgress?: (p: ImportProgress) => void
 ): Promise<{
   created: number
+  updated: number
   stockRegistered: number
   failed: { row: number; name: string; error: string }[]
 }> {
   const failed: { row: number; name: string; error: string }[] = []
   let created = 0
+  let updated = 0
   let stockRegistered = 0
 
   for (let offset = 0; offset < rows.length; offset += BULK_CHUNK_SIZE) {
@@ -366,6 +366,7 @@ export async function importCatalogProducts(
     try {
       const res = await productsService.bulkImportCatalog(chunk.map(rowToBulkPayload))
       created += res.created
+      updated += res.updated ?? 0
       stockRegistered += res.stock_registered
       failed.push(...res.failed)
       onProgress?.({ done: offset + chunk.length, total: rows.length, current: chunk[chunk.length - 1]?.nombre })
@@ -381,5 +382,5 @@ export async function importCatalogProducts(
   }
 
   onProgress?.({ done: rows.length, total: rows.length })
-  return { created, stockRegistered, failed }
+  return { created, updated, stockRegistered, failed }
 }
