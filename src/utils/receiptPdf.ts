@@ -3,6 +3,7 @@ import QRCode from 'qrcode'
 import type { PrintData } from '@/types/printData'
 import { getTipoComprobanteLabel, getMedioPagoLabel } from '@/constants/sunat'
 import { ticketColumnLayoutMm } from '@/utils/receiptTicketLayout'
+import { getPrintIssuerAddress } from '@/utils/printIssuer'
 
 const FONT_SIZE = 10
 const FONT_SIZE_SM = 8
@@ -106,9 +107,10 @@ export async function generateReceiptPdf(
       addTicketWrappedCenter(data.company.trade_name, FONT_SIZE)
     }
     addTicketLineCenter(`RUC ${data.company.ruc}`, FONT_SIZE_SM)
-    if (data.company.address) {
+    const issuerAddressTicket = getPrintIssuerAddress(data)
+    if (issuerAddressTicket) {
       doc.setFontSize(FONT_SIZE_SM)
-      const addrLines = doc.splitTextToSize(data.company.address, innerW)
+      const addrLines = doc.splitTextToSize(issuerAddressTicket, innerW)
       for (const line of addrLines) {
         doc.text(line, pageW / 2, y, { align: 'center' })
         y += ticketLineH
@@ -315,9 +317,10 @@ export async function generateReceiptPdf(
   doc.setFontSize(FONT_SIZE)
   doc.text(data.company.trade_name || data.company.business_name, margin + 2, y)
   y += lineH
-  if (data.company.address) {
+  const issuerAddressA4 = getPrintIssuerAddress(data)
+  if (issuerAddressA4) {
     doc.setFontSize(FONT_SIZE_SM)
-    doc.text(`Dirección: ${data.company.address}`, margin + 2, y)
+    doc.text(`Dirección: ${issuerAddressA4}`, margin + 2, y)
     y += lineH
   }
   y = infoBoxY + infoBoxH + 4

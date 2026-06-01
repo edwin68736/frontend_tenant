@@ -1,4 +1,5 @@
-import api, { getApiBaseUrl } from './api'
+import api from './api'
+import { resolvePublicAssetUrl } from '@/config/apiBaseUrl'
 
 export type ProductCatalogType = 'product' | 'service'
 
@@ -225,7 +226,5 @@ export const productsService = {
 
 /** Devuelve la URL absoluta de la imagen del producto (backend guarda rutas relativas). */
 export function getProductImageUrl(url: string | null | undefined): string {
-  if (!url) return ''
-  if (url.startsWith('http://') || url.startsWith('https://')) return url
-  return `${getApiBaseUrl().replace(/\/$/, '')}${url.startsWith('/') ? url : '/' + url}`
+  return resolvePublicAssetUrl(url)
 }

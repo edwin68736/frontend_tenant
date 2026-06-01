@@ -122,6 +122,38 @@ export function getApiPrefixUrl(): string {
   return `${getApiBaseUrl().replace(/\/$/, '')}/api`
 }
 
+/**
+ * Origen para rutas públicas del backend: /uploads, /storage.
+ * En producción tenant (demo.tukifac.com) la SPA no sirve esos paths; el Go los expone
+ * en el host API (api.tukifac.com). Override: VITE_ASSETS_ORIGIN.
+ */
+export function getPublicAssetsBaseUrl(): string {
+  const fromEnv = import.meta.env.VITE_ASSETS_ORIGIN as string | undefined
+  if (fromEnv?.trim()) return normalizeApiOrigin(fromEnv)
+
+  if (typeof window !== 'undefined') {
+    const { hostname } = window.location
+    if (isLocalDevHost(hostname)) {
+      const env = import.meta.env.VITE_API_URL as string | undefined
+      if (env?.trim()) return normalizeApiOrigin(env)
+      return 'http://localhost:3000'
+    }
+    if (isTenantProductionHost(hostname)) {
+      return getCentralApiOrigin()
+    }
+  }
+
+  return getApiBaseUrl()
+}
+
+/** URL absoluta para /uploads/... o /storage/... guardadas como ruta relativa en BD. */
+export function resolvePublicAssetUrl(url: string | null | undefined): string {
+  if (!url) return ''
+  if (url.startsWith('http://') || url.startsWith('https://')) return url
+  const base = getPublicAssetsBaseUrl()
+  return `${base.replace(/\/$/, '')}${url.startsWith('/') ? url : '/' + url}`
+}
+
 export function getTenantSlug(): string {
   if (typeof window === 'undefined') return ''
 

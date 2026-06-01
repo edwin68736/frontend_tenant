@@ -10,6 +10,7 @@ import { cashbankService, type CashSession, type PaymentMethodRecord } from '@/s
 import { companyService, type SunatConfig } from '@/services/company.service'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch } from '@/contexts/BranchContext'
+import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { ReceiptPrintModal } from '@/components/ui/ReceiptPrintModal'
@@ -24,6 +25,7 @@ import {
 } from '@/constants/sunat'
 import { calcItem, getAfectacionGroup, type SunatAfectacionGroup } from '@/utils/taxCalc'
 import { getTodayPeru } from '@/utils/datesPeru'
+import { BranchSeriesEmptyState } from '@/components/pos/BranchSeriesEmptyState'
 
 interface CartItem {
   product: Product
@@ -75,6 +77,8 @@ export default function POSPage() {
 function POSContent() {
   const { hasModule } = useAuth()
   const { activeBranchId } = useBranch()
+  const { checkoutSeries, seriesMetaReady, hasCheckoutSeries, sunat: cachedSunat } =
+    useBranchCheckoutSeries()
   // Caja (null en sesión hasta saber si hay caja abierta o no)
   const [session, setSession] = useState<CashSession | null>(null)
   /** Solo hasta terminar getOpenSession (no espera series/SUNAT/etc.). */
@@ -98,7 +102,6 @@ function POSContent() {
   // Panel de cobro
   const [step, setStep] = useState<'cart' | 'payment'>('cart')
   const [selectedSunatCode, setSelectedSunatCode] = useState('') // Código SUNAT: 00, 03, 01
-  const [series, setSeries] = useState<{ id: number; series: string; doc_type: string; sunat_code?: string }[]>([])
   const [sunatCodesForPOS, setSunatCodesForPOS] = useState<string[]>([]) // Solo códigos con serie en Empresa → Series
   const [selectedSeriesId, setSelectedSeriesId] = useState<number | null>(null)
   const [contactSearch, setContactSearch] = useState('')
@@ -143,22 +146,20 @@ function POSContent() {
       })
       .finally(() => setCashSessionLoading(false))
 
-    Promise.all([
-      companyService.getSunat(),
-      companyService.listSeries({ category: 'venta' }),
-      cashbankService.listPaymentMethods(),
-    ])
-      .then(([sun, ser, methods]) => {
-        setSunat(sun)
-        const ventaSeries = (ser ?? []) as { id: number; series: string; doc_type: string; sunat_code?: string }[]
-        setSeries(ventaSeries)
-        let codes = sunatCodesFromSeries(ventaSeries)
-        if (!hasModule('billing') || (sun && !sun.sunat_enabled)) codes = codes.filter(c => c === '00')
-        setSunatCodesForPOS(codes)
-        setSelectedSunatCode(prev => (codes.includes(prev) ? prev : codes[0] ?? ''))
+    if (!activeBranchId) {
+      setSunatCodesForPOS([])
+      setSelectedSunatCode('')
+      setSelectedSeriesId(null)
+      setPosBootstrapLoading(false)
+      return
+    }
+
+    cashbankService
+      .listPaymentMethods()
+      .then((methods) => {
         if (Array.isArray(methods) && methods.length > 0) setPaymentMethods(methods as PaymentMethodRecord[])
       })
-      .catch(() => toast.error('Error iniciando POS'))
+      .catch(() => {})
       .finally(() => setPosBootstrapLoading(false))
 
     productsService
@@ -174,7 +175,24 @@ function POSContent() {
       .catch(() => {})
 
     companyService.getConfig().then(c => setTenantRuc(c?.ruc ?? '')).catch(() => setTenantRuc(''))
-  }, [hasModule, activeBranchId])
+  }, [activeBranchId])
+
+  useEffect(() => {
+    if (cachedSunat) setSunat(cachedSunat)
+  }, [cachedSunat])
+
+  useEffect(() => {
+    if (!seriesMetaReady) return
+    const sun = cachedSunat
+    let codes = sunatCodesFromSeries(checkoutSeries)
+    if (!hasModule('billing') || (sun && !sun.sunat_enabled)) codes = codes.filter((c) => c === '00')
+    setSunatCodesForPOS(codes)
+    setSelectedSunatCode((prev) => (codes.includes(prev) ? prev : codes[0] ?? ''))
+    const firstForCode = checkoutSeries.find(
+      (s) => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === (codes[0] ?? ''),
+    )
+    setSelectedSeriesId(firstForCode?.id ?? null)
+  }, [checkoutSeries, seriesMetaReady, cachedSunat, hasModule])
 
   useEffect(() => {
     if (!session) return
@@ -238,9 +256,11 @@ function POSContent() {
 
   // Al cambiar código SUNAT, seleccionar primera serie de ese tipo
   useEffect(() => {
-    const match = series.find(s => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === selectedSunatCode)
+    const match = checkoutSeries.find(
+      (s) => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === selectedSunatCode,
+    )
     setSelectedSeriesId(match?.id ?? null)
-  }, [selectedSunatCode, series])
+  }, [selectedSunatCode, checkoutSeries])
 
   // Factura (01) solo admite cliente con RUC: si se cambia a 01 y el cliente es doc. 0, quitar selección
   useEffect(() => {
@@ -350,6 +370,7 @@ function POSContent() {
     setPayments(p => p.map((x, i) => i === idx ? { ...x, [field]: val } : x))
 
   const goToPayment = () => {
+    if (branchSeriesMissing) return
     setPayments([{ method: paymentMethods[0]?.code ?? 'cash', amount: totalCart.toFixed(2) }])
     setStep('payment')
   }
@@ -366,11 +387,12 @@ function POSContent() {
     finally { setOpeningSession(false) }
   }
 
-  const selectedSeries = series.find(s => s.id === selectedSeriesId)
+  const selectedSeries = checkoutSeries.find((s) => s.id === selectedSeriesId)
 
   const handleCheckout = async () => {
+    if (branchSeriesMissing) return
     if (cart.length === 0) { toast.error('Carrito vacío'); return }
-    if (!selectedSeriesId || !selectedSeries) { toast.error('Selecciona una serie'); return }
+    if (!selectedSeriesId || !selectedSeries) return
     if (selectedSunatCode === '01') {
       if (!selectedContact) { toast.error('Factura (01) requiere cliente con RUC'); return }
       if (selectedContact.doc_type !== '6') {
@@ -397,11 +419,17 @@ function POSContent() {
     if (validPayments.length === 0) { toast.error('Ingresa al menos un pago'); return }
     if (totalPaid < totalCart - 0.01) { toast.error('El pago no cubre el total'); return }
 
+    const branchId = activeBranchId || session?.branch_id
+    if (!branchId) {
+      toast.error('Seleccione una sucursal activa')
+      return
+    }
+
     setProcessing(true)
     try {
       const today = getTodayPeru()
       const sale = await salesService.create({
-        branch_id: session?.branch_id ?? 1,
+        branch_id: branchId,
         contact_id: selectedContact?.id ?? null,
         doc_type: selectedSeries.doc_type,
         series_id: selectedSeriesId,
@@ -482,6 +510,9 @@ function POSContent() {
   }
 
   const cartCount = cart.length
+  const branchSeriesMissing = Boolean(activeBranchId) && seriesMetaReady && !hasCheckoutSeries
+
+  const posSeriesLoading = Boolean(session) && Boolean(activeBranchId) && !seriesMetaReady
 
   if (cashSessionLoading) {
     return (
@@ -511,11 +542,19 @@ function POSContent() {
     )
   }
 
-  if (posBootstrapLoading) {
+  if (posBootstrapLoading || posSeriesLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-24 md:min-h-[50vh] gap-3" aria-busy="true" aria-live="polite">
         <div className="w-9 h-9 border-2 border-gray-200 border-t-[rgb(var(--p600))] rounded-full animate-spin" />
         <p className="text-sm text-gray-500">Preparando punto de venta…</p>
+      </div>
+    )
+  }
+
+  if (branchSeriesMissing) {
+    return (
+      <div className="max-w-lg mx-auto py-8 px-4">
+        <BranchSeriesEmptyState />
       </div>
     )
   }
@@ -680,7 +719,8 @@ function POSContent() {
                 )}
                 <div className="flex justify-between font-bold text-gray-800"><span>Total</span><span>S/ {totalCart.toFixed(2)}</span></div>
                 <button onClick={goToPayment}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-bold hover:opacity-90">
+                  disabled={branchSeriesMissing}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-bold hover:opacity-90 disabled:opacity-50">
                   Ir a cobrar <ChevronRight size={15} />
                 </button>
               </div>
@@ -691,6 +731,10 @@ function POSContent() {
         {step === 'payment' && (
           <div className="flex-1 flex flex-col overflow-y-auto">
             <div className="p-3 space-y-3 flex-1 overflow-y-auto">
+              {branchSeriesMissing ? (
+                <BranchSeriesEmptyState compact />
+              ) : (
+              <>
               {/* Tipo de comprobante por código SUNAT (00 N. Venta, 03 Boleta, 01 Factura) */}
               <div><label className="block text-xs font-medium text-gray-600 mb-1">Tipo de comprobante</label>
                 <div className="flex gap-1">
@@ -711,7 +755,7 @@ function POSContent() {
                 <select className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
                   value={selectedSeriesId ?? ''} onChange={e => setSelectedSeriesId(e.target.value ? Number(e.target.value) : null)}>
                   <option value="">Seleccionar serie...</option>
-                  {series.filter(s => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === selectedSunatCode).map(s => (
+                  {checkoutSeries.filter(s => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === selectedSunatCode).map(s => (
                     <option key={s.id} value={s.id}>{s.series}</option>
                   ))}
                 </select>
@@ -784,11 +828,13 @@ function POSContent() {
                 </div>
                 {change > 0.01 && <p className="text-xs text-green-600 font-medium mt-1">Vuelto: S/ {change.toFixed(2)}</p>}
               </div>
+              </>
+              )}
             </div>
 
             <div className="p-3 border-t border-gray-100 space-y-2">
               <div className="flex justify-between font-bold text-gray-800 text-sm"><span>Total a cobrar</span><span>S/ {totalCart.toFixed(2)}</span></div>
-              <button onClick={handleCheckout} disabled={processing}
+              <button onClick={handleCheckout} disabled={processing || branchSeriesMissing}
                 className="w-full flex items-center justify-center gap-2 py-3 bg-green-600 text-white rounded-xl text-sm font-bold hover:bg-green-700 disabled:opacity-50">
                 {processing ? 'Procesando...' : <><Receipt size={15} /> Confirmar venta</>}
               </button>
@@ -960,7 +1006,7 @@ function POSContent() {
                     }
                   >
                     <option value="">Seleccionar serie...</option>
-                    {series
+                    {checkoutSeries
                       .filter(
                         s =>
                           ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) ===

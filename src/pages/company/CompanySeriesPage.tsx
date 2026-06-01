@@ -5,6 +5,7 @@ import { companyService } from '@/services/company.service'
 import { Modal } from '@/components/ui/Modal'
 import SunatRequiredMessage from '@/components/ui/SunatRequiredMessage'
 import { useAuth } from '@/contexts/AuthContext'
+import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
 
 interface Series {
   id: number; branch_id: number; branch_name?: string; doc_type: string
@@ -52,6 +53,7 @@ const empty = () => ({ branch_id: 0, doc_type: 'FACTURA', series: '', current_nu
 
 export default function CompanySeriesPage() {
   const { hasModule } = useAuth()
+  const { invalidateCheckoutSeries } = useBranchCheckoutSeries()
   const [sunatEnabled, setSunatEnabled] = useState<boolean | null>(null)
   const [series, setSeries] = useState<Series[]>([])
   const [branches, setBranches] = useState<{ id: number; name: string }[]>([])
@@ -112,6 +114,7 @@ export default function CompanySeriesPage() {
         })
       }
       toast.success(editing ? 'Serie actualizada' : 'Serie creada')
+      invalidateCheckoutSeries(form.branch_id)
       setShow(false); load()
     } catch (e: any) { toast.error(e.response?.data?.error ?? 'Error') }
     finally { setSaving(false) }
