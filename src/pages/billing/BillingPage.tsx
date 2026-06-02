@@ -9,6 +9,7 @@ import { companyService } from '@/services/company.service'
 import RequireModule from '@/components/ui/RequireModule'
 import SunatRequiredMessage from '@/components/ui/SunatRequiredMessage'
 import { Modal } from '@/components/ui/Modal'
+import { SunatResponseDetail } from '@/components/billing/SunatResponseDetail'
 import { DocumentViewerModal } from '@/components/ui/DocumentViewerModal'
 import { getTodayPeru, formatDisplayDatePeru } from '@/utils/datesPeru'
 import { formatSaleDocumentNumber } from '@/utils/format'
@@ -883,45 +884,13 @@ function BillingContent() {
 
             {detail.invoice ? (
               <>
-                <p className="text-xs font-semibold text-gray-600 uppercase">Respuesta SUNAT</p>
-                {(detail.invoice.sunat_message ?? detail.invoice.sunat_response) && (
-                  <div className="bg-gray-50 rounded-xl p-3 text-xs text-gray-600 font-mono">
-                    {detail.invoice.sunat_message ?? detail.invoice.sunat_response}
-                  </div>
-                )}
-                {detail.invoice.sunat_cdr_code != null && detail.invoice.sunat_cdr_code !== '' && (
-                  <p className="text-xs text-gray-500">
-                    <span className="font-medium">Código SUNAT:</span>{' '}
-                    <span className="font-mono">{detail.invoice.sunat_cdr_code}</span>
-                    {detail.invoice.sunat_cdr_code === '0' && ' (Aceptado)'}
-                  </p>
-                )}
-                {detail.invoice.sunat_cdr_notes && (() => {
-                  try {
-                    const notes = JSON.parse(detail.invoice.sunat_cdr_notes) as string[]
-                    if (Array.isArray(notes) && notes.length > 0) {
-                      return (
-                        <div className="bg-amber-50/80 rounded-xl p-3 text-xs text-amber-800">
-                          <p className="font-medium mb-1">Detalle (notas CDR):</p>
-                          <ul className="list-disc list-inside space-y-0.5">
-                            {notes.map((n, i) => (
-                              <li key={i}>{n}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )
-                    }
-                  } catch {
-                    if (detail.invoice.sunat_cdr_notes) {
-                      return (
-                        <p className="text-xs text-gray-500">
-                          <span className="font-medium">Notas:</span> {detail.invoice.sunat_cdr_notes}
-                        </p>
-                      )
-                    }
-                  }
-                  return null
-                })()}
+                <p className="text-xs font-semibold text-gray-600 uppercase">Envío y respuesta SUNAT</p>
+                <SunatResponseDetail
+                  billingStatus={detail.sale.billing_status}
+                  invoice={detail.invoice}
+                  statusLabel={billingStatusLabel(detail.sale.billing_status)}
+                  statusColorClass={billingStatusColor(detail.sale.billing_status)}
+                />
                 {detail.sale.billing_status === 'error' && (
                   <button onClick={() => { handleResend(detail.sale.id); setDetail(null) }} disabled={resending === detail.sale.id}
                     className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-xl text-sm font-medium hover:bg-amber-700 disabled:opacity-50">

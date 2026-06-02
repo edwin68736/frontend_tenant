@@ -1,4 +1,5 @@
 import type { jsPDF } from 'jspdf'
+import { resolvePublicAssetUrl } from '@/config/apiBaseUrl'
 import type { PrintData } from '@/types/printData'
 
 export function paymentWalletVisible(data: PrintData, format: 'a4' | 'ticket'): boolean {
@@ -45,8 +46,9 @@ export async function renderPaymentWalletBlock(
   drawCenter(`Paga con ${label}`, format === 'a4' ? 9 : 8)
   drawCenter(w.phone, format === 'a4' ? 8 : 7)
 
+  const qrSrc = w.qr_url.startsWith('data:') ? w.qr_url : resolvePublicAssetUrl(w.qr_url)
   try {
-    doc.addImage(w.qr_url, qrImageFormat(w.qr_url), (pageW - qrSize) / 2, y, qrSize, qrSize)
+    doc.addImage(qrSrc, qrImageFormat(w.qr_url), (pageW - qrSize) / 2, y, qrSize, qrSize)
     y += qrSize + (format === 'a4' ? 4 : 3)
   } catch {
     /* ignore */

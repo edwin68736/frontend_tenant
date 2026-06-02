@@ -1,5 +1,13 @@
 import axios from 'axios'
-import { getApiBaseUrl, getTenantSlug } from '@/config/apiBaseUrl'
+import {
+  getApiBaseUrl,
+  getTenantApiOriginForSlug,
+  getTenantSlug,
+  shouldUseDevApiProxy,
+} from '@/config/apiBaseUrl'
+import { getResolvedTenantApiUrl, getTenantBinding } from '@/lib/tenantBinding/store'
+import { normalizeBindingApiUrl } from '@/lib/tenantBinding/types'
+import { isNativeShell } from '@/lib/platform/detect'
 
 const api = axios.create({
   baseURL: 'http://localhost:3000',
@@ -8,7 +16,26 @@ const api = axios.create({
 })
 
 api.interceptors.request.use((config) => {
-  config.baseURL = getApiBaseUrl()
+  if (shouldUseDevApiProxy()) {
+    config.baseURL = ''
+    let tenantOrigin = ''
+    if (isNativeShell()) {
+      tenantOrigin = getResolvedTenantApiUrl()
+    } else {
+      const slug = getTenantSlug()
+      if (slug) tenantOrigin = getTenantApiOriginForSlug(slug)
+    }
+    if (tenantOrigin) {
+      config.headers['X-Tenant-Api-Origin'] = normalizeBindingApiUrl(tenantOrigin)
+    }
+  } else {
+    config.baseURL = getApiBaseUrl()
+  }
+
+  if (isNativeShell() && !getTenantBinding()?.apiUrl && !config.url?.includes('/api/public/')) {
+    console.warn('[Tukifac] Sin URL de tenant: vincule el RUC primero.')
+  }
+
   const token = localStorage.getItem('token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
@@ -20,18 +47,35 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+function redirectToLogin(message?: string) {
+  localStorage.removeItem('token')
+  localStorage.removeItem('user')
+  localStorage.removeItem('active_branch')
+  localStorage.removeItem('can_switch_branch')
+  import('sonner').then(({ toast }) => {
+    if (message) toast.error(message)
+  })
+  if (isNativeShell()) {
+    window.location.hash = '#/login'
+  } else {
+    window.location.href = '/login'
+  }
+}
+
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    const code = error.response?.data?.code as string | undefined
+    if (error.response?.status === 403 && code === 'TENANT_ISOLATION_VIOLATION') {
+      redirectToLogin('Sesión inválida para esta empresa. Vuelva a vincular el RUC e iniciar sesión.')
+      return Promise.reject(error)
+    }
+    if (error.response?.status === 401 && code === 'TOKEN_TENANT_INVALID') {
+      redirectToLogin('Su sesión expiró o es obsoleta. Inicie sesión nuevamente.')
+      return Promise.reject(error)
+    }
     if (error.response?.status === 409 && error.response?.data?.code === 'SESSION_UPDATED') {
-      localStorage.removeItem('token')
-      localStorage.removeItem('user')
-      localStorage.removeItem('active_branch')
-      localStorage.removeItem('can_switch_branch')
-      import('sonner').then(({ toast }) => {
-        toast.error('Tu acceso fue actualizado. Vuelve a iniciar sesión.')
-      })
-      window.location.href = '/login'
+      redirectToLogin('Tu acceso fue actualizado. Vuelve a iniciar sesión.')
       return Promise.reject(error)
     }
     if (error.response?.status === 401) {
@@ -39,13 +83,16 @@ api.interceptors.response.use(
       if (url.includes('/api/login')) {
         return Promise.reject(error)
       }
-      localStorage.removeItem('token')
-      localStorage.removeItem('user')
-      window.location.href = '/login'
+      redirectToLogin('Sesión expirada. Inicie sesión nuevamente.')
     }
     return Promise.reject(error)
   },
 )
 
-export { getApiBaseUrl, getApiPrefixUrl, getTenantSlug } from '@/config/apiBaseUrl'
+export {
+  getApiBaseUrl,
+  getApiPrefixUrl,
+  getCentralApiOrigin,
+  getTenantSlug,
+} from '@/config/apiBaseUrl'
 export default api

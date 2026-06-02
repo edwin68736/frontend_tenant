@@ -4,3 +4,9 @@ dist/
 .env.local
 .env.*.local
 !.env.example
+src-tauri/target/
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+assets/

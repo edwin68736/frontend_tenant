@@ -3,14 +3,13 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
+import { useTenantBinding } from '@/contexts/TenantBindingContext'
 import { toast } from 'sonner'
 import { Eye, EyeOff, Loader2, Building2 } from 'lucide-react'
 import { useState, useEffect } from 'react'
+import { isNativeShell } from '@/lib/platform/detect'
+import { getTenantSlug } from '@/config/apiBaseUrl'
 
-const DEV_MODE = !import.meta.env.VITE_TENANT_SLUG && window.location.hostname === 'localhost'
-
-// En producción el slug viene del subdominio (demo.app.tukifac.cloud → demo).
-// Solo en localhost mostramos el campo; en producción no se muestra y el login usa el slug de la URL.
 function isSlugFromSubdomain(): boolean {
   if (typeof window === 'undefined') return false
   const hostname = window.location.hostname
@@ -22,11 +21,11 @@ function isSlugFromSubdomain(): boolean {
   const parts = hostname.split('.')
   return parts.length > 2 && parts[0] !== 'www' && parts[0] !== 'api'
 }
-// Ocultar campo slug solo cuando el slug se toma del subdominio (producción).
-const showSlugField = !isSlugFromSubdomain()
+
+/** Web: slug por subdominio o localhost. Nativo: vinculación RUC (sin campo slug). */
+const showSlugField = !isNativeShell() && !isSlugFromSubdomain()
 
 const schema = z.object({
-  // Cuando el slug viene del subdominio (producción) el campo está oculto y puede ser ''.
   slug: z.union([z.string().min(1, 'Ingresa el identificador de tu empresa'), z.literal('')]).optional(),
   email: z.string().email('Email inválido'),
   password: z.string().min(4, 'Contraseña muy corta'),
@@ -35,12 +34,12 @@ type FormData = z.infer<typeof schema>
 
 export default function LoginPage() {
   const { login, isAuthenticated } = useAuth()
+  const { stored: boundTenant } = useTenantBinding()
   const navigate = useNavigate()
   const [showPass, setShowPass] = useState(false)
 
-  // Redirigir si ya está autenticado
   useEffect(() => {
-    if (isAuthenticated) navigate('/dashboard', { replace: true })
+    if (isAuthenticated) navigate('/home', { replace: true })
   }, [isAuthenticated, navigate])
 
   const {
@@ -55,20 +54,21 @@ export default function LoginPage() {
   })
 
   const onSubmit = async (data: FormData) => {
-    // Slug: subdominio (*.localhost / producción) o campo manual en localhost
-    let slug = data.slug?.trim() ?? ''
-    if (!slug && typeof window !== 'undefined') {
-      const host = window.location.hostname
-      if (host.endsWith('.localhost')) {
-        slug = host.replace(/\.localhost$/i, '')
+    if (!isNativeShell()) {
+      let slug = data.slug?.trim() ?? ''
+      if (!slug && typeof window !== 'undefined') {
+        const host = window.location.hostname
+        if (host.endsWith('.localhost')) {
+          slug = host.replace(/\.localhost$/i, '')
+        }
       }
+      if (!slug) slug = import.meta.env.VITE_TENANT_SLUG ?? ''
+      if (!slug) slug = getTenantSlug()
+      if (slug) localStorage.setItem('tenantSlug', slug)
     }
-    if (!slug) slug = import.meta.env.VITE_TENANT_SLUG ?? ''
-    if (slug) localStorage.setItem('tenantSlug', slug)
 
     try {
       await login({ email: data.email, password: data.password })
-      // El useEffect de isAuthenticated maneja la navegación
     } catch (err: unknown) {
       const apiErr = err as { response?: { data?: { error?: string } } }
       const msg = apiErr?.response?.data?.error ?? 'Error al iniciar sesión'
@@ -82,96 +82,86 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 px-4">
+    <div className="flex min-h-screen min-h-screen-safe items-center justify-center bg-gray-100 px-4 pt-safe pb-safe">
       <div className="w-full max-w-sm">
-        {/* Logo */}
-        <div className="text-center mb-8">
-          <img
-            src="/logo.png"
-            alt="Tukifac"
-            className="w-20 h-auto mx-auto mb-3"
-          />
+        <div className="mb-8 text-center">
+          <img src="/logo.png" alt="Tukifac" className="mx-auto mb-3 h-auto w-20" />
           <h1 className="text-2xl font-bold text-gray-800">Tukifac</h1>
-          <p className="text-gray-500 text-sm mt-1">Inicia sesión en tu empresa</p>
+          <p className="mt-1 text-sm text-gray-500">Inicia sesión en tu empresa</p>
+          {isNativeShell() && boundTenant?.name && (
+            <p className="mt-2 text-xs font-medium text-green-800">
+              {boundTenant.name}
+              {boundTenant.ruc ? ` · RUC ${boundTenant.ruc}` : ''}
+            </p>
+          )}
         </div>
 
-        {/* Formulario */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-7">
+        <div className="rounded-2xl border border-gray-100 bg-white p-7 shadow-sm">
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
-
-            {/* Slug del tenant — solo si no está en .env */}
             {showSlugField && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">
                   Identificador de empresa
                 </label>
                 <div className="relative">
-                  <Building2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <Building2
+                    size={15}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                  />
                   <input
                     {...register('slug')}
                     type="text"
                     autoComplete="off"
                     placeholder="mi-empresa"
-                    className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:border-transparent transition-all font-mono"
+                    className="w-full rounded-xl border border-gray-200 py-2.5 pl-9 pr-3.5 font-mono text-sm transition-all focus:border-transparent focus:outline-none focus:ring-2"
                   />
                 </div>
-                {errors.slug && (
-                  <p className="text-xs text-red-500 mt-1">{errors.slug.message}</p>
-                )}
-                <p className="text-xs text-gray-400 mt-1">
-                  El slug corto que identifica tu empresa en el sistema
+                {errors.slug && <p className="mt-1 text-xs text-red-500">{errors.slug.message}</p>}
+                <p className="mt-1 text-xs text-gray-400">
+                  Solo en desarrollo local; en producción web usa el subdominio de tu empresa.
                 </p>
               </div>
             )}
 
-            {/* Email */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Correo electrónico
-              </label>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">Correo electrónico</label>
               <input
                 {...register('email')}
                 type="email"
                 autoComplete="email"
                 placeholder="usuario@empresa.com"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:border-transparent transition-all"
+                className="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-sm transition-all focus:border-transparent focus:outline-none focus:ring-2"
               />
-              {errors.email && (
-                <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>
-              )}
+              {errors.email && <p className="mt-1 text-xs text-red-500">{errors.email.message}</p>}
             </div>
 
-            {/* Password */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                Contraseña
-              </label>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">Contraseña</label>
               <div className="relative">
                 <input
                   {...register('password')}
                   type={showPass ? 'text' : 'password'}
                   autoComplete="current-password"
                   placeholder="••••••••"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:border-transparent transition-all pr-10"
+                  className="w-full rounded-xl border border-gray-200 py-2.5 pl-3.5 pr-10 text-sm transition-all focus:border-transparent focus:outline-none focus:ring-2"
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPass(v => !v)}
+                  onClick={() => setShowPass((v) => !v)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
               {errors.password && (
-                <p className="text-xs text-red-500 mt-1">{errors.password.message}</p>
+                <p className="mt-1 text-xs text-red-500">{errors.password.message}</p>
               )}
             </div>
 
-            {/* Submit */}
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity disabled:opacity-60 flex items-center justify-center gap-2 mt-2"
+              className="mt-2 flex w-full touch-target items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold text-white transition-opacity disabled:opacity-60"
               style={{ background: 'rgb(var(--p600, 37 99 235))' }}
             >
               {isSubmitting && <Loader2 size={16} className="animate-spin" />}
@@ -180,7 +170,7 @@ export default function LoginPage() {
           </form>
         </div>
 
-        <p className="text-center text-xs text-gray-400 mt-5">
+        <p className="mt-5 text-center text-xs text-gray-400">
           Tukifac SaaS © {new Date().getFullYear()}
         </p>
       </div>

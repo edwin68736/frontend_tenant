@@ -1,6 +1,5 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import App from './App'
 import { AuthProvider } from './contexts/AuthContext'
@@ -8,23 +7,27 @@ import { BranchProvider } from './contexts/BranchContext'
 import { BranchCheckoutSeriesProvider } from './contexts/BranchCheckoutSeriesContext'
 import { FeatureProvider } from './contexts/FeatureContext'
 import { ThemeProvider } from './contexts/ThemeContext'
+import { NativeShellProvider } from '@/providers/NativeShellProvider'
+import { TenantBindingProvider } from '@/contexts/TenantBindingContext'
 import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
+    <NativeShellProvider>
+      <TenantBindingProvider>
       <AuthProvider>
         <FeatureProvider>
-        <BranchProvider>
-          <BranchCheckoutSeriesProvider>
-          <ThemeProvider>
-            <App />
-            <Toaster position="top-right" richColors closeButton />
-          </ThemeProvider>
-          </BranchCheckoutSeriesProvider>
-        </BranchProvider>
+          <BranchProvider>
+            <BranchCheckoutSeriesProvider>
+              <ThemeProvider>
+                <App />
+                <Toaster position="top-right" richColors closeButton />
+              </ThemeProvider>
+            </BranchCheckoutSeriesProvider>
+          </BranchProvider>
         </FeatureProvider>
       </AuthProvider>
-    </BrowserRouter>
+      </TenantBindingProvider>
+    </NativeShellProvider>
   </React.StrictMode>,
 )

@@ -71,6 +71,17 @@ export const companyService = {
     wallet_show_on_a4: boolean
     wallet_show_on_ticket: boolean
   }) => api.put('/api/company/receipt-wallet', data).then((r) => r.data),
+
+  /** Sube QR a disco del tenant (VPS: volumen /app/uploads). Devuelve URL /uploads/... */
+  uploadReceiptWalletQr: (file: File) => {
+    const fd = new FormData()
+    fd.append('image', file)
+    return api
+      .post<{ success: boolean; wallet_qr_url: string }>('/api/company/receipt-wallet/qr', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then((r) => r.data)
+  },
   getSunat: () => api.get<SunatConfig>('/api/company/sunat').then((r) => r.data),
   getInvoicing: () => api.get<InvoicingSettings>('/api/company/invoicing').then((r) => r.data),
   updateSunat: (data: Pick<SunatConfig, 'tax_rate' | 'igv_regime' | 'tax_benefit_zone'>) =>

@@ -537,10 +537,10 @@ export default function SubscriptionPage() {
               {(cfg.yape_qr_url || cfg.plin_qr_url) && (
                 <div className="flex gap-3 flex-wrap justify-center">
                   {cfg.yape_qr_url && (
-                    <img src={assetUrl(cfg.yape_qr_url)} alt="QR Yape" className="h-28 rounded-lg border" />
+                    <PaymentQrImage label="Yape" path={cfg.yape_qr_url} />
                   )}
                   {cfg.plin_qr_url && (
-                    <img src={assetUrl(cfg.plin_qr_url)} alt="QR Plin" className="h-28 rounded-lg border" />
+                    <PaymentQrImage label="Plin" path={cfg.plin_qr_url} />
                   )}
                 </div>
               )}
@@ -578,5 +578,30 @@ export default function SubscriptionPage() {
         </aside>
       </div>
     </div>
+  )
+}
+
+function PaymentQrImage({ label, path }: { label: string; path: string }) {
+  const [failed, setFailed] = useState(false)
+  const src = assetUrl(path)
+  if (failed) {
+    return (
+      <div className="flex h-28 w-28 flex-col items-center justify-center rounded-lg border border-amber-200 bg-amber-50 px-2 text-center text-[10px] text-amber-800">
+        <span className="font-semibold">{label}</span>
+        <span className="mt-1">No se pudo cargar el QR</span>
+        <span className="mt-0.5 break-all text-amber-700/80">{src}</span>
+      </div>
+    )
+  }
+  return (
+    <img
+      src={src}
+      alt={`QR ${label}`}
+      className="h-28 rounded-lg border"
+      onError={() => {
+        setFailed(true)
+        toast.error(`No se pudo cargar el QR de ${label}. Verifique que el API exponga /storage (Nginx → backend).`)
+      }}
+    />
   )
 }

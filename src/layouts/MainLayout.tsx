@@ -20,7 +20,7 @@ export default function MainLayout() {
 
   return (
     <SubscriptionStatusProvider>
-      <div className="relative flex h-[100dvh] w-full flex-col overflow-hidden bg-green-800">
+      <div className="relative flex h-[100dvh] min-h-screen-safe w-full max-w-[100vw] flex-col overflow-hidden bg-green-800 pt-safe">
         {/* Barra horizontal detrás del layout */}
         <div className="pointer-events-none absolute inset-x-0 top-0 z-0 h-11 shrink-0 sm:h-14" aria-hidden>
           <img
@@ -66,7 +66,7 @@ export default function MainLayout() {
             )}
 
             {/* Contenido: scroll interno */}
-            <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden px-4 pb-2 pt-2 md:gap-4 md:px-3 md:pb-3 md:pt-3 pl-4 lg:pl-2">
+            <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden px-2 pb-safe pt-2 sm:px-4 md:gap-4 md:px-3 md:pb-3 md:pt-3 pl-2 lg:pl-2">
               <div className="relative z-10 shrink-0 overflow-visible rounded-2xl bg-white shadow-md">
                 <Header
                   onMenuClick={() => setSidebarOpen(true)}
@@ -75,7 +75,7 @@ export default function MainLayout() {
                 />
               </div>
 
-              <main className="page-enter min-h-0 flex-1 overflow-auto rounded-2xl bg-white p-2 shadow-md md:p-4">
+              <main className="page-enter min-h-0 flex-1 overflow-x-hidden overflow-y-auto rounded-2xl bg-white p-2 shadow-md sm:p-3 md:p-4">
                 <Outlet />
               </main>
             </div>

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Tukifac</string>
+    <string name="title_activity_main">Tukifac</string>
+    <string name="package_name">com.tukifac.tenant</string>
+    <string name="custom_url_scheme">com.tukifac.tenant</string>
+</resources>

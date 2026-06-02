@@ -60,11 +60,19 @@ export async function generateReceiptPdf(
     // === FORMATO TICKET (80mm) ===
     const innerW = pageW - 2 * margin
     const ticketLineH = 4.2
-    /** Courier: columnas en mm para usar todo el ancho útil del rollo */
-    const ticketMonoSize = 7
+    /** Mismo tono legible que cabecera (Helvetica 8pt); Courier pequeño se ve opaco al imprimir. */
+    const ticketDetailFontPt = FONT_SIZE_SM
     const lay = ticketColumnLayoutMm({ pageW, margin })
 
+    const setTicketDetailFont = (bold = false) => {
+      doc.setTextColor(0, 0, 0)
+      doc.setFont('helvetica', bold ? 'bold' : 'normal')
+      doc.setFontSize(ticketDetailFontPt)
+    }
+
     const addTicketWrapped = (text: string, size = FONT_SIZE_SM) => {
+      doc.setTextColor(0, 0, 0)
+      doc.setFont('helvetica', 'normal')
       doc.setFontSize(size)
       const lines = doc.splitTextToSize(text, innerW)
       for (const line of lines) {
@@ -74,6 +82,8 @@ export async function generateReceiptPdf(
     }
 
     const addTicketLineCenter = (text: string, size?: number) => {
+      doc.setTextColor(0, 0, 0)
+      doc.setFont('helvetica', 'normal')
       doc.setFontSize(size ?? FONT_SIZE)
       doc.text(text, pageW / 2, y, { align: 'center' })
       y += ticketLineH + (size && size >= FONT_SIZE_TITLE ? 0.8 : 0)
@@ -81,6 +91,8 @@ export async function generateReceiptPdf(
 
     /** Texto centrado con salto de línea (razón social larga, etc.) */
     const addTicketWrappedCenter = (text: string, size: number) => {
+      doc.setTextColor(0, 0, 0)
+      doc.setFont('helvetica', 'normal')
       doc.setFontSize(size)
       const lines = doc.splitTextToSize(text, innerW)
       for (const line of lines) {
@@ -149,21 +161,19 @@ export async function generateReceiptPdf(
     addTicketWrapped(`Tipo Moneda: ${data.currency === 'USD' ? 'DÓLARES' : 'SOLES'}`, FONT_SIZE_SM)
     addSpace(2)
 
-    // Detalle POS: Courier + columnas en mm (ancho real del rollo; P.UNIT/TOTAL al borde derecho)
-    doc.setFont('courier', 'normal')
-    doc.setFontSize(ticketMonoSize)
+    // Detalle: Helvetica 8pt + negro puro (misma legibilidad que cabecera al imprimir)
+    doc.setTextColor(0, 0, 0)
+    doc.setFont('helvetica', 'normal')
 
     const emitTicketDashRow = () => {
-      doc.setFont('courier', 'normal')
-      doc.setFontSize(ticketMonoSize)
+      setTicketDetailFont(false)
       const dash = doc.splitTextToSize('-'.repeat(200), lay.innerW)[0] ?? '-'
       doc.text(dash, margin, y)
       y += ticketLineH
     }
 
     const emitTicketHeaderRow = () => {
-      doc.setFont('courier', 'normal')
-      doc.setFontSize(ticketMonoSize)
+      setTicketDetailFont(true)
       doc.text('CANT', lay.xQty, y, { maxWidth: lay.wQty })
       doc.text('UNID', lay.xUnit, y, { maxWidth: lay.wUnit })
       doc.text('DESC.', lay.xDesc, y, { maxWidth: lay.wDescFirst })
@@ -173,8 +183,7 @@ export async function generateReceiptPdf(
     }
 
     const emitTicketAmountRow = (label: string, amount: string, opts?: { bold?: boolean }) => {
-      doc.setFont('courier', opts?.bold ? 'bold' : 'normal')
-      doc.setFontSize(ticketMonoSize)
+      setTicketDetailFont(Boolean(opts?.bold))
       const labelMaxW = Math.max(10, lay.xEndPUnit - margin - lay.gap - 1)
       const labelLines = doc.splitTextToSize(label, labelMaxW)
       for (let i = 0; i < labelLines.length; i++) {
@@ -196,8 +205,7 @@ export async function generateReceiptPdf(
       const descLines = doc.splitTextToSize(desc, lay.wDescFirst)
       const firstDesc = descLines[0] ?? '—'
 
-      doc.setFont('courier', 'normal')
-      doc.setFontSize(ticketMonoSize)
+      setTicketDetailFont(false)
       doc.text(String(it.quantity), lay.xQty, y, { maxWidth: lay.wQty })
       doc.text((it.unit || '').slice(0, 10), lay.xUnit, y, { maxWidth: lay.wUnit })
       doc.text(firstDesc, lay.xDesc, y, { maxWidth: lay.wDescFirst })
@@ -206,8 +214,7 @@ export async function generateReceiptPdf(
       y += ticketLineH
 
       for (let i = 1; i < descLines.length; i++) {
-        doc.setFont('courier', 'normal')
-        doc.setFontSize(ticketMonoSize)
+        setTicketDetailFont(false)
         doc.text(descLines[i], lay.xDesc, y, { maxWidth: lay.wDescCont })
         y += ticketLineH
       }
@@ -231,6 +238,7 @@ export async function generateReceiptPdf(
     }
     emitTicketAmountRow('IGV:', formatMoney(data.tax_amount, data.currency))
     emitTicketAmountRow('TOTAL A PAGAR:', formatMoney(data.total, data.currency), { bold: true })
+    doc.setTextColor(0, 0, 0)
     doc.setFont('helvetica', 'normal')
     addSpace(2)
 

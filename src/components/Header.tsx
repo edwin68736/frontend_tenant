@@ -86,7 +86,7 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
       {/* Toggle sidebar (móvil) */}
       <button
         onClick={onMenuClick}
-        className="lg:hidden p-2 rounded-xl hover:bg-primary-50 text-gray-500 hover:text-primary-700 transition-colors"
+        className="touch-target lg:hidden rounded-xl p-2 text-gray-500 transition-colors hover:bg-primary-50 hover:text-primary-700"
       >
         <Menu size={20} />
       </button>

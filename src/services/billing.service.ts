@@ -53,6 +53,7 @@ export interface InvoiceInfo {
   sunat_cdr_code?: string
   /** Notas del CDR (JSON array de strings) para mostrar detalle de rechazo */
   sunat_cdr_notes?: string
+  pipeline_status?: string
   /** Hash de la firma del XML (Lycet); para generar QR en el PDF */
   sunat_hash?: string
   created_at?: string

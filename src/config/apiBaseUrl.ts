@@ -1,9 +1,14 @@
 /**
  * Resolución única de URL base del backend Go.
  *
- * Convención axios: base = origen sin /api; rutas incluyen /api/...
- * Ej. tenant prod → https://demo.tukifac.com + /api/session/context
+ * Web: subdominio del tenant (demo.tukifac.com) — sin vinculación RUC.
+ * Windows / Android: vinculación RUC → apiUrl persistida (como Tukichef).
  */
+
+import { isNativeShell } from '@/lib/platform/detect'
+import { getResolvedTenantApiUrl, getTenantBinding } from '@/lib/tenantBinding/store'
+import { isDevelopmentMode } from '@/lib/runtime/environment'
+import { normalizeBindingApiUrl } from '@/lib/tenantBinding/types'
 
 export const RESERVED_SUBDOMAINS = ['api', 'app', 'www', 'admin', 'central'] as const
 
@@ -41,7 +46,6 @@ function hostnameWithoutPort(hostname: string): string {
   return host.slice(0, idx)
 }
 
-/** Alineado con backend pkg/utils ExtractSubdomain. */
 export function extractSubdomainFromHost(hostname: string, rootDomain: string): string {
   const host = hostnameWithoutPort(hostname)
   const root = rootDomain.toLowerCase().replace(/^\./, '')
@@ -65,7 +69,6 @@ function isReservedSubdomain(slug: string): slug is ReservedSubdomain {
   return (RESERVED_SUBDOMAINS as readonly string[]).includes(slug.toLowerCase())
 }
 
-/** Host de producción con subdominio tenant (demo.tukifac.com, no api/app). */
 export function isTenantProductionHost(hostname: string): boolean {
   if (isLocalDevHost(hostname)) return false
   const slug = extractSubdomainFromHost(hostname, getRootDomain())
@@ -73,60 +76,73 @@ export function isTenantProductionHost(hostname: string): boolean {
   return !isReservedSubdomain(slug)
 }
 
-/** API central (superadmin / hosts reservados). */
 export function getCentralApiOrigin(): string {
   const fromEnv = import.meta.env.VITE_CENTRAL_API_URL as string | undefined
   if (fromEnv?.trim()) return normalizeApiOrigin(fromEnv)
   return `https://api.${getRootDomain()}`
 }
 
-/**
- * Origen del backend (scheme + host + port), sin /api al final.
- * Las peticiones axios usan paths `/api/...`.
- */
+/** Base URL para peticiones públicas (tenant-by-ruc) en apps nativas. */
+export function getCentralApiRequestBaseUrl(): string {
+  if (shouldUseDevApiProxy()) return ''
+  return getCentralApiOrigin()
+}
+
+export function getTenantApiOriginForSlug(slug: string): string {
+  const s = slug.trim().toLowerCase()
+  if (!s) return ''
+  if (import.meta.env.DEV) {
+    const env = import.meta.env.VITE_API_URL as string | undefined
+    if (env?.trim()) return normalizeApiOrigin(env)
+    return 'http://localhost:3000'
+  }
+  return `https://${s}.${getRootDomain()}`
+}
+
+export function shouldUseDevApiProxy(): boolean {
+  return import.meta.env.DEV
+}
+
 export function getApiBaseUrl(): string {
   if (typeof window === 'undefined') {
     const env = import.meta.env.VITE_API_URL as string | undefined
     return env?.trim() ? normalizeApiOrigin(env) : 'http://localhost:3000'
   }
 
+  if (isNativeShell()) {
+    if (shouldUseDevApiProxy()) return ''
+    const url = getResolvedTenantApiUrl()
+    if (url) return normalizeApiOrigin(url)
+    return ''
+  }
+
   const { hostname, origin } = window.location
 
-  // Producción tenant: same-origin (Host = {slug}.tukifac.com)
   if (isTenantProductionHost(hostname)) {
     return normalizeApiOrigin(origin)
   }
 
-  // Desarrollo local (localhost, 127.0.0.1, demo.localhost)
   if (isLocalDevHost(hostname)) {
     const env = import.meta.env.VITE_API_URL as string | undefined
     if (env?.trim()) return normalizeApiOrigin(env)
     return 'http://localhost:3000'
   }
 
-  // app.tukifac.com, api.tukifac.com u otro host reservado
   const slug = extractSubdomainFromHost(hostname, getRootDomain())
   if (slug && isReservedSubdomain(slug)) {
     return getCentralApiOrigin()
   }
 
-  // Override explícito (tests, despliegues especiales) — no domina en tenant prod
   const env = import.meta.env.VITE_API_URL as string | undefined
   if (env?.trim()) return normalizeApiOrigin(env)
 
   return getCentralApiOrigin()
 }
 
-/** Prefijo /api para SSE, fetch manual o assets bajo /api. */
 export function getApiPrefixUrl(): string {
   return `${getApiBaseUrl().replace(/\/$/, '')}/api`
 }
 
-/**
- * Origen para rutas públicas del backend: /uploads, /storage.
- * En producción tenant (demo.tukifac.com) la SPA no sirve esos paths; el Go los expone
- * en el host API (api.tukifac.com). Override: VITE_ASSETS_ORIGIN.
- */
 export function getPublicAssetsBaseUrl(): string {
   const fromEnv = import.meta.env.VITE_ASSETS_ORIGIN as string | undefined
   if (fromEnv?.trim()) return normalizeApiOrigin(fromEnv)
@@ -143,10 +159,15 @@ export function getPublicAssetsBaseUrl(): string {
     }
   }
 
+  if (isNativeShell()) {
+    const url = getResolvedTenantApiUrl()
+    if (url) return normalizeApiOrigin(url)
+    return getCentralApiOrigin()
+  }
+
   return getApiBaseUrl()
 }
 
-/** URL absoluta para /uploads/... o /storage/... guardadas como ruta relativa en BD. */
 export function resolvePublicAssetUrl(url: string | null | undefined): string {
   if (!url) return ''
   if (url.startsWith('http://') || url.startsWith('https://')) return url
@@ -154,7 +175,12 @@ export function resolvePublicAssetUrl(url: string | null | undefined): string {
   return `${base.replace(/\/$/, '')}${url.startsWith('/') ? url : '/' + url}`
 }
 
+/** Slug del tenant: binding en nativo; subdominio o env en web. */
 export function getTenantSlug(): string {
+  if (isNativeShell()) {
+    return getTenantBinding()?.slug?.trim() ?? ''
+  }
+
   if (typeof window === 'undefined') return ''
 
   const slug = extractSubdomainFromHost(window.location.hostname, getRootDomain())
@@ -164,4 +190,21 @@ export function getTenantSlug(): string {
   if (fromEnv?.trim()) return fromEnv.trim()
 
   return localStorage.getItem('tenantSlug') ?? ''
+}
+
+/** URL del tenant para UI / depuración. */
+export function getDisplayedTenantApiUrl(): string {
+  if (isNativeShell()) {
+    const url = getResolvedTenantApiUrl()
+    if (url) return normalizeApiOrigin(url)
+    if (isDevelopmentMode()) {
+      const central = getCentralApiOrigin()
+      return central ? `${central} (proxy dev)` : 'Proxy local (Vite)'
+    }
+    return '—'
+  }
+  const base = getApiBaseUrl()
+  if (base) return base
+  if (shouldUseDevApiProxy()) return 'Proxy local (Vite)'
+  return '—'
 }
