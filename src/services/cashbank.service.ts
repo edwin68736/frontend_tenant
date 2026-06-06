@@ -199,11 +199,14 @@ export const cashbankService = {
   listMovementsReport: async (params?: MovementsReportParams): Promise<MovementsReportResult> => {
     const r = await api.get('/api/cashbank/reports/movements', { params: params ?? {} })
     const summaryRaw = r.data.summary ?? {}
+    const cashData = r.data.cash?.data ?? []
+    const electronicData = r.data.electronic?.data ?? []
+    const merged = r.data.data ?? [...cashData, ...electronicData]
     return {
-      data: r.data.data ?? [],
-      total: Number(r.data.total ?? 0),
+      data: merged,
+      total: Number(r.data.total ?? merged.length),
       summary: {
-        total_rows: Number(summaryRaw.total_rows ?? 0),
+        total_rows: Number(summaryRaw.total_rows ?? merged.length),
         sum_income: Number(summaryRaw.sum_income ?? 0),
         sum_expense: Number(summaryRaw.sum_expense ?? 0),
         net_movement: Number(summaryRaw.net_movement ?? 0),
