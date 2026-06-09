@@ -32,6 +32,13 @@ const LABEL = 'block text-xs font-medium text-stone-600 mb-1'
 const SELECT_TRIGGER =
   'w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2 min-h-[44px]'
 
+/** Orden fijo en modal POS: nota de venta → boleta → factura. */
+const POS_DOC_TYPE_BTN_ORDER: Record<string, number> = {
+  notadeventa: 0,
+  boleta: 1,
+  factura: 2,
+}
+
 export function CheckoutCartBillingFields({
   series,
   seriesId,
@@ -73,7 +80,10 @@ export function CheckoutCartBillingFields({
         label: docTypeShortLabel(s.doc_type, s.sunat_code),
       })
     }
-    return groups
+    return groups.sort(
+      (a, b) =>
+        (POS_DOC_TYPE_BTN_ORDER[a.key] ?? 99) - (POS_DOC_TYPE_BTN_ORDER[b.key] ?? 99),
+    )
   }, [checkoutSeries])
 
   const selectedDocKey = normalizeDocTypeKey(docType)

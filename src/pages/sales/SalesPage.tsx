@@ -320,7 +320,7 @@ function SalesContent() {
           </p>
         </div>
         <Link
-          to="/sales/pos"
+          to="/sales/nota-venta"
           className="flex items-center gap-2 px-4 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90"
         >
           <Plus size={16} /> Nueva venta

@@ -77,7 +77,7 @@ export const billingService = {
     api.post(`/api/billing/resend/${saleId}`, undefined, { timeout: MANUAL_BILLING_TIMEOUT_MS }).then(r => r.data),
 
   /** Anular la venta generando y enviando una nota de crédito a SUNAT; luego se anula la venta original. */
-  voidWithCreditNote: (saleId: number, reason = 'Anulación de la operación'): Promise<{ success: boolean; message?: string; nc_sale?: unknown; invoice?: unknown }> =>
+  voidWithCreditNote: (saleId: number, reason: string): Promise<{ success: boolean; message?: string; nc_sale?: unknown; invoice?: unknown }> =>
     api.post(`/api/billing/void-with-credit-note/${saleId}`, { reason }).then(r => r.data),
 
   getInvoice: (saleId: number): Promise<InvoiceInfo> =>

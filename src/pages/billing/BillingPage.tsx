@@ -45,6 +45,14 @@ function normalizeSaleRow(s: Sale): Sale {
   return { ...s, billing_status: normalizeBillingStatus(s.billing_status) }
 }
 
+function isSaleCancelled(s: Pick<Sale, 'status'>): boolean {
+  return String(s.status ?? '').toLowerCase() === 'cancelled'
+}
+
+function canVoidWithCreditNote(s: Sale): boolean {
+  return normalizeBillingStatus(s.billing_status) === 'accepted' && !isSaleCancelled(s)
+}
+
 const getCurrentMonthRange = () => {
   const today = getTodayPeru()
   const [year, month] = today.split('-')
@@ -60,7 +68,7 @@ function BillingContent() {
   const [invoicingMode, setInvoicingMode] = useState<string | null>(null)
   const [searchParams] = useSearchParams()
   const [viewMode, setViewMode] = useState<'invoices' | 'credit_notes' | 'summaries_voided'>('invoices')
-  const [filterStatus, setFilterStatus] = useState<string>(() => searchParams.get('status') || 'pending')
+  const [filterStatus, setFilterStatus] = useState<string>(() => searchParams.get('status') || '')
   const [searchTerm, setSearchTerm] = useState('')
   const [dateRange, setDateRange] = useState(() => getCurrentMonthRange())
   const [sales, setSales] = useState<Sale[]>([])
@@ -70,7 +78,10 @@ function BillingContent() {
   const [total, setTotal] = useState(0)
   const [sending, setSending] = useState<number | null>(null)
   const [resending, setResending] = useState<number | null>(null)
-  const [voiding, setVoiding] = useState<number | null>(null)
+  const [voidNcOpen, setVoidNcOpen] = useState(false)
+  const [voidNcTarget, setVoidNcTarget] = useState<{ id: number; series: string; number: string } | null>(null)
+  const [voidNcReason, setVoidNcReason] = useState('')
+  const [voidNcSubmitting, setVoidNcSubmitting] = useState(false)
   const [waBusyId, setWaBusyId] = useState<number | null>(null)
   const [waMenu, setWaMenu] = useState<{ saleId: number; top: number; left: number } | null>(null)
   const [detail, setDetail] = useState<SaleDetail | null>(null)
@@ -236,22 +247,38 @@ function BillingContent() {
     }
   }
 
-  const handleVoidWithCreditNote = async (saleId: number) => {
-    setVoiding(saleId)
+  const openVoidNcModal = (sale: Sale) => {
+    if (!canVoidWithCreditNote(sale)) return
+    setVoidNcTarget({ id: sale.id, series: sale.series, number: sale.number })
+    setVoidNcReason('')
+    setVoidNcOpen(true)
+  }
+
+  const submitVoidWithCreditNote = async () => {
+    if (!voidNcTarget) return
+    if (!voidNcReason.trim()) {
+      toast.error('Indique el motivo de anulación')
+      return
+    }
+    setVoidNcSubmitting(true)
     try {
-      const res = await billingService.voidWithCreditNote(saleId)
+      const res = await billingService.voidWithCreditNote(voidNcTarget.id, voidNcReason.trim())
       if (res.success) {
-        toast.success(res.message ?? 'Nota de crédito emitida y venta anulada')
+        toast.success(res.message ?? 'Nota de crédito encolada')
+        setVoidNcOpen(false)
+        setVoidNcTarget(null)
+        setDetail((d) => (d?.sale.id === voidNcTarget.id ? null : d))
         setViewMode('credit_notes')
         setPage(1)
         load()
       } else {
         toast.error('Error al anular')
       }
-    } catch (e: any) {
-      toast.error(e.response?.data?.error ?? 'Error al anular con nota de crédito')
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { error?: string } } }
+      toast.error(err.response?.data?.error ?? 'Error al anular con nota de crédito')
     } finally {
-      setVoiding(null)
+      setVoidNcSubmitting(false)
     }
   }
 
@@ -611,7 +638,14 @@ function BillingContent() {
                 <td className="px-4 py-3 text-gray-500 text-xs">{formatDisplayDatePeru(s.issue_date)}</td>
                 <td className="px-4 py-3">
                   <p className="text-xs text-gray-400">{s.doc_type}</p>
-                  <p className="font-mono font-bold text-gray-800">{formatSaleDocumentNumber(s.series, s.number)}</p>
+                  <p className="font-mono font-bold text-gray-800">
+                    {formatSaleDocumentNumber(s.series, s.number)}
+                    {isSaleCancelled(s) && (
+                      <span className="ml-2 text-[10px] font-semibold uppercase text-red-600 not-italic font-sans">
+                        Anulada
+                      </span>
+                    )}
+                  </p>
                 </td>
                 {viewMode === 'credit_notes' && (
                   <td className="px-4 py-3 text-gray-500 text-xs">
@@ -783,22 +817,22 @@ function BillingContent() {
                         )}
                       </button>
                     </div>
-                    {viewMode === 'invoices' && s.billing_status === 'pending' && (
+                    {viewMode === 'invoices' && s.billing_status === 'pending' && !isSaleCancelled(s) && (
                       <button onClick={() => handleSend(s.id)} disabled={sending === s.id}
                         className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-50">
                         {sending === s.id ? <RefreshCw size={11} className="animate-spin" /> : <Send size={11} />}
                         Enviar
                       </button>
                     )}
-                    {viewMode === 'invoices' && s.billing_status === 'accepted' && (
-                      <button onClick={() => handleVoidWithCreditNote(s.id)} disabled={voiding === s.id}
+                    {viewMode === 'invoices' && canVoidWithCreditNote(s) && (
+                      <button onClick={() => openVoidNcModal(s)} disabled={voidNcSubmitting && voidNcTarget?.id === s.id}
                         className="flex items-center gap-1 px-3 py-1.5 bg-orange-600 text-white rounded-lg text-xs font-medium hover:bg-orange-700 disabled:opacity-50"
                         title="Anular con nota de crédito (genera la NC y anula la venta)">
-                        {voiding === s.id ? <RefreshCw size={11} className="animate-spin" /> : <FileSignature size={11} />}
+                        {voidNcSubmitting && voidNcTarget?.id === s.id ? <RefreshCw size={11} className="animate-spin" /> : <FileSignature size={11} />}
                         Anular (NC)
                       </button>
                     )}
-                    {s.billing_status === 'error' && (
+                    {s.billing_status === 'error' && !isSaleCancelled(s) && (
                       <button onClick={() => handleResend(s.id)} disabled={resending === s.id}
                         className="flex items-center gap-1 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium hover:bg-amber-700 disabled:opacity-50"
                         title="Reenviar el mismo comprobante (solo cuando falló el envío)">
@@ -1084,6 +1118,48 @@ function BillingContent() {
         src={documentViewerUrl}
         title={viewMode === 'credit_notes' ? 'Nota de crédito (PDF)' : 'Comprobante PDF'}
       />
+
+      <Modal open={voidNcOpen} onClose={() => !voidNcSubmitting && setVoidNcOpen(false)} contentClassName="max-w-md">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-bold text-gray-800">Anular con nota de crédito</h3>
+          <button
+            type="button"
+            onClick={() => setVoidNcOpen(false)}
+            disabled={voidNcSubmitting}
+            className="p-2 rounded-lg hover:bg-gray-100 disabled:opacity-50"
+          >
+            <X size={20} />
+          </button>
+        </div>
+        {voidNcTarget && (
+          <p className="text-sm text-gray-600 mb-3">
+            Comprobante{' '}
+            <span className="font-mono font-semibold text-gray-800">
+              {formatSaleDocumentNumber(voidNcTarget.series, voidNcTarget.number)}
+            </span>
+          </p>
+        )}
+        <p className="text-sm text-gray-600 mb-3">
+          El sistema tomará los datos del comprobante aceptado por SUNAT y generará la nota de crédito automáticamente.
+        </p>
+        <label className="block text-xs font-medium text-gray-600 mb-1">Motivo de anulación (SUNAT) *</label>
+        <textarea
+          value={voidNcReason}
+          onChange={(e) => setVoidNcReason(e.target.value)}
+          rows={3}
+          placeholder="Ej. Error en el monto, devolución del producto…"
+          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none mb-4"
+          disabled={voidNcSubmitting}
+        />
+        <button
+          type="button"
+          disabled={voidNcSubmitting}
+          onClick={() => void submitVoidWithCreditNote()}
+          className="w-full py-2.5 bg-orange-600 text-white rounded-xl text-sm font-semibold hover:bg-orange-700 disabled:opacity-50"
+        >
+          {voidNcSubmitting ? 'Procesando…' : 'Generar nota de crédito'}
+        </button>
+      </Modal>
     </div>
   )
 }

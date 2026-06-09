@@ -22,6 +22,8 @@ type QuickContactForm = {
   doc_number: string
   business_name: string
   address: string
+  phone: string
+  email: string
   ubigeo: string
 }
 
@@ -30,6 +32,8 @@ const emptyForm = (defaultDocType = '1'): QuickContactForm => ({
   doc_number: '',
   business_name: '',
   address: '',
+  phone: '',
+  email: '',
   ubigeo: '',
 })
 
@@ -133,6 +137,8 @@ export function QuickContactCreateModal({
         doc_number: num,
         business_name: form.business_name.trim(),
         address: form.address.trim() || undefined,
+        phone: form.phone.trim() || undefined,
+        email: form.email.trim() || undefined,
         ubigeo: form.ubigeo.trim() || undefined,
       }
       const created = await contactsService.create(payload)
@@ -224,6 +230,30 @@ export function QuickContactCreateModal({
             onChange={(e) => patch({ address: e.target.value })}
           />
         </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Celular (opcional)</label>
+            <input
+              type="tel"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              placeholder="Ej. 999 888 777"
+              value={form.phone}
+              onChange={(e) => patch({ phone: e.target.value })}
+              autoComplete="tel"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Correo (opcional)</label>
+            <input
+              type="email"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              placeholder="cliente@ejemplo.com"
+              value={form.email}
+              onChange={(e) => patch({ email: e.target.value })}
+              autoComplete="email"
+            />
+          </div>
+        </div>
         <div className="flex gap-2 pt-2">
           <button
             type="button"
@@ -247,14 +277,14 @@ export function QuickContactCreateModal({
 
   if (stacked) {
     return (
-      <PortalModal open={open} onClose={onClose} className="max-w-md" stacked>
-        <div className="rounded-2xl bg-white p-6 shadow-xl w-full">{body}</div>
+      <PortalModal open={open} onClose={onClose} className="max-w-xl w-[min(100%,36rem)]" stacked>
+        <div className="rounded-2xl bg-white p-6 sm:p-7 shadow-xl w-full">{body}</div>
       </PortalModal>
     )
   }
 
   return (
-    <Modal open={open} onClose={onClose} contentClassName="max-w-md">
+    <Modal open={open} onClose={onClose} contentClassName="max-w-xl w-[min(100%,36rem)]">
       {body}
     </Modal>
   )

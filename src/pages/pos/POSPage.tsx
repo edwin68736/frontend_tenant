@@ -23,7 +23,8 @@ import {
 } from '@/constants/sunat'
 import { calcItem, getAfectacionGroup, type SunatAfectacionGroup } from '@/utils/taxCalc'
 import { getTodayPeru } from '@/utils/datesPeru'
-import { formatMoney } from '@/utils/format'
+import { formatMoney, formatSaleDocumentNumber } from '@/utils/format'
+import { docTypeShortLabel } from '@/utils/paymentMethodVisual'
 import { BranchSeriesEmptyState } from '@/components/pos/BranchSeriesEmptyState'
 import { pickVariosContactId, isFacturaDocType, checkoutContactIsValid, isVariosContact } from '@/utils/checkoutContacts'
 import { paidCoversTotal, roundSunat, sumMoney } from '@/utils/money'
@@ -474,9 +475,22 @@ function POSContent() {
     [selectedSeries],
   )
 
+  const resetCheckoutToNotaVenta = useCallback(() => {
+    const def =
+      checkoutSeries.find((s) => docTypeToSunatCode(s.doc_type) === '00' || (s.sunat_code ?? '').trim() === '00') ??
+      null
+    if (def) {
+      setSeriesId(def.id)
+      setDocType(String(def.doc_type || '').trim() || 'NOTA DE VENTA')
+    }
+    const variosId = pickVariosContactId(contacts)
+    if (variosId) setContactId(variosId)
+  }, [checkoutSeries, contacts])
+
   const openCheckout = () => {
     if (branchSeriesMissing) return
     if (cart.length === 0) return
+    resetCheckoutToNotaVenta()
     const cashCode = paymentMethods.find((m) => m.code === 'cash')?.code ?? paymentMethods[0]?.code ?? 'cash'
     setPayments([{ method: cashCode, amount: roundSunat(payableTotal), reference: '' }])
     setCheckoutOpen(true)
@@ -626,9 +640,12 @@ function POSContent() {
       setSuccessSale({ series: sale.series, number: sale.number, total: sale.total })
       setPrintData(sale.print_data ?? null)
       setReceiptModalOpen(true)
+      const docLabel = docTypeShortLabel(sale.doc_type ?? selectedSeries.doc_type, selectedSunatCode)
+      const docNum = formatSaleDocumentNumber(sale.series, sale.number)
+      toast.success(`${docLabel} ${docNum} registrada`)
       setCheckoutOpen(false)
+      resetCheckoutToNotaVenta()
       setCart([])
-      setContactId(defaultContactId)
       setPayments([])
       setCheckoutDiscountValue(0)
       setCheckoutDiscountMode('percent')

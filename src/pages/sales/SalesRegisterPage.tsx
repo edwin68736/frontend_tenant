@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Plus, Trash2, Search, X, Package } from 'lucide-react'
 import { salesService, type CreateSaleInput } from '@/services/sales.service'
@@ -59,11 +59,16 @@ function docTypeToSunatCode(docType: string): string {
   return ''
 }
 
-const VALID_TIPO_URL = new Set(['00', '01', '03'])
+export type SalesRegisterMode = 'nota-venta' | 'comprobante'
 
-function tipoFromSearchParams(params: URLSearchParams): string | null {
-  const t = params.get('tipo')?.trim()
-  return t && VALID_TIPO_URL.has(t) ? t : null
+function codesForMode(mode: SalesRegisterMode, billingOk: boolean): string[] {
+  if (mode === 'nota-venta') return ['00']
+  if (!billingOk) return []
+  return ['03', '01']
+}
+
+function defaultCodeForMode(mode: SalesRegisterMode): string {
+  return mode === 'nota-venta' ? '00' : '03'
 }
 
 function resolveCashMethodCode(methods: PaymentMethodRecord[]): string {
@@ -73,17 +78,19 @@ function resolveCashMethodCode(methods: PaymentMethodRecord[]): string {
   return cash?.code ?? methods[0]?.code ?? 'cash'
 }
 
-export default function SalesRegisterPage() {
+type SalesRegisterPageProps = { mode?: SalesRegisterMode }
+
+export default function SalesRegisterPage({ mode = 'comprobante' }: SalesRegisterPageProps) {
   return (
     <RequireModule moduleKey="sales">
-      <SalesRegisterContent />
+      <SalesRegisterContent mode={mode} />
     </RequireModule>
   )
 }
 
-function SalesRegisterContent() {
+function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
+  const isNotaVenta = mode === 'nota-venta'
   const { hasModule } = useAuth()
   const { activeBranchId } = useBranch()
   const [series, setSeries] = useState<SeriesRow[]>([])
@@ -141,12 +148,20 @@ function SalesRegisterContent() {
         setTaxRate(sunat?.tax_rate ?? 18)
         setTaxConfig({ taxRate: sunat?.tax_rate ?? 18, igvRegime: sunat?.igv_regime, taxBenefitZone: sunat?.tax_benefit_zone })
         setCustomers(Array.isArray(customerList) ? customerList : [])
-        let codes = [...new Set(ventaSeries.map(s => (s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)).filter(Boolean))]
-        if (!hasModule('billing') || !(sunat?.sunat_enabled ?? true)) codes = codes.filter(c => c === '00')
-        const urlTipo = tipoFromSearchParams(searchParams)
-        let defaultCode = codes.includes('00') ? '00' : (codes.includes('03') ? '03' : codes[0] ?? '03')
-        if (urlTipo && codes.includes(urlTipo)) defaultCode = urlTipo
-        const matchSeries = ventaSeries.find(s => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === defaultCode)
+        const billingOk = hasModule('billing') && (sunat?.sunat_enabled ?? true)
+        const modeCodes = codesForMode(mode, billingOk)
+        const availableCodes = [
+          ...new Set(
+            ventaSeries
+              .map((s) => (s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type))
+              .filter((c) => c && modeCodes.includes(c)),
+          ),
+        ]
+        let defaultCode = defaultCodeForMode(mode)
+        if (!availableCodes.includes(defaultCode)) defaultCode = availableCodes[0] ?? defaultCode
+        const matchSeries = ventaSeries.find(
+          (s) => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === defaultCode,
+        )
         setForm(f => ({
           ...f,
           branch_id: activeBranchId,
@@ -164,7 +179,7 @@ function SalesRegisterContent() {
       })
       .catch(() => toast.error('Error cargando datos'))
       .finally(() => setLoading(false))
-  }, [hasModule, searchParams, activeBranchId])
+  }, [hasModule, mode, activeBranchId])
 
   useOnBranchChange(() => {
     setLoading(true)
@@ -192,21 +207,38 @@ function SalesRegisterContent() {
             prev.length === 1 ? [{ method: cashCode, amount: prev[0].amount || '0.00' }] : prev,
           )
         }
-        setForm((f) => ({ ...f, contact_id: defaultClient?.id ?? f.contact_id, branch_id: activeBranchId }))
+        const billingOk = hasModule('billing') && (sunat?.sunat_enabled ?? true)
+        const modeCodes = codesForMode(mode, billingOk)
+        const availableCodes = [
+          ...new Set(
+            ventaSeries
+              .map((s) => (s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type))
+              .filter((c) => c && modeCodes.includes(c)),
+          ),
+        ]
+        let defaultCode = defaultCodeForMode(mode)
+        if (!availableCodes.includes(defaultCode)) defaultCode = availableCodes[0] ?? defaultCode
+        const matchSeries = ventaSeries.find(
+          (s) => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === defaultCode,
+        )
+        setForm((f) => ({
+          ...f,
+          contact_id: defaultClient?.id ?? f.contact_id,
+          branch_id: activeBranchId,
+          sunat_code: defaultCode,
+          series_id: matchSeries?.id ?? null,
+        }))
       })
       .finally(() => setLoading(false))
   })
 
-  const seriesFiltered = series.filter(s => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === form.sunat_code)
-
-  useEffect(() => {
-    if (loading || series.length === 0) return
-    const urlTipo = tipoFromSearchParams(searchParams)
-    if (!urlTipo) return
-    const codes = [...new Set(series.map(s => (s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)).filter(Boolean))]
-    if (!codes.includes(urlTipo)) return
-    setForm(f => (f.sunat_code === urlTipo ? f : { ...f, sunat_code: urlTipo }))
-  }, [searchParams, loading, series])
+  const billingOk = hasModule('billing') && sunatEnabled
+  const seriesFiltered = series.filter(
+    (s) => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === form.sunat_code,
+  )
+  const tipoOptions = codesForMode(mode, billingOk).filter((code) =>
+    series.some((s) => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === code),
+  )
 
   useEffect(() => {
     const first = seriesFiltered[0]
@@ -236,7 +268,6 @@ function SalesRegisterContent() {
         },
       ]
     })
-    setShowProductPicker(false)
     toast.success(`"${p.name}" agregado`)
   }
 
@@ -396,16 +427,79 @@ function SalesRegisterContent() {
     )
   }
 
+  if (!isNotaVenta && !billingOk) {
+    return (
+      <div className="max-w-lg mx-auto py-12 px-4 text-center space-y-4">
+        <h2 className="text-lg font-bold text-gray-800">Nuevo comprobante</h2>
+        <p className="text-sm text-gray-600">
+          La facturación electrónica no está habilitada. Use notas de venta o active SUNAT en configuración.
+        </p>
+        <Link
+          to="/sales/nota-venta"
+          className="inline-flex px-5 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90"
+        >
+          Registrar nota de venta
+        </Link>
+      </div>
+    )
+  }
+
+  if (!isNotaVenta && tipoOptions.length === 0) {
+    return (
+      <div className="max-w-lg mx-auto py-12 px-4 text-center space-y-4">
+        <h2 className="text-lg font-bold text-gray-800">Nuevo comprobante</h2>
+        <p className="text-sm text-gray-600">
+          No hay series de boleta o factura para esta sucursal. Configúrelas en Empresa → Series.
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-bold text-gray-800">Registrar venta</h2>
+        <h2 className="text-lg font-bold text-gray-800">
+          {isNotaVenta ? 'Registrar nota de venta' : 'Nuevo comprobante'}
+        </h2>
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 space-y-6">
         <section>
           <h3 className="text-sm font-semibold text-gray-700 mb-3">Datos generales</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
+          <div className="sm:col-span-1 lg:col-span-3">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Tipo comprobante</label>
+            {isNotaVenta ? (
+              <div className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50 text-gray-700">
+                {getTipoComprobanteLabel('00')}
+              </div>
+            ) : (
+              <select
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                value={form.sunat_code}
+                onChange={(e) => setForm((f) => ({ ...f, sunat_code: e.target.value }))}
+              >
+                {tipoOptions.map((code) => (
+                  <option key={code} value={code}>
+                    {getTipoComprobanteLabel(code)}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+          <div className="sm:col-span-1 lg:col-span-3">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Serie</label>
+            <select
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono"
+              value={form.series_id ?? ''}
+              onChange={e => setForm(f => ({ ...f, series_id: e.target.value ? Number(e.target.value) : null }))}
+            >
+              <option value="">Seleccionar...</option>
+              {seriesFiltered.map(s => (
+                <option key={s.id} value={s.id}>{s.series}</option>
+              ))}
+            </select>
+          </div>
           <div className="sm:col-span-2 lg:col-span-6">
             <label className="block text-xs font-medium text-gray-600 mb-1">Cliente *</label>
             <div className="flex gap-2">
@@ -433,34 +527,6 @@ function SalesRegisterContent() {
                 Nuevo
               </button>
             </div>
-          </div>
-          <div className="lg:col-span-3">
-            <label className="block text-xs font-medium text-gray-600 mb-1">Tipo comprobante</label>
-            <select
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-              value={form.sunat_code}
-              onChange={e => setForm(f => ({ ...f, sunat_code: e.target.value }))}
-            >
-              {['00', '03', '01'].filter(code => {
-                if ((!hasModule('billing') || !sunatEnabled) && code !== '00') return false
-                return series.some(s => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === code)
-              }).map(code => (
-                <option key={code} value={code}>{getTipoComprobanteLabel(code)}</option>
-              ))}
-            </select>
-          </div>
-          <div className="lg:col-span-3">
-            <label className="block text-xs font-medium text-gray-600 mb-1">Serie</label>
-            <select
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono"
-              value={form.series_id ?? ''}
-              onChange={e => setForm(f => ({ ...f, series_id: e.target.value ? Number(e.target.value) : null }))}
-            >
-              <option value="">Seleccionar...</option>
-              {seriesFiltered.map(s => (
-                <option key={s.id} value={s.id}>{s.series}</option>
-              ))}
-            </select>
           </div>
           <div className="lg:col-span-3">
             <label className="block text-xs font-medium text-gray-600 mb-1">Fecha</label>
@@ -735,7 +801,7 @@ function SalesRegisterContent() {
             disabled={saving || items.length === 0}
             className="inline-flex items-center justify-center px-6 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50 sm:min-w-[9rem]"
           >
-            {saving ? 'Guardando...' : 'Registrar venta'}
+            {saving ? 'Guardando...' : isNotaVenta ? 'Registrar nota de venta' : 'Registrar comprobante'}
           </button>
         </div>
       </div>
@@ -756,7 +822,13 @@ function SalesRegisterContent() {
 
       <ReceiptPrintModal
         open={receiptModalOpen}
-        onClose={() => { setReceiptModalOpen(false); setPrintData(null); const id = lastSale?.id; setLastSale(null); navigate('/sales', { state: id ? { created: id } : undefined }) }}
+        onClose={() => {
+          setReceiptModalOpen(false)
+          setPrintData(null)
+          const id = lastSale?.id
+          setLastSale(null)
+          navigate(isNotaVenta ? '/sales' : '/billing', { state: id ? { created: id } : undefined })
+        }}
         printData={printData}
         saleNumber={lastSale?.number}
         total={lastSale?.total}
