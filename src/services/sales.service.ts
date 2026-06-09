@@ -215,7 +215,7 @@ export const salesService = {
   get: (id: number): Promise<SaleDetail> =>
     api.get(`/api/sales/${id}`).then((r) => r.data as SaleDetail),
 
-  issueElectronicFromNota: (saleId: number, body: { series_id: number; issue_date?: string }) =>
+  issueElectronicFromNota: (saleId: number, body: { series_id: number; issue_date?: string; contact_id?: number }) =>
     api.post<{ sale: Sale }>(`/api/sales/${saleId}/issue-electronic`, body).then((r) => r.data),
 
   create: (data: CreateSaleInput): Promise<{ id: number; doc_type: string; series: string; number: string; total: number; billing_status: string; print_data?: import('@/types/printData').PrintData }> =>
