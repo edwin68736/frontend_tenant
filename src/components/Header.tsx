@@ -12,10 +12,18 @@ import {
   AlertCircle,
   XCircle,
   CreditCard,
+  Settings,
+  Headphones,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { billingService } from '@/services/billing.service'
 import { membershipsService } from '@/services/memberships.service'
+import { subscriptionService } from '@/services/subscription.service'
+import {
+  buildSupportWhatsAppHref,
+  DEFAULT_SUPPORT_WHATSAPP_MESSAGE,
+  openExternalUrl,
+} from '@/utils/supportWhatsApp'
 import SubscriptionHeaderWidget from '@/components/SubscriptionHeaderWidget'
 import HeaderQuickActions from '@/components/HeaderQuickActions'
 import { BranchSwitcherUserMenu } from '@/components/BranchSwitcher'
@@ -31,6 +39,7 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
 
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
+  const [supportHref, setSupportHref] = useState<string | null>(null)
   const [billingCounts, setBillingCounts] = useState<{ pending: number; error: number; rejected: number } | null>(null)
   const [membershipReminderCounts, setMembershipReminderCounts] = useState<{
     overdue: number
@@ -38,6 +47,15 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
   } | null>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
   const notifRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    subscriptionService
+      .getHub()
+      .then((hub) =>
+        setSupportHref(buildSupportWhatsAppHref(hub.support, DEFAULT_SUPPORT_WHATSAPP_MESSAGE)),
+      )
+      .catch(() => setSupportHref(null))
+  }, [])
 
   useEffect(() => {
     if (hasModule('billing')) {
@@ -235,6 +253,37 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
               <User size={16} className="text-primary-600" />
               Perfil
             </Link>
+            <Link
+              to="/ajustes"
+              onClick={() => setUserMenuOpen(false)}
+              className="flex items-center gap-2 mx-1.5 px-3 py-2.5 text-sm text-gray-700 rounded-xl hover:bg-gray-50 transition-colors"
+            >
+              <Settings size={16} className="text-gray-500" />
+              Ajustes
+            </Link>
+            <a
+              href={supportHref ?? undefined}
+              target="_blank"
+              rel="noreferrer"
+              onClick={(e) => {
+                if (!supportHref) {
+                  e.preventDefault()
+                  return
+                }
+                e.preventDefault()
+                setUserMenuOpen(false)
+                void openExternalUrl(supportHref)
+              }}
+              className={`flex items-center gap-2 mx-1.5 px-3 py-2.5 text-sm rounded-xl transition-colors ${
+                supportHref
+                  ? 'text-gray-700 hover:bg-gray-50'
+                  : 'text-gray-400 pointer-events-none'
+              }`}
+              aria-disabled={!supportHref}
+            >
+              <Headphones size={16} className="text-gray-500" />
+              Soporte
+            </a>
             <button
               type="button"
               onClick={handleLogout}

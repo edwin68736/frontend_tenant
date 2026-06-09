@@ -1,47 +1,62 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
-import { Plus, Minus, Trash2, Search, ShoppingCart, X, ChevronRight, Receipt, UserPlus, SearchCheck } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Trash2, X, ChevronRight, UserPlus, Package } from 'lucide-react'
+import { clsx } from 'clsx'
 import { productsService, getProductImageUrl, type Product, type Category, type ModifierGroup } from '@/services/products.service'
-import { contactsService, type Contact, type CreateContactInput } from '@/services/contacts.service'
-import { consultaService } from '@/services/consulta.service'
+import { contactsService, type Contact } from '@/services/contacts.service'
 import { salesService } from '@/services/sales.service'
-import { cashbankService, type CashSession, type PaymentMethodRecord } from '@/services/cashbank.service'
-import { companyService, type SunatConfig } from '@/services/company.service'
+import { cashbankService, type CashSession, type PaymentMethodRecord, type BankAccount } from '@/services/cashbank.service'
+import { type SunatConfig } from '@/services/company.service'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch } from '@/contexts/BranchContext'
 import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { ReceiptPrintModal } from '@/components/ui/ReceiptPrintModal'
+import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
+import { POSCheckoutModal, type CheckoutPaymentLine } from '@/components/pos/POSCheckoutModal'
 import type { PrintData } from '@/types/printData'
 import {
-  getTipoComprobanteLabel,
-  getTipoDocIdentidadLabel,
-  POS_SUNAT_CODE_ORDER,
   SUNAT_MAX_MONTO_CLIENTE_SIN_RUC,
   SUNAT_RUC_LENGTH,
-  SUNAT_TIPO_DOC_IDENTIDAD_LIST,
 } from '@/constants/sunat'
 import { calcItem, getAfectacionGroup, type SunatAfectacionGroup } from '@/utils/taxCalc'
 import { getTodayPeru } from '@/utils/datesPeru'
+import { formatMoney } from '@/utils/format'
 import { BranchSeriesEmptyState } from '@/components/pos/BranchSeriesEmptyState'
-
-interface CartItem {
-  product: Product
-  quantity: number
-  /** Precio unitario final (base + modificadores). Si no se define se usa product.sale_price */
-  unitPrice?: number
-  /** Números de serie elegidos (solo productos con manage_series) */
-  serials?: string[]
-  /** JSON de modificadores para el detalle de venta */
-  modifiersJson?: string
-}
-
-interface PaymentLine {
-  method: string
-  amount: string
-}
+import { pickVariosContactId, isFacturaDocType, checkoutContactIsValid, isVariosContact } from '@/utils/checkoutContacts'
+import { paidCoversTotal, roundSunat, sumMoney } from '@/utils/money'
+import {
+  calcCheckoutDiscountAmount,
+  calcPayableTotal,
+  distributeCheckoutDiscountToLines,
+  type CheckoutDiscountMode,
+} from '@/utils/checkoutDiscount'
+import { buildTaxConfigFromSunat } from '@/constants/tax'
+import { findPaymentMethodRecord, isPaymentMethodLinkedForSale } from '@/utils/paymentMethodCheckout'
+import { BILLING_NOT_ENABLED_MESSAGE, isElectronicBillingSunatCode } from '@/utils/posCheckoutSeries'
+import {
+  getConfiguredPrinter,
+  isAutoPrintEnabled,
+  isNativePrintAvailable,
+  printDocumentAuto,
+} from '@/services/printers.service'
+import { ManualProductModal } from '@/components/pos/ManualProductModal'
+import { PosCartLineRow } from '@/components/pos/PosCartLineRow'
+import { roundMoney } from '@/utils/checkoutDiscount'
+import {
+  applyCatalogLineUnitPrice,
+  cartLineKey,
+  cartLineTotal,
+  cartLineUnitPrice,
+  createCatalogCartLine,
+  isCatalogCartLine,
+  isManualCartLine,
+  type ManualCartLine,
+  type PosCartLine,
+} from '@/utils/posCart'
+import { useFlyToCart } from '@/hooks/useFlyToCart'
 
 /** doc_type legacy → código SUNAT cuando sunat_code no viene en la serie */
 function docTypeToSunatCode(docType: string): string {
@@ -50,23 +65,6 @@ function docTypeToSunatCode(docType: string): string {
   if (u === 'BOLETA') return '03'
   if (u === 'FACTURA') return '01'
   return ''
-}
-
-/** Códigos SUNAT únicos en orden: 00, 03, 01 (solo los que tengan serie en Empresa → Series). */
-function sunatCodesFromSeries(series: { id: number; series: string; doc_type: string; sunat_code?: string }[]): string[] {
-  const byCode = new Map<string, boolean>()
-  series.forEach(s => {
-    const code = (s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)
-    if (code) byCode.set(code, true)
-  })
-  const ordered: string[] = []
-  for (const code of POS_SUNAT_CODE_ORDER) {
-    if (byCode.has(code)) ordered.push(code)
-  }
-  byCode.forEach((_, code) => {
-    if (!POS_SUNAT_CODE_ORDER.includes(code)) ordered.push(code)
-  })
-  return ordered
 }
 
 export default function POSPage() {
@@ -97,17 +95,16 @@ function POSContent() {
   const [loadingProducts, setLoadingProducts] = useState(true)
 
   // Carrito
-  const [cart, setCart] = useState<CartItem[]>([])
+  const [cart, setCart] = useState<PosCartLine[]>([])
+  const [manualProductOpen, setManualProductOpen] = useState(false)
 
-  // Panel de cobro
-  const [step, setStep] = useState<'cart' | 'payment'>('cart')
-  const [selectedSunatCode, setSelectedSunatCode] = useState('') // Código SUNAT: 00, 03, 01
-  const [sunatCodesForPOS, setSunatCodesForPOS] = useState<string[]>([]) // Solo códigos con serie en Empresa → Series
-  const [selectedSeriesId, setSelectedSeriesId] = useState<number | null>(null)
-  const [contactSearch, setContactSearch] = useState('')
-  const [contactResults, setContactResults] = useState<Contact[]>([])
-  const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
-  const [payments, setPayments] = useState<PaymentLine[]>([{ method: 'cash', amount: '' }])
+  // Cobro (modal)
+  const [checkoutOpen, setCheckoutOpen] = useState(false)
+  const [seriesId, setSeriesId] = useState(0)
+  const [docType, setDocType] = useState('NOTA DE VENTA')
+  const [contacts, setContacts] = useState<Contact[]>([])
+  const [contactId, setContactId] = useState<number | null>(null)
+  const [payments, setPayments] = useState<CheckoutPaymentLine[]>([])
   const [processing, setProcessing] = useState(false)
   const [successSale, setSuccessSale] = useState<{ series: string; number: string; total: number } | null>(null)
   const [printData, setPrintData] = useState<PrintData | null>(null)
@@ -122,13 +119,15 @@ function POSContent() {
   const [configModifiers, setConfigModifiers] = useState<{ optionId: number; name: string; extraPrice: number }[]>([])
   const [configLoading, setConfigLoading] = useState(false)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
+  const [checkoutDiscountMode, setCheckoutDiscountMode] = useState<CheckoutDiscountMode>('percent')
+  const [checkoutDiscountValue, setCheckoutDiscountValue] = useState(0)
   const [addClientModal, setAddClientModal] = useState(false)
-  const [tenantRuc, setTenantRuc] = useState('')
-  const [quickClientForm, setQuickClientForm] = useState<{ doc_type: string; doc_number: string; business_name: string; address: string; ubigeo: string }>({ doc_type: '1', doc_number: '', business_name: '', address: '', ubigeo: '' })
-  const [validandoDoc, setValidandoDoc] = useState(false)
-  const [savingClient, setSavingClient] = useState(false)
-  const contactTimeout = useRef<ReturnType<typeof setTimeout>>()
   const categoriesScrollRef = useRef<HTMLDivElement>(null)
+  const cartBtnRef = useRef<HTMLButtonElement>(null)
+  const desktopCartRef = useRef<HTMLDivElement>(null)
+  const configureFlySourceRef = useRef<HTMLElement | undefined>(undefined)
+  const { flyToCart, FlyToCartLayer, cancelFlyAnimations } = useFlyToCart(cartBtnRef, { desktopCartRef })
   const dragRef = useRef({ isDragging: false, startX: 0, startScrollLeft: 0 })
   const mouseUpRef = useRef<(() => void) | null>(null)
   const DRAG_THRESHOLD = 5
@@ -147,9 +146,6 @@ function POSContent() {
       .finally(() => setCashSessionLoading(false))
 
     if (!activeBranchId) {
-      setSunatCodesForPOS([])
-      setSelectedSunatCode('')
-      setSelectedSeriesId(null)
       setPosBootstrapLoading(false)
       return
     }
@@ -160,6 +156,11 @@ function POSContent() {
         if (Array.isArray(methods) && methods.length > 0) setPaymentMethods(methods as PaymentMethodRecord[])
       })
       .catch(() => {})
+
+    cashbankService
+      .listBankAccounts(true)
+      .then((accounts) => setBankAccounts(Array.isArray(accounts) ? accounts : []))
+      .catch(() => setBankAccounts([]))
       .finally(() => setPosBootstrapLoading(false))
 
     productsService
@@ -168,13 +169,13 @@ function POSContent() {
       .catch(() => {})
 
     contactsService
-      .getDefault()
-      .then(defaultContact => {
-        if (defaultContact) setSelectedContact(defaultContact)
+      .list('', 'customer')
+      .then((list) => {
+        setContacts(list ?? [])
+        const variosId = pickVariosContactId(list ?? [])
+        if (variosId) setContactId((prev) => prev ?? variosId)
       })
-      .catch(() => {})
-
-    companyService.getConfig().then(c => setTenantRuc(c?.ruc ?? '')).catch(() => setTenantRuc(''))
+      .catch(() => setContacts([]))
   }, [activeBranchId])
 
   useEffect(() => {
@@ -182,17 +183,18 @@ function POSContent() {
   }, [cachedSunat])
 
   useEffect(() => {
-    if (!seriesMetaReady) return
-    const sun = cachedSunat
-    let codes = sunatCodesFromSeries(checkoutSeries)
-    if (!hasModule('billing') || (sun && !sun.sunat_enabled)) codes = codes.filter((c) => c === '00')
-    setSunatCodesForPOS(codes)
-    setSelectedSunatCode((prev) => (codes.includes(prev) ? prev : codes[0] ?? ''))
-    const firstForCode = checkoutSeries.find(
-      (s) => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === (codes[0] ?? ''),
-    )
-    setSelectedSeriesId(firstForCode?.id ?? null)
-  }, [checkoutSeries, seriesMetaReady, cachedSunat, hasModule])
+    if (!seriesMetaReady || checkoutSeries.length === 0) {
+      setSeriesId(0)
+      return
+    }
+    const def =
+      checkoutSeries.find((s) => docTypeToSunatCode(s.doc_type) === '00' || (s.sunat_code ?? '').trim() === '00') ??
+      checkoutSeries[0]
+    if (def) {
+      setSeriesId(def.id)
+      setDocType(String(def.doc_type || '').trim() || 'NOTA DE VENTA')
+    }
+  }, [checkoutSeries, seriesMetaReady])
 
   useEffect(() => {
     if (!session) return
@@ -223,6 +225,9 @@ function POSContent() {
     }).catch(() => toast.error('Error al cargar opciones')).finally(() => setConfigLoading(false))
   }, [productToConfigure, session?.branch_id])
 
+  const billingModule = hasModule('billing')
+  const sunatEnabled = billingModule && Boolean(cachedSunat?.sunat_enabled ?? sunat?.sunat_enabled)
+
   const addConfiguredToCart = () => {
     if (!productToConfigure || !productDetail) return
     const p = productToConfigure
@@ -243,32 +248,19 @@ function POSContent() {
       ...(configVariant ? [{ option_id: configVariant.optionId, name: configVariant.name, extra_price: configVariant.extraPrice }] : []),
       ...configModifiers.map(m => ({ option_id: m.optionId, name: m.name, extra_price: m.extraPrice })),
     ]
-    setCart(c => [...c, {
-      product: p,
+    const source = configureFlySourceRef.current
+    configureFlySourceRef.current = undefined
+    const imageUrl = getProductImageUrl(p.image_url)
+    setCart(c => [...c, createCatalogCartLine(p, {
       quantity: 1,
       unitPrice,
       serials: serialsToUse,
       modifiersJson: JSON.stringify(modifiersPayload),
-    }])
+    })])
+    if (source) flyToCart(source, imageUrl)
     setProductToConfigure(null)
     setProductDetail(null)
   }
-
-  // Al cambiar código SUNAT, seleccionar primera serie de ese tipo
-  useEffect(() => {
-    const match = checkoutSeries.find(
-      (s) => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === selectedSunatCode,
-    )
-    setSelectedSeriesId(match?.id ?? null)
-  }, [selectedSunatCode, checkoutSeries])
-
-  // Factura (01) solo admite cliente con RUC: si se cambia a 01 y el cliente es doc. 0, quitar selección
-  useEffect(() => {
-    if (selectedSunatCode === '01' && selectedContact?.doc_type === '0') {
-      setSelectedContact(null)
-      setContactSearch('')
-    }
-  }, [selectedSunatCode])
 
   // Arrastre horizontal en la lista de categorías (touch + ratón)
   const onCategoriesPointerDown = (clientX: number) => {
@@ -308,72 +300,204 @@ function POSContent() {
     document.addEventListener('mouseup', onUp)
   }
 
-  // Buscar contactos con debounce (Factura 01 requiere RUC)
-  useEffect(() => {
-    if (contactTimeout.current) clearTimeout(contactTimeout.current)
-    if (!contactSearch.trim()) { setContactResults([]); return }
-    contactTimeout.current = setTimeout(() => {
-      const type = selectedSunatCode === '01' ? 'customer' : ''
-      contactsService.list(contactSearch, type).then(d => setContactResults(d?.slice(0, 5) ?? []))
-    }, 300)
-  }, [contactSearch, selectedSunatCode])
+  const taxConfig = buildTaxConfigFromSunat(cachedSunat ?? sunat ?? undefined)
+  const taxRate = taxConfig.taxRate
 
-  const taxRate = sunat?.tax_rate ?? 18
-  const taxConfig = { taxRate, igvRegime: sunat?.igv_regime, taxBenefitZone: sunat?.tax_benefit_zone }
+  const addToCart = useCallback(
+    (product: Product, sourceEl?: HTMLElement) => {
+      const needsConfig = product.has_variants || product.manage_series || product.has_modifiers
+      if (needsConfig) {
+        configureFlySourceRef.current = sourceEl
+        cancelFlyAnimations()
+        setProductToConfigure(product)
+        return
+      }
+      const imageUrl = getProductImageUrl(product.image_url)
+      let merged = false
+      setCart(c => {
+        const defaultPrice = Number(product.sale_price) || 0
+        const idx = c.findIndex(
+          i =>
+            isCatalogCartLine(i) &&
+            i.product.id === product.id &&
+            !i.serials?.length &&
+            !i.modifiersJson &&
+            (i.unitPrice == null || Math.abs(cartLineUnitPrice(i) - defaultPrice) < 0.009),
+        )
+        if (idx >= 0) {
+          merged = true
+          return c.map((i, k) => (k === idx && isCatalogCartLine(i) ? { ...i, quantity: i.quantity + 1 } : i))
+        }
+        return [...c, createCatalogCartLine(product)]
+      })
+      if (!merged && sourceEl) flyToCart(sourceEl, imageUrl)
+    },
+    [flyToCart, cancelFlyAnimations],
+  )
 
-  const addToCart = (product: Product) => {
-    const needsConfig = product.has_variants || product.manage_series || product.has_modifiers
-    if (needsConfig) {
-      setProductToConfigure(product)
-      return
-    }
-    setCart(c => {
-      const idx = c.findIndex(i => i.product.id === product.id && !i.serials?.length && !i.modifiersJson)
-      if (idx >= 0) return c.map((i, k) => k === idx ? { ...i, quantity: i.quantity + 1 } : i)
-      return [...c, { product, quantity: 1 }]
-    })
+  const setCartQty = (index: number, qty: number) => {
+    if (qty <= 0) setCart(c => c.filter((_, k) => k !== index))
+    else setCart(c => c.map((i, k) => (k === index ? { ...i, quantity: qty } : i)))
   }
 
-  const updateQty = (index: number, delta: number) => {
-    setCart(c => c.map((i, k) => k === index ? { ...i, quantity: Math.max(1, i.quantity + delta) } : i))
+  const setCartUnitPrice = (index: number, raw: string) => {
+    const parsed = Number.parseFloat(raw.replace(',', '.'))
+    if (Number.isNaN(parsed) || parsed < 0) return
+    setCart(c =>
+      c.map((x, i) => {
+        if (i !== index) return x
+        if (x.kind === 'manual') return { ...x, unit_price: roundMoney(parsed) }
+        return applyCatalogLineUnitPrice(x, parsed)
+      }),
+    )
   }
 
   const removeFromCart = (index: number) => setCart(c => c.filter((_, k) => k !== index))
 
-  const getCartItemTotals = (item: CartItem) => {
-    const p = item.product
-    const unitPrice = item.unitPrice ?? p.sale_price
-    return calcItem(unitPrice, item.quantity, 0, p.igv_affectation_type ?? '10', p.price_includes_igv ?? false, taxRate, taxConfig)
+  const emptyCart = () => {
+    if (cart.length === 0) return
+    cancelFlyAnimations()
+    setCart([])
+    toast.success('Carrito vaciado')
   }
 
-  const calcItemTotal = (item: CartItem) => getCartItemTotals(item).total
-
-  const totalCart = cart.reduce((s, i) => s + calcItemTotal(i), 0)
-  const totalsByAfectacion = cart.reduce(
-    (acc, i) => {
-      const { subtotal, taxAmount, total } = getCartItemTotals(i)
-      const group = getAfectacionGroup(i.product.igv_affectation_type ?? '10')
-      acc[group].subtotal += subtotal
-      acc[group].taxAmount += taxAmount
-      acc[group].total += total
-      return acc
-    },
-    { gravado: { subtotal: 0, taxAmount: 0, total: 0 }, exonerado: { subtotal: 0, taxAmount: 0, total: 0 }, inafecto: { subtotal: 0, taxAmount: 0, total: 0 }, exportacion: { subtotal: 0, taxAmount: 0, total: 0 } } as Record<SunatAfectacionGroup, { subtotal: number; taxAmount: number; total: number }>
+  const renderCartHeader = (className?: string) => (
+    <div className={clsx('flex items-center justify-between gap-2 shrink-0', className)}>
+      <h3 className="text-sm font-semibold text-gray-800">Carrito ({cart.length})</h3>
+      {cart.length > 0 && (
+        <button
+          type="button"
+          onClick={emptyCart}
+          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50 transition-colors"
+          title="Vaciar carrito"
+        >
+          <Trash2 size={13} />
+          Vaciar
+        </button>
+      )}
+    </div>
   )
 
-  const totalPaid = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0)
-  const change = totalPaid - totalCart
-
-  const addPaymentLine = () => setPayments(p => [...p, { method: paymentMethods[0]?.code ?? 'cash', amount: '' }])
-  const removePaymentLine = (idx: number) => setPayments(p => p.filter((_, i) => i !== idx))
-  const updatePayment = (idx: number, field: 'method' | 'amount', val: string) =>
-    setPayments(p => p.map((x, i) => i === idx ? { ...x, [field]: val } : x))
-
-  const goToPayment = () => {
-    if (branchSeriesMissing) return
-    setPayments([{ method: paymentMethods[0]?.code ?? 'cash', amount: totalCart.toFixed(2) }])
-    setStep('payment')
+  const addManualToCart = (line: ManualCartLine) => {
+    setCart(c => [...c, line])
+    toast.success('Producto manual agregado')
   }
+
+  const getCartItemTotals = (item: PosCartLine) => {
+    if (isManualCartLine(item)) {
+      return calcItem(
+        item.unit_price,
+        item.quantity,
+        0,
+        item.igv_affectation_type,
+        item.price_includes_igv,
+        taxRate,
+        taxConfig,
+      )
+    }
+    const p = item.product
+    const unitPrice = cartLineUnitPrice(item)
+    return calcItem(
+      unitPrice,
+      item.quantity,
+      0,
+      p.igv_affectation_type ?? '10',
+      p.price_includes_igv ?? true,
+      taxRate,
+      taxConfig,
+    )
+  }
+
+  const calcItemTotal = (item: PosCartLine) => getCartItemTotals(item).total
+
+  const renderCartLines = () =>
+    cart.map((item, i) => (
+      <PosCartLineRow
+        key={cartLineKey(item)}
+        line={item}
+        subtotalLabel={`Subtotal: ${formatMoney(cartLineTotal(item, taxRate, taxConfig))}`}
+        onQtyChange={(d) => setCartQty(i, item.quantity + d)}
+        onUnitPriceChange={(v) => setCartUnitPrice(i, v)}
+        onRemove={() => removeFromCart(i)}
+      />
+    ))
+
+  const totalCart = useMemo(
+    () => sumMoney(...cart.map((i) => calcItemTotal(i))),
+    [cart, taxRate, taxConfig.igvRegime, taxConfig.taxBenefitZone],
+  )
+
+  const checkoutDiscountAmount = useMemo(
+    () => calcCheckoutDiscountAmount(totalCart, checkoutDiscountMode, checkoutDiscountValue),
+    [totalCart, checkoutDiscountMode, checkoutDiscountValue],
+  )
+
+  const payableTotal = useMemo(
+    () => calcPayableTotal(totalCart, checkoutDiscountMode, checkoutDiscountValue),
+    [totalCart, checkoutDiscountMode, checkoutDiscountValue],
+  )
+
+  const totalsByAfectacion = useMemo(
+    () =>
+      cart.reduce(
+        (acc, i) => {
+          const { subtotal, taxAmount, total } = getCartItemTotals(i)
+          const aff = isManualCartLine(i) ? i.igv_affectation_type : (i.product.igv_affectation_type ?? '10')
+          const group = getAfectacionGroup(aff)
+          acc[group].subtotal = roundSunat(acc[group].subtotal + subtotal)
+          acc[group].taxAmount = roundSunat(acc[group].taxAmount + taxAmount)
+          acc[group].total = roundSunat(acc[group].total + total)
+          return acc
+        },
+        {
+          gravado: { subtotal: 0, taxAmount: 0, total: 0 },
+          exonerado: { subtotal: 0, taxAmount: 0, total: 0 },
+          inafecto: { subtotal: 0, taxAmount: 0, total: 0 },
+          exportacion: { subtotal: 0, taxAmount: 0, total: 0 },
+        } as Record<SunatAfectacionGroup, { subtotal: number; taxAmount: number; total: number }>,
+      ),
+    [cart, taxRate, taxConfig.igvRegime, taxConfig.taxBenefitZone],
+  )
+
+  const defaultContactId = useMemo(() => pickVariosContactId(contacts), [contacts])
+  const effectiveContactId = contactId ?? defaultContactId
+  const selectedSeries = useMemo(
+    () => checkoutSeries.find((s) => s.id === seriesId) ?? null,
+    [checkoutSeries, seriesId],
+  )
+  const selectedContact = useMemo(
+    () => contacts.find((c) => c.id === effectiveContactId) ?? null,
+    [contacts, effectiveContactId],
+  )
+  const selectedSunatCode = useMemo(
+    () => (selectedSeries ? (selectedSeries.sunat_code ?? '').trim() || docTypeToSunatCode(selectedSeries.doc_type) : ''),
+    [selectedSeries],
+  )
+
+  const openCheckout = () => {
+    if (branchSeriesMissing) return
+    if (cart.length === 0) return
+    const cashCode = paymentMethods.find((m) => m.code === 'cash')?.code ?? paymentMethods[0]?.code ?? 'cash'
+    setPayments([{ method: cashCode, amount: roundSunat(payableTotal), reference: '' }])
+    setCheckoutOpen(true)
+  }
+
+  useEffect(() => {
+    if (!checkoutOpen || payments.length !== 1) return
+    setPayments((prev) => {
+      if (prev.length !== 1) return prev
+      const nextAmount = roundSunat(payableTotal)
+      if (Math.abs((prev[0]?.amount ?? 0) - nextAmount) < 0.009) return prev
+      return [{ ...prev[0], amount: nextAmount }]
+    })
+  }, [checkoutOpen, payableTotal, payments.length])
+
+  useEffect(() => {
+    if (!checkoutOpen) {
+      setCheckoutDiscountValue(0)
+      setCheckoutDiscountMode('percent')
+    }
+  }, [checkoutOpen])
 
   const handleOpenSession = async () => {
     setOpeningSession(true)
@@ -387,37 +511,64 @@ function POSContent() {
     finally { setOpeningSession(false) }
   }
 
-  const selectedSeries = checkoutSeries.find((s) => s.id === selectedSeriesId)
-
   const handleCheckout = async () => {
     if (branchSeriesMissing) return
     if (cart.length === 0) { toast.error('Carrito vacío'); return }
-    if (!selectedSeriesId || !selectedSeries) return
-    if (selectedSunatCode === '01') {
-      if (!selectedContact) { toast.error('Factura (01) requiere cliente con RUC'); return }
-      if (selectedContact.doc_type !== '6') {
-        toast.error('La factura solo puede emitirse a clientes con RUC (documento tipo 6)')
-        return
-      }
-      const docNum = (selectedContact.doc_number ?? '').trim()
-      if (docNum.length !== SUNAT_RUC_LENGTH) {
+    if (!seriesId || !selectedSeries) return
+
+    if (!sunatEnabled && isElectronicBillingSunatCode(selectedSeries.sunat_code ?? selectedSunatCode)) {
+      toast.error(BILLING_NOT_ENABLED_MESSAGE)
+      return
+    }
+
+    const paid = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0)
+    if (!paidCoversTotal(paid, payableTotal)) {
+      toast.error('El monto pagado debe cubrir el total')
+      return
+    }
+
+    const contactForCheckout = contacts.find((c) => c.id === effectiveContactId) ?? null
+    if (!checkoutContactIsValid(contactForCheckout, docType, selectedSeries.sunat_code)) {
+      toast.error(
+        isFacturaDocType(docType, selectedSeries.sunat_code)
+          ? 'La factura requiere un cliente con RUC'
+          : 'Selecciona un cliente',
+      )
+      return
+    }
+
+    if (isFacturaDocType(docType, selectedSeries.sunat_code)) {
+      const docNum = (contactForCheckout?.doc_number ?? '').trim()
+      if (docNum.length !== SUNAT_RUC_LENGTH || !/^\d+$/.test(docNum)) {
         toast.error(`El RUC del cliente debe tener exactamente ${SUNAT_RUC_LENGTH} dígitos`)
         return
       }
-      if (!/^\d+$/.test(docNum)) {
-        toast.error('El RUC del cliente debe contener solo dígitos')
+    }
+
+    if (contactForCheckout && isVariosContact(contactForCheckout) && (selectedSunatCode === '00' || selectedSunatCode === '03')) {
+      if (payableTotal > SUNAT_MAX_MONTO_CLIENTE_SIN_RUC) {
+        toast.error(`Con cliente sin RUC el monto máximo permitido por SUNAT es S/ ${SUNAT_MAX_MONTO_CLIENTE_SIN_RUC}`)
         return
       }
     }
-    if (selectedContact?.doc_type === '0' && (selectedSunatCode === '00' || selectedSunatCode === '03')) {
-      if (totalCart > SUNAT_MAX_MONTO_CLIENTE_SIN_RUC) {
-        toast.error(`Con cliente sin RUC (doc. 0) el monto máximo permitido por SUNAT es S/ ${SUNAT_MAX_MONTO_CLIENTE_SIN_RUC}. Total: S/ ${totalCart.toFixed(2)}`)
-        return
+
+    if (paymentMethods.length > 0) {
+      for (const p of payments) {
+        if (Number(p.amount) <= 0) continue
+        const pm = findPaymentMethodRecord(paymentMethods, p.method)
+        if (!pm) {
+          toast.error('Método de pago no configurado. Revísalo en Caja → Métodos de pago.')
+          return
+        }
+        if (!isPaymentMethodLinkedForSale(pm, bankAccounts)) {
+          toast.error(`El método "${pm.name}" no tiene una cuenta vinculada.`)
+          return
+        }
       }
     }
-    const validPayments = payments.filter(p => Number(p.amount) > 0)
+
+    const validPayments = payments.filter((p) => Number(p.amount) > 0)
     if (validPayments.length === 0) { toast.error('Ingresa al menos un pago'); return }
-    if (totalPaid < totalCart - 0.01) { toast.error('El pago no cubre el total'); return }
 
     const branchId = activeBranchId || session?.branch_id
     if (!branchId) {
@@ -425,89 +576,76 @@ function POSContent() {
       return
     }
 
+    const lineTotals = cart.map((i) => getCartItemTotals(i).total)
+    const lineDiscounts = distributeCheckoutDiscountToLines(lineTotals, checkoutDiscountAmount)
+
     setProcessing(true)
     try {
       const today = getTodayPeru()
       const sale = await salesService.create({
         branch_id: branchId,
-        contact_id: selectedContact?.id ?? null,
+        contact_id: contactForCheckout?.id ?? null,
         doc_type: selectedSeries.doc_type,
-        series_id: selectedSeriesId,
+        series_id: seriesId,
         currency: 'PEN',
         cash_session_id: session?.id ?? null,
         issue_date: today,
         due_date: today,
-        payments: validPayments.map(p => ({ method: p.method, amount: Number(p.amount) })),
-        items: cart.map(i => ({
-          product_id: i.product.id,
-          code: i.product.code,
-          description: i.product.name,
-          unit: i.product.unit,
-          quantity: i.quantity,
-          unit_price: i.unitPrice ?? i.product.sale_price,
-          igv_affectation_type: i.product.igv_affectation_type,
-          price_includes_igv: i.product.price_includes_igv,
-          modifiers_json: i.modifiersJson ?? '',
-          serials: i.serials ?? [],
-        }))
+        payments: validPayments.map((p) => ({ method: p.method, amount: roundSunat(Number(p.amount)) })),
+        items: cart.map((i, idx) => {
+          if (isManualCartLine(i)) {
+            return {
+              product_id: null,
+              code: i.code,
+              description: i.description,
+              unit: i.unit,
+              quantity: i.quantity,
+              unit_price: i.unit_price,
+              discount: lineDiscounts[idx] ?? 0,
+              igv_affectation_type: i.igv_affectation_type || '10',
+              price_includes_igv: i.price_includes_igv,
+              modifiers_json: '',
+              serials: [],
+            }
+          }
+          return {
+            product_id: i.product.id,
+            code: i.product.code,
+            description: i.product.name,
+            unit: i.product.unit,
+            quantity: i.quantity,
+            unit_price: cartLineUnitPrice(i),
+            discount: lineDiscounts[idx] ?? 0,
+            igv_affectation_type: i.product.igv_affectation_type ?? '10',
+            price_includes_igv: i.product.price_includes_igv ?? true,
+            modifiers_json: i.modifiersJson ?? '',
+            serials: i.serials ?? [],
+          }
+        }),
       })
       setSuccessSale({ series: sale.series, number: sale.number, total: sale.total })
       setPrintData(sale.print_data ?? null)
       setReceiptModalOpen(true)
-      setCart([]); setStep('cart'); setSelectedContact(null); setContactSearch(''); setPayments([{ method: paymentMethods[0]?.code ?? 'cash', amount: '' }])
-    } catch (e: any) { toast.error(e.response?.data?.error ?? 'Error procesando venta') }
-    finally { setProcessing(false) }
-  }
+      setCheckoutOpen(false)
+      setCart([])
+      setContactId(defaultContactId)
+      setPayments([])
+      setCheckoutDiscountValue(0)
+      setCheckoutDiscountMode('percent')
 
-  const openAddClientModal = () => {
-    const num = contactSearch.trim().replace(/-/g, '')
-    const docType = selectedSunatCode === '01' ? '6' : '1'
-    setQuickClientForm({ doc_type: docType, doc_number: num, business_name: '', address: '', ubigeo: '' })
-    setAddClientModal(true)
-  }
-
-  const handleValidarDoc = async () => {
-    const docType = quickClientForm.doc_type
-    const num = quickClientForm.doc_number.trim().replace(/-/g, '')
-    const isRUC = docType === '6'
-    const isDNI = docType === '1'
-    if (isRUC && num.length !== 11) { toast.error('Ingrese un RUC de 11 dígitos'); return }
-    if (isDNI && num.length !== 8) { toast.error('Ingrese un DNI de 8 dígitos'); return }
-    if (!isRUC && !isDNI) { toast.error('Use DNI o RUC para validar'); return }
-    if (!tenantRuc || tenantRuc.length !== 11) { toast.error('RUC de la empresa no configurado'); return }
-    setValidandoDoc(true)
-    try {
-      if (isRUC) {
-        const res = await consultaService.ruc(tenantRuc, num)
-        if (!res.success || !res.razon_social) { toast.error('No se encontró el RUC'); return }
-        setQuickClientForm(f => ({ ...f, business_name: res.razon_social ?? '', address: res.direccion ?? '', ubigeo: (res.ubigeo && res.ubigeo.length >= 6) ? res.ubigeo.slice(0, 6) : '' }))
-      } else {
-        const res = await consultaService.dni(tenantRuc, num)
-        if (!res.success || !res.nombre_completo) { toast.error('No se encontró el DNI'); return }
-        setQuickClientForm(f => ({ ...f, business_name: res.nombre_completo ?? '' }))
+      if (isNativePrintAvailable() && isAutoPrintEnabled('documentos') && getConfiguredPrinter('documentos') && sale.print_data) {
+        try {
+          await printDocumentAuto(sale.print_data)
+        } catch (e) {
+          console.error('[pos auto-print]', e)
+        }
       }
-      toast.success('Datos obtenidos')
-    } catch (e: any) { toast.error(e.response?.data?.error ?? 'Error al validar') }
-    finally { setValidandoDoc(false) }
+    } catch (e: unknown) {
+      toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error procesando venta')
+    } finally { setProcessing(false) }
   }
 
-  const handleRegistrarCliente = async () => {
-    const { doc_type, doc_number, business_name, address, ubigeo } = quickClientForm
-    const num = doc_number.trim().replace(/-/g, '')
-    if (!num) { toast.error('Ingrese número de documento'); return }
-    if (!business_name.trim()) { toast.error('Ingrese nombre o razón social'); return }
-    setSavingClient(true)
-    try {
-      const payload: CreateContactInput = { type: 'customer', doc_type, doc_number: num, business_name: business_name.trim(), address: address || undefined, ubigeo: ubigeo || undefined }
-      const created = await contactsService.create(payload)
-      setSelectedContact(created)
-      setContactSearch(created.business_name)
-      setContactResults([])
-      setAddClientModal(false)
-      toast.success('Cliente registrado')
-    } catch (e: any) { toast.error(e.response?.data?.error ?? 'Error al registrar') }
-    finally { setSavingClient(false) }
-  }
+  const openAddClientModal = () => setAddClientModal(true)
 
   const cartCount = cart.length
   const branchSeriesMissing = Boolean(activeBranchId) && seriesMetaReady && !hasCheckoutSeries
@@ -562,9 +700,10 @@ function POSContent() {
   const floatingCartButton = typeof window !== 'undefined'
     ? createPortal(
         <button
+          ref={cartBtnRef}
           type="button"
           onClick={() => cartCount > 0 && setCartModalOpen(true)}
-          className={`md:hidden fixed bottom-4 right-4 z-[60] flex items-center justify-center w-14 h-14 rounded-full shadow-lg ${
+          className={`md:hidden fixed bottom-4 right-4 z-[105] flex items-center justify-center w-14 h-14 rounded-full shadow-lg transition-transform active:scale-95 ${
             cartCount > 0
               ? 'bg-[rgb(var(--p600))] text-white'
               : 'bg-gray-300 text-gray-500 cursor-not-allowed opacity-70'
@@ -582,27 +721,26 @@ function POSContent() {
     : null
 
   return (
-    <div className="flex flex-col md:flex-row gap-4 md:h-[calc(100vh-120px)] md:overflow-hidden relative">
+    <div className="-m-2 flex h-[calc(100dvh-9.5rem)] min-h-[28rem] flex-col overflow-hidden sm:-m-3 md:-m-4 md:flex-row md:gap-3">
       {/* Columna izquierda: catálogo */}
-      <div className="flex-1 flex flex-col min-w-0 space-y-3">
-        <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input className="w-full border border-gray-200 rounded-xl pl-8 pr-3 py-2 text-sm bg-white"
-            placeholder="Buscar producto..." value={q} onChange={e => setQ(e.target.value)} />
-        </div>
-
-        {/* Filtro categorías: "Todos" fijo + lista de categorías con scroll/arrastre */}
-        <div className="flex gap-2 items-center min-w-0">
+      <div className="flex w-full min-w-0 max-w-full flex-1 flex-col min-h-0 overflow-hidden">
+        {/* Filtro categorías */}
+        <div className="flex w-full gap-1.5 overflow-x-auto pb-1.5 min-w-0 shrink-0 scroll-drag-x">
           <button
             type="button"
             onClick={() => setSelectedCat(null)}
-            className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${selectedCat === null ? 'bg-[rgb(var(--p600))] text-white' : 'bg-white border border-gray-200 text-gray-600'}`}
+            className={clsx(
+              'shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border',
+              selectedCat === null
+                ? 'bg-primary-600 text-white border-primary-600'
+                : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-100',
+            )}
           >
-            Todos
+            Todas
           </button>
           <div
             ref={categoriesScrollRef}
-            className="flex gap-2 overflow-x-auto overflow-y-hidden pb-1 scrollbar-hide scroll-drag-x select-none cursor-grab active:cursor-grabbing min-w-0 flex-1"
+            className="flex gap-1.5 overflow-x-auto overflow-y-hidden min-w-0 flex-1 select-none cursor-grab active:cursor-grabbing"
             onTouchStart={e => onCategoriesPointerDown(e.touches[0].clientX)}
             onTouchMove={e => {
               e.preventDefault()
@@ -616,7 +754,12 @@ function POSContent() {
                 key={c.id}
                 type="button"
                 onClick={e => onCategoryClick(e, () => setSelectedCat(c.id))}
-                className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${selectedCat === c.id ? 'bg-[rgb(var(--p600))] text-white' : 'bg-white border border-gray-200 text-gray-600'}`}
+                className={clsx(
+                  'shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border whitespace-nowrap',
+                  selectedCat === c.id
+                    ? 'bg-primary-600 text-white border-primary-600'
+                    : 'bg-white text-stone-600 border-stone-200 hover:bg-stone-100',
+                )}
               >
                 {c.name}
               </button>
@@ -624,563 +767,185 @@ function POSContent() {
           </div>
         </div>
 
-        {/* Grid de productos */}
-        <div className="md:flex-1 md:overflow-y-auto">
-          {loadingProducts ? (
-            <div className="flex justify-center py-10"><div className="w-5 h-5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" /></div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              {products.filter(p => p.active).map(p => (
-                <button
-                  key={p.id}
-                  onClick={() => addToCart(p)}
-                  className="group bg-white rounded-2xl border border-gray-200 shadow-sm p-3 text-left hover:shadow-md hover:border-[rgb(var(--p300))] hover:ring-2 hover:ring-[rgb(var(--p100))] transition-all duration-200 active:scale-[0.98]"
-                >
-                  <div className="w-full h-20 bg-gray-50 rounded-xl flex items-center justify-center mb-2.5 overflow-hidden border border-gray-100 ring-1 ring-black/5">
-                    {p.image_url ? (
-                      <img
-                        src={getProductImageUrl(p.image_url)}
-                        alt={p.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                        loading="lazy"
-                      />
-                    ) : (
-                      <span className="text-2xl font-bold text-[rgb(var(--p300))]">
-                        {p.name.charAt(0).toUpperCase()}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs font-semibold text-gray-800 line-clamp-2 leading-tight">{p.name}</p>
-                  <p className="text-sm font-bold text-[rgb(var(--p600))] mt-1">S/ {Number(p.sale_price).toFixed(2)}</p>
-                  {p.category_name && <p className="text-xs text-gray-400 mt-0.5 truncate">{p.category_name}</p>}
-                </button>
-              ))}
+        {/* Panel de productos (mismo diseño que POS restaurante) */}
+        <div className="flex w-full max-w-full min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-stone-200/80 bg-white shadow-sm sm:rounded-2xl">
+          <div className="px-2 py-1.5 sm:px-3 sm:py-2 border-b border-stone-100 shrink-0">
+            <div className="relative flex items-center">
+              <Search size={16} className="absolute left-2.5 text-stone-400 pointer-events-none" aria-hidden />
+              <input
+                type="search"
+                className="w-full rounded-xl border border-stone-200 bg-white py-1.5 pl-8 pr-3 text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-400"
+                placeholder="Buscar producto..."
+                value={q}
+                onChange={e => setQ(e.target.value)}
+              />
+              {loadingProducts && (
+                <div className="absolute right-2.5 h-4 w-4 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" aria-hidden />
+              )}
             </div>
-          )}
-          {!loadingProducts && products.filter(p => p.active).length === 0 && (
-            <div className="text-center py-10 text-gray-400 text-sm">Sin productos</div>
-          )}
+          </div>
+
+          <div className="flex-1 min-h-0 w-full overflow-y-auto p-1.5 sm:p-3 md:min-h-[280px]">
+            {loadingProducts && products.filter(p => p.active).length === 0 ? (
+              <div className="py-8 text-center text-stone-400 text-sm">
+                <div className="inline-block w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+              </div>
+            ) : (
+              <div className="grid w-full max-w-full grid-cols-3 gap-1.5 sm:grid-cols-4 sm:gap-2 md:grid-cols-5 lg:grid-cols-6 justify-items-stretch">
+                {products.filter(p => p.active).map(p => {
+                  const imgUrl = getProductImageUrl(p.image_url)
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={(e) => {
+                        const visual = (e.currentTarget as HTMLElement).querySelector(
+                          '[data-product-visual]',
+                        ) as HTMLElement | null
+                        addToCart(p, visual ?? e.currentTarget)
+                      }}
+                      className="group rounded-xl border border-stone-200 bg-stone-50/50 overflow-hidden text-left transition-all duration-200 hover:border-primary-400 hover:shadow-md hover:shadow-primary-100/50 hover:bg-white focus:outline-none focus:ring-2 focus:ring-primary-400/50 active:scale-[0.98]"
+                    >
+                      <div data-product-visual className="aspect-square bg-stone-200/80 relative overflow-hidden">
+                        {imgUrl ? (
+                          <img
+                            src={imgUrl}
+                            alt={p.name}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-stone-400">
+                            <Package className="w-8 h-8" aria-hidden />
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-2">
+                        <p className="font-medium text-stone-800 text-xs leading-tight line-clamp-2 min-h-[2rem]">
+                          {p.name}
+                        </p>
+                        <p className="text-primary-600 font-semibold text-xs mt-1 tabular-nums">
+                          {formatMoney(Number(p.sale_price))}
+                        </p>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            {!loadingProducts && products.filter(p => p.active).length === 0 && (
+              <div className="py-8 text-center text-stone-400 text-xs sm:text-sm">
+                No hay productos con este filtro.
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Columna centro/derecha: carrito + cobro (solo desktop) */}
-      <div className="hidden md:flex md:w-80 md:flex-shrink-0 flex-col bg-white rounded-2xl shadow-sm overflow-hidden md:mt-0">
-        <div className="flex border-b border-gray-100">
-          <button onClick={() => setStep('cart')}
-            className={`flex-1 py-3 text-sm font-medium transition-colors ${step === 'cart' ? 'text-[rgb(var(--p600))] border-b-2 border-[rgb(var(--p600))]' : 'text-gray-400'}`}>
-            Carrito ({cart.length})
-          </button>
-          <button onClick={() => cart.length > 0 && goToPayment()}
-            className={`flex-1 py-3 text-sm font-medium transition-colors ${step === 'payment' ? 'text-[rgb(var(--p600))] border-b-2 border-[rgb(var(--p600))]' : 'text-gray-400'} ${cart.length === 0 ? 'opacity-40 cursor-not-allowed' : ''}`}>
-            Cobrar
-          </button>
+      {/* Columna derecha: carrito (desktop) */}
+      <div
+        ref={desktopCartRef}
+        className="hidden md:flex md:w-80 lg:w-[22rem] md:min-h-0 md:h-full md:max-h-full md:flex-shrink-0 flex-col bg-white rounded-2xl shadow-sm border border-stone-200/80 overflow-hidden"
+      >
+        <div className="px-4 py-3 border-b border-gray-100 shrink-0">
+          {renderCartHeader()}
         </div>
-
-        {step === 'cart' && (
+        <ul className="flex-1 min-h-0 overflow-y-auto overscroll-contain list-none m-0 p-0">
+          {cart.length === 0 ? (
+            <li className="flex flex-col items-center justify-center h-full min-h-[12rem] text-center py-10">
+              <ShoppingCart size={28} className="text-gray-300 mb-2" />
+              <p className="text-gray-400 text-sm">Carrito vacío</p>
+            </li>
+          ) : (
+            renderCartLines()
+          )}
+        </ul>
+        <div className="p-3 border-t border-gray-100 space-y-2 shrink-0 bg-white">
+          <button
+            type="button"
+            onClick={() => setManualProductOpen(true)}
+            className="w-full inline-flex items-center justify-center gap-1 py-2 border border-amber-300 bg-amber-50 text-amber-900 rounded-xl text-xs font-semibold hover:bg-amber-100"
+          >
+            <Plus size={14} /> Producto manual
+          </button>
+        {cart.length > 0 && (
           <>
-            <div className="flex-1 overflow-y-auto">
-              {cart.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-center py-10">
-                  <ShoppingCart size={28} className="text-gray-300 mb-2" />
-                  <p className="text-gray-400 text-sm">Carrito vacío</p>
-                </div>
-              ) : cart.map((item, idx) => (
-                <div key={idx} className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-50">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-gray-800 truncate">{item.product.name}</p>
-                    <p className="text-xs text-[rgb(var(--p600))] font-bold">S/ {calcItemTotal(item).toFixed(2)}</p>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button onClick={() => updateQty(idx, -1)} className="w-6 h-6 rounded-lg bg-gray-100 flex items-center justify-center hover:bg-gray-200"><Minus size={10} /></button>
-                    <span className="w-6 text-center text-xs font-bold">{item.quantity}</span>
-                    <button onClick={() => updateQty(idx, 1)} className="w-6 h-6 rounded-lg bg-[rgb(var(--p100))] flex items-center justify-center hover:bg-[rgb(var(--p200))]"><Plus size={10} /></button>
-                    <button onClick={() => removeFromCart(idx)} className="w-6 h-6 rounded-lg text-red-400 hover:bg-red-50 flex items-center justify-center"><Trash2 size={10} /></button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {cart.length > 0 && (
-              <div className="p-3 border-t border-gray-100 space-y-2">
-                {totalsByAfectacion.gravado.total > 0 && (
-                  <>
-                    <div className="flex justify-between text-xs text-gray-500"><span>Op. gravada – Subtotal</span><span>S/ {totalsByAfectacion.gravado.subtotal.toFixed(2)}</span></div>
-                    <div className="flex justify-between text-xs text-gray-500"><span>Op. gravada – IGV</span><span>S/ {totalsByAfectacion.gravado.taxAmount.toFixed(2)}</span></div>
-                  </>
-                )}
-                {totalsByAfectacion.exonerado.total > 0 && (
-                  <div className="flex justify-between text-xs text-gray-500"><span>Op. exonerada</span><span>S/ {totalsByAfectacion.exonerado.total.toFixed(2)}</span></div>
-                )}
-                {totalsByAfectacion.inafecto.total > 0 && (
-                  <div className="flex justify-between text-xs text-gray-500"><span>Op. inafecta</span><span>S/ {totalsByAfectacion.inafecto.total.toFixed(2)}</span></div>
-                )}
-                {totalsByAfectacion.exportacion.total > 0 && (
-                  <div className="flex justify-between text-xs text-gray-500"><span>Op. exportación</span><span>S/ {totalsByAfectacion.exportacion.total.toFixed(2)}</span></div>
-                )}
-                <div className="flex justify-between font-bold text-gray-800"><span>Total</span><span>S/ {totalCart.toFixed(2)}</span></div>
-                <button onClick={goToPayment}
-                  disabled={branchSeriesMissing}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-bold hover:opacity-90 disabled:opacity-50">
-                  Ir a cobrar <ChevronRight size={15} />
-                </button>
-              </div>
+            {totalsByAfectacion.gravado.total > 0 && (
+              <>
+                <div className="flex justify-between text-xs text-gray-500"><span>Op. gravada – Subtotal</span><span>S/ {totalsByAfectacion.gravado.subtotal.toFixed(2)}</span></div>
+                <div className="flex justify-between text-xs text-gray-500"><span>Op. gravada – IGV</span><span>S/ {totalsByAfectacion.gravado.taxAmount.toFixed(2)}</span></div>
+              </>
             )}
+            {totalsByAfectacion.exonerado.total > 0 && (
+              <div className="flex justify-between text-xs text-gray-500"><span>Op. exonerada</span><span>S/ {totalsByAfectacion.exonerado.total.toFixed(2)}</span></div>
+            )}
+            {totalsByAfectacion.inafecto.total > 0 && (
+              <div className="flex justify-between text-xs text-gray-500"><span>Op. inafecta</span><span>S/ {totalsByAfectacion.inafecto.total.toFixed(2)}</span></div>
+            )}
+            {totalsByAfectacion.exportacion.total > 0 && (
+              <div className="flex justify-between text-xs text-gray-500"><span>Op. exportación</span><span>S/ {totalsByAfectacion.exportacion.total.toFixed(2)}</span></div>
+            )}
+            <div className="flex justify-between font-bold text-gray-800"><span>Total</span><span>{formatMoney(totalCart)}</span></div>
+            <button
+              type="button"
+              onClick={openCheckout}
+              disabled={branchSeriesMissing}
+              className="w-full flex items-center justify-center gap-2 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-bold hover:opacity-90 disabled:opacity-50"
+            >
+              Cobrar <ChevronRight size={15} />
+            </button>
           </>
         )}
-
-        {step === 'payment' && (
-          <div className="flex-1 flex flex-col overflow-y-auto">
-            <div className="p-3 space-y-3 flex-1 overflow-y-auto">
-              {branchSeriesMissing ? (
-                <BranchSeriesEmptyState compact />
-              ) : (
-              <>
-              {/* Tipo de comprobante por código SUNAT (00 N. Venta, 03 Boleta, 01 Factura) */}
-              <div><label className="block text-xs font-medium text-gray-600 mb-1">Tipo de comprobante</label>
-                <div className="flex gap-1">
-                  {sunatCodesForPOS.map(code => (
-                    <button key={code} onClick={() => setSelectedSunatCode(code)}
-                      className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${selectedSunatCode === code ? 'bg-[rgb(var(--p600))] text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-                      {getTipoComprobanteLabel(code)}
-                    </button>
-                  ))}
-                </div>
-                {sunatCodesForPOS.length === 0 && (
-                  <p className="text-xs text-amber-600 mt-1">Registra series de venta en Empresa → Series</p>
-                )}
-              </div>
-
-              {/* Serie: vinculada a las series de la vista Series para el código SUNAT elegido */}
-              <div><label className="block text-xs font-medium text-gray-600 mb-1">Serie</label>
-                <select className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-                  value={selectedSeriesId ?? ''} onChange={e => setSelectedSeriesId(e.target.value ? Number(e.target.value) : null)}>
-                  <option value="">Seleccionar serie...</option>
-                  {checkoutSeries.filter(s => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === selectedSunatCode).map(s => (
-                    <option key={s.id} value={s.id}>{s.series}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Cliente (Factura 01 requiere RUC - código 6) */}
-              <div className="relative">
-                <label className="block text-xs font-medium text-gray-600 mb-1">
-                  {selectedSunatCode === '01' ? 'Cliente (RUC) *' : 'Cliente (opcional)'}
-                </label>
-                {selectedContact ? (
-                  <div className="flex items-center gap-2 bg-[rgb(var(--p50))] border border-[rgb(var(--p200))] rounded-xl px-3 py-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-gray-800 truncate">{selectedContact.business_name}</p>
-                      <p className="text-xs text-gray-500">{getTipoDocIdentidadLabel(selectedContact.doc_type)} {selectedContact.doc_number}</p>
-                    </div>
-                    <button onClick={() => { setSelectedContact(null); setContactSearch('') }} className="text-gray-400 hover:text-red-500"><X size={13} /></button>
-                  </div>
-                ) : (
-                  <>
-                    <input className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-                      placeholder="Buscar por nombre o doc..." value={contactSearch} onChange={e => setContactSearch(e.target.value)} />
-                    {contactResults.length > 0 && (
-                      <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-xl shadow-lg mt-1 overflow-hidden max-h-40 overflow-y-auto">
-                        {contactResults.map(c => (
-                          <button key={c.id} onClick={() => { setSelectedContact(c); setContactSearch(''); setContactResults([]) }}
-                            className="w-full text-left px-3 py-2 hover:bg-[rgb(var(--p50))] text-xs border-b border-gray-50 last:border-0">
-                            <p className="font-medium text-gray-800">{c.business_name}</p>
-                            <p className="text-gray-400">{getTipoDocIdentidadLabel(c.doc_type)} {c.doc_number}</p>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {contactSearch.trim() && contactResults.length === 0 && (
-                      <button type="button" onClick={openAddClientModal}
-                        className="mt-2 w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-dashed border-[rgb(var(--p300))] text-[rgb(var(--p600))] text-sm font-medium hover:bg-[rgb(var(--p50))] transition-colors">
-                        <UserPlus size={16} /> Agregar cliente
-                      </button>
-                    )}
-                  </>
-                )}
-              </div>
-
-              {/* Métodos de pago internos (control caja). Para SUNAT siempre se envía forma de pago Contado. */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-medium text-gray-600">Métodos de pago</label>
-                  <button onClick={addPaymentLine} className="text-xs text-[rgb(var(--p600))] hover:underline">+ Agregar</button>
-                </div>
-                <div className="space-y-2">
-                  {payments.map((p, idx) => (
-                    <div key={idx} className="flex gap-1 items-center">
-                      <select className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs"
-                        value={p.method} onChange={e => updatePayment(idx, 'method', e.target.value)}>
-                        {paymentMethods.map(m => <option key={m.id} value={m.code}>{m.name}</option>)}
-                      </select>
-                      <div className="relative w-24">
-                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">S/</span>
-                        <input type="number" min={0} step={0.01} className="w-full border border-gray-200 rounded-lg pl-6 pr-2 py-1.5 text-xs"
-                          value={p.amount} onChange={e => updatePayment(idx, 'amount', e.target.value)} />
-                      </div>
-                      {payments.length > 1 && (
-                        <button onClick={() => removePaymentLine(idx)} className="text-red-400 hover:text-red-600"><X size={12} /></button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <div className="flex justify-between text-xs mt-2 text-gray-500">
-                  <span>Total pagado</span><span className={totalPaid >= totalCart ? 'text-green-600 font-bold' : 'text-red-500 font-bold'}>S/ {totalPaid.toFixed(2)}</span>
-                </div>
-                {change > 0.01 && <p className="text-xs text-green-600 font-medium mt-1">Vuelto: S/ {change.toFixed(2)}</p>}
-              </div>
-              </>
-              )}
-            </div>
-
-            <div className="p-3 border-t border-gray-100 space-y-2">
-              <div className="flex justify-between font-bold text-gray-800 text-sm"><span>Total a cobrar</span><span>S/ {totalCart.toFixed(2)}</span></div>
-              <button onClick={handleCheckout} disabled={processing || branchSeriesMissing}
-                className="w-full flex items-center justify-center gap-2 py-3 bg-green-600 text-white rounded-xl text-sm font-bold hover:bg-green-700 disabled:opacity-50">
-                {processing ? 'Procesando...' : <><Receipt size={15} /> Confirmar venta</>}
-              </button>
-              <button onClick={() => setStep('cart')} className="w-full py-2 text-xs text-gray-500 hover:text-gray-700">← Volver al carrito</button>
-            </div>
-          </div>
-        )}
+        </div>
       </div>
 
       {/* Botón flotante de carrito (móvil, portal al body para evitar interferencias de layout) */}
       {floatingCartButton}
 
-      {/* Modal carrito + cobro (móvil) */}
+      <FlyToCartLayer />
+
+      {/* Modal carrito (móvil) */}
       <Modal open={cartModalOpen} onClose={() => setCartModalOpen(false)} contentClassName="max-w-md">
-        <div className="flex flex-col max-h-[80vh]">
-          <div className="flex border-b border-gray-100">
-            <button
-              onClick={() => setStep('cart')}
-              className={`flex-1 py-3 text-sm font-medium transition-colors ${
-                step === 'cart'
-                  ? 'text-[rgb(var(--p600))] border-b-2 border-[rgb(var(--p600))]'
-                  : 'text-gray-400'
-              }`}
-            >
-              Carrito ({cart.length})
-            </button>
-            <button
-              onClick={() => cart.length > 0 && goToPayment()}
-              className={`flex-1 py-3 text-sm font-medium transition-colors ${
-                step === 'payment'
-                  ? 'text-[rgb(var(--p600))] border-b-2 border-[rgb(var(--p600))]'
-                  : 'text-gray-400'
-              } ${cart.length === 0 ? 'opacity-40 cursor-not-allowed' : ''}`}
-            >
-              Cobrar
-            </button>
+        <div className="flex flex-col max-h-[min(85dvh,32rem)] min-h-[20rem]">
+          <div className="px-1 pb-2 border-b border-gray-100 shrink-0">
+            {renderCartHeader('py-2')}
           </div>
-
-          {step === 'cart' && (
+          <ul className="flex-1 min-h-0 overflow-y-auto overscroll-contain list-none m-0 p-0">
+            {cart.length === 0 ? (
+              <li className="flex flex-col items-center justify-center text-center py-10">
+                <ShoppingCart size={28} className="text-gray-300 mb-2" />
+                <p className="text-gray-400 text-sm">Carrito vacío</p>
+              </li>
+            ) : (
+              renderCartLines()
+            )}
+          </ul>
+          <div className="p-3 border-t border-gray-100 space-y-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setManualProductOpen(true)}
+              className="w-full inline-flex items-center justify-center gap-1 py-2 border border-amber-300 bg-amber-50 text-amber-900 rounded-xl text-xs font-semibold hover:bg-amber-100"
+            >
+              <Plus size={14} /> Producto manual
+            </button>
+          {cart.length > 0 && (
             <>
-              <div className="flex-1 overflow-y-auto">
-                {cart.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-center py-10">
-                    <ShoppingCart size={28} className="text-gray-300 mb-2" />
-                    <p className="text-gray-400 text-sm">Carrito vacío</p>
-                  </div>
-                ) : (
-                  cart.map((item, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-50"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-gray-800 truncate">
-                          {item.product.name}
-                        </p>
-                        <p className="text-xs text-[rgb(var(--p600))] font-bold">
-                          S/ {calcItemTotal(item).toFixed(2)}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => updateQty(idx, -1)}
-                          className="w-6 h-6 rounded-lg bg-gray-100 flex items-center justify-center hover:bg-gray-200"
-                        >
-                          <Minus size={10} />
-                        </button>
-                        <span className="w-6 text-center text-xs font-bold">
-                          {item.quantity}
-                        </span>
-                        <button
-                          onClick={() => updateQty(idx, 1)}
-                          className="w-6 h-6 rounded-lg bg-[rgb(var(--p100))] flex items-center justify-center hover:bg-[rgb(var(--p200))]"
-                        >
-                          <Plus size={10} />
-                        </button>
-                        <button
-                          onClick={() => removeFromCart(idx)}
-                          className="w-6 h-6 rounded-lg text-red-400 hover:bg-red-50 flex items-center justify-center"
-                        >
-                          <Trash2 size={10} />
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
+              <div className="flex justify-between font-bold text-gray-800">
+                <span>Total</span>
+                <span>{formatMoney(totalCart)}</span>
               </div>
-
-              {cart.length > 0 && (
-                <div className="p-3 border-t border-gray-100 space-y-2">
-                  {totalsByAfectacion.gravado.total > 0 && (
-                    <>
-                      <div className="flex justify-between text-xs text-gray-500">
-                        <span>Op. gravada – Subtotal</span>
-                        <span>S/ {totalsByAfectacion.gravado.subtotal.toFixed(2)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs text-gray-500">
-                        <span>Op. gravada – IGV</span>
-                        <span>S/ {totalsByAfectacion.gravado.taxAmount.toFixed(2)}</span>
-                      </div>
-                    </>
-                  )}
-                  {totalsByAfectacion.exonerado.total > 0 && (
-                    <div className="flex justify-between text-xs text-gray-500">
-                      <span>Op. exonerada</span>
-                      <span>S/ {totalsByAfectacion.exonerado.total.toFixed(2)}</span>
-                    </div>
-                  )}
-                  {totalsByAfectacion.inafecto.total > 0 && (
-                    <div className="flex justify-between text-xs text-gray-500">
-                      <span>Op. inafecta</span>
-                      <span>S/ {totalsByAfectacion.inafecto.total.toFixed(2)}</span>
-                    </div>
-                  )}
-                  {totalsByAfectacion.exportacion.total > 0 && (
-                    <div className="flex justify-between text-xs text-gray-500">
-                      <span>Op. exportación</span>
-                      <span>S/ {totalsByAfectacion.exportacion.total.toFixed(2)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between font-bold text-gray-800">
-                    <span>Total</span>
-                    <span>S/ {totalCart.toFixed(2)}</span>
-                  </div>
-                  <button
-                    onClick={goToPayment}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-bold hover:opacity-90"
-                  >
-                    Ir a cobrar <ChevronRight size={15} />
-                  </button>
-                </div>
-              )}
+              <button
+                type="button"
+                onClick={() => { setCartModalOpen(false); openCheckout() }}
+                disabled={branchSeriesMissing}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-bold hover:opacity-90 disabled:opacity-50"
+              >
+                Cobrar <ChevronRight size={15} />
+              </button>
             </>
           )}
-
-          {step === 'payment' && (
-            <div className="flex-1 flex flex-col overflow-y-auto">
-              <div className="p-3 space-y-3 flex-1 overflow-y-auto">
-                {/* Tipo de comprobante */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
-                    Tipo de comprobante
-                  </label>
-                  <div className="flex gap-1">
-                    {sunatCodesForPOS.map(code => (
-                      <button
-                        key={code}
-                        onClick={() => setSelectedSunatCode(code)}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                          selectedSunatCode === code
-                            ? 'bg-[rgb(var(--p600))] text-white'
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                        }`}
-                      >
-                        {getTipoComprobanteLabel(code)}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Serie */}
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Serie</label>
-                  <select
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-                    value={selectedSeriesId ?? ''}
-                    onChange={e =>
-                      setSelectedSeriesId(e.target.value ? Number(e.target.value) : null)
-                    }
-                  >
-                    <option value="">Seleccionar serie...</option>
-                    {checkoutSeries
-                      .filter(
-                        s =>
-                          ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) ===
-                          selectedSunatCode,
-                      )
-                      .map(s => (
-                        <option key={s.id} value={s.id}>
-                          {s.series}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-
-                {/* Cliente */}
-                <div className="relative">
-                  <label className="block text-xs font-medium text-gray-600 mb-1">
-                    {selectedSunatCode === '01'
-                      ? 'Cliente (RUC) *'
-                      : 'Cliente (opcional)'}
-                  </label>
-                  {selectedContact ? (
-                    <div className="flex items-center gap-2 bg-[rgb(var(--p50))] border border-[rgb(var(--p200))] rounded-xl px-3 py-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold text-gray-800 truncate">
-                          {selectedContact.business_name}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {getTipoDocIdentidadLabel(selectedContact.doc_type)}{' '}
-                          {selectedContact.doc_number}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => {
-                          setSelectedContact(null)
-                          setContactSearch('')
-                        }}
-                        className="text-gray-400 hover:text-red-500"
-                      >
-                        <X size={13} />
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <input
-                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-                        placeholder="Buscar por nombre o doc..."
-                        value={contactSearch}
-                        onChange={e => setContactSearch(e.target.value)}
-                      />
-                      {contactResults.length > 0 && (
-                        <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-xl shadow-lg mt-1 overflow-hidden max-h-40 overflow-y-auto">
-                          {contactResults.map(c => (
-                            <button
-                              key={c.id}
-                              onClick={() => {
-                                setSelectedContact(c)
-                                setContactSearch('')
-                                setContactResults([])
-                              }}
-                              className="w-full text-left px-3 py-2 hover:bg-[rgb(var(--p50))] text-xs border-b border-gray-50 last:border-0"
-                            >
-                              <p className="font-medium text-gray-800">{c.business_name}</p>
-                              <p className="text-gray-400">
-                                {getTipoDocIdentidadLabel(c.doc_type)} {c.doc_number}
-                              </p>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {contactSearch.trim() && contactResults.length === 0 && (
-                        <button
-                          type="button"
-                          onClick={openAddClientModal}
-                          className="mt-2 w-full flex items-center justify-center gap-2 py-2 rounded-xl border border-dashed border-[rgb(var(--p300))] text-[rgb(var(--p600))] text-sm font-medium hover:bg-[rgb(var(--p50))] transition-colors"
-                        >
-                          <UserPlus size={16} /> Agregar cliente
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                {/* Métodos de pago */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-medium text-gray-600">
-                      Métodos de pago
-                    </label>
-                    <button
-                      onClick={addPaymentLine}
-                      className="text-xs text-[rgb(var(--p600))] hover:underline"
-                    >
-                      + Agregar
-                    </button>
-                  </div>
-                  <div className="space-y-2">
-                    {payments.map((p, idx) => (
-                      <div key={idx} className="flex gap-1 items-center">
-                        <select
-                          className="flex-1 border border-gray-200 rounded-lg px-2 py-1.5 text-xs"
-                          value={p.method}
-                          onChange={e => updatePayment(idx, 'method', e.target.value)}
-                        >
-                          {paymentMethods.map(m => (
-                            <option key={m.id} value={m.code}>
-                              {m.name}
-                            </option>
-                          ))}
-                        </select>
-                        <div className="relative w-24">
-                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">
-                            S/
-                          </span>
-                          <input
-                            type="number"
-                            min={0}
-                            step={0.01}
-                            className="w-full border border-gray-200 rounded-lg pl-6 pr-2 py-1.5 text-xs"
-                            value={p.amount}
-                            onChange={e => updatePayment(idx, 'amount', e.target.value)}
-                          />
-                        </div>
-                        {payments.length > 1 && (
-                          <button
-                            onClick={() => removePaymentLine(idx)}
-                            className="text-red-400 hover:text-red-600"
-                          >
-                            <X size={12} />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex justify-between text-xs mt-2 text-gray-500">
-                    <span>Total pagado</span>
-                    <span
-                      className={
-                        totalPaid >= totalCart
-                          ? 'text-green-600 font-bold'
-                          : 'text-red-500 font-bold'
-                      }
-                    >
-                      S/ {totalPaid.toFixed(2)}
-                    </span>
-                  </div>
-                  {change > 0.01 && (
-                    <p className="text-xs text-green-600 font-medium mt-1">
-                      Vuelto: S/ {change.toFixed(2)}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="p-3 border-t border-gray-100 space-y-2">
-                <div className="flex justify-between font-bold text-gray-800 text-sm">
-                  <span>Total a cobrar</span>
-                  <span>S/ {totalCart.toFixed(2)}</span>
-                </div>
-                <button
-                  onClick={handleCheckout}
-                  disabled={processing}
-                  className="w-full flex items-center justify-center gap-2 py-3 bg-green-600 text-white rounded-xl text-sm font-bold hover:bg-green-700 disabled:opacity-50"
-                >
-                  {processing ? 'Procesando...' : <><Receipt size={15} /> Confirmar venta</>}
-                </button>
-                <button
-                  onClick={() => setStep('cart')}
-                  className="w-full py-2 text-xs text-gray-500 hover:text-gray-700"
-                >
-                  ← Volver al carrito
-                </button>
-              </div>
-            </div>
-          )}
+          </div>
         </div>
       </Modal>
 
@@ -1266,62 +1031,52 @@ function POSContent() {
         )}
       </Modal>
 
-      {/* Modal registro rápido de cliente (POS) */}
-      <Modal open={addClientModal} onClose={() => setAddClientModal(false)} contentClassName="max-w-md">
-        <h3 className="font-bold text-gray-800 text-lg mb-3">Registro rápido de cliente</h3>
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de documento</label>
-              <select className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-                value={quickClientForm.doc_type} onChange={e => setQuickClientForm(f => ({ ...f, doc_type: e.target.value }))}>
-                {SUNAT_TIPO_DOC_IDENTIDAD_LIST.filter(d => d.code === '1' || d.code === '6').map(d => (
-                  <option key={d.code} value={d.code}>{d.shortLabel}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">N° Documento</label>
-              <div className="flex border border-gray-200 rounded-xl overflow-hidden bg-white focus-within:ring-2 focus-within:ring-[rgb(var(--p600))] focus-within:border-[rgb(var(--p600))]">
-                <input
-                  className="flex-1 min-w-0 px-3 py-2 border-0 text-sm focus:outline-none focus:ring-0"
-                  value={quickClientForm.doc_number} onChange={e => setQuickClientForm(f => ({ ...f, doc_number: e.target.value }))}
-                  placeholder={quickClientForm.doc_type === '6' ? 'RUC 11 dígitos' : 'DNI 8 dígitos'}
-                />
-                <button
-                  type="button"
-                  onClick={handleValidarDoc}
-                  disabled={validandoDoc || !quickClientForm.doc_number.trim()}
-                  className="flex items-center gap-1.5 px-3 py-2 border-l border-gray-200 text-sm text-gray-600 hover:bg-gray-50 bg-gray-50/80 whitespace-nowrap disabled:opacity-50"
-                  title="Validar documento en SUNAT"
-                >
-                  <SearchCheck size={14} className={validandoDoc ? 'animate-pulse' : ''} />
-                  {validandoDoc ? '...' : 'Validar'}
-                </button>
-              </div>
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Nombre / Razón social *</label>
-            <input className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-              placeholder="Se completa con Validar o ingrese manual"
-              value={quickClientForm.business_name} onChange={e => setQuickClientForm(f => ({ ...f, business_name: e.target.value }))} />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Dirección (opcional)</label>
-            <input className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-              placeholder="Se completa con Validar RUC"
-              value={quickClientForm.address} onChange={e => setQuickClientForm(f => ({ ...f, address: e.target.value }))} />
-          </div>
-          <div className="flex gap-2 pt-2">
-            <button type="button" onClick={() => setAddClientModal(false)} className="flex-1 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>
-            <button type="button" onClick={handleRegistrarCliente} disabled={savingClient || !quickClientForm.business_name.trim()}
-              className="flex-1 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50">
-              {savingClient ? 'Guardando...' : 'Registrar cliente'}
-            </button>
-          </div>
-        </div>
-      </Modal>
+      <QuickContactCreateModal
+        open={addClientModal}
+        onClose={() => setAddClientModal(false)}
+        stacked
+        defaultDocType={isFacturaDocType(docType, selectedSeries?.sunat_code) ? '6' : '1'}
+        onCreated={(contact) => {
+          setContacts((prev) => [...prev, contact])
+          setContactId(contact.id)
+        }}
+      />
+
+      <POSCheckoutModal
+        open={checkoutOpen}
+        onClose={() => setCheckoutOpen(false)}
+        loading={processing}
+        rawTotal={totalCart}
+        payableTotal={payableTotal}
+        discountMode={checkoutDiscountMode}
+        discountValue={checkoutDiscountValue}
+        onDiscountModeChange={setCheckoutDiscountMode}
+        onDiscountValueChange={setCheckoutDiscountValue}
+        igvAmount={totalsByAfectacion.gravado.taxAmount}
+        series={checkoutSeries}
+        seriesId={seriesId}
+        docType={docType}
+        onSeriesChange={(id, dt) => {
+          setSeriesId(id)
+          setDocType(dt)
+        }}
+        contactId={effectiveContactId}
+        contacts={contacts}
+        onContactChange={setContactId}
+        onAddContact={openAddClientModal}
+        onPreferVariosContact={() => {
+          const variosId = pickVariosContactId(contacts)
+          if (variosId) setContactId(variosId)
+        }}
+        paymentMethods={paymentMethods}
+        payments={payments}
+        onPaymentsChange={setPayments}
+        onConfirm={handleCheckout}
+        confirmDisabled={!checkoutContactIsValid(selectedContact, docType, selectedSeries?.sunat_code) || !seriesId}
+        allowDiscount
+        sunatEnabled={sunatEnabled}
+        billingModule={billingModule}
+      />
 
       {/* Modal de éxito con opciones de impresión */}
       <ReceiptPrintModal
@@ -1330,6 +1085,12 @@ function POSContent() {
         printData={printData}
         saleNumber={successSale ? (successSale.number?.includes('-') ? successSale.number : `${successSale.series}-${String(successSale.number).padStart(8, '0')}`) : undefined}
         total={successSale?.total}
+      />
+
+      <ManualProductModal
+        open={manualProductOpen}
+        onClose={() => setManualProductOpen(false)}
+        onAdd={addManualToCart}
       />
     </div>
   )

@@ -11,6 +11,8 @@ import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { ReceiptPrintModal } from '@/components/ui/ReceiptPrintModal'
+import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
+import { formatTipoDocIdentidadDisplay } from '@/constants/sunat'
 import type { PrintData } from '@/types/printData'
 import { getTipoComprobanteLabel } from '@/constants/sunat'
 import { SUNAT_MAX_MONTO_CLIENTE_SIN_RUC, SUNAT_RUC_LENGTH } from '@/constants/sunat'
@@ -120,6 +122,7 @@ function SalesRegisterContent() {
   const [printData, setPrintData] = useState<PrintData | null>(null)
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
   const [lastSale, setLastSale] = useState<{ id: number; number: string; total: number } | null>(null)
+  const [addClientOpen, setAddClientOpen] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -405,18 +408,31 @@ function SalesRegisterContent() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
           <div className="sm:col-span-2 lg:col-span-6">
             <label className="block text-xs font-medium text-gray-600 mb-1">Cliente *</label>
-            <select
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-              value={form.contact_id ?? ''}
-              onChange={e => setForm(f => ({ ...f, contact_id: e.target.value ? Number(e.target.value) : null }))}
-            >
-              <option value="">Seleccionar cliente...</option>
-              {customers.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.business_name} {c.doc_type === '0' && c.doc_number === '99999999' ? '(por defecto)' : ''} — {c.doc_type === '6' ? 'RUC' : 'DNI'}/{c.doc_number}
-                </option>
-              ))}
-            </select>
+            <div className="flex gap-2">
+              <select
+                className="flex-1 min-w-0 border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                value={form.contact_id ?? ''}
+                onChange={e => setForm(f => ({ ...f, contact_id: e.target.value ? Number(e.target.value) : null }))}
+              >
+                <option value="">Seleccionar cliente...</option>
+                {customers.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.business_name}
+                    {c.doc_type === '0' && c.doc_number === '99999999' ? ' (por defecto)' : ''}
+                    {formatTipoDocIdentidadDisplay(c.doc_type, c.doc_number)
+                      ? ` — ${formatTipoDocIdentidadDisplay(c.doc_type, c.doc_number)}`
+                      : ''}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setAddClientOpen(true)}
+                className="shrink-0 rounded-xl border border-[rgb(var(--p500))] px-3 py-2 text-xs font-medium text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] min-h-[42px]"
+              >
+                Nuevo
+              </button>
+            </div>
           </div>
           <div className="lg:col-span-3">
             <label className="block text-xs font-medium text-gray-600 mb-1">Tipo comprobante</label>
@@ -727,6 +743,16 @@ function SalesRegisterContent() {
       <Modal open={showProductPicker} onClose={() => setShowProductPicker(false)} contentClassName="max-w-2xl">
         <ProductPickerModal onAdd={addProductToItems} onClose={() => setShowProductPicker(false)} />
       </Modal>
+
+      <QuickContactCreateModal
+        open={addClientOpen}
+        onClose={() => setAddClientOpen(false)}
+        defaultDocType={form.sunat_code === '01' ? '6' : '1'}
+        onCreated={(contact) => {
+          setCustomers((prev) => [...prev, contact])
+          setForm((f) => ({ ...f, contact_id: contact.id }))
+        }}
+      />
 
       <ReceiptPrintModal
         open={receiptModalOpen}

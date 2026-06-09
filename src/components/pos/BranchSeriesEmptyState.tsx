@@ -1,4 +1,4 @@
-import { FileText, Settings } from 'lucide-react'
+﻿import { FileText, Settings } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { clsx } from 'clsx'
 

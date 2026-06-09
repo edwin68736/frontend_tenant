@@ -10,6 +10,9 @@ import { isNativeShell } from '@/lib/platform/detect'
 const HomePage = lazy(() => import('@/pages/home/HomePage'))
 const DashboardPage = lazy(() => import('@/pages/dashboard/DashboardPage'))
 const ProductsPage = lazy(() => import('@/pages/products/ProductsPage'))
+const ServicesCatalogPage = lazy(() => import('@/pages/products/ServicesCatalogPage'))
+const CategoriesPage = lazy(() => import('@/pages/products/CategoriesPage'))
+const BrandsPage = lazy(() => import('@/pages/products/BrandsPage'))
 const ContactsPage = lazy(() => import('@/pages/contacts/ContactsPage'))
 const SalesPage = lazy(() => import('@/pages/sales/SalesPage'))
 const SalesRegisterPage = lazy(() => import('@/pages/sales/SalesRegisterPage'))
@@ -18,7 +21,6 @@ const PurchasesPage = lazy(() => import('@/pages/purchases/PurchasesPage'))
 const InventoryPage = lazy(() => import('@/pages/inventory/InventoryPage'))
 const InventoryTransfersPage = lazy(() => import('@/pages/inventory/InventoryTransfersPage'))
 const InventoryKardexPage = lazy(() => import('@/pages/inventory/InventoryKardexPage'))
-const ServicesPage = lazy(() => import('@/pages/inventory/ServicesPage'))
 const CashPage = lazy(() => import('@/pages/cash/CashPage'))
 const CashReportsPage = lazy(() => import('@/pages/cash/CashReportsPage'))
 const BankPage = lazy(() => import('@/pages/bank/BankPage'))
@@ -46,6 +48,7 @@ const RestaurantProductsPage = lazy(() => import('@/pages/restaurant/RestaurantP
 const RestaurantSettingsPage = lazy(() => import('@/pages/restaurant/RestaurantSettingsPage'))
 const ProfilePage = lazy(() => import('@/pages/profile/ProfilePage'))
 const SubscriptionPage = lazy(() => import('@/pages/subscription/SubscriptionPage'))
+const AjustesPage = lazy(() => import('@/pages/settings/AjustesPage'))
 
 function PageLoader() {
   return (
@@ -116,11 +119,14 @@ function AppRoutes() {
         <Route path="sales/pos" element={<Lazy><POSPage /></Lazy>} />
         <Route path="purchases" element={<Lazy><PurchasesPage /></Lazy>} />
         <Route path="products" element={<Lazy><ProductsPage /></Lazy>} />
+        <Route path="products/services" element={<Lazy><ServicesCatalogPage /></Lazy>} />
+        <Route path="products/categories" element={<Lazy><CategoriesPage /></Lazy>} />
+        <Route path="products/brands" element={<Lazy><BrandsPage /></Lazy>} />
         <Route path="contacts" element={<Lazy><ContactsPage /></Lazy>} />
         <Route path="inventory" element={<Lazy><InventoryPage /></Lazy>} />
+        <Route path="inventory/services" element={<Navigate to="/products/services" replace />} />
         <Route path="inventory/transfers" element={<Lazy><InventoryTransfersPage /></Lazy>} />
         <Route path="inventory/kardex" element={<Lazy><InventoryKardexPage /></Lazy>} />
-        <Route path="inventory/services" element={<Lazy><ServicesPage /></Lazy>} />
         <Route path="cashbank/cash" element={<Lazy><CashPage /></Lazy>} />
         <Route path="cashbank/reports" element={<Lazy><CashReportsPage /></Lazy>} />
         <Route path="cashbank/bank" element={<Lazy><BankPage /></Lazy>} />
@@ -146,6 +152,7 @@ function AppRoutes() {
         <Route path="users" element={<Lazy><UsersPage /></Lazy>} />
         <Route path="roles" element={<Lazy><RolesPage /></Lazy>} />
         <Route path="profile" element={<Lazy><ProfilePage /></Lazy>} />
+        <Route path="ajustes" element={<Lazy><AjustesPage /></Lazy>} />
         <Route path="subscription" element={<Lazy><SubscriptionPage /></Lazy>} />
         <Route path="company/config" element={<Lazy><CompanyConfigPage /></Lazy>} />
         <Route path="company/sunat" element={<Lazy><CompanySunatPage /></Lazy>} />

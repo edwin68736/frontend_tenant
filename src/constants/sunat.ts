@@ -93,6 +93,11 @@ export function getTipoComprobanteLabel(code: string): string {
   return SUNAT_TIPO_COMPROBANTE[code] ?? code
 }
 
+export function isElectronicSunatCode(code?: string | null): boolean {
+  const c = String(code ?? '').trim()
+  return c === '01' || c === '03'
+}
+
 export function getTipoDocIdentidadLabel(code: string): string {
   if (!code) return ''
   const c = String(code).trim()

@@ -97,6 +97,7 @@ export interface CreateSaleInput {
     unit: string
     quantity: number
     unit_price: number
+    discount?: number
     igv_affectation_type: string
     price_includes_igv: boolean
     modifiers_json?: string

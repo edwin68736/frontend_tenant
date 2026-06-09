@@ -28,6 +28,7 @@ export interface Permission {
   name: string
   module: string
   action: string
+  label?: string
 }
 
 export const usersService = {

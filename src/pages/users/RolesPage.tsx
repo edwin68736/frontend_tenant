@@ -3,6 +3,12 @@ import { toast } from 'sonner'
 import { Plus, Pencil, Trash2, ChevronDown } from 'lucide-react'
 import { usersService, type Role, type Permission } from '@/services/users.service'
 import { Modal } from '@/components/ui/Modal'
+import {
+  getPermissionDisplayLabel,
+  getPermissionInternalKey,
+  getPermissionModuleLabel,
+  sortPermissionModules,
+} from '@/utils/permissionLabels'
 
 const empty = () => ({ name: '', description: '', permission_ids: [] as number[] })
 
@@ -64,6 +70,8 @@ export default function RolesPage() {
     return acc
   }, {})
 
+  const groupedEntries = sortPermissionModules(Object.keys(grouped)).map((mod) => [mod, grouped[mod]] as const)
+
   if (loading) return <div className="flex justify-center py-16"><div className="w-6 h-6 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" /></div>
 
   return (
@@ -106,17 +114,21 @@ export default function RolesPage() {
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-2">Permisos ({form.permission_ids.length} seleccionados)</label>
           <div className="space-y-3 max-h-64 overflow-y-auto border border-gray-100 rounded-xl p-3">
-            {Object.entries(grouped).map(([mod, perms]) => (
+            {groupedEntries.map(([mod, perms]) => (
               <div key={mod}>
                 <div className="flex items-center gap-2 mb-1.5">
                   <ChevronDown size={12} className="text-gray-400" />
-                  <span className="text-xs font-semibold uppercase text-gray-500">{mod}</span>
+                  <span className="text-xs font-semibold uppercase text-gray-500">{getPermissionModuleLabel(mod)}</span>
                 </div>
-                <div className="grid grid-cols-2 gap-1.5 pl-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pl-4">
                   {perms.map(p => (
-                    <label key={p.id} className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer hover:text-gray-800">
-                      <input type="checkbox" checked={form.permission_ids.includes(p.id)} onChange={() => togglePerm(p.id)} className="rounded" />
-                      {p.action}
+                    <label
+                      key={p.id}
+                      className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer hover:text-gray-800"
+                      title={getPermissionInternalKey(p)}
+                    >
+                      <input type="checkbox" checked={form.permission_ids.includes(p.id)} onChange={() => togglePerm(p.id)} className="rounded shrink-0" />
+                      <span>{getPermissionDisplayLabel(p)}</span>
                     </label>
                   ))}
                 </div>

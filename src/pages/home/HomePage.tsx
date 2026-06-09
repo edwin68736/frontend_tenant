@@ -9,17 +9,14 @@ import {
   Wallet,
   LayoutDashboard,
   Grid3x3,
-  Quote,
   TrendingUp,
   CalendarDays,
   Truck,
   Package,
   ArrowRight,
-  Sparkles,
 } from 'lucide-react'
-import { pickRandomHomeQuote, type HomeInspirationalQuote } from '@/constants/homeQuotes'
-import { formatHomeDate, getTimeGreeting } from './homeGreeting'
 import { HOME_KPI_THEMES, getQuickLinkTheme } from './homeTheme'
+import { HomeTutorialsPromoSection } from '@/components/home/HomeTutorialsPromoSection'
 
 function formatMoney(value: number): string {
   return new Intl.NumberFormat('es-PE', {
@@ -38,8 +35,7 @@ type QuickLink = {
 }
 
 export default function HomePage() {
-  const { user, modules } = useAuth()
-  const [dailyQuote] = useState<HomeInspirationalQuote>(pickRandomHomeQuote)
+  const { modules } = useAuth()
   const [homeStats, setHomeStats] = useState<{
     sales_today: number
     sales_month: number
@@ -56,9 +52,6 @@ export default function HomePage() {
   }, [])
 
   const hasModule = (key: string) => modules.includes(key)
-  const greeting = getTimeGreeting()
-  const todayLabel = formatHomeDate()
-  const displayName = user?.name?.split(' ')[0] ?? 'Usuario'
 
   const quickLinks: QuickLink[] = [
     hasModule('sales') && {
@@ -128,111 +121,13 @@ export default function HomePage() {
 
   return (
     <div className="space-y-6 md:space-y-8 -m-1 md:-m-2">
-      {/* Hero: bienvenida + frase */}
-      <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-5">
-        <div className="lg:col-span-7 xl:col-span-8 relative overflow-hidden rounded-2xl border border-slate-200/80 bg-gradient-to-br from-slate-50 via-white to-sky-50/40 p-5 md:p-7 shadow-sm">
-          <div
-            className="pointer-events-none absolute -right-10 -top-10 h-44 w-44 rounded-full bg-emerald-200/25 blur-3xl"
-            aria-hidden
-          />
-          <div
-            className="pointer-events-none absolute -left-8 bottom-0 h-32 w-32 rounded-full bg-blue-200/20 blur-2xl"
-            aria-hidden
-          />
-
-          <div className="relative z-[1] flex flex-col gap-5">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/90 border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 shadow-sm">
-                <Sparkles size={13} className="text-amber-500" />
-                {todayLabel}
-              </span>
-            </div>
-
-            <div>
-              <p className="text-sm font-medium text-slate-500 mb-1">{greeting} 👋</p>
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">
-                {displayName}
-              </h1>
-              <p className="mt-2 text-sm sm:text-base text-gray-600 max-w-xl leading-relaxed">
-                Bienvenido nuevamente. Aquí tienes un resumen rápido de tu sistema.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap gap-2 pt-1">
-              {hasModule('sales') && (
-                <Link
-                  to="/sales/pos"
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary-600 text-white text-sm font-semibold hover:bg-primary-700 shadow-md shadow-primary-600/25 transition-all duration-200 hover:-translate-y-0.5"
-                >
-                  <ShoppingCart className="w-4 h-4" />
-                  Nueva venta
-                </Link>
-              )}
-              {hasModule('cashbank') && (
-                <Link
-                  to="/cashbank/cash"
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all duration-200"
-                >
-                  <Wallet className="w-4 h-4" />
-                  Abrir caja
-                </Link>
-              )}
-              {hasModule('sales') && (
-                <Link
-                  to="/sales"
-                  className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-700 hover:border-slate-300 hover:text-primary-700 hover:bg-primary-50/40 transition-all duration-200"
-                >
-                  <Receipt className="w-4 h-4" />
-                  Ver notas de venta
-                </Link>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <article className="lg:col-span-5 xl:col-span-4 relative overflow-hidden rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50/90 via-white to-indigo-50/50 p-5 md:p-6 shadow-sm transition-shadow duration-300 hover:shadow-md">
-          <div
-            className="pointer-events-none absolute inset-0 bg-gradient-to-br from-violet-100/40 via-transparent to-indigo-100/30"
-            aria-hidden
-          />
-          <div
-            className="pointer-events-none absolute right-3 top-3 text-violet-200/80"
-            aria-hidden
-          >
-            <Quote size={56} strokeWidth={1} />
-          </div>
-
-          <div className="relative z-[1] flex flex-col h-full justify-between gap-4 min-h-[180px]">
-            <div className="flex items-center gap-2">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-md shadow-violet-500/30">
-                <Quote size={18} />
-              </span>
-              <p className="text-xs font-semibold uppercase tracking-wider text-violet-700">
-                Inspiración del día
-              </p>
-            </div>
-
-            <div>
-              <h2 className="text-lg font-bold text-gray-900 leading-snug">{dailyQuote.headline}</h2>
-              <blockquote className="mt-3">
-                <p className="text-sm sm:text-[15px] text-gray-600 leading-relaxed italic">
-                  «{dailyQuote.quote}»
-                </p>
-                <footer className="mt-3 text-xs font-semibold text-indigo-600 not-italic">
-                  — {dailyQuote.author}
-                </footer>
-              </blockquote>
-            </div>
-          </div>
-        </article>
+      {/* Tutoriales YouTube + promociones */}
+      <section aria-label="Tutoriales y promociones">
+        <HomeTutorialsPromoSection />
       </section>
 
       {/* KPIs */}
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-base font-bold text-gray-900">Resumen rápido</h2>
-          <p className="text-xs text-gray-500 mt-0.5">Indicadores de ventas y compras</p>
-        </div>
+      <section>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
           {kpis.map((kpi) => {
             const Icon = kpi.icon

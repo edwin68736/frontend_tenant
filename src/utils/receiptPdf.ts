@@ -21,9 +21,14 @@ function formatMoney(n: number, currency = 'PEN'): string {
   return `${sym} ${n.toFixed(2)}`
 }
 
+export type ReceiptPdfOptions = {
+  paperWidthMm?: 58 | 80
+}
+
 export async function generateReceiptPdf(
   data: PrintData,
-  format: 'a4' | 'ticket' = 'a4'
+  format: 'a4' | 'ticket' = 'a4',
+  _options?: ReceiptPdfOptions,
 ): Promise<jsPDF> {
   const isTicket = format === 'ticket'
   const pageW = isTicket ? TICKET_WIDTH : A4_WIDTH
@@ -482,15 +487,35 @@ export async function generateReceiptPdf(
   return doc
 }
 
-export async function downloadReceiptPdf(data: PrintData, format: 'a4' | 'ticket' = 'a4'): Promise<void> {
-  const doc = await generateReceiptPdf(data, format)
-  const name = `comprobante-${data.series}-${data.number}.pdf`
-  doc.save(name)
+export async function printDataToPdfBlob(
+  data: PrintData,
+  format: 'a4' | 'ticket' = 'a4',
+  options?: ReceiptPdfOptions,
+): Promise<Blob> {
+  const doc = await generateReceiptPdf(data, format, options)
+  return doc.output('blob')
 }
 
-export async function openReceiptPdfInNewTab(data: PrintData, format: 'a4' | 'ticket' = 'a4'): Promise<void> {
-  const doc = await generateReceiptPdf(data, format)
-  const blob = doc.output('blob')
+export function receiptPdfFileName(data: PrintData, format: 'a4' | 'ticket'): string {
+  const safe = `${data.series}-${data.number}`.replace(/[^\w.-]+/g, '_')
+  return `comprobante-${safe}-${format}.pdf`
+}
+
+export async function downloadReceiptPdf(
+  data: PrintData,
+  format: 'a4' | 'ticket' = 'a4',
+  options?: ReceiptPdfOptions,
+): Promise<void> {
+  const doc = await generateReceiptPdf(data, format, options)
+  doc.save(receiptPdfFileName(data, format))
+}
+
+export async function openReceiptPdfInNewTab(
+  data: PrintData,
+  format: 'a4' | 'ticket' = 'a4',
+  options?: ReceiptPdfOptions,
+): Promise<void> {
+  const blob = await printDataToPdfBlob(data, format, options)
   const url = URL.createObjectURL(blob)
   window.open(url, '_blank', 'noopener,noreferrer')
   setTimeout(() => URL.revokeObjectURL(url), 1000)

@@ -4,7 +4,7 @@ import { BRAND_APP_LOGO } from '@/config/branding'
 import { companyService } from '@/services/company.service'
 import {
   Home,
-  LayoutDashboard, ShoppingCart, Receipt, Truck, Tag, Boxes,
+  LayoutDashboard, ShoppingCart, Receipt, Truck, Tag, Boxes, Package,
   BookUser, Wallet, Building2, Users, Settings, LogOut,
   Utensils, FileText, X, Grid3x3, Layers, ChefHat, UserCog,
   Shield, MapPin, FileCode, ShieldCheck, ArrowRightLeft, ListOrdered, LayoutGrid,
@@ -54,7 +54,7 @@ const SIMPLE_ITEMS: SimpleItem[] = [
   {
     id: 'contacts',
     to: '/contacts',
-    label: 'Contactos',
+    label: 'Clientes',
     icon: <BookUser size={16} />,
     module: 'contacts',
     permission: 'contacts.view',
@@ -106,18 +106,58 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    id: 'inventario',
-    label: 'Inventario',
-    icon: <Boxes size={16} />,
+    id: 'productos',
+    label: 'Productos',
+    icon: <Tag size={16} />,
     children: [
-      { id: 'inv-productos', to: '/products', label: 'Productos', icon: <Tag size={14} />, module: 'products', permission: 'products.view' },
       {
-        id: 'inv-servicios',
-        to: '/inventory/services',
+        id: 'prod-list',
+        to: '/products',
+        label: 'Productos',
+        icon: <Package size={14} />,
+        module: 'products',
+        permission: 'products.view',
+        exact: true,
+      },
+      {
+        id: 'prod-servicios',
+        to: '/products/services',
         label: 'Servicios',
         icon: <Briefcase size={14} />,
         module: 'products',
         permission: 'products.view',
+        exact: true,
+      },
+      {
+        id: 'prod-categorias',
+        to: '/products/categories',
+        label: 'Categorías',
+        icon: <Grid3x3 size={14} />,
+        module: 'products',
+        permission: 'products.view',
+      },
+      {
+        id: 'prod-marcas',
+        to: '/products/brands',
+        label: 'Marcas',
+        icon: <Layers size={14} />,
+        module: 'products',
+        permission: 'products.view',
+      },
+    ],
+  },
+  {
+    id: 'inventario',
+    label: 'Inventario',
+    icon: <Boxes size={16} />,
+    children: [
+      {
+        id: 'inv-stock',
+        to: '/inventory',
+        label: 'Stock',
+        icon: <Package size={14} />,
+        module: 'inventory',
+        permission: 'inventory.view',
         exact: true,
       },
       { id: 'inv-transfers', to: '/inventory/transfers', label: 'Transferencias', icon: <ArrowRightLeft size={14} />, module: 'inventory', permission: 'inventory.manage' },
@@ -389,7 +429,7 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
 
       {/* Navegación */}
       <nav className="flex-1 px-2 py-3 overflow-y-auto overflow-x-visible space-y-2">
-        {['home', 'dashboard', 'ventas', 'compras', 'contacts', 'inventario', 'finanzas', 'doc-avanzados', 'reportes', 'administracion', 'empresa', 'modules'].map(
+        {['home', 'dashboard', 'ventas', 'compras', 'contacts', 'productos', 'inventario', 'finanzas', 'doc-avanzados', 'reportes', 'administracion', 'empresa', 'modules'].map(
           (entryId) => {
             const item = visibleSimpleItems.find(i => i.id === entryId)
             if (item) {

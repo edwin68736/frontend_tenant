@@ -50,6 +50,7 @@ export interface PrintCompany {
   email?: string
   website?: string
   logo_url?: string
+  additional_notes?: string
 }
 
 export interface PrintBankAccount {

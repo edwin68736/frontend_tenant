@@ -333,7 +333,7 @@ function ContactsContent() {
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-lg font-bold text-gray-800">Contactos</h2>
+          <h2 className="text-lg font-bold text-gray-800">Clientes</h2>
           <p className="text-sm text-gray-500">{tab === 'supplier' ? 'Proveedores' : 'Clientes'}</p>
         </div>
         <button onClick={openNew} className="flex items-center gap-1.5 px-4 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90">

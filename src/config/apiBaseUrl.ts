@@ -143,29 +143,16 @@ export function getApiPrefixUrl(): string {
   return `${getApiBaseUrl().replace(/\/$/, '')}/api`
 }
 
+/**
+ * Origen para /uploads y /storage.
+ * En release los archivos los sirve el API central (api.tukifac.com), no el host del SPA tenant.
+ * En dev, rutas relativas pasan por el proxy Vite (/uploads → backend).
+ */
 export function getPublicAssetsBaseUrl(): string {
   const fromEnv = import.meta.env.VITE_ASSETS_ORIGIN as string | undefined
   if (fromEnv?.trim()) return normalizeApiOrigin(fromEnv)
-
-  if (typeof window !== 'undefined') {
-    const { hostname } = window.location
-    if (isLocalDevHost(hostname)) {
-      const env = import.meta.env.VITE_API_URL as string | undefined
-      if (env?.trim()) return normalizeApiOrigin(env)
-      return 'http://localhost:3000'
-    }
-    if (isTenantProductionHost(hostname)) {
-      return getCentralApiOrigin()
-    }
-  }
-
-  if (isNativeShell()) {
-    const url = getResolvedTenantApiUrl()
-    if (url) return normalizeApiOrigin(url)
-    return getCentralApiOrigin()
-  }
-
-  return getApiBaseUrl()
+  if (shouldUseDevApiProxy()) return ''
+  return getCentralApiOrigin()
 }
 
 export function resolvePublicAssetUrl(url: string | null | undefined): string {

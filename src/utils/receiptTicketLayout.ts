@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Layout del detalle POS en milímetros (ancho real del rollo).
  * Las posiciones se calculan para usar casi todo `pageW - 2*margin` y alinear P.UNIT / TOTAL al borde derecho.
  */
