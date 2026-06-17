@@ -4,6 +4,8 @@
  * Soporta exención global (zona selva, régimen exonerated).
  */
 
+import { roundSunat } from '@/utils/money'
+
 export interface TaxConfig {
   taxRate: number
   igvRegime?: string
@@ -85,4 +87,48 @@ export function calcItem(
   const subtotal = gross
   const taxAmount = gross * (rate / 100)
   return { subtotal, taxAmount, total: subtotal + taxAmount }
+}
+
+/**
+ * Aplica descuento sobre la base imponible (subtotal) y recalcula IGV y total.
+ */
+export function calcItemWithSubtotalDiscount(
+  unitPrice: number,
+  quantity: number,
+  subtotalDiscount: number,
+  igvAffectationType: string,
+  priceIncludesIgv: boolean,
+  taxRatePercent: number,
+  taxConfig?: Partial<TaxConfig>,
+): { subtotal: number; taxAmount: number; total: number } {
+  const base = calcItem(unitPrice, quantity, 0, igvAffectationType, priceIncludesIgv, taxRatePercent, taxConfig)
+  const rate = effectiveRate(igvAffectationType, taxRatePercent, taxConfig)
+  const disc = Math.max(0, Number(subtotalDiscount) || 0)
+  const newSubtotal = roundSunat(Math.max(0, base.subtotal - disc))
+
+  if (rate === 0) {
+    return { subtotal: newSubtotal, taxAmount: 0, total: newSubtotal }
+  }
+
+  const taxAmount = roundSunat(newSubtotal * (rate / 100))
+  const total = roundSunat(newSubtotal + taxAmount)
+  return { subtotal: newSubtotal, taxAmount, total }
+}
+
+/** Convierte descuento en base imponible al monto `discount` que espera el backend en CalcItem. */
+export function subtotalDiscountToLineDiscount(
+  unitPrice: number,
+  quantity: number,
+  subtotalDiscount: number,
+  igvAffectationType: string,
+  priceIncludesIgv: boolean,
+  taxRatePercent: number,
+  taxConfig?: Partial<TaxConfig>,
+): number {
+  const disc = Math.max(0, Number(subtotalDiscount) || 0)
+  if (disc <= 0) return 0
+  const rate = effectiveRate(igvAffectationType, taxRatePercent, taxConfig)
+  if (rate === 0) return roundSunat(disc)
+  if (priceIncludesIgv) return roundSunat(disc * (1 + rate / 100))
+  return roundSunat(disc)
 }

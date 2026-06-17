@@ -11,12 +11,24 @@ import { toast } from 'sonner'
 import { sessionService, type BranchBrief } from '@/services/session.service'
 import { useAuth } from '@/contexts/AuthContext'
 
+const ALLOWED_BRANCHES_KEY = 'allowed_branches'
+
+function readAllowedBranches(): BranchBrief[] {
+  try {
+    const raw = localStorage.getItem(ALLOWED_BRANCHES_KEY)
+    return raw ? (JSON.parse(raw) as BranchBrief[]) : []
+  } catch {
+    return []
+  }
+}
+
 type BranchContextValue = {
   activeBranch: BranchBrief | null
   activeBranchId: number
+  allowedBranches: BranchBrief[]
   canSwitchBranch: boolean
   resetEpoch: number
-  setFromLogin: (branch: BranchBrief | null, canSwitch: boolean) => void
+  setFromLogin: (branch: BranchBrief | null, canSwitch: boolean, allowed?: BranchBrief[]) => void
   switchBranch: (branchId: number) => Promise<void>
   refreshContext: () => Promise<void>
 }
@@ -33,22 +45,30 @@ export function BranchProvider({ children }: { children: ReactNode }) {
       return null
     }
   })
+  const [allowedBranches, setAllowedBranches] = useState<BranchBrief[]>(readAllowedBranches)
   const [canSwitchBranch, setCanSwitchBranch] = useState(
     () => localStorage.getItem('can_switch_branch') === 'true',
   )
   const [resetEpoch, setResetEpoch] = useState(0)
 
-  const persistBranch = useCallback((b: BranchBrief | null, canSwitch: boolean) => {
+  const persistBranch = useCallback((b: BranchBrief | null, canSwitch: boolean, allowed?: BranchBrief[]) => {
     if (b) localStorage.setItem('active_branch', JSON.stringify(b))
     else localStorage.removeItem('active_branch')
     localStorage.setItem('can_switch_branch', canSwitch ? 'true' : 'false')
+    const list = allowed?.length ? allowed : b ? [b] : []
+    setAllowedBranches(list)
+    if (list.length) {
+      localStorage.setItem(ALLOWED_BRANCHES_KEY, JSON.stringify(list))
+    } else {
+      localStorage.removeItem(ALLOWED_BRANCHES_KEY)
+    }
   }, [])
 
   const setFromLogin = useCallback(
-    (branch: BranchBrief | null, canSwitch: boolean) => {
+    (branch: BranchBrief | null, canSwitch: boolean, allowed?: BranchBrief[]) => {
       setActiveBranch(branch)
       setCanSwitchBranch(canSwitch)
-      persistBranch(branch, canSwitch)
+      persistBranch(branch, canSwitch, allowed)
     },
     [persistBranch],
   )
@@ -60,18 +80,20 @@ export function BranchProvider({ children }: { children: ReactNode }) {
 
   const refreshContext = useCallback(async () => {
     const ctx = await sessionService.getContext()
+    const allowed = ctx.allowed_branches ?? []
     setActiveBranch(ctx.active_branch)
     setCanSwitchBranch(ctx.can_switch_branch)
-    persistBranch(ctx.active_branch, ctx.can_switch_branch)
+    persistBranch(ctx.active_branch, ctx.can_switch_branch, allowed)
   }, [persistBranch])
 
   const switchBranch = useCallback(
     async (branchId: number) => {
       const res = await sessionService.switchBranch(branchId)
       localStorage.setItem('token', res.token)
+      const allowed = res.allowed_branches ?? []
       setActiveBranch(res.active_branch)
       setCanSwitchBranch(res.can_switch_branch)
-      persistBranch(res.active_branch, res.can_switch_branch)
+      persistBranch(res.active_branch, res.can_switch_branch, allowed)
       bumpReset()
       toast.success(`Sucursal: ${res.active_branch.name}`)
     },
@@ -81,9 +103,11 @@ export function BranchProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isAuthenticated) {
       setActiveBranch(null)
+      setAllowedBranches([])
       setCanSwitchBranch(false)
       localStorage.removeItem('active_branch')
       localStorage.removeItem('can_switch_branch')
+      localStorage.removeItem(ALLOWED_BRANCHES_KEY)
       return
     }
     if (!activeBranch) {
@@ -95,13 +119,14 @@ export function BranchProvider({ children }: { children: ReactNode }) {
     () => ({
       activeBranch,
       activeBranchId: activeBranch?.id ?? 0,
+      allowedBranches,
       canSwitchBranch,
       resetEpoch,
       setFromLogin,
       switchBranch,
       refreshContext,
     }),
-    [activeBranch, canSwitchBranch, resetEpoch, setFromLogin, switchBranch, refreshContext],
+    [activeBranch, allowedBranches, canSwitchBranch, resetEpoch, setFromLogin, switchBranch, refreshContext],
   )
 
   return <BranchContext.Provider value={value}>{children}</BranchContext.Provider>

@@ -11,6 +11,7 @@ import { downloadReceiptPdf, printDataToPdfBlob, type ReceiptPdfOptions } from '
 import { shareReceiptPdf } from '@/utils/receiptShare'
 import {
   getConfiguredPrinter,
+  isAutoPrintEnabled,
   isNativePrintAvailable,
   printDocumentAuto,
 } from '@/services/printers.service'
@@ -49,6 +50,7 @@ export function ReceiptPrintModal({
   const [busy, setBusy] = useState<string | null>(null)
   const pdfUrlRef = useRef<string | null>(null)
   const loadedFormatRef = useRef<PdfFormat | null>(null)
+  const autoPrintedRef = useRef(false)
 
   const printerCfg = getConfiguredPrinter('documentos')
   const hasDirectPrinter = isNativePrintAvailable() && Boolean(printerCfg)
@@ -125,6 +127,7 @@ export function ReceiptPrintModal({
 
   useEffect(() => {
     if (!open) {
+      autoPrintedRef.current = false
       revokePdfUrl()
       setPanelView('details')
       setPdfFormat('ticket')
@@ -135,6 +138,16 @@ export function ReceiptPrintModal({
     setPdfFormat('ticket')
     revokePdfUrl()
   }, [open, revokePdfUrl])
+
+  useEffect(() => {
+    if (!open || !printData || autoPrintedRef.current) return
+    if (!isNativePrintAvailable() || !isAutoPrintEnabled('documentos') || !getConfiguredPrinter('documentos')) return
+
+    autoPrintedRef.current = true
+    void printDocumentAuto(printData).catch((e) => {
+      console.error('[receipt auto-print]', e)
+    })
+  }, [open, printData])
 
   const handleClose = () => {
     revokePdfUrl()

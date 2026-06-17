@@ -173,11 +173,11 @@ export const productsService = {
   get: (id: number) =>
     api.get<ProductDetailResponse>('/api/products/' + id).then(r => ({ data: r.data.data, modifier_group_ids: r.data.modifier_group_ids ?? [] })),
 
-  bulkImportCatalog: (items: BulkImportItemPayload[]) =>
+  bulkImportCatalog: (items: BulkImportItemPayload[], branchId?: number) =>
     api
       .post<{ success: boolean; data: BulkImportResultPayload }>(
         '/api/products/bulk-import/catalog',
-        { items },
+        { branch_id: branchId && branchId > 0 ? branchId : undefined, items },
       )
       .then((r) => r.data.data),
 

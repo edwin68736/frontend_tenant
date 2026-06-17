@@ -37,12 +37,6 @@ import {
 import { buildTaxConfigFromSunat } from '@/constants/tax'
 import { findPaymentMethodRecord, isPaymentMethodLinkedForSale } from '@/utils/paymentMethodCheckout'
 import { BILLING_NOT_ENABLED_MESSAGE, isElectronicBillingSunatCode } from '@/utils/posCheckoutSeries'
-import {
-  getConfiguredPrinter,
-  isAutoPrintEnabled,
-  isNativePrintAvailable,
-  printDocumentAuto,
-} from '@/services/printers.service'
 import { ManualProductModal } from '@/components/pos/ManualProductModal'
 import { PosCartLineRow } from '@/components/pos/PosCartLineRow'
 import { roundMoney } from '@/utils/checkoutDiscount'
@@ -649,14 +643,6 @@ function POSContent() {
       setPayments([])
       setCheckoutDiscountValue(0)
       setCheckoutDiscountMode('percent')
-
-      if (isNativePrintAvailable() && isAutoPrintEnabled('documentos') && getConfiguredPrinter('documentos') && sale.print_data) {
-        try {
-          await printDocumentAuto(sale.print_data)
-        } catch (e) {
-          console.error('[pos auto-print]', e)
-        }
-      }
     } catch (e: unknown) {
       toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error procesando venta')
     } finally { setProcessing(false) }

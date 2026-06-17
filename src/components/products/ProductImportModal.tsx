@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
 import {
@@ -10,6 +10,7 @@ import {
   Upload,
   X,
 } from 'lucide-react'
+import { useBranch } from '@/contexts/BranchContext'
 import {
   downloadCatalogProductTemplate,
   importCatalogProducts,
@@ -28,7 +29,9 @@ type Props = {
 type Step = 'select' | 'validated' | 'importing' | 'done'
 
 export function ProductImportModal({ open, onClose, onImported }: Props) {
+  const { activeBranchId, activeBranch, allowedBranches, canSwitchBranch } = useBranch()
   const fileRef = useRef<HTMLInputElement>(null)
+  const [selectedBranchId, setSelectedBranchId] = useState(activeBranchId)
   const [step, setStep] = useState<Step>('select')
   const [fileName, setFileName] = useState('')
   const [validating, setValidating] = useState(false)
@@ -43,6 +46,25 @@ export function ProductImportModal({ open, onClose, onImported }: Props) {
     stockRegistered: number
     failed: { row: number; name: string; error: string }[]
   } | null>(null)
+
+  const branchOptions = useMemo(() => {
+    if (activeBranchId <= 0) return []
+    if (!canSwitchBranch) {
+      if (activeBranch) return [{ id: activeBranch.id, name: activeBranch.name }]
+      return [{ id: activeBranchId, name: 'Sucursal actual' }]
+    }
+    if (allowedBranches.length > 0) return allowedBranches
+    if (activeBranch) return [{ id: activeBranch.id, name: activeBranch.name }]
+    return [{ id: activeBranchId, name: 'Sucursal actual' }]
+  }, [canSwitchBranch, allowedBranches, activeBranchId, activeBranch])
+
+  const selectedBranchName =
+    branchOptions.find((b) => b.id === selectedBranchId)?.name ?? '—'
+
+  useEffect(() => {
+    if (!open) return
+    setSelectedBranchId(activeBranchId)
+  }, [open, activeBranchId])
 
   const reset = () => {
     setStep('select')
@@ -89,10 +111,14 @@ export function ProductImportModal({ open, onClose, onImported }: Props) {
 
   const handleImport = async () => {
     if (!validation || validation.errors.length > 0 || validation.rows.length === 0) return
+    if (selectedBranchId <= 0) {
+      toast.error('Seleccione una sucursal destino para importar')
+      return
+    }
     setStep('importing')
     setImportProgress({ done: 0, total: validation.rows.length })
     try {
-      const result = await importCatalogProducts(validation.rows, setImportProgress)
+      const result = await importCatalogProducts(validation.rows, selectedBranchId, setImportProgress)
       setImportResult(result)
       setStep('done')
       if (result.created > 0 || result.updated > 0) {
@@ -111,7 +137,11 @@ export function ProductImportModal({ open, onClose, onImported }: Props) {
   }
 
   const canImport =
-    validation != null && validation.errors.length === 0 && validation.rows.length > 0 && step === 'validated'
+    validation != null &&
+    validation.errors.length === 0 &&
+    validation.rows.length > 0 &&
+    selectedBranchId > 0 &&
+    step === 'validated'
   const isImporting = step === 'importing'
   const importPct =
     importProgress.total > 0 ? Math.min(100, Math.round((importProgress.done / importProgress.total) * 100)) : 0
@@ -154,8 +184,37 @@ export function ProductImportModal({ open, onClose, onImported }: Props) {
             Catálogo general: por defecto <strong>no</strong> son de restaurante. Use{' '}
             <strong>es_restaurante</strong> (si/no). <strong>area_preparacion</strong> es opcional
             (solo aplica si marca el producto como restaurante).{' '}
-            <strong>stock_inicial</strong> registra kardex en la sucursal activa.
+            <strong>stock_inicial</strong> solo aplica si <strong>control_stock</strong> es{' '}
+            <em>si</em>; el kardex se registra en la sucursal seleccionada.
           </p>
+
+          <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-3 space-y-2">
+            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Sucursal destino
+            </label>
+            {branchOptions.length === 0 ? (
+              <p className="text-sm text-amber-800">
+                No hay sucursal disponible. Seleccione una sucursal en el menú antes de importar.
+              </p>
+            ) : (
+              <select
+                value={selectedBranchId || ''}
+                onChange={(e) => setSelectedBranchId(Number(e.target.value))}
+                disabled={branchOptions.length <= 1 || isImporting}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {branchOptions.map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            )}
+            {validation && validation.rows.length > 0 && selectedBranchId > 0 && (
+              <p className="text-sm text-gray-700">
+                Se importarán <strong>{validation.rows.length}</strong> producto(s) a la sucursal{' '}
+                <strong>{selectedBranchName}</strong>
+              </p>
+            )}
+          </div>
 
           <div className="flex flex-wrap gap-2">
             <button
@@ -304,7 +363,7 @@ function PreviewTable({ rows, total }: { rows: ParsedCatalogImportRow[]; total: 
         <table className="w-full text-xs">
           <thead className="bg-gray-50">
             <tr>
-              {['#', 'Nombre', 'Precio', 'Rest.', 'Stock'].map((h) => (
+              {['#', 'Nombre', 'Precio', 'Rest.', 'Control stock', 'Stock'].map((h) => (
                 <th key={h} className="text-left px-2 py-2 font-semibold text-gray-600">
                   {h}
                 </th>
@@ -318,6 +377,7 @@ function PreviewTable({ rows, total }: { rows: ParsedCatalogImportRow[]; total: 
                 <td className="px-2 py-1.5">{r.nombre}</td>
                 <td className="px-2 py-1.5">{r.precio_venta.toFixed(2)}</td>
                 <td className="px-2 py-1.5">{r.es_restaurante ? 'sí' : 'no'}</td>
+                <td className="px-2 py-1.5">{r.control_stock ? 'sí' : 'no'}</td>
                 <td className="px-2 py-1.5">{r.stock_inicial > 0 ? r.stock_inicial : '—'}</td>
               </tr>
             ))}

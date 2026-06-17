@@ -11,6 +11,7 @@ export interface TenantUser {
   branch_ids?: number[]
   branch_names?: string[]
   active: boolean
+  role_edit_locked?: boolean
 }
 
 export interface Role {

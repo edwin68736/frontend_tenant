@@ -8,6 +8,7 @@ import {
 import type { BulkImportItemPayload } from '@/services/products.service'
 import { productsService } from '@/services/products.service'
 import { normalizeSunatUnit } from '@/constants/sunatUnits'
+import { INITIAL_STOCK_REQUIRES_MANAGE_STOCK } from '@/constants/productStockRules'
 
 type HucreRowError = {
   row: number
@@ -226,8 +227,8 @@ export async function downloadCatalogProductTemplate(): Promise<void> {
     'General',
     '10',
     'si',
-    'si',
-    10,
+    'no',
+    0,
     'no',
     '',
     'product',
@@ -290,7 +291,17 @@ export async function validateCatalogProductExcel(file: File): Promise<ImportVal
       codesInFile.set(codigo, rowNumber)
     }
     const stockInicial = Math.max(0, Number(row.stock_inicial ?? 0) || 0)
-    const controlStock = Boolean(row.control_stock) || stockInicial > 0
+    const controlStock = parseExcelBoolean(row.control_stock)
+    if (!controlStock && stockInicial > 0) {
+      extraErrors.push({
+        row: rowNumber,
+        column: 'stock_inicial',
+        field: 'stock_inicial',
+        message: INITIAL_STOCK_REQUIRES_MANAGE_STOCK,
+        value: stockInicial,
+      })
+      return
+    }
     const esRestaurante = Boolean(row.es_restaurante)
     const tipo = String(row.tipo ?? 'product').trim().toLowerCase() === 'service' ? 'service' : 'product'
     if (tipo === 'service' && esRestaurante) {
@@ -311,7 +322,7 @@ export async function validateCatalogProductExcel(file: File): Promise<ImportVal
       unidad: normalizeSunatUnit(String(row.unidad ?? ''), tipo),
       categoria: String(row.categoria ?? '').trim(),
       afectacion_igv: String(row.afectacion_igv ?? '10').trim(),
-      precio_incluye_igv: Boolean(row.precio_incluye_igv),
+      precio_incluye_igv: parseExcelBoolean(row.precio_incluye_igv),
       control_stock: controlStock,
       stock_inicial: stockInicial,
       es_restaurante: esRestaurante,
@@ -348,6 +359,7 @@ export type ImportProgress = { done: number; total: number; current?: string }
 
 export async function importCatalogProducts(
   rows: ParsedCatalogImportRow[],
+  branchId: number,
   onProgress?: (p: ImportProgress) => void
 ): Promise<{
   created: number
@@ -364,7 +376,7 @@ export async function importCatalogProducts(
     const chunk = rows.slice(offset, offset + BULK_CHUNK_SIZE)
     onProgress?.({ done: offset, total: rows.length, current: chunk[0]?.nombre })
     try {
-      const res = await productsService.bulkImportCatalog(chunk.map(rowToBulkPayload))
+      const res = await productsService.bulkImportCatalog(chunk.map(rowToBulkPayload), branchId)
       created += res.created
       updated += res.updated ?? 0
       stockRegistered += res.stock_registered

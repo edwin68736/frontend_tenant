@@ -9,6 +9,7 @@ export type BranchBrief = {
 export type SessionContextResponse = {
   active_branch: BranchBrief | null
   can_switch_branch: boolean
+  allowed_branches?: BranchBrief[]
   branch_session_version: number
 }
 
@@ -16,6 +17,7 @@ export type SwitchBranchResponse = {
   token: string
   active_branch: BranchBrief
   can_switch_branch: boolean
+  allowed_branches?: BranchBrief[]
 }
 
 export const sessionService = {

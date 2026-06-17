@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Building2, Check } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Building2 } from 'lucide-react'
 import { useBranch } from '@/contexts/BranchContext'
 import { companyService } from '@/services/company.service'
 
@@ -9,53 +9,58 @@ type Props = {
 
 /** Selector de sucursal dentro del menú de usuario del header */
 export function BranchSwitcherUserMenu({ onClose }: Props) {
-  const { activeBranch, canSwitchBranch, switchBranch } = useBranch()
-  const [branches, setBranches] = useState<{ id: number; name: string }[]>([])
+  const { activeBranch, allowedBranches, canSwitchBranch, switchBranch } = useBranch()
+  const [fetchedBranches, setFetchedBranches] = useState<{ id: number; name: string }[]>([])
 
   useEffect(() => {
-    if (canSwitchBranch) {
-      companyService.listBranches().then((b) => setBranches(b ?? [])).catch(() => setBranches([]))
+    if (canSwitchBranch && allowedBranches.length === 0) {
+      companyService
+        .listBranches()
+        .then((b) => setFetchedBranches(b ?? []))
+        .catch(() => setFetchedBranches([]))
     }
-  }, [canSwitchBranch])
+  }, [canSwitchBranch, allowedBranches.length])
+
+  const branches = useMemo(() => {
+    if (allowedBranches.length > 0) return allowedBranches
+    return fetchedBranches
+  }, [allowedBranches, fetchedBranches])
 
   if (!activeBranch) return null
 
   const handleSwitch = (branchId: number) => {
-    onClose?.()
     if (branchId !== activeBranch.id) void switchBranch(branchId)
+    onClose?.()
   }
 
   return (
-    <div className="border-b border-gray-100 pb-1.5 mb-1.5">
-      <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+    <div className="border-b border-gray-100 px-3 py-2.5 mb-1.5">
+      <label htmlFor="header-branch-select" className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
         Sucursal
-      </div>
+      </label>
       {canSwitchBranch && branches.length > 0 ? (
-        <ul className="max-h-48 overflow-y-auto">
-          {branches.map((b) => {
-            const isActive = b.id === activeBranch.id
-            return (
-              <li key={b.id}>
-                <button
-                  type="button"
-                  className={`flex items-center gap-2 w-[calc(100%-0.75rem)] mx-1.5 px-3 py-2 text-sm rounded-xl text-left transition-colors ${
-                    isActive
-                      ? 'font-semibold text-primary-800 bg-primary-50'
-                      : 'text-gray-700 hover:bg-gray-50'
-                  }`}
-                  onClick={() => handleSwitch(b.id)}
-                >
-                  <Building2 size={16} className={isActive ? 'text-primary-600' : 'text-gray-400'} />
-                  <span className="flex-1 truncate">{b.name}</span>
-                  {isActive && <Check size={16} className="text-primary-600 shrink-0" />}
-                </button>
-              </li>
-            )
-          })}
-        </ul>
+        <div className="relative">
+          <Building2
+            size={15}
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
+            aria-hidden
+          />
+          <select
+            id="header-branch-select"
+            className="w-full appearance-none border border-gray-200 rounded-xl pl-8 pr-8 py-2 text-sm text-gray-800 bg-white focus:outline-none focus:border-[rgb(var(--p400))] focus:ring-1 focus:ring-[rgb(var(--p200))] cursor-pointer"
+            value={activeBranch.id}
+            onChange={(e) => handleSwitch(Number(e.target.value))}
+          >
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        </div>
       ) : (
-        <div className="flex items-center gap-2 mx-1.5 px-3 py-2 text-sm text-gray-700">
-          <Building2 size={16} className="text-primary-600 shrink-0" />
+        <div className="flex items-center gap-2 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+          <Building2 size={15} className="text-primary-600 shrink-0" />
           <span className="truncate">{activeBranch.name}</span>
         </div>
       )}

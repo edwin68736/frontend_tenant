@@ -35,6 +35,7 @@ export interface LoginResponse {
   subscription: SubscriptionInfo | null
   active_branch?: BranchBrief | null
   can_switch_branch?: boolean
+  allowed_branches?: BranchBrief[]
 }
 
 // Decodifica el payload del JWT sin verificar firma (solo lectura cliente).

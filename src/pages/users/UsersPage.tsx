@@ -82,8 +82,11 @@ export default function UsersPage() {
     setShow(true)
   }
 
+  const roleLocked = editing?.role_edit_locked === true
+
   const handleSave = async () => {
-    if (!form.name || !form.email || (!editing && !form.password) || !form.role_id) {
+    const needsRole = !editing || !roleLocked
+    if (!form.name || !form.email || (!editing && !form.password) || (needsRole && !form.role_id)) {
       toast.error('Nombre, email, rol y contraseña son requeridos')
       return
     }
@@ -101,7 +104,7 @@ export default function UsersPage() {
         } = {
           name: form.name,
           email: form.email,
-          role_id: form.role_id,
+          role_id: roleLocked ? (editing.role_id ?? form.role_id) : form.role_id,
           active: editing.active,
         }
         if (form.branchIds.length > 0) {
@@ -340,11 +343,13 @@ export default function UsersPage() {
                   value={form.role_id > 0 ? String(form.role_id) : ''}
                   onChange={v => setForm(f => ({ ...f, role_id: v ? Number(v) : 0 }))}
                   placeholder="Seleccionar..."
+                  disabled={roleLocked}
                 />
               ) : (
                 <select
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"
                   value={form.role_id > 0 ? form.role_id : ''}
+                  disabled={roleLocked}
                   onChange={e => setForm(f => ({ ...f, role_id: Number(e.target.value) || 0 }))}
                 >
                   <option value="">Seleccionar...</option>
@@ -354,6 +359,11 @@ export default function UsersPage() {
                     </option>
                   ))}
                 </select>
+              )}
+              {roleLocked && (
+                <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 mt-1.5">
+                  El rol del usuario principal del sistema no puede modificarse. Otros administradores sí pueden cambiar su rol.
+                </p>
               )}
             </div>
           </div>
