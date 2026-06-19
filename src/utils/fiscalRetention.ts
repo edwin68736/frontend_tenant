@@ -20,13 +20,11 @@ export type RetentionContact = {
 export function autoSuggestIgvRetention(
   sunatCode: string,
   contact: RetentionContact | null | undefined,
-  saleTotal: number,
-  currency = 'PEN',
-  exchangeRate?: number | null,
+  _saleTotal = 0,
+  _currency = 'PEN',
+  _exchangeRate?: number | null,
 ): boolean {
   if (sunatCode !== '01') return false
-  const totalPEN = totalInPEN(saleTotal, currency, exchangeRate)
-  if (totalPEN <= IGV_RETENTION_THRESHOLD) return false
   if (!contact) return false
   if (contact.es_agente_de_percepcion) return false
   const docType = normalizeDocType(contact.doc_type, contact.doc_number)
@@ -112,6 +110,30 @@ function totalInPEN(total: number, currency: string, exchangeRate?: number | nul
   const rate = exchangeRate ?? 0
   if (rate <= 0) return total
   return round2(total * rate)
+}
+
+/** Valida retención IGV al guardar (incluye umbral S/ 700). */
+export function validateIgvRetentionAtSave(
+  hasRetention: boolean,
+  sunatCode: string,
+  contact: RetentionContact | null | undefined,
+  saleTotal: number,
+  manualOverride: boolean,
+  currency = 'PEN',
+  exchangeRate?: number | null,
+): string | null {
+  if (!hasRetention || sunatCode !== '01') return null
+  const preview = previewIgvRetention(
+    true,
+    sunatCode,
+    contact,
+    saleTotal,
+    manualOverride,
+    currency,
+    exchangeRate,
+  )
+  if (!preview.applicable) return preview.reason
+  return null
 }
 
 export function buildFiscalReferences(state: { guias?: FiscalGuiaRow[] }) {

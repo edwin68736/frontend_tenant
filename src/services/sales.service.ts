@@ -158,7 +158,8 @@ export interface CreateSaleInput {
   payment_method?: string
   payments?: PaymentInput[]
   notes?: string
-  /** Información adicional fiscal (solo formulario Nuevo Comprobante; POS no envía este bloque). */
+  /** Al registrar venta desde cotización (opción B). */
+  from_quotation_id?: number
   fiscal_context?: SaleFiscalContextInput
   detraccion?: { good_code: string; payment_method_code?: string }
   items: {

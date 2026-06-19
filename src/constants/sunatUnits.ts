@@ -1,39 +1,40 @@
 /**
- * Unidades de medida frecuentes (códigos SUNAT catálogo 03 / lista de comprobantes).
- * Etiquetas en español para UI; el valor enviado al backend es siempre `code`.
+ * Unidades de medida del sistema — códigos catálogo SUNAT 03 (tabla 6).
+ * Referencia oficial: https://github.com/EliuTimana/SunatCatalogos/blob/master/data/08/03.json
+ *
+ * Solo incluye unidades ya usadas en TukiFac; no agregar todo el catálogo SUNAT.
+ * El select de productos usa PRODUCT_UNIT_FORM_OPTIONS (subconjunto frecuente).
  */
 export type SunatUnitRow = { code: string; label: string }
 
+/** Unidades disponibles en el ERP (todas validadas contra catálogo 03). */
 export const SUNAT_UNITS: SunatUnitRow[] = [
-  { code: 'NIU', label: 'NIU — Unidad (bien)' },
-  { code: 'ZZ', label: 'ZZ — Servicio' },
-  { code: 'KGM', label: 'KGM — Kilogramo' },
-  { code: 'LTR', label: 'LTR — Litro' },
-  { code: 'MTR', label: 'MTR — Metro' },
-  { code: 'MTK', label: 'MTK — Metro cuadrado' },
-  { code: 'MTQ', label: 'MTQ — Metro cúbico' },
-  { code: 'TNE', label: 'TNE — Tonelada métrica' },
-  { code: 'GLL', label: 'GLL — Galón' },
-  { code: 'BX', label: 'BX — Caja' },
-  { code: 'BG', label: 'BG — Bolsa' },
-  { code: 'BO', label: 'BO — Botella' },
-  { code: 'PK', label: 'PK — Paquete' },
-  { code: 'SET', label: 'SET — Juego' },
-  { code: 'KT', label: 'KT — Kit' },
-  { code: 'DZN', label: 'DZN — Docena' },
-  { code: 'GRM', label: 'GRM — Gramo' },
-  { code: 'C62', label: 'C62 — Unidad (pieza)' },
-  { code: 'BLT', label: 'BLT — Bulto' },
-  { code: 'CJA', label: 'CJA — Caja (comercial)' },
-  { code: 'PAQ', label: 'PAQ — Paquete (comercial)' },
+  { code: 'NIU', label: 'Unidad (bienes)' },
+  { code: 'ZZ', label: 'Unidad (servicios)' },
+  { code: 'KGM', label: 'Kilogramo' },
+  { code: 'LTR', label: 'Litros' },
+  { code: 'MTR', label: 'Metro' },
+  { code: 'MTK', label: 'Metro cuadrado' },
+  { code: 'MTQ', label: 'Metro cúbico' },
+  { code: 'TNE', label: 'Toneladas' },
+  { code: 'GLL', label: 'Galón US (3,7843 L)' },
+  { code: 'BX', label: 'Cajas' },
+  { code: 'BG', label: 'Bolsa' },
+  { code: 'BO', label: 'Botellas' },
+  { code: 'PK', label: 'Paquete' },
+  { code: 'SET', label: 'Juego' },
+  { code: 'KT', label: 'Kit' },
+  { code: 'DZN', label: 'Docena' },
+  { code: 'GRM', label: 'Gramo' },
+  { code: 'C62', label: 'Piezas' },
 ]
 
 /** Unidades para bienes / productos con inventario (excluye ZZ = servicio). */
 export const SUNAT_PRODUCT_UNITS: SunatUnitRow[] = SUNAT_UNITS.filter((u) => u.code !== 'ZZ')
 
 /**
- * Opciones del registro de producto (solo nombre visible; el `code` SUNAT va al backend).
- * Orden: Unidades por defecto (NIU), luego el resto.
+ * Opciones del registro de producto (nombre visible; el `code` enviado es SUNAT 03).
+ * Todos los códigos existen en catálogo 03: NIU, BG, BX, GLL, KGM, LTR, MTR, PK.
  */
 export const PRODUCT_UNIT_FORM_OPTIONS: { code: string; displayName: string }[] = [
   { code: 'NIU', displayName: 'Unidades' },
@@ -48,6 +49,73 @@ export const PRODUCT_UNIT_FORM_OPTIONS: { code: string; displayName: string }[] 
 
 const PRODUCT_UNIT_FORM_CODE_SET = new Set(PRODUCT_UNIT_FORM_OPTIONS.map((o) => o.code))
 
+/** Códigos SUNAT 03 válidos para normalización (unidades del sistema + destinos de alias legacy). */
+const VALID_SUNAT_UNIT_CODES = new Set([
+  ...SUNAT_UNITS.map((u) => u.code),
+  // Solo alias legacy → código catalogo 03 (no están en el select)
+  'MLT', 'BE', 'CA', 'GLI', 'LBR', 'CMT',
+])
+
+/** Alias comercial / códigos legacy incorrectos → código SUNAT 03. */
+const UNIT_ALIASES: Record<string, string> = {
+  LT: 'LTR',
+  L: 'LTR',
+  LITRO: 'LTR',
+  LITROS: 'LTR',
+  KG: 'KGM',
+  KGS: 'KGM',
+  KILO: 'KGM',
+  KILOS: 'KGM',
+  G: 'GRM',
+  GR: 'GRM',
+  GRAMO: 'GRM',
+  GRAMOS: 'GRM',
+  ML: 'MLT',
+  GL: 'GLL',
+  GAL: 'GLL',
+  GALON: 'GLL',
+  GALONES: 'GLL',
+  M: 'MTR',
+  METRO: 'MTR',
+  METROS: 'MTR',
+  CAJ: 'BX',
+  CAJA: 'BX',
+  CAJAS: 'BX',
+  CJA: 'BX',
+  BOLS: 'BG',
+  BOLSA: 'BG',
+  PQT: 'PK',
+  PAQ: 'PK',
+  PAQUETE: 'PK',
+  DOC: 'DZN',
+  JGO: 'SET',
+  BULT: 'BE',
+  BLT: 'BE',
+  BULTO: 'BE',
+  PZ: 'C62',
+  PIEZA: 'C62',
+  PIEZAS: 'C62',
+  UND: 'NIU',
+  UNIDAD: 'NIU',
+  UNIDADES: 'NIU',
+  UNIT: 'NIU',
+  UNITS: 'NIU',
+  U: 'NIU',
+  UN: 'NIU',
+  LAT: 'CA',
+  LATA: 'CA',
+  LATAS: 'CA',
+}
+
+const LEGACY_DISPLAY: Record<string, string> = {
+  LT: 'Litros',
+  KG: 'Kilos',
+  CJA: 'Caja',
+  PAQ: 'Paquete',
+  BLT: 'Bulto',
+  UND: 'Unidades',
+}
+
 export function isProductUnitFormCode(code: string): boolean {
   return PRODUCT_UNIT_FORM_CODE_SET.has((code || '').trim().toUpperCase())
 }
@@ -59,26 +127,31 @@ export function productUnitFormDisplayName(code: string): string {
   const opt = PRODUCT_UNIT_FORM_OPTIONS.find((o) => o.code === c)
   if (opt) return opt.displayName
   const row = SUNAT_UNITS.find((u) => u.code === c)
-  if (row) {
-    const parts = row.label.split(' — ')
-    if (parts.length >= 2) return parts.slice(1).join(' — ')
-    return row.label
+  if (row) return row.label
+  if (LEGACY_DISPLAY[c]) return LEGACY_DISPLAY[c]
+  const aliased = UNIT_ALIASES[c]
+  if (aliased) {
+    const row2 = SUNAT_UNITS.find((u) => u.code === aliased)
+    if (row2) return row2.label
   }
   return c || '—'
 }
 
 export function sunatUnitLabel(code: string): string {
   const c = (code || '').trim().toUpperCase()
-  const row = SUNAT_UNITS.find((u) => u.code === c)
-  return row ? row.label : c
+  const aliased = UNIT_ALIASES[c] ?? c
+  const row = SUNAT_UNITS.find((u) => u.code === aliased)
+  return row ? `${row.code} — ${row.label}` : c
 }
 
 /** Código catálogo SUNAT 03 para comprobantes (NIU bienes, ZZ servicios). */
 export function normalizeSunatUnit(unit: string, type?: 'product' | 'service' | string): string {
   const t = type === 'service' ? 'service' : 'product'
   if (t === 'service') return 'ZZ'
-  const u = (unit || '').trim().toUpperCase()
+  let u = (unit || '').trim().toUpperCase()
+  if (UNIT_ALIASES[u]) u = UNIT_ALIASES[u]
   if (!u || ['UND', 'UNIDAD', 'UNIDADES', 'UNIT', 'UNITS', 'U', 'UN'].includes(u)) return 'NIU'
   if (u === 'ZZ') return 'NIU'
-  return u
+  if (VALID_SUNAT_UNIT_CODES.has(u)) return u
+  return 'NIU'
 }

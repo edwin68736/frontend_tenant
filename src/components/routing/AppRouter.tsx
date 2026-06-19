@@ -17,6 +17,8 @@ const ContactsPage = lazy(() => import('@/pages/contacts/ContactsPage'))
 const SalesPage = lazy(() => import('@/pages/sales/SalesPage'))
 const SalesRegisterLegacyRedirect = lazy(() => import('@/pages/sales/SalesRegisterLegacyRedirect'))
 const NotaVentaRegisterPage = lazy(() => import('@/pages/sales/NotaVentaRegisterPage'))
+const QuotationsPage = lazy(() => import('@/pages/quotations/QuotationsPage'))
+const QuotationRegisterPage = lazy(() => import('@/pages/quotations/QuotationRegisterPage'))
 const POSPage = lazy(() => import('@/pages/pos/POSPage'))
 const PurchasesPage = lazy(() => import('@/pages/purchases/PurchasesPage'))
 const InventoryPage = lazy(() => import('@/pages/inventory/InventoryPage'))
@@ -120,6 +122,9 @@ function AppRoutes() {
         <Route path="sales/register" element={<Lazy><SalesRegisterLegacyRedirect /></Lazy>} />
         <Route path="sales/nota-venta" element={<Lazy><NotaVentaRegisterPage /></Lazy>} />
         <Route path="sales/pos" element={<Lazy><POSPage /></Lazy>} />
+        <Route path="quotations" element={<Lazy><QuotationsPage /></Lazy>} />
+        <Route path="quotations/new" element={<Lazy><QuotationRegisterPage /></Lazy>} />
+        <Route path="quotations/:id/edit" element={<Lazy><QuotationRegisterPage /></Lazy>} />
         <Route path="purchases" element={<Lazy><PurchasesPage /></Lazy>} />
         <Route path="products" element={<Lazy><ProductsPage /></Lazy>} />
         <Route path="products/services" element={<Lazy><ServicesCatalogPage /></Lazy>} />

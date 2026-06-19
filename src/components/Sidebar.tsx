@@ -63,6 +63,22 @@ const SIMPLE_ITEMS: SimpleItem[] = [
 
 const NAV_GROUPS: NavGroup[] = [
   {
+    id: 'preventa',
+    label: 'Pre venta',
+    icon: <FileText size={16} />,
+    children: [
+      {
+        id: 'preventa-cotizaciones',
+        to: '/quotations',
+        label: 'Cotizaciones',
+        icon: <FileText size={14} />,
+        module: 'sales',
+        permission: 'sales.view',
+        exact: true,
+      },
+    ],
+  },
+  {
     id: 'ventas',
     label: 'Ventas',
     icon: <ShoppingCart size={16} />,
@@ -438,7 +454,7 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
 
       {/* Navegación */}
       <nav className="flex-1 px-2 py-3 overflow-y-auto overflow-x-visible space-y-2">
-        {['home', 'dashboard', 'ventas', 'compras', 'contacts', 'productos', 'inventario', 'finanzas', 'doc-avanzados', 'reportes', 'administracion', 'empresa', 'modules'].map(
+        {['home', 'dashboard', 'preventa', 'ventas', 'compras', 'contacts', 'productos', 'inventario', 'finanzas', 'doc-avanzados', 'reportes', 'administracion', 'empresa', 'modules'].map(
           (entryId) => {
             const item = visibleSimpleItems.find(i => i.id === entryId)
             if (item) {

@@ -16,6 +16,19 @@ const TICKET_PAGE_HEIGHT = 480
 const A4_WIDTH = 210
 const A4_HEIGHT = 297
 
+function formatDocNumber(data: PrintData): string {
+  const n = String(data.number ?? '').trim()
+  if (n.includes('-')) return n
+  const s = String(data.series ?? '').trim()
+  if (s && n) return `${s}-${n}`
+  return n || s
+}
+
+function isNonElectronicDoc(code?: string): boolean {
+  const c = String(code ?? '').trim()
+  return c === '00' || c === 'QT'
+}
+
 function formatMoney(n: number, currency = 'PEN'): string {
   const sym = currency === 'USD' ? '$' : 'S/'
   return `${sym} ${n.toFixed(2)}`
@@ -202,13 +215,14 @@ export async function generateReceiptPdf(
     addTicketLineCenter(`R.U.C. ${data.company.ruc}`, FONT_SIZE_SM)
     addTicketLineCenter(getTipoComprobanteLabel(data.sunat_code), FONT_SIZE)
     doc.setFontSize(FONT_SIZE_TITLE)
-    doc.text(`${data.series}-${data.number}`, pageW / 2, y, { align: 'center' })
+    doc.text(formatDocNumber(data), pageW / 2, y, { align: 'center' })
     y += ticketLineH + 2
     addSpace(2)
 
     // Datos cabecera
     addTicketWrapped(`Fecha Emisión: ${data.issue_date}`, FONT_SIZE_SM)
     if (data.issue_time) addTicketWrapped(`Hora Emisión: ${data.issue_time}`, FONT_SIZE_SM)
+    if (data.valid_until) addTicketWrapped(`Válida hasta: ${data.valid_until}`, FONT_SIZE_SM)
     if (data.client) {
       addTicketWrapped(
         `Cliente: ${data.client.business_name}`,
@@ -346,7 +360,7 @@ export async function generateReceiptPdf(
       }
     }
     addSpace(4)
-    if (data.sunat_code !== '00') {
+    if (!isNonElectronicDoc(data.sunat_code)) {
       doc.setFontSize(FONT_SIZE_SM)
       const footLines = doc.splitTextToSize(
         'Representación impresa del comprobante electrónico',
@@ -387,7 +401,7 @@ export async function generateReceiptPdf(
   doc.setFontSize(FONT_SIZE)
   doc.text(`R.U.C.: ${data.company.ruc}`, boxX + boxW / 2, y, { align: 'center' })
   y += lineH + 1
-  doc.text(`${data.series}-${data.number}`, boxX + boxW / 2, y, { align: 'center' })
+  doc.text(formatDocNumber(data), boxX + boxW / 2, y, { align: 'center' })
   y = startY + boxH + 6
 
   // Bloque con datos de empresa/cliente debajo del logo/cuadro (como en imagen)
@@ -433,6 +447,10 @@ export async function generateReceiptPdf(
     y
   )
   y += lineH
+  if (data.valid_until) {
+    doc.text(`Válida hasta: ${data.valid_until}`, margin + 2, y)
+    y += lineH
+  }
   if (data.fiscal?.purchase_order_number) {
     doc.text(`O/C: ${data.fiscal.purchase_order_number}`, margin + 2, y)
     y += lineH
@@ -553,6 +571,12 @@ export async function generateReceiptPdf(
 
   renderFiscalFooter(data, (text, size) => addLine(text, { size: size ?? FONT_SIZE_SM }), addSpace)
 
+  if (data.notes?.trim()) {
+    addLine('Observaciones:', { size: FONT_SIZE_SM })
+    addLine(data.notes.trim(), { size: FONT_SIZE_SM })
+    addSpace(2)
+  }
+
   // Pagos
   if (data.payments.length > 0) {
     addLine('PAGOS:', { size: FONT_SIZE_SM })
@@ -579,12 +603,17 @@ export async function generateReceiptPdf(
     }
   }
 
-  if (data.sunat_code !== '00') {
+  if (!isNonElectronicDoc(data.sunat_code)) {
     addLine('Representación impresa del comprobante electrónico', {
       size: FONT_SIZE_SM,
       align: 'center',
     })
     addLine('Consulte su comprobante en sunat.gob.pe', {
+      size: FONT_SIZE_SM,
+      align: 'center',
+    })
+  } else if (data.sunat_code === 'QT') {
+    addLine('Documento comercial — no válido como comprobante de pago SUNAT', {
       size: FONT_SIZE_SM,
       align: 'center',
     })
@@ -603,8 +632,9 @@ export async function printDataToPdfBlob(
 }
 
 export function receiptPdfFileName(data: PrintData, format: 'a4' | 'ticket'): string {
-  const safe = `${data.series}-${data.number}`.replace(/[^\w.-]+/g, '_')
-  return `comprobante-${safe}-${format}.pdf`
+  const prefix = data.sunat_code === 'QT' ? 'cotizacion' : 'comprobante'
+  const safe = formatDocNumber(data).replace(/[^\w.-]+/g, '_')
+  return `${prefix}-${safe}-${format}.pdf`
 }
 
 export async function downloadReceiptPdf(

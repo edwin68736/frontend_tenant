@@ -108,7 +108,7 @@ export function SaleAdditionalInfoDrawer({
       onChange({ ...value, has_igv_retention: suggested })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- solo inputs externos
-  }, [sunatCode, saleTotal, currency, exchangeRate, contact?.doc_type, contact?.doc_number, contact?.es_agente_de_retencion, contact?.es_agente_de_percepcion])
+  }, [sunatCode, contact?.doc_type, contact?.doc_number, contact?.es_agente_de_retencion, contact?.es_agente_de_percepcion])
 
   useEffect(() => {
     if (!open || typeof document === 'undefined') return

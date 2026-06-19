@@ -14,6 +14,7 @@ export const SUNAT_TIPO_COMPROBANTE: Record<string, string> = {
   '08': 'Nota de Débito',
   '09': 'Guía de Remisión',
   '20': 'Comprobante de Retención',
+  'QT': 'COTIZACIÓN',
 }
 
 /** Catálogo 51 — Tipo de operación (tipoOperacion en payload). */

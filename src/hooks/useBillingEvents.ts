@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { getApiPrefixUrl } from '@/services/api'
+import { getApiPrefixUrl, getTenantSlug, shouldUseDevApiProxy } from '@/config/apiBaseUrl'
 
 export interface BillingStatusEvent {
   event: string
@@ -29,7 +29,11 @@ export function useBillingEvents(
     const token = localStorage.getItem('token')
     if (!token) return
 
-    const url = `${getApiPrefixUrl()}/billing/events?access_token=${encodeURIComponent(token)}`
+    const apiBase = shouldUseDevApiProxy() ? '/api' : getApiPrefixUrl()
+    const slug = getTenantSlug()
+    const qs = new URLSearchParams({ access_token: token })
+    if (slug) qs.set('tenant_slug', slug)
+    const url = `${apiBase}/billing/events?${qs.toString()}`
     const es = new EventSource(url)
 
     const onMessage = (e: MessageEvent) => {

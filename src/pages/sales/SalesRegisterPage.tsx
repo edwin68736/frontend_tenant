@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Plus, Trash2, Search, X, Package, UserPlus } from 'lucide-react'
 import { salesService, type CreateSaleInput } from '@/services/sales.service'
@@ -20,7 +20,7 @@ import {
   type SaleFiscalFormState,
 } from '@/components/sales/SaleAdditionalInfoDrawer'
 import { usersService, type TenantUser } from '@/services/users.service'
-import { buildFiscalReferences, hasFiscalContextContent, previewIgvRetention } from '@/utils/fiscalRetention'
+import { buildFiscalReferences, hasFiscalContextContent, previewIgvRetention, validateIgvRetentionAtSave } from '@/utils/fiscalRetention'
 import { formatSaleMoney, saleCurrencySymbol } from '@/utils/formatMoney'
 import { consultaService } from '@/services/consulta.service'
 import { catalogsService, type DetraccionGood } from '@/services/catalogs.service'
@@ -44,6 +44,7 @@ import {
   type CheckoutDiscountMode,
 } from '@/utils/checkoutDiscount'
 import { roundSunat } from '@/utils/money'
+import { quotationsService } from '@/services/quotations.service'
 
 /** Tipo de serie de venta (desde API). */
 type SeriesRow = { id: number; series: string; doc_type: string; sunat_code?: string; branch_id?: number }
@@ -90,15 +91,21 @@ function docTypeToSunatCode(docType: string): string {
   return ''
 }
 
-export type SalesRegisterMode = 'nota-venta' | 'comprobante'
+export type SalesRegisterMode = 'nota-venta' | 'comprobante' | 'quotation'
+
+function seriesCategoryForMode(mode: SalesRegisterMode): string {
+  return mode === 'quotation' ? 'cotizacion' : 'venta'
+}
 
 function codesForMode(mode: SalesRegisterMode, billingOk: boolean): string[] {
+  if (mode === 'quotation') return ['QT']
   if (mode === 'nota-venta') return ['00']
   if (!billingOk) return []
   return ['03', '01']
 }
 
 function defaultCodeForMode(mode: SalesRegisterMode): string {
+  if (mode === 'quotation') return 'QT'
   return mode === 'nota-venta' ? '00' : '03'
 }
 
@@ -109,19 +116,26 @@ function resolveCashMethodCode(methods: PaymentMethodRecord[]): string {
   return cash?.code ?? methods[0]?.code ?? 'cash'
 }
 
-type SalesRegisterPageProps = { mode?: SalesRegisterMode }
+type SalesRegisterPageProps = { mode?: SalesRegisterMode; quotationId?: number }
 
-export default function SalesRegisterPage({ mode = 'comprobante' }: SalesRegisterPageProps) {
+export default function SalesRegisterPage({ mode = 'comprobante', quotationId }: SalesRegisterPageProps) {
   return (
     <RequireModule moduleKey="sales">
-      <SalesRegisterContent mode={mode} />
+      <SalesRegisterContent mode={mode} quotationId={quotationId} />
     </RequireModule>
   )
 }
 
-function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
+function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; quotationId?: number }) {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const fromQuotationParam = searchParams.get('from_quotation')
+  const fromQuotationId =
+    fromQuotationParam && Number.isFinite(Number(fromQuotationParam)) ? Number(fromQuotationParam) : null
   const isNotaVenta = mode === 'nota-venta'
+  const isQuotation = mode === 'quotation'
+  const editingQuotationId = isQuotation && quotationId && quotationId > 0 ? quotationId : null
+  const linkQuotationId = fromQuotationId ?? null
   const { user, hasModule } = useAuth()
   const { activeBranchId } = useBranch()
   const [series, setSeries] = useState<SeriesRow[]>([])
@@ -202,7 +216,7 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
   const fmt = (n: number) => formatSaleMoney(n, form.currency)
 
   useEffect(() => {
-    if (!form.issue_date || isNotaVenta) return
+    if (!form.issue_date || isNotaVenta || isQuotation) return
     let cancelled = false
     setTcLoading(true)
     setTcError('')
@@ -227,7 +241,7 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
     return () => {
       cancelled = true
     }
-  }, [form.issue_date, isNotaVenta])
+  }, [form.issue_date, isNotaVenta, isQuotation])
 
   useEffect(() => {
     if (!user?.id) return
@@ -235,9 +249,9 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
   }, [user?.id])
 
   useEffect(() => {
-    if (isNotaVenta) return
+    if (isNotaVenta || isQuotation) return
     catalogsService.detraccionGoods().then(setDetraccionGoods).catch(() => {})
-  }, [isNotaVenta])
+  }, [isNotaVenta, isQuotation])
 
   useEffect(() => {
     if (form.sunat_code !== '01' && form.operation_type_code === SUNAT_TIPO_OPERACION_DETRACCION) {
@@ -253,9 +267,10 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
   }, [isDetraccion, form.currency])
 
   useEffect(() => {
+    const seriesCategory = seriesCategoryForMode(mode)
     Promise.all([
       companyService.getConfig(),
-      companyService.listSeries({ branch_id: activeBranchId, category: 'venta' }),
+      companyService.listSeries({ branch_id: activeBranchId, category: seriesCategory }),
       companyService.getSunat(),
       contactsService.list('', 'customer'),
       contactsService.getDefault(),
@@ -275,18 +290,22 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
         setCustomers(Array.isArray(customerList) ? customerList : [])
         const billingOk = hasModule('billing') && (sunat?.sunat_enabled ?? true)
         const modeCodes = codesForMode(mode, billingOk)
-        const availableCodes = [
-          ...new Set(
-            ventaSeries
-              .map((s) => (s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type))
-              .filter((c) => c && modeCodes.includes(c)),
-          ),
-        ]
+        const availableCodes = isQuotation
+          ? ventaSeries.map((s) => (s.sunat_code ?? '').trim() || 'QT').filter(Boolean)
+          : [
+              ...new Set(
+                ventaSeries
+                  .map((s) => (s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type))
+                  .filter((c) => c && modeCodes.includes(c)),
+              ),
+            ]
         let defaultCode = defaultCodeForMode(mode)
         if (!availableCodes.includes(defaultCode)) defaultCode = availableCodes[0] ?? defaultCode
-        const matchSeries = ventaSeries.find(
-          (s) => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === defaultCode,
-        )
+        const matchSeries = isQuotation
+          ? ventaSeries[0]
+          : ventaSeries.find(
+              (s) => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === defaultCode,
+            )
         setForm(f => ({
           ...f,
           branch_id: activeBranchId,
@@ -312,8 +331,9 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
     setDiscountValue(0)
     setDiscountMode('percent')
     setForm((f) => ({ ...f, branch_id: activeBranchId }))
+    const seriesCategory = seriesCategoryForMode(mode)
     Promise.all([
-      companyService.listSeries({ branch_id: activeBranchId, category: 'venta' }),
+      companyService.listSeries({ branch_id: activeBranchId, category: seriesCategory }),
       companyService.getSunat(),
       contactsService.list('', 'customer'),
       contactsService.getDefault(),
@@ -336,18 +356,22 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
         }
         const billingOk = hasModule('billing') && (sunat?.sunat_enabled ?? true)
         const modeCodes = codesForMode(mode, billingOk)
-        const availableCodes = [
-          ...new Set(
-            ventaSeries
-              .map((s) => (s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type))
-              .filter((c) => c && modeCodes.includes(c)),
-          ),
-        ]
+        const availableCodes = isQuotation
+          ? ventaSeries.map((s) => (s.sunat_code ?? '').trim() || 'QT').filter(Boolean)
+          : [
+              ...new Set(
+                ventaSeries
+                  .map((s) => (s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type))
+                  .filter((c) => c && modeCodes.includes(c)),
+              ),
+            ]
         let defaultCode = defaultCodeForMode(mode)
         if (!availableCodes.includes(defaultCode)) defaultCode = availableCodes[0] ?? defaultCode
-        const matchSeries = ventaSeries.find(
-          (s) => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === defaultCode,
-        )
+        const matchSeries = isQuotation
+          ? ventaSeries[0]
+          : ventaSeries.find(
+              (s) => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === defaultCode,
+            )
         setForm((f) => ({
           ...f,
           contact_id: defaultClient?.id ?? f.contact_id,
@@ -359,10 +383,59 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
       .finally(() => setLoading(false))
   })
 
+  const applyQuotationPrefill = (qId: number) => {
+    quotationsService
+      .get(qId)
+      .then((detail) => {
+        const q = detail.quotation
+        if (q.status === 'converted') {
+          toast.error('Esta cotización ya fue convertida')
+          return
+        }
+        const issueYmd = (q.issue_date ?? '').slice(0, 10)
+        const validYmd = q.valid_until ? String(q.valid_until).slice(0, 10) : issueYmd
+        setForm((f) => ({
+          ...f,
+          contact_id: q.contact_id ?? f.contact_id,
+          issue_date: issueYmd || f.issue_date,
+          due_date: isQuotation ? validYmd : f.due_date,
+          currency: q.currency || f.currency,
+          exchange_rate: q.exchange_rate != null ? String(q.exchange_rate) : f.exchange_rate,
+          notes: q.notes || '',
+          series_id: isQuotation ? q.series_id : f.series_id,
+        }))
+        setItems(
+          (detail.items ?? []).map((it) => ({
+            product_id: it.product_id ?? null,
+            code: it.code || '',
+            description: it.description,
+            unit: it.unit || 'NIU',
+            quantity: it.quantity,
+            unit_price: it.unit_price,
+            igv_affectation_type: it.igv_affectation_type || '10',
+            price_includes_igv: it.price_includes_igv ?? true,
+          })),
+        )
+        if (linkQuotationId) {
+          toast.success(`Cotización ${q.number} cargada — puede modificar ítems antes de registrar la venta`)
+        }
+      })
+      .catch(() => toast.error('No se pudo cargar la cotización'))
+  }
+
+  useEffect(() => {
+    const qId = editingQuotationId ?? linkQuotationId
+    if (!qId || loading) return
+    applyQuotationPrefill(qId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- prefill once after initial load
+  }, [editingQuotationId, linkQuotationId, loading])
+
   const billingOk = hasModule('billing') && sunatEnabled
-  const seriesFiltered = series.filter(
-    (s) => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === form.sunat_code,
-  )
+  const seriesFiltered = isQuotation
+    ? series
+    : series.filter(
+        (s) => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === form.sunat_code,
+      )
   const tipoOptions = codesForMode(mode, billingOk).filter((code) =>
     series.some((s) => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === code),
   )
@@ -570,7 +643,11 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
       return
     }
     if (!form.contact_id) {
-      toast.error('Toda venta debe tener un cliente. Configure el cliente por defecto (doc. 0, número 99999999) en Contactos.')
+      toast.error(
+        isQuotation
+          ? 'Seleccione un cliente para la cotización'
+          : 'Toda venta debe tener un cliente. Configure el cliente por defecto (doc. 0, número 99999999) en Contactos.',
+      )
       return
     }
     if (items.length === 0) {
@@ -581,6 +658,62 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
       toast.error('Seleccione una serie')
       return
     }
+    for (const it of items) {
+      if (!it.description.trim()) {
+        toast.error('Todos los ítems deben tener descripción')
+        return
+      }
+    }
+
+    if (isQuotation) {
+      setSaving(true)
+      try {
+        const payload = {
+          branch_id: activeBranchId,
+          contact_id: form.contact_id || null,
+          series_id: form.series_id!,
+          issue_date: form.issue_date,
+          valid_until: form.due_date || undefined,
+          currency: form.currency,
+          exchange_rate: form.currency === 'USD' ? parsedExchangeRate ?? undefined : undefined,
+          notes: form.notes || undefined,
+          items: items.map((it, idx) => ({
+            product_id: it.product_id ?? null,
+            code: it.code,
+            description: it.description.trim(),
+            unit: it.unit,
+            quantity: it.quantity,
+            unit_price: it.unit_price,
+            discount: subtotalDiscountToLineDiscount(
+              it.unit_price,
+              it.quantity,
+              lineSubtotalDiscounts[idx] ?? 0,
+              it.igv_affectation_type,
+              it.price_includes_igv,
+              taxRate,
+              taxConfig,
+            ),
+            igv_affectation_type: it.igv_affectation_type,
+            price_includes_igv: it.price_includes_igv,
+          })),
+        }
+        if (editingQuotationId) {
+          await quotationsService.update(editingQuotationId, payload)
+          toast.success('Cotización actualizada')
+        } else {
+          await quotationsService.create(payload)
+          toast.success('Cotización registrada')
+        }
+        navigate('/quotations')
+      } catch (e: unknown) {
+        const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error
+        toast.error(msg ?? 'Error al guardar cotización')
+      } finally {
+        setSaving(false)
+      }
+      return
+    }
+
     const sunatCode = form.sunat_code
     if (sunatCode === '01') {
       if (!selectedContact) {
@@ -604,12 +737,6 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
     if (selectedContact?.doc_type === '0' && (sunatCode === '00' || sunatCode === '03')) {
       if (totalGlobal > SUNAT_MAX_MONTO_CLIENTE_SIN_RUC) {
         toast.error(`Con cliente sin RUC el monto máximo es S/ ${SUNAT_MAX_MONTO_CLIENTE_SIN_RUC}. Total: S/ ${totalGlobal.toFixed(2)}`)
-        return
-      }
-    }
-    for (const it of items) {
-      if (!it.description.trim()) {
-        toast.error('Todos los ítems deben tener descripción')
         return
       }
     }
@@ -644,9 +771,29 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
         return
       }
     }
+    if (!isNotaVenta && !isDetraccion && fiscalForm.has_igv_retention) {
+      const retentionErr = validateIgvRetentionAtSave(
+        fiscalForm.has_igv_retention,
+        form.sunat_code,
+        selectedContact ?? null,
+        totalGlobal,
+        fiscalForm.igv_retention_manual_override,
+        form.currency,
+        parsedExchangeRate,
+      )
+      if (retentionErr) {
+        toast.error(retentionErr)
+        return
+      }
+    }
 
     setSaving(true)
     try {
+      let notes = form.notes || ''
+      if (linkQuotationId) {
+        const refNote = `(Desde cotización #${linkQuotationId})`
+        notes = notes ? `${notes} ${refNote}` : refNote
+      }
       const payload: CreateSaleInput = {
         branch_id: activeBranchId,
         contact_id: form.contact_id || null,
@@ -659,7 +806,8 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
         issue_date: form.issue_date,
         due_date: form.due_date,
         payments: validPayments.map(p => ({ method: p.method, amount: Number(p.amount) })),
-        notes: form.notes || undefined,
+        notes: notes || undefined,
+        from_quotation_id: linkQuotationId ?? undefined,
         fiscal_context: !isNotaVenta && !isDetraccion && hasFiscalContextContent(fiscalForm) ? buildFiscalPayload() : undefined,
         detraccion: isDetraccion && detraccionGoodCode
           ? { good_code: detraccionGoodCode }
@@ -704,7 +852,7 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
     )
   }
 
-  if (!isNotaVenta && !billingOk) {
+  if (!isNotaVenta && !isQuotation && !billingOk) {
     return (
       <div className="max-w-lg mx-auto py-12 px-4 text-center space-y-4">
         <h2 className="text-lg font-bold text-gray-800">Nuevo comprobante</h2>
@@ -721,13 +869,30 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
     )
   }
 
-  if (!isNotaVenta && tipoOptions.length === 0) {
+  if (!isNotaVenta && !isQuotation && tipoOptions.length === 0) {
     return (
       <div className="max-w-lg mx-auto py-12 px-4 text-center space-y-4">
         <h2 className="text-lg font-bold text-gray-800">Nuevo comprobante</h2>
         <p className="text-sm text-gray-600">
           No hay series de boleta o factura para esta sucursal. Configúrelas en Empresa → Series.
         </p>
+      </div>
+    )
+  }
+
+  if (isQuotation && series.length === 0) {
+    return (
+      <div className="max-w-lg mx-auto py-12 px-4 text-center space-y-4">
+        <h2 className="text-lg font-bold text-gray-800">Nueva cotización</h2>
+        <p className="text-sm text-gray-600">
+          No hay series de cotización para esta sucursal. Configúrelas en Empresa → Series (categoría cotización).
+        </p>
+        <Link
+          to="/quotations"
+          className="inline-flex px-5 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50"
+        >
+          Volver al listado
+        </Link>
       </div>
     )
   }
@@ -743,7 +908,12 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
 
   return (
     <div className="space-y-4 relative">
-      {!isNotaVenta && (
+      {linkQuotationId && !isQuotation && (
+        <div className="rounded-xl border border-[rgb(var(--p200))] bg-[rgb(var(--p50))] px-4 py-3 text-sm text-[rgb(var(--p800))]">
+          Cotización #{linkQuotationId} precargada — puede agregar o quitar productos antes de registrar la venta.
+        </div>
+      )}
+      {!isNotaVenta && !isQuotation && (
         <SaleAdditionalInfoDrawer
           open={fiscalDrawerOpen}
           onOpenChange={setFiscalDrawerOpen}
@@ -819,7 +989,9 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
                 />
               </div>
               <div className="w-[9.5rem]">
-                <label className="block text-xs font-medium text-gray-600 mb-1">Fec. Vencimiento</label>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  {isQuotation ? 'Vigencia hasta' : 'Fec. Vencimiento'}
+                </label>
                 <input
                   type="date"
                   className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm"
@@ -841,6 +1013,10 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
             {isNotaVenta ? (
               <div className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50 text-gray-700">
                 {getTipoComprobanteLabel('00')}
+              </div>
+            ) : isQuotation ? (
+              <div className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50 text-gray-700">
+                Cotización
               </div>
             ) : (
               <select
@@ -869,7 +1045,7 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
               ))}
             </select>
           </div>
-          {!isNotaVenta && (
+          {!isNotaVenta && !isQuotation && (
             <>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Tipo operación</label>
@@ -1048,6 +1224,24 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
 
         {/* Detalle de ítems */}
         <section className="border-t border-gray-100 pt-5">
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <button
+              type="button"
+              onClick={() => setShowProductPicker(true)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[rgb(var(--p600))] text-white text-sm font-medium hover:opacity-90 shrink-0"
+            >
+              <Plus size={14} /> Agregar producto
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowManualItemModal(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50 shrink-0"
+            >
+              <Package size={14} /> Producto manual
+            </button>
+            <p className="text-xs text-gray-500 ml-auto">Total de ítems: {items.length}</p>
+          </div>
+
           <div className="overflow-x-auto rounded-xl border border-gray-200">
             <table className="w-full text-sm min-w-[720px] table-fixed">
               <thead className="bg-gray-50 border-b border-gray-100">
@@ -1124,25 +1318,7 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
           </div>
 
           <div className="flex flex-col lg:flex-row lg:items-start gap-4 mt-4">
-            <div className="flex-1 space-y-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowProductPicker(true)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[rgb(var(--p600))] text-white text-sm font-medium hover:opacity-90 shrink-0"
-                >
-                  <Plus size={14} /> Agregar producto
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowManualItemModal(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50 shrink-0"
-                >
-                  <Package size={14} /> Producto manual
-                </button>
-              </div>
-              <p className="text-xs text-gray-500">Total de ítems: {items.length}</p>
-            </div>
+            <div className="flex-1" />
 
             <div className="w-full lg:w-[min(100%,22rem)] lg:shrink-0 border border-gray-200 rounded-xl p-4 space-y-4 bg-gray-50/40">
               <div>
@@ -1246,6 +1422,7 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
                 )}
               </div>
 
+              {!isQuotation && (
               <div className="space-y-2 pt-1 border-t border-gray-200">
                 <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
                   {isDetraccion && detractionPreview.applicable ? 'Pagos directos' : 'Métodos de pago'}
@@ -1296,6 +1473,7 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
                   </div>
                 )}
               </div>
+              )}
             </div>
           </div>
         </section>
@@ -1303,7 +1481,7 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
         <div className="flex flex-col-reverse sm:flex-row sm:justify-between gap-2 pt-4 border-t border-gray-100">
           <button
             type="button"
-            onClick={() => navigate('/sales')}
+            onClick={() => navigate(isQuotation ? '/quotations' : '/sales')}
             className="inline-flex items-center justify-center px-5 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 sm:min-w-[7.5rem]"
           >
             Cancelar
@@ -1315,7 +1493,15 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
             disabled={saving || items.length === 0}
             className="inline-flex items-center justify-center px-6 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50 sm:min-w-[9rem]"
           >
-            {saving ? 'Guardando...' : isNotaVenta ? 'Registrar nota de venta' : 'Generar'}
+            {saving
+              ? 'Guardando...'
+              : isQuotation
+                ? editingQuotationId
+                  ? 'Actualizar cotización'
+                  : 'Guardar cotización'
+                : isNotaVenta
+                  ? 'Registrar nota de venta'
+                  : 'Generar'}
           </button>
           </div>
         </div>

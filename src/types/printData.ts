@@ -28,6 +28,10 @@ export interface PrintData {
   payment_wallet?: PrintPaymentWallet
   /** Información adicional fiscal (retención operativa, O/C, guías). */
   fiscal?: PrintFiscalContext
+  /** Cotización: fecha de vigencia (dd/mm/yyyy). */
+  valid_until?: string
+  /** Observaciones comerciales (cotización). */
+  notes?: string
 }
 
 export interface PrintFiscalContext {
@@ -68,6 +72,7 @@ export interface PrintClient {
   doc_number: string
   business_name: string
   address?: string
+  email?: string
 }
 
 export interface PrintCompany {
