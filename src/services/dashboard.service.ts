@@ -67,6 +67,9 @@ export interface DashboardAnalytics {
     cash_expense: number
     cash_net: number
     open_cash_sessions: number
+    sum_detraccion?: number
+    sum_net_payable?: number
+    count_detraccion?: number
   }
   timeseries_daily: Array<{ day: string; sales: number; documents: number }>
   sales_by_branch: Array<{ id: number; name: string; total: number }>

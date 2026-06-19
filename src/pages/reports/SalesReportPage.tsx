@@ -8,6 +8,11 @@ import { cashbankService, type PaymentMethodRecord } from '@/services/cashbank.s
 import { exportTableToPdf } from '@/utils/exportPdf'
 import { exportTableToExcel, type ExportColumn as ExcelExportColumn } from '@/utils/exportExcel'
 import { formatDisplayDatePeru, getTodayPeru } from '@/utils/datesPeru'
+import {
+  formatPaymentMethodLabel,
+  formatOperationTypeCode,
+  isDetractionPaymentMethod,
+} from '@/utils/paymentMethodLabel'
 
 type Branch = { id: number; name: string }
 type DocTypeFilter = 'all' | 'notes' | 'facturas_boletas' | 'factura' | 'boleta'
@@ -15,26 +20,8 @@ type SaleStatusFilter = 'all' | 'active' | 'cancelled'
 type PaymentModeFilter = 'all' | 'mixed' | 'single'
 const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
 
-const PAYMENT_LABELS: Record<string, string> = {
-  cash: 'Efectivo',
-  efectivo: 'Efectivo',
-  yape: 'Yape',
-  plin: 'Plin',
-  card: 'Tarjeta',
-  tarjeta: 'Tarjeta',
-  transfer: 'Transferencia',
-  transferencia: 'Transferencia',
-  credito: 'Crédito',
-  credit: 'Crédito',
-}
-
-function normalizePaymentMethod(code?: string) {
-  return String(code || '').trim().toLowerCase()
-}
-
 function formatPaymentMethod(code?: string) {
-  const normalized = normalizePaymentMethod(code)
-  return PAYMENT_LABELS[normalized] || code || 'No definido'
+  return formatPaymentMethodLabel(code)
 }
 
 const SALE_STATUS_LABELS: Record<string, string> = {
@@ -68,7 +55,14 @@ function formatSaleComprobante(docType: string, series: string, numberRaw: strin
 
 /** Colores reconocibles en las tarjetas de totales por método */
 function paymentMethodStatCardClasses(code?: string): { wrap: string; label: string; amount: string } {
-  const c = normalizePaymentMethod(code)
+  const c = String(code || '').trim().toLowerCase()
+  if (isDetractionPaymentMethod(c)) {
+    return {
+      wrap: 'rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3',
+      label: 'text-xs font-semibold uppercase tracking-wide text-amber-800',
+      amount: 'text-xl font-bold text-amber-950',
+    }
+  }
   if (c === 'yape') {
     return {
       wrap: 'rounded-2xl border border-purple-300 bg-purple-50 px-4 py-3',
@@ -119,7 +113,14 @@ const COLS: ExcelExportColumn<Sale & { doc_display?: string }>[] = [
   { key: 'contact_name', label: 'Cliente' },
   { key: 'subtotal', label: 'Subtotal', format: fmtMoneyCell, excelNumber: true },
   { key: 'tax_amount', label: 'IGV', format: fmtMoneyCell, excelNumber: true },
-  { key: 'total', label: 'Total', format: fmtMoneyCell, excelNumber: true },
+  { key: 'total', label: 'Total factura', format: fmtMoneyCell, excelNumber: true },
+  { key: 'detraccion_amount', label: 'Detracción SPOT', format: (v: unknown, r) => (r as Sale).has_detraccion ? fmtMoneyCell(v) : '—', excelNumber: true },
+  { key: 'net_payable', label: 'Neto cobrable', format: fmtMoneyCell, excelNumber: true },
+  {
+    key: 'operation_type_code',
+    label: 'Tipo operación',
+    format: (v: unknown) => formatOperationTypeCode(String(v || '')),
+  },
   { key: 'payment_method', label: 'Método pago', format: (v: unknown) => formatPaymentMethod(String(v || '')) },
   { key: 'status', label: 'Estado', format: (v: unknown) => formatSaleStatus(String(v || '')) },
 ]
@@ -173,7 +174,12 @@ export default function SalesReportPage() {
     setLoading(true)
     try {
       const { data: list, total: t, summary: sum } = await salesService.list(buildListParams(page, perPage))
-      const withDoc = (list ?? []).map((s) => ({ ...s, doc_display: formatSaleComprobante(s.doc_type, s.series, s.number) }))
+      const withDoc = (list ?? []).map((s) => ({
+        ...s,
+        doc_display: formatSaleComprobante(s.doc_type, s.series, s.number),
+        detraccion_amount: s.has_detraccion ? (s.detraccion_amount ?? 0) : 0,
+        net_payable: s.has_detraccion ? (s.net_payable ?? s.total) : s.total,
+      }))
       setData(withDoc)
       setTotal(t ?? 0)
       setSummary(sum ?? null)
@@ -209,10 +215,13 @@ export default function SalesReportPage() {
         amountTotal: 0,
         amountCancelled: 0,
         amountActive: 0,
+        sumDetraccion: 0,
+        sumNetPayable: 0,
+        countDetraccion: 0,
         methodCards: [] as { code: string; label: string; total: number }[],
       }
     }
-    const methodCards = (s.payment_totals ?? []).slice(0, 5).map((pt) => ({
+    const methodCards = (s.payment_totals ?? []).slice(0, 6).map((pt) => ({
       code: pt.method,
       label: formatPaymentMethod(pt.method),
       total: pt.total,
@@ -221,6 +230,9 @@ export default function SalesReportPage() {
       amountTotal: s.sum_total,
       amountCancelled: s.sum_cancelled,
       amountActive: s.sum_active,
+      sumDetraccion: s.sum_detraccion ?? 0,
+      sumNetPayable: s.sum_net_payable ?? 0,
+      countDetraccion: s.count_detraccion ?? 0,
       methodCards,
     }
   }, [summary])
@@ -229,7 +241,12 @@ export default function SalesReportPage() {
     setLoading(true)
     try {
       const { data: rows } = await salesService.list({ ...buildFilterParams(), export_all: '1' })
-      const withDoc = (rows ?? []).map((s) => ({ ...s, doc_display: formatSaleComprobante(s.doc_type, s.series, s.number) }))
+      const withDoc = (rows ?? []).map((s) => ({
+        ...s,
+        doc_display: formatSaleComprobante(s.doc_type, s.series, s.number),
+        detraccion_amount: s.has_detraccion ? (s.detraccion_amount ?? 0) : 0,
+        net_payable: s.has_detraccion ? (s.net_payable ?? s.total) : s.total,
+      }))
       exportTableToPdf<Sale & { doc_display?: string }>('Reporte de ventas', COLS, withDoc, `reporte-ventas-${filters.from || 'todo'}-${filters.to || 'todo'}.pdf`)
       toast.success('PDF descargado')
     } catch {
@@ -242,7 +259,12 @@ export default function SalesReportPage() {
     setLoading(true)
     try {
       const { data: rows } = await salesService.list({ ...buildFilterParams(), export_all: '1' })
-      const withDoc = (rows ?? []).map((s) => ({ ...s, doc_display: formatSaleComprobante(s.doc_type, s.series, s.number) }))
+      const withDoc = (rows ?? []).map((s) => ({
+        ...s,
+        doc_display: formatSaleComprobante(s.doc_type, s.series, s.number),
+        detraccion_amount: s.has_detraccion ? (s.detraccion_amount ?? 0) : 0,
+        net_payable: s.has_detraccion ? (s.net_payable ?? s.total) : s.total,
+      }))
       await exportTableToExcel<Sale & { doc_display?: string }>('Ventas', COLS, withDoc, `reporte-ventas-${filters.from || 'todo'}-${filters.to || 'todo'}.xlsx`)
       toast.success('Excel descargado')
     } catch {
@@ -371,10 +393,21 @@ export default function SalesReportPage() {
       </div>
 
       {!loading && (
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-8 gap-3">
           <div className="rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Total no anuladas</p>
             <p className="text-2xl font-bold text-violet-900">S/ {stats.amountActive.toFixed(2)}</p>
+            <p className="text-[10px] text-violet-700/80 mt-0.5">Monto factura (incl. detracción)</p>
+          </div>
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Neto cobrable</p>
+            <p className="text-2xl font-bold text-emerald-950">S/ {stats.sumNetPayable.toFixed(2)}</p>
+            <p className="text-[10px] text-emerald-700/80 mt-0.5">Pagos directos (1001)</p>
+          </div>
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Detracción SPOT</p>
+            <p className="text-2xl font-bold text-amber-950">S/ {stats.sumDetraccion.toFixed(2)}</p>
+            <p className="text-[10px] text-amber-700/80 mt-0.5">{stats.countDetraccion} factura(s) 1001</p>
           </div>
           <div className="rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-orange-700">Total anuladas</p>

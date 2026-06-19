@@ -44,6 +44,10 @@ const empty = (): CreateContactInput => ({
   ubigeo: '',
   phone: '',
   email: '',
+  es_agente_de_retencion: false,
+  es_agente_de_percepcion: false,
+  es_agente_de_percepcion_combustible: false,
+  es_buen_contribuyente: false,
 })
 
 export default function ContactsPage() {
@@ -205,6 +209,10 @@ function ContactsContent() {
       ubigeo: ubi,
       phone: c.phone,
       email: c.email,
+      es_agente_de_retencion: c.es_agente_de_retencion ?? false,
+      es_agente_de_percepcion: c.es_agente_de_percepcion ?? false,
+      es_agente_de_percepcion_combustible: c.es_agente_de_percepcion_combustible ?? false,
+      es_buen_contribuyente: c.es_buen_contribuyente ?? false,
     })
     setUbigeo({ regionId: ids.regionId, provinciaId: ids.provinciaId, distritoId: ids.distritoId })
     setShowForm(true)
@@ -227,7 +235,16 @@ function ContactsContent() {
     setShowForm(false)
   }
 
-  const setF = (k: keyof CreateContactInput, v: string) => setForm(f => ({ ...f, [k]: v }))
+  const setF = (k: keyof CreateContactInput, v: string | boolean) => setForm(f => ({ ...f, [k]: v }))
+
+  const resetFiscalFlags = () =>
+    setForm(f => ({
+      ...f,
+      es_agente_de_retencion: false,
+      es_agente_de_percepcion: false,
+      es_agente_de_percepcion_combustible: false,
+      es_buen_contribuyente: false,
+    }))
 
   const handleSave = async () => {
     if (!form.business_name || !form.doc_number) { toast.error('Nombre y documento son requeridos'); return }
@@ -238,6 +255,13 @@ function ContactsContent() {
         ...form,
         address: form.address ?? '',
         ubigeo: ubigeo.distritoId || undefined,
+      }
+      const docType = toTipoDocIdentidadCode(form.doc_type)
+      if (docType !== '6') {
+        delete payload.es_agente_de_retencion
+        delete payload.es_agente_de_percepcion
+        delete payload.es_agente_de_percepcion_combustible
+        delete payload.es_buen_contribuyente
       }
       if (showExtraTab) {
         payload.contact_persons = buildContactPersonsPayload()
@@ -306,6 +330,10 @@ function ContactsContent() {
         }
         setF('business_name', res.razon_social)
         setF('address', res.direccion ?? '')
+        setF('es_agente_de_retencion', res.es_agente_de_retencion ?? false)
+        setF('es_agente_de_percepcion', res.es_agente_de_percepcion ?? false)
+        setF('es_agente_de_percepcion_combustible', res.es_agente_de_percepcion_combustible ?? false)
+        setF('es_buen_contribuyente', res.es_buen_contribuyente ?? false)
         if (res.ubigeo && res.ubigeo.length >= 6) {
           setUbigeo({
             regionId: res.ubigeo.slice(0, 2),
@@ -525,7 +553,11 @@ function ContactsContent() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div><label className="block text-xs font-medium text-gray-600 mb-1">Tipo de documento</label>
                 <select className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-                  value={toTipoDocIdentidadCode(form.doc_type)} onChange={e => setF('doc_type', e.target.value)}>
+                  value={toTipoDocIdentidadCode(form.doc_type)} onChange={e => {
+                    const next = e.target.value
+                    setF('doc_type', next)
+                    if (next !== '6') resetFiscalFlags()
+                  }}>
                   {SUNAT_TIPO_DOC_IDENTIDAD_LIST.map(d => <option key={d.code} value={d.code}>{d.shortLabel}</option>)}
                 </select>
               </div>
@@ -592,6 +624,17 @@ function ContactsContent() {
                   value={form.email ?? ''} onChange={e => setF('email', e.target.value)} />
               </div>
             </div>
+            {toTipoDocIdentidadCode(form.doc_type) === '6' && (
+              <label className="inline-flex items-center gap-2 cursor-pointer select-none pt-1">
+                <input
+                  type="checkbox"
+                  className="rounded border-gray-300 text-[rgb(var(--p600))] focus:ring-[rgb(var(--p600))]"
+                  checked={form.es_agente_de_retencion ?? false}
+                  onChange={e => setF('es_agente_de_retencion', e.target.checked)}
+                />
+                <span className="text-sm text-gray-700">Agente de retención</span>
+              </label>
+            )}
           </div>
         )}
 

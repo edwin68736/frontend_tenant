@@ -14,7 +14,23 @@ import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { ReceiptPrintModal } from '@/components/ui/ReceiptPrintModal'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
-import { formatTipoDocIdentidadDisplay } from '@/constants/sunat'
+import {
+  SaleAdditionalInfoDrawer,
+  emptySaleFiscalForm,
+  type SaleFiscalFormState,
+} from '@/components/sales/SaleAdditionalInfoDrawer'
+import { usersService, type TenantUser } from '@/services/users.service'
+import { buildFiscalReferences, hasFiscalContextContent, previewIgvRetention } from '@/utils/fiscalRetention'
+import { formatSaleMoney, saleCurrencySymbol } from '@/utils/formatMoney'
+import { consultaService } from '@/services/consulta.service'
+import { catalogsService, type DetraccionGood } from '@/services/catalogs.service'
+import { previewDetraccion, DETRACCION_PAYMENT_METHOD_CODE, DETRACCION_PAYMENT_METHOD_NAME } from '@/utils/fiscalDetraction'
+import {
+  formatTipoDocIdentidadDisplay,
+  SALES_OPERATION_TYPE_OPTIONS,
+  SUNAT_TIPO_OPERACION_DETRACCION,
+  SUNAT_TIPO_OPERACION_VENTA_INTERNA,
+} from '@/constants/sunat'
 import type { PrintData } from '@/types/printData'
 import { getTipoComprobanteLabel } from '@/constants/sunat'
 import { SUNAT_MAX_MONTO_CLIENTE_SIN_RUC, SUNAT_RUC_LENGTH } from '@/constants/sunat'
@@ -106,7 +122,7 @@ export default function SalesRegisterPage({ mode = 'comprobante' }: SalesRegiste
 function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
   const navigate = useNavigate()
   const isNotaVenta = mode === 'nota-venta'
-  const { hasModule } = useAuth()
+  const { user, hasModule } = useAuth()
   const { activeBranchId } = useBranch()
   const [series, setSeries] = useState<SeriesRow[]>([])
   const [customers, setCustomers] = useState<Contact[]>([])
@@ -122,6 +138,8 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
     issue_date: string
     due_date: string
     currency: string
+    operation_type_code: string
+    exchange_rate: string
     payment_method: string
     notes: string
   }>({
@@ -132,6 +150,8 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
     issue_date: getTodayPeru(),
     due_date: getTodayPeru(),
     currency: 'PEN',
+    operation_type_code: SUNAT_TIPO_OPERACION_VENTA_INTERNA,
+    exchange_rate: '',
     payment_method: 'efectivo',
     notes: '',
   })
@@ -151,6 +171,86 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [discountMode, setDiscountMode] = useState<CheckoutDiscountMode>('percent')
   const [discountValue, setDiscountValue] = useState(0)
+  const [fiscalDrawerOpen, setFiscalDrawerOpen] = useState(false)
+  const [fiscalForm, setFiscalForm] = useState<SaleFiscalFormState>(() => {
+    let sellerId: number | null = null
+    try {
+      const raw = localStorage.getItem('user')
+      if (raw) {
+        const parsed = JSON.parse(raw) as { id?: number }
+        if (typeof parsed.id === 'number') sellerId = parsed.id
+      }
+    } catch {
+      /* ignore */
+    }
+    return emptySaleFiscalForm(sellerId)
+  })
+  const [tenantUsers, setTenantUsers] = useState<TenantUser[]>([])
+  const [tcLoading, setTcLoading] = useState(false)
+  const [tcError, setTcError] = useState('')
+  const [detraccionGoods, setDetraccionGoods] = useState<DetraccionGood[]>([])
+  const [detraccionGoodCode, setDetraccionGoodCode] = useState('')
+
+  const isDetraccion = form.operation_type_code === SUNAT_TIPO_OPERACION_DETRACCION
+
+  const parsedExchangeRate = useMemo(() => {
+    const n = parseFloat(form.exchange_rate.replace(',', '.'))
+    return Number.isFinite(n) && n > 0 ? n : null
+  }, [form.exchange_rate])
+
+  const moneySym = saleCurrencySymbol(form.currency)
+  const fmt = (n: number) => formatSaleMoney(n, form.currency)
+
+  useEffect(() => {
+    if (!form.issue_date || isNotaVenta) return
+    let cancelled = false
+    setTcLoading(true)
+    setTcError('')
+    consultaService
+      .tipoCambio(form.issue_date)
+      .then((res) => {
+        if (cancelled) return
+        if (res.success && res.venta && res.venta > 0) {
+          setForm((f) => ({ ...f, exchange_rate: String(res.venta) }))
+        } else {
+          setTcError(res.error_message ?? 'No se pudo obtener el tipo de cambio.')
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTcError('No se pudo consultar el tipo de cambio.')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setTcLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [form.issue_date, isNotaVenta])
+
+  useEffect(() => {
+    if (!user?.id) return
+    setFiscalForm((f) => (f.seller_user_id == null ? { ...f, seller_user_id: user.id } : f))
+  }, [user?.id])
+
+  useEffect(() => {
+    if (isNotaVenta) return
+    catalogsService.detraccionGoods().then(setDetraccionGoods).catch(() => {})
+  }, [isNotaVenta])
+
+  useEffect(() => {
+    if (form.sunat_code !== '01' && form.operation_type_code === SUNAT_TIPO_OPERACION_DETRACCION) {
+      setForm((f) => ({ ...f, operation_type_code: SUNAT_TIPO_OPERACION_VENTA_INTERNA }))
+      setDetraccionGoodCode('')
+    }
+  }, [form.sunat_code, form.operation_type_code])
+
+  useEffect(() => {
+    if (isDetraccion && form.currency !== 'PEN') {
+      setForm((f) => ({ ...f, currency: 'PEN' }))
+    }
+  }, [isDetraccion, form.currency])
 
   useEffect(() => {
     Promise.all([
@@ -161,10 +261,12 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
       contactsService.getDefault(),
       cashbankService.listPaymentMethods(),
       cashbankService.getOpenSession(activeBranchId || undefined),
+      usersService.listUsers().catch(() => []),
     ])
-      .then(([company, seriesList, sunat, customerList, defaultClient, methods, session]) => {
+      .then(([company, seriesList, sunat, customerList, defaultClient, methods, session, users]) => {
         setCompanyConfig(company ?? null)
         setCashSession(session)
+        setTenantUsers(Array.isArray(users) ? users : [])
         setSunatEnabled(sunat?.sunat_enabled ?? true)
         const ventaSeries = (seriesList ?? []) as SeriesRow[]
         setSeries(ventaSeries)
@@ -403,17 +505,64 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
   const taxGlobal = roundSunat(items.reduce((s, it, idx) => s + getItemTotals(it, idx).taxAmount, 0))
   const totalGlobal = roundSunat(items.reduce((s, it, idx) => s + getItemTotals(it, idx).total, 0))
 
-  // Un solo método de pago: el monto efectivo sigue al total de la venta.
+  const selectedContact = form.contact_id ? customers.find(c => c.id === form.contact_id!) : null
+
+  const retentionPreview = previewIgvRetention(
+    fiscalForm.has_igv_retention && !isDetraccion,
+    form.sunat_code,
+    selectedContact ?? null,
+    totalGlobal,
+    fiscalForm.igv_retention_manual_override,
+    form.currency,
+    parsedExchangeRate,
+  )
+
+  const selectedGood = detraccionGoods.find((g) => g.code === detraccionGoodCode)
+  const detractionPreview = previewDetraccion({
+    sunatCode: form.sunat_code,
+    operationTypeCode: form.operation_type_code,
+    currency: form.currency,
+    gravadoTotal: totalsByAfectacion.gravado.total,
+    saleTotal: totalGlobal,
+    goodCode: detraccionGoodCode,
+    goodRatePercent: selectedGood?.rate_percent ?? 0,
+    minAmountPen: selectedGood?.min_amount_pen ?? 700,
+    bankAccount: companyConfig?.detraction_bn_account ?? '',
+    contactEsPercepcion: selectedContact?.es_agente_de_percepcion,
+  })
+
+  const directPaymentMethods = useMemo(
+    () => paymentMethods.filter((m) => m.code !== DETRACCION_PAYMENT_METHOD_CODE),
+    [paymentMethods],
+  )
+
+  const directPayableTarget =
+    isDetraccion && detractionPreview.applicable ? detractionPreview.netPayable : totalGlobal
+
+  // Un solo método de pago directo: el monto sigue al neto cobrable (1001) o al total.
   useEffect(() => {
     if (payments.length !== 1) return
-    const formatted = totalGlobal.toFixed(2)
+    const formatted = directPayableTarget.toFixed(2)
     setPayments((prev) => {
       if (prev.length !== 1 || prev[0].amount === formatted) return prev
       return [{ ...prev[0], amount: formatted }]
     })
-  }, [totalGlobal, payments.length])
+  }, [directPayableTarget, payments.length])
 
-  const selectedContact = form.contact_id ? customers.find(c => c.id === form.contact_id!) : null
+  const operationTypeOptions = useMemo(() => {
+    if (form.sunat_code === '01') return SALES_OPERATION_TYPE_OPTIONS
+    return SALES_OPERATION_TYPE_OPTIONS.filter((o) => o.code === SUNAT_TIPO_OPERACION_VENTA_INTERNA)
+  }, [form.sunat_code])
+
+  const buildFiscalPayload = () => ({
+    has_igv_retention: fiscalForm.has_igv_retention,
+    igv_retention_manual_override: fiscalForm.igv_retention_manual_override,
+    show_terms_conditions: fiscalForm.show_terms_conditions,
+    fiscal_observations: fiscalForm.fiscal_observations.trim() || undefined,
+    purchase_order_number: fiscalForm.purchase_order_number.trim() || undefined,
+    seller_user_id: fiscalForm.seller_user_id ?? undefined,
+    references: buildFiscalReferences(fiscalForm),
+  })
 
   const handleSave = async () => {
     if (!activeBranchId) {
@@ -436,6 +585,10 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
     if (sunatCode === '01') {
       if (!selectedContact) {
         toast.error('Factura (01) requiere cliente con RUC')
+        return
+      }
+      if (selectedContact.es_agente_de_percepcion && form.operation_type_code === SUNAT_TIPO_OPERACION_DETRACCION) {
+        toast.error('No se permite detracción con cliente agente de percepción')
         return
       }
       if (selectedContact.doc_type !== '6') {
@@ -463,13 +616,33 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
 
     const validPayments = payments.filter(p => Number(p.amount) > 0)
     const totalPaid = validPayments.reduce((s, p) => s + Number(p.amount), 0)
+    const requiredDirect =
+      isDetraccion && detractionPreview.applicable ? detractionPreview.netPayable : totalGlobal
     if (validPayments.length === 0) {
-      toast.error('Ingrese al menos un pago')
+      toast.error('Ingrese al menos un pago directo')
       return
     }
-    if (totalPaid < totalGlobal - 0.01) {
-      toast.error('El total de pagos no cubre el monto de la venta')
+    if (totalPaid < requiredDirect - 0.01) {
+      toast.error(
+        isDetraccion && detractionPreview.applicable
+          ? 'Los pagos directos no cubren el neto cobrable'
+          : 'El total de pagos no cubre el monto de la venta',
+      )
       return
+    }
+    if (totalPaid > requiredDirect + 0.01) {
+      toast.error(
+        isDetraccion && detractionPreview.applicable
+          ? 'Los pagos directos superan el neto cobrable'
+          : 'El total de pagos supera el monto de la venta',
+      )
+      return
+    }
+    if (isDetraccion) {
+      if (!detractionPreview.applicable) {
+        toast.error(detractionPreview.reason || 'Verifique los datos de detracción')
+        return
+      }
     }
 
     setSaving(true)
@@ -480,11 +653,17 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
         doc_type: series.find(s => s.id === form.series_id)?.doc_type ?? 'BOLETA',
         series_id: form.series_id,
         currency: form.currency,
+        operation_type_code: form.operation_type_code,
+        exchange_rate: form.currency === 'USD' ? parsedExchangeRate ?? undefined : undefined,
         cash_session_id: cashSession?.id ?? null,
         issue_date: form.issue_date,
         due_date: form.due_date,
         payments: validPayments.map(p => ({ method: p.method, amount: Number(p.amount) })),
         notes: form.notes || undefined,
+        fiscal_context: !isNotaVenta && !isDetraccion && hasFiscalContextContent(fiscalForm) ? buildFiscalPayload() : undefined,
+        detraccion: isDetraccion && detraccionGoodCode
+          ? { good_code: detraccionGoodCode }
+          : undefined,
         items: items.map((it, idx) => ({
           product_id: it.product_id ?? null,
           code: it.code,
@@ -563,7 +742,22 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
   const headerLogoSrc = companyLogoSrc || BRAND_APP_LOGO
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 relative">
+      {!isNotaVenta && (
+        <SaleAdditionalInfoDrawer
+          open={fiscalDrawerOpen}
+          onOpenChange={setFiscalDrawerOpen}
+          value={fiscalForm}
+          onChange={setFiscalForm}
+          sunatCode={form.sunat_code}
+          saleTotal={totalGlobal}
+          currency={form.currency}
+          exchangeRate={parsedExchangeRate}
+          contact={selectedContact ?? null}
+          users={tenantUsers}
+          disabled={saving}
+        />
+      )}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 space-y-5">
         {/* Cabecera: logo + empresa (izq.) y fechas en fila (der.) */}
         <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between pb-4 border-b border-gray-100">
@@ -640,8 +834,8 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
           </div>
         </header>
 
-        {/* Tipo comprobante y serie */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        {/* Tipo comprobante, serie, operación, moneda y tipo de cambio */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
           <div className="lg:col-span-2">
             <label className="block text-xs font-medium text-gray-600 mb-1">Tipo comprobante</label>
             {isNotaVenta ? (
@@ -675,7 +869,140 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
               ))}
             </select>
           </div>
+          {!isNotaVenta && (
+            <>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Tipo operación</label>
+                <select
+                  className={`w-full border border-gray-200 rounded-xl px-3 py-2 text-sm ${form.sunat_code !== '01' ? 'bg-gray-50' : ''}`}
+                  value={form.operation_type_code}
+                  disabled={form.sunat_code !== '01'}
+                  onChange={(e) => {
+                    const code = e.target.value
+                    setForm((f) => ({
+                      ...f,
+                      operation_type_code: code,
+                      currency: code === SUNAT_TIPO_OPERACION_DETRACCION ? 'PEN' : f.currency,
+                    }))
+                    if (code !== SUNAT_TIPO_OPERACION_DETRACCION) setDetraccionGoodCode('')
+                  }}
+                >
+                  {operationTypeOptions.map((op) => (
+                    <option key={op.code} value={op.code}>
+                      {op.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Moneda</label>
+                <select
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                  value={form.currency}
+                  disabled={isDetraccion}
+                  onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))}
+                >
+                  <option value="PEN">Soles (PEN)</option>
+                  <option value="USD">Dólares (USD)</option>
+                </select>
+              </div>
+              <div>
+                <label
+                  className="block text-xs font-medium text-gray-600 mb-1"
+                  title="TC SUNAT venta del día de emisión (USD/PEN)"
+                >
+                  Tipo de cambio
+                  {form.currency === 'PEN' && (
+                    <span className="font-normal text-gray-400 ml-1">(referencial)</span>
+                  )}
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.001}
+                    className={`w-full border border-gray-200 rounded-xl px-3 py-2 text-sm ${
+                      form.currency === 'PEN' ? 'bg-gray-50 text-gray-700 cursor-default' : ''
+                    }`}
+                    value={form.exchange_rate}
+                    placeholder={tcLoading ? 'Consultando…' : 'Ej. 3.388'}
+                    readOnly={form.currency === 'PEN'}
+                    disabled={tcLoading}
+                    onChange={(e) => {
+                      if (form.currency === 'USD') {
+                        setForm((f) => ({ ...f, exchange_rate: e.target.value }))
+                      }
+                    }}
+                  />
+                  {tcLoading && (
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+                  )}
+                </div>
+                {form.currency === 'USD' && tcError && (
+                  <p className="text-[10px] text-amber-700 mt-0.5">
+                    {tcError} Ingréselo manualmente si es necesario.
+                  </p>
+                )}
+                {form.currency === 'PEN' && tcError && !tcLoading && (
+                  <p className="text-[10px] text-gray-400 mt-0.5">{tcError}</p>
+                )}
+              </div>
+            </>
+          )}
         </div>
+
+        {isDetraccion && !isNotaVenta && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 space-y-3">
+            <p className="text-xs font-semibold text-amber-900 uppercase tracking-wide">Detracción SUNAT (1001)</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Bien / servicio (Cat. 54) *</label>
+                <select
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
+                  value={detraccionGoodCode}
+                  onChange={(e) => setDetraccionGoodCode(e.target.value)}
+                >
+                  <option value="">Seleccionar...</option>
+                  {detraccionGoods.map((g) => (
+                    <option key={g.code} value={g.code}>
+                      {g.code} — {g.description} ({g.rate_percent}%)
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Porcentaje</label>
+                <input
+                  readOnly
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50 tabular-nums"
+                  value={selectedGood ? `${selectedGood.rate_percent}%` : '—'}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta BN (emisor)</label>
+                <input
+                  readOnly
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50 font-mono"
+                  value={companyConfig?.detraction_bn_account?.trim() || 'Sin configurar'}
+                  title="Configúrela en Empresa → SUNAT"
+                />
+              </div>
+            </div>
+            {detractionPreview.reason && !detractionPreview.applicable && (
+              <p className="text-xs text-amber-800">{detractionPreview.reason}</p>
+            )}
+            {detractionPreview.applicable && (
+              <div className="flex flex-wrap gap-4 text-sm text-amber-950">
+                <span>
+                  Detracción: <strong className="tabular-nums">{fmt(detractionPreview.detractionAmount)}</strong>
+                </span>
+                <span>
+                  Neto a cobrar: <strong className="tabular-nums text-emerald-800">{fmt(detractionPreview.netPayable)}</strong>
+                </span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Cliente */}
         <div>
@@ -778,7 +1105,7 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
                       <td className="px-4 py-2.5">
                         <span className="text-gray-700">{it.price_includes_igv ? 'Sí' : 'No'}</span>
                       </td>
-                      <td className="px-3 py-2.5 font-medium text-gray-700 text-right tabular-nums">S/ {total.toFixed(2)}</td>
+                      <td className="px-3 py-2.5 font-medium text-gray-700 text-right tabular-nums">{fmt(total)}</td>
                       <td className="px-2 py-2.5">
                         <button type="button" onClick={() => removeItem(idx)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
                           <Trash2 size={14} />
@@ -828,7 +1155,7 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
                     }`}
                     onClick={() => setDiscountMode((m) => (m === 'percent' ? 'amount' : 'percent'))}
                   >
-                    {discountMode === 'percent' ? '%' : 'S/'}
+                    {discountMode === 'percent' ? '%' : moneySym}
                   </button>
                   <input
                     type="number"
@@ -846,7 +1173,7 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
                 </div>
                 {checkoutDiscountAmount > 0 && (
                   <p className="text-[10px] text-amber-700 mt-1">
-                    Descuento sobre base imponible: S/ {checkoutDiscountAmount.toFixed(2)}
+                    Descuento sobre base imponible: {fmt(checkoutDiscountAmount)}
                   </p>
                 )}
               </div>
@@ -856,43 +1183,73 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
                   <>
                     <div className="flex justify-between text-gray-600 uppercase text-xs tracking-wide">
                       <span>Op. gravada</span>
-                      <span className="tabular-nums">S/ {totalsByAfectacion.gravado.subtotal.toFixed(2)}</span>
+                      <span className="tabular-nums">{fmt(totalsByAfectacion.gravado.subtotal)}</span>
                     </div>
                     <div className="flex justify-between text-gray-600 uppercase text-xs tracking-wide">
                       <span>IGV</span>
-                      <span className="tabular-nums">S/ {totalsByAfectacion.gravado.taxAmount.toFixed(2)}</span>
+                      <span className="tabular-nums">{fmt(totalsByAfectacion.gravado.taxAmount)}</span>
                     </div>
                   </>
                 )}
                 {totalsByAfectacion.exonerado.total > 0 && (
-                  <div className="flex justify-between text-gray-600 text-xs"><span>Op. exonerada</span><span>S/ {totalsByAfectacion.exonerado.total.toFixed(2)}</span></div>
+                  <div className="flex justify-between text-gray-600 text-xs"><span>Op. exonerada</span><span>{fmt(totalsByAfectacion.exonerado.total)}</span></div>
                 )}
                 {totalsByAfectacion.inafecto.total > 0 && (
-                  <div className="flex justify-between text-gray-600 text-xs"><span>Op. inafecta</span><span>S/ {totalsByAfectacion.inafecto.total.toFixed(2)}</span></div>
+                  <div className="flex justify-between text-gray-600 text-xs"><span>Op. inafecta</span><span>{fmt(totalsByAfectacion.inafecto.total)}</span></div>
                 )}
                 {totalsByAfectacion.exportacion.total > 0 && (
-                  <div className="flex justify-between text-gray-600 text-xs"><span>Op. exportación</span><span className="tabular-nums">S/ {totalsByAfectacion.exportacion.total.toFixed(2)}</span></div>
+                  <div className="flex justify-between text-gray-600 text-xs"><span>Op. exportación</span><span className="tabular-nums">{fmt(totalsByAfectacion.exportacion.total)}</span></div>
                 )}
                 {totalsByAfectacion.gravado.total === 0 && (
                   <>
                     <div className="flex justify-between text-gray-600 uppercase text-xs tracking-wide">
                       <span>Op. gravada</span>
-                      <span className="tabular-nums">S/ {subtotalGlobal.toFixed(2)}</span>
+                      <span className="tabular-nums">{fmt(subtotalGlobal)}</span>
                     </div>
                     <div className="flex justify-between text-gray-600 uppercase text-xs tracking-wide">
                       <span>IGV</span>
-                      <span className="tabular-nums">S/ {taxGlobal.toFixed(2)}</span>
+                      <span className="tabular-nums">{fmt(taxGlobal)}</span>
                     </div>
                   </>
                 )}
                 <div className="flex justify-between items-baseline font-bold text-gray-900 text-sm pt-2 mt-1 border-t border-gray-200">
-                  <span className="uppercase text-xs tracking-wide">Total a pagar</span>
-                  <span className="tabular-nums text-base">S/ {totalGlobal.toFixed(2)}</span>
+                  <span className="uppercase text-xs tracking-wide">Total comprobante</span>
+                  <span className="tabular-nums text-base">{fmt(totalGlobal)}</span>
                 </div>
+                {!isNotaVenta && fiscalForm.has_igv_retention && !isDetraccion && retentionPreview.applicable && (
+                  <>
+                    <div className="flex justify-between text-amber-800 text-xs">
+                      <span>Retención IGV (3%)</span>
+                      <span className="tabular-nums">{fmt(retentionPreview.retentionAmount)}</span>
+                    </div>
+                    <div className="flex justify-between font-semibold text-emerald-800 text-sm">
+                      <span>Neto a cobrar</span>
+                      <span className="tabular-nums">{fmt(retentionPreview.netCollectible)}</span>
+                    </div>
+                  </>
+                )}
+                {!isNotaVenta && isDetraccion && detractionPreview.applicable && (
+                  <>
+                    <div className="flex justify-between text-gray-700 text-xs pt-1">
+                      <span>Total factura</span>
+                      <span className="tabular-nums">{fmt(totalGlobal)}</span>
+                    </div>
+                    <div className="flex justify-between text-amber-800 text-xs">
+                      <span>Detracción BN ({detractionPreview.ratePercent}%)</span>
+                      <span className="tabular-nums">{fmt(detractionPreview.detractionAmount)}</span>
+                    </div>
+                    <div className="flex justify-between font-semibold text-emerald-800 text-sm border-b border-emerald-100 pb-2 mb-1">
+                      <span>Neto cobrable (pagos directos)</span>
+                      <span className="tabular-nums">{fmt(detractionPreview.netPayable)}</span>
+                    </div>
+                  </>
+                )}
               </div>
 
               <div className="space-y-2 pt-1 border-t border-gray-200">
-                <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Métodos de pago</p>
+                <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                  {isDetraccion && detractionPreview.applicable ? 'Pagos directos' : 'Métodos de pago'}
+                </p>
                 {payments.map((p, idx) => (
                   <div key={idx} className="flex flex-wrap gap-2 items-center">
                     <select
@@ -900,7 +1257,7 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
                       value={p.method}
                       onChange={e => setPayments(prev => prev.map((x, i) => i === idx ? { ...x, method: e.target.value } : x))}
                     >
-                      {paymentMethods.map(m => (
+                      {directPaymentMethods.map(m => (
                         <option key={m.id} value={m.code}>{m.name}</option>
                       ))}
                     </select>
@@ -922,11 +1279,22 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
                 ))}
                 <button
                   type="button"
-                  onClick={() => setPayments(prev => [...prev, { method: paymentMethods[0]?.code ?? 'cash', amount: '' }])}
+                  onClick={() => setPayments(prev => [...prev, { method: directPaymentMethods[0]?.code ?? 'cash', amount: '' }])}
                   className="text-xs text-[rgb(var(--p600))] hover:underline"
                 >
                   + Agregar pago
                 </button>
+                {isDetraccion && detractionPreview.applicable && (
+                  <div className="flex flex-wrap gap-2 items-center rounded-xl bg-amber-50 border border-amber-100 px-3 py-2 mt-2">
+                    <span className="flex-1 min-w-[7rem] text-sm text-amber-900 font-medium">{DETRACCION_PAYMENT_METHOD_NAME}</span>
+                    <span className="w-24 text-sm tabular-nums text-amber-900 text-right font-semibold">
+                      {fmt(detractionPreview.detractionAmount)}
+                    </span>
+                    <span className="text-[10px] uppercase tracking-wide text-amber-700/80 w-full">
+                      Registro automático · sin impacto en caja
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -954,12 +1322,13 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
       </div>
 
       <Modal open={showProductPicker} onClose={() => setShowProductPicker(false)} contentClassName="max-w-2xl">
-        <ProductPickerModal onAdd={addProductToItems} onClose={() => setShowProductPicker(false)} />
+        <ProductPickerModal currency={form.currency} onAdd={addProductToItems} onClose={() => setShowProductPicker(false)} />
       </Modal>
 
       <Modal open={showManualItemModal} onClose={() => setShowManualItemModal(false)} contentClassName="max-w-lg">
         <ManualItemModal
           open={showManualItemModal}
+          currency={form.currency}
           taxRate={taxRate}
           taxConfig={taxConfig}
           onAdd={addManualItem}
@@ -994,7 +1363,16 @@ function SalesRegisterContent({ mode }: { mode: SalesRegisterMode }) {
   )
 }
 
-function ProductPickerModal({ onAdd, onClose }: { onAdd: (p: Product) => void; onClose: () => void }) {
+function ProductPickerModal({
+  currency,
+  onAdd,
+  onClose,
+}: {
+  currency: string
+  onAdd: (p: Product) => void
+  onClose: () => void
+}) {
+  const fmtPrice = (n: number) => formatSaleMoney(n, currency)
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [products, setProducts] = useState<Product[]>([])
@@ -1052,7 +1430,7 @@ function ProductPickerModal({ onAdd, onClose }: { onAdd: (p: Product) => void; o
                 <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50/50">
                   <td className="px-4 py-2.5 font-mono text-gray-600">{p.code || '-'}</td>
                   <td className="px-4 py-2.5 font-medium text-gray-800">{p.name}</td>
-                  <td className="px-4 py-2.5 text-gray-700">S/ {Number(p.sale_price ?? 0).toFixed(2)}</td>
+                  <td className="px-4 py-2.5 text-gray-700">{fmtPrice(Number(p.sale_price ?? 0))}</td>
                   <td className="px-4 py-2.5">
                     <button type="button" onClick={() => onAdd(p)} className="px-3 py-1.5 rounded-lg bg-[rgb(var(--p600))] text-white text-xs font-medium hover:opacity-90">
                       Agregar
@@ -1085,12 +1463,14 @@ function ProductPickerModal({ onAdd, onClose }: { onAdd: (p: Product) => void; o
 
 function ManualItemModal({
   open,
+  currency,
   taxRate,
   taxConfig,
   onAdd,
   onClose,
 }: {
   open: boolean
+  currency: string
   taxRate: number
   taxConfig: { taxRate: number; igvRegime?: string; taxBenefitZone?: boolean }
   onAdd: (draft: ManualItemDraft) => void
@@ -1207,7 +1587,7 @@ function ManualItemModal({
         </div>
         <div className="flex justify-between text-sm text-gray-600 pt-1 border-t border-gray-100">
           <span>Total estimado</span>
-          <span className="font-semibold text-gray-900 tabular-nums">S/ {preview.total.toFixed(2)}</span>
+          <span className="font-semibold text-gray-900 tabular-nums">{formatSaleMoney(preview.total, currency)}</span>
         </div>
       </div>
 

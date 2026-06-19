@@ -24,6 +24,7 @@ const InventoryTransfersPage = lazy(() => import('@/pages/inventory/InventoryTra
 const InventoryKardexPage = lazy(() => import('@/pages/inventory/InventoryKardexPage'))
 const CashPage = lazy(() => import('@/pages/cash/CashPage'))
 const CashReportsPage = lazy(() => import('@/pages/cash/CashReportsPage'))
+const ReceivablesPage = lazy(() => import('@/pages/receivables/ReceivablesPage'))
 const BankPage = lazy(() => import('@/pages/bank/BankPage'))
 const PaymentMethodsPage = lazy(() => import('@/pages/cashbank/PaymentMethodsPage'))
 const UsersPage = lazy(() => import('@/pages/users/UsersPage'))
@@ -131,6 +132,7 @@ function AppRoutes() {
         <Route path="inventory/kardex" element={<Lazy><InventoryKardexPage /></Lazy>} />
         <Route path="cashbank/cash" element={<Lazy><CashPage /></Lazy>} />
         <Route path="cashbank/reports" element={<Lazy><CashReportsPage /></Lazy>} />
+        <Route path="cashbank/receivables" element={<Lazy><ReceivablesPage /></Lazy>} />
         <Route path="cashbank/bank" element={<Lazy><BankPage /></Lazy>} />
         <Route path="cashbank/payment-methods" element={<Lazy><PaymentMethodsPage /></Lazy>} />
         <Route path="billing" element={<Lazy><BillingPage /></Lazy>} />

@@ -29,6 +29,15 @@ export const SUNAT_TIPO_OPERACION: Record<string, string> = {
 /** Código por defecto para venta interna (Factura y Boleta). */
 export const SUNAT_TIPO_OPERACION_VENTA_INTERNA = '0101'
 
+/** Operación sujeta a detracción (solo factura 01). */
+export const SUNAT_TIPO_OPERACION_DETRACCION = '1001'
+
+/** Opciones habilitadas en Nuevo Comprobante. 1001 solo con factura (01). */
+export const SALES_OPERATION_TYPE_OPTIONS: { code: string; label: string }[] = [
+  { code: SUNAT_TIPO_OPERACION_VENTA_INTERNA, label: 'Venta interna' },
+  { code: SUNAT_TIPO_OPERACION_DETRACCION, label: 'Operación sujeta a detracción' },
+]
+
 /** Orden en POS: 00 (N. Venta), 03 (Boleta), 01 (Factura). */
 export const POS_SUNAT_CODE_ORDER = ['00', '03', '01']
 

@@ -526,6 +526,35 @@ export default function DashboardPage() {
         />
       </div>
 
+      {(s?.count_detraccion ?? 0) > 0 && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <KpiCard
+            title="Detracción SPOT (1001)"
+            value={fmtMoney(s?.sum_detraccion ?? 0)}
+            subtitle={`${s?.count_detraccion ?? 0} factura(s) · Sin impacto en caja`}
+            icon={<PiggyBank size={20} />}
+            tone="amber"
+            loading={loading}
+          />
+          <KpiCard
+            title="Neto cobrable directo"
+            value={fmtMoney(s?.sum_net_payable ?? 0)}
+            subtitle="Suma net_payable de facturas con detracción"
+            icon={<Wallet size={20} />}
+            tone="emerald"
+            loading={loading}
+          />
+          <KpiCard
+            title="Total facturado (1001)"
+            value={fmtMoney((s?.sum_detraccion ?? 0) + (s?.sum_net_payable ?? 0))}
+            subtitle="Neto directo + SPOT en el período"
+            icon={<ShoppingCart size={20} />}
+            tone="brand"
+            loading={loading}
+          />
+        </div>
+      )}
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           title="Pendientes SUNAT"

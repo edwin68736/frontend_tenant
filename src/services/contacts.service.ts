@@ -23,6 +23,10 @@ export interface Contact {
   email: string
   photo_url?: string
   contact_persons?: ContactPerson[]
+  es_agente_de_retencion?: boolean
+  es_agente_de_percepcion?: boolean
+  es_agente_de_percepcion_combustible?: boolean
+  es_buen_contribuyente?: boolean
   active: boolean
 }
 
@@ -45,6 +49,10 @@ export interface CreateContactInput {
   email?: string
   photo_url?: string
   contact_persons?: ContactPersonInput[]
+  es_agente_de_retencion?: boolean
+  es_agente_de_percepcion?: boolean
+  es_agente_de_percepcion_combustible?: boolean
+  es_buen_contribuyente?: boolean
 }
 
 export const contactsService = {

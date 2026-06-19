@@ -181,6 +181,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'fin-bancos', to: '/cashbank/bank', label: 'Cuentas / Bancos', icon: <Building2 size={14} />, module: 'cashbank', permission: 'cashbank.view' },
       { id: 'fin-metodos', to: '/cashbank/payment-methods', label: 'Métodos de pago', icon: <Wallet size={14} />, module: 'cashbank', permission: 'cashbank.manage' },
       { id: 'fin-reporte-caja', to: '/cashbank/reports', label: 'Reporte de caja', icon: <FileText size={14} />, module: 'cashbank', permission: 'reports.view' },
+      { id: 'fin-cxc', to: '/cashbank/receivables', label: 'Cuentas por cobrar', icon: <FileText size={14} />, module: 'cashbank', permission: 'cashbank.view' },
     ],
   },
   {

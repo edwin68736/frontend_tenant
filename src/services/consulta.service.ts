@@ -12,6 +12,10 @@ export interface ConsultaRUCResult {
   provincia?: string
   distrito?: string
   ubigeo?: string
+  es_agente_de_retencion?: boolean
+  es_agente_de_percepcion?: boolean
+  es_agente_de_percepcion_combustible?: boolean
+  es_buen_contribuyente?: boolean
 }
 
 export interface ConsultaDNIResult {
@@ -21,6 +25,16 @@ export interface ConsultaDNIResult {
   apellido_paterno?: string
   apellido_materno?: string
   doc_number?: string
+}
+
+export interface TipoCambioResult {
+  success: boolean
+  fecha?: string
+  moneda?: string
+  venta?: number
+  compra?: number
+  fuente?: string
+  error_message?: string
 }
 
 /**
@@ -33,4 +47,7 @@ export const consultaService = {
 
   ruc: (tenantRuc: string, ruc: string): Promise<ConsultaRUCResult> =>
     api.post<ConsultaRUCResult>('/api/consulta/ruc', { ruc: ruc.trim(), tenant_ruc: tenantRuc.trim() }).then((r) => r.data),
+
+  tipoCambio: (fecha: string): Promise<TipoCambioResult> =>
+    api.get<TipoCambioResult>('/api/consulta/tipo-cambio', { params: { fecha } }).then((r) => r.data),
 }

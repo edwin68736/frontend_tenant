@@ -2,3 +2,7 @@
 export const PORTAL_MODAL_Z = 'z-[300]'
 export const PORTAL_MODAL_STACK_Z = 'z-[350]'
 export const DROPDOWN_Z_INDEX = 450
+/** Drawer información adicional (Nuevo Comprobante) — portal en body. */
+export const FISCAL_DRAWER_OVERLAY_Z = 'z-[280]'
+export const FISCAL_DRAWER_PANEL_Z = 'z-[285]'
+export const FISCAL_DRAWER_TAB_Z = 'z-[290]'

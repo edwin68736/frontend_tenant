@@ -13,6 +13,8 @@ import { shareReceiptPngViaWhatsApp } from '@/utils/receiptPng'
 import { WhatsAppGlyph } from '@/components/icons/WhatsAppGlyph'
 import { formatSaleDocumentNumber } from '@/utils/format'
 import { downloadReceiptPdf, openReceiptPdfInNewTab } from '@/utils/receiptPdf'
+import { formatPaymentMethodLabel } from '@/utils/paymentMethodLabel'
+import { SalePaymentsBreakdown } from '@/components/sales/SalePaymentsBreakdown'
 
 const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
 const TABLE_SKELETON_ROWS = 6
@@ -22,19 +24,8 @@ const getCurrentMonthRange = () => {
   return { from: `${year}-${month}-01`, to: today }
 }
 
-const PAYMENT_LABELS: Record<string, string> = {
-  cash: 'Efectivo',
-  yape: 'Yape',
-  plin: 'Plin',
-  card: 'Tarjeta',
-  transfer: 'Transferencia',
-  credito: 'Crédito',
-  credit: 'Crédito',
-}
-
 function formatPaymentMethod(code: string) {
-  const c = (code || '').toLowerCase()
-  return PAYMENT_LABELS[c] || code || '—'
+  return formatPaymentMethodLabel(code)
 }
 
 function rucDigits(docNumber: string) {
@@ -833,19 +824,19 @@ function SalesContent() {
                   </div>
                 </div>
               </div>
-              {(detail.payments ?? []).length > 0 && (
-                <div>
-                  <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Pagos</p>
-                  <ul className="space-y-1 text-xs">
-                    {(detail.payments ?? []).map((p) => (
-                      <li key={p.id} className="flex justify-between">
-                        <span>{formatPaymentMethod(p.method)}</span>
-                        <span className="font-mono">S/ {Number(p.amount).toFixed(2)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+              <SalePaymentsBreakdown
+                payments={detail.payments}
+                invoiceTotal={detail.sale.total}
+                detractionAmount={
+                  detail.detraccion?.detraction_amount_pen ??
+                  detail.print_data?.fiscal?.detraccion_amount
+                }
+                netPayable={
+                  detail.detraccion?.net_payable_pen ??
+                  detail.print_data?.fiscal?.detraccion_net_payable
+                }
+                currency={detail.sale.currency}
+              />
               {canEmit && !detail.sale.electronic_issue_sale_id && (
                 <button
                   type="button"

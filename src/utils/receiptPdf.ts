@@ -21,6 +21,65 @@ function formatMoney(n: number, currency = 'PEN'): string {
   return `${sym} ${n.toFixed(2)}`
 }
 
+function renderFiscalHeaderLines(
+  data: PrintData,
+  emitLine: (text: string, size?: number) => void,
+) {
+  const f = data.fiscal
+  if (!f) return
+  if (f.purchase_order_number) {
+    emitLine(`O/C: ${f.purchase_order_number}`, FONT_SIZE_SM)
+  }
+  if (f.guias?.length) {
+    for (const g of f.guias) {
+      const label = g.kind === 'guia_transportista' ? 'Guía transp.' : 'Guía rem.'
+      emitLine(`${label}: ${g.number}`, FONT_SIZE_SM)
+    }
+  }
+  if (f.fiscal_observations) {
+    emitLine(`Obs.: ${f.fiscal_observations}`, FONT_SIZE_SM)
+  }
+  if (data.seller_name) {
+    emitLine(`Vendedor: ${data.seller_name}`, FONT_SIZE_SM)
+  }
+}
+
+function renderFiscalTotals(
+  data: PrintData,
+  emitAmountRow: (label: string, amount: string, opts?: { bold?: boolean }) => void,
+) {
+  const f = data.fiscal
+  if (!f) return
+  if (f.retention_applied) {
+    emitAmountRow('RET. IGV (3%):', formatMoney(f.igv_retention_amount ?? 0, data.currency))
+    emitAmountRow('NETO A COBRAR:', formatMoney(f.net_collectible ?? data.total, data.currency), {
+      bold: true,
+    })
+  }
+  if (f.has_detraccion) {
+    const pct = f.detraccion_rate_percent ?? 0
+    emitAmountRow(`DETRACCIÓN (${pct}%):`, formatMoney(f.detraccion_amount ?? 0, 'PEN'))
+    if (f.detraccion_bank_account) {
+      emitAmountRow('CTA. BN:', f.detraccion_bank_account)
+    }
+    emitAmountRow('NETO A COBRAR:', formatMoney(f.detraccion_net_payable ?? data.total, data.currency), {
+      bold: true,
+    })
+  }
+}
+
+function renderFiscalFooter(
+  data: PrintData,
+  addWrapped: (text: string, size?: number) => void,
+  addSpace: (h?: number) => void,
+) {
+  const f = data.fiscal
+  if (!f?.show_terms_conditions || !f.terms_text?.trim()) return
+  addSpace(2)
+  addWrapped('Términos y condiciones:', FONT_SIZE_SM)
+  addWrapped(f.terms_text.trim(), FONT_SIZE_SM)
+}
+
 export type ReceiptPdfOptions = {
   paperWidthMm?: 58 | 80
 }
@@ -164,6 +223,7 @@ export async function generateReceiptPdf(
       }
     }
     addTicketWrapped(`Tipo Moneda: ${data.currency === 'USD' ? 'DÓLARES' : 'SOLES'}`, FONT_SIZE_SM)
+    renderFiscalHeaderLines(data, (text, size) => addTicketWrapped(text, size ?? FONT_SIZE_SM))
     addSpace(2)
 
     // Detalle: Helvetica 8pt + negro puro (misma legibilidad que cabecera al imprimir)
@@ -243,6 +303,7 @@ export async function generateReceiptPdf(
     }
     emitTicketAmountRow('IGV:', formatMoney(data.tax_amount, data.currency))
     emitTicketAmountRow('TOTAL A PAGAR:', formatMoney(data.total, data.currency), { bold: true })
+    renderFiscalTotals(data, emitTicketAmountRow)
     doc.setTextColor(0, 0, 0)
     doc.setFont('helvetica', 'normal')
     addSpace(2)
@@ -252,6 +313,8 @@ export async function generateReceiptPdf(
       addTicketWrapped(`Son: ${data.legend_text}`, FONT_SIZE_SM)
       addSpace(2)
     }
+
+    renderFiscalFooter(data, addTicketWrapped, addSpace)
 
     if (paymentWalletVisible(data, 'ticket')) {
       y = await renderPaymentWalletBlock(doc, data, 'ticket', y, pageW, margin)
@@ -369,7 +432,30 @@ export async function generateReceiptPdf(
     A4_WIDTH - margin - 60,
     y
   )
-  y = infoBoxY + infoBoxH + clientBoxH + 10
+  y += lineH
+  if (data.fiscal?.purchase_order_number) {
+    doc.text(`O/C: ${data.fiscal.purchase_order_number}`, margin + 2, y)
+    y += lineH
+  }
+  if (data.fiscal?.guias?.length) {
+    for (const g of data.fiscal.guias) {
+      const label = g.kind === 'guia_transportista' ? 'Guía transp.' : 'Guía rem.'
+      doc.text(`${label}: ${g.number}`, margin + 2, y)
+      y += lineH
+    }
+  }
+  if (data.fiscal?.fiscal_observations) {
+    const obsLines = doc.splitTextToSize(`Obs.: ${data.fiscal.fiscal_observations}`, A4_WIDTH - 2*margin - 4)
+    for (const line of obsLines) {
+      doc.text(line, margin + 2, y)
+      y += lineH
+    }
+  }
+  if (data.seller_name) {
+    doc.text(`Vendedor: ${data.seller_name}`, margin + 2, y)
+    y += lineH
+  }
+  y += 6
 
   // Detalle (A4): encabezado de columnas + filas alineadas
   addLine('DETALLE', { size: FONT_SIZE_SM })
@@ -439,6 +525,24 @@ export async function generateReceiptPdf(
   addLine(`Subtotal: ${formatMoney(data.subtotal, data.currency)}`, { align: 'right' })
   addLine(`IGV: ${formatMoney(data.tax_amount, data.currency)}`, { align: 'right' })
   addLine(`TOTAL: ${formatMoney(data.total, data.currency)}`, { size: FONT_SIZE_TITLE, align: 'right' })
+  if (data.fiscal?.retention_applied) {
+    addLine(`Ret. IGV (3%): ${formatMoney(data.fiscal.igv_retention_amount ?? 0, data.currency)}`, { align: 'right' })
+    addLine(`Neto a cobrar: ${formatMoney(data.fiscal.net_collectible ?? data.total, data.currency)}`, {
+      size: FONT_SIZE_TITLE,
+      align: 'right',
+    })
+  }
+  if (data.fiscal?.has_detraccion) {
+    const pct = data.fiscal.detraccion_rate_percent ?? 0
+    addLine(`Detracción (${pct}%): ${formatMoney(data.fiscal.detraccion_amount ?? 0, 'PEN')}`, { align: 'right' })
+    if (data.fiscal.detraccion_bank_account) {
+      addLine(`Cta. BN: ${data.fiscal.detraccion_bank_account}`, { size: FONT_SIZE_SM, align: 'right' })
+    }
+    addLine(`Neto a cobrar: ${formatMoney(data.fiscal.detraccion_net_payable ?? data.total, data.currency)}`, {
+      size: FONT_SIZE_TITLE,
+      align: 'right',
+    })
+  }
   addSpace(2)
 
   // Leyenda (monto en letras)
@@ -446,6 +550,8 @@ export async function generateReceiptPdf(
     addLine(data.legend_text, { size: FONT_SIZE_SM })
     addSpace(2)
   }
+
+  renderFiscalFooter(data, (text, size) => addLine(text, { size: size ?? FONT_SIZE_SM }), addSpace)
 
   // Pagos
   if (data.payments.length > 0) {

@@ -15,6 +15,8 @@ export interface Sale {
   tax_amount: number
   total: number
   currency: string
+  operation_type_code?: string
+  exchange_rate?: number | null
   payment_method?: string
   status: string
   billing_status: SaleBillingStatus
@@ -24,6 +26,11 @@ export interface Sale {
   original_sale_id?: number | null
   /** Si esta NV ya generó factura/boleta electrónica (backend). */
   electronic_issue_sale_id?: number | null
+  /** Factura 1001: datos de detracción en listados/reportes. */
+  has_detraccion?: boolean
+  detraccion_amount?: number
+  net_payable?: number
+  detraccion_rate_percent?: number
 }
 
 export interface SaleItem {
@@ -47,10 +54,22 @@ export interface SalePayment {
   reference: string
 }
 
+export interface SaleDetraccionDetail {
+  good_code: string
+  payment_method_code: string
+  bank_account: string
+  rate_percent: number
+  base_amount_pen: number
+  detraction_amount_pen: number
+  invoice_total_pen: number
+  net_payable_pen: number
+}
+
 export interface SaleDetail {
   sale: Sale
   items: SaleItem[]
   payments?: SalePayment[]
+  detraccion?: SaleDetraccionDetail
   contact?: {
     id: number
     doc_type: string
@@ -60,6 +79,7 @@ export interface SaleDetail {
     phone?: string
   }
   print_data?: import('@/types/printData').PrintData
+  fiscal_context?: SaleFiscalContextResponse
   invoice?: {
     xml_url: string
     pdf_url: string
@@ -78,18 +98,69 @@ export interface PaymentInput {
   amount: number
 }
 
+export interface SaleFiscalReferenceInput {
+  reference_kind: string
+  referenced_sunat_type?: string
+  referenced_full_number?: string
+  referenced_series?: string
+  referenced_number?: string
+  sort_order?: number
+}
+
+export interface SaleFiscalContextInput {
+  has_igv_retention?: boolean
+  igv_retention_manual_override?: boolean
+  show_terms_conditions?: boolean
+  fiscal_observations?: string
+  purchase_order_number?: string
+  seller_user_id?: number | null
+  references?: SaleFiscalReferenceInput[]
+}
+
+export interface SaleFiscalSummary {
+  sale_total: number
+  retention_amount: number
+  net_collectible: number
+  retention_applied: boolean
+}
+
+export interface SaleFiscalContextResponse {
+  profile: {
+    sale_id: number
+    has_igv_retention: boolean
+    igv_retention_manual_override: boolean
+    show_terms_conditions: boolean
+    fiscal_observations: string
+    purchase_order_number: string
+    seller_user_id?: number | null
+  }
+  references?: SaleFiscalReferenceInput[]
+  obligations?: Array<{
+    obligation_kind: string
+    obligation_amount: number
+    applicability_status: string
+    applicability_reason: string
+  }>
+  summary: SaleFiscalSummary
+}
+
 export interface CreateSaleInput {
   branch_id: number
   contact_id?: number | null
   doc_type: string
   series_id: number
   currency: string
+  operation_type_code?: string
+  exchange_rate?: number | null
   cash_session_id?: number | null
   issue_date?: string
   due_date?: string
   payment_method?: string
   payments?: PaymentInput[]
   notes?: string
+  /** Información adicional fiscal (solo formulario Nuevo Comprobante; POS no envía este bloque). */
+  fiscal_context?: SaleFiscalContextInput
+  detraccion?: { good_code: string; payment_method_code?: string }
   items: {
     product_id?: number | null
     code: string
@@ -144,6 +215,10 @@ export interface SaleListSummary {
   sum_active: number
   count_cancelled: number
   count_active: number
+  sum_detraccion?: number
+  sum_net_payable?: number
+  count_detraccion?: number
+  spot_total?: number
   payment_totals: Array<{ method: string; total: number }>
 }
 
@@ -155,6 +230,10 @@ const emptySaleSummary = (): SaleListSummary => ({
   sum_active: 0,
   count_cancelled: 0,
   count_active: 0,
+  sum_detraccion: 0,
+  sum_net_payable: 0,
+  count_detraccion: 0,
+  spot_total: 0,
   payment_totals: [],
 })
 

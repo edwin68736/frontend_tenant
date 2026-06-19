@@ -25,6 +25,10 @@ type QuickContactForm = {
   phone: string
   email: string
   ubigeo: string
+  es_agente_de_retencion: boolean
+  es_agente_de_percepcion: boolean
+  es_agente_de_percepcion_combustible: boolean
+  es_buen_contribuyente: boolean
 }
 
 const emptyForm = (defaultDocType = '1'): QuickContactForm => ({
@@ -35,6 +39,10 @@ const emptyForm = (defaultDocType = '1'): QuickContactForm => ({
   phone: '',
   email: '',
   ubigeo: '',
+  es_agente_de_retencion: false,
+  es_agente_de_percepcion: false,
+  es_agente_de_percepcion_combustible: false,
+  es_buen_contribuyente: false,
 })
 
 type Props = {
@@ -101,6 +109,10 @@ export function QuickContactCreateModal({
           business_name: res.razon_social ?? '',
           address: res.direccion ?? '',
           ubigeo: res.ubigeo && res.ubigeo.length >= 6 ? res.ubigeo.slice(0, 6) : '',
+          es_agente_de_retencion: res.es_agente_de_retencion ?? false,
+          es_agente_de_percepcion: res.es_agente_de_percepcion ?? false,
+          es_agente_de_percepcion_combustible: res.es_agente_de_percepcion_combustible ?? false,
+          es_buen_contribuyente: res.es_buen_contribuyente ?? false,
         })
       } else {
         const res = await consultaService.dni(tenantRuc, num)
@@ -141,6 +153,12 @@ export function QuickContactCreateModal({
         email: form.email.trim() || undefined,
         ubigeo: form.ubigeo.trim() || undefined,
       }
+      if (docType === '6') {
+        payload.es_agente_de_retencion = form.es_agente_de_retencion
+        payload.es_agente_de_percepcion = form.es_agente_de_percepcion
+        payload.es_agente_de_percepcion_combustible = form.es_agente_de_percepcion_combustible
+        payload.es_buen_contribuyente = form.es_buen_contribuyente
+      }
       const created = await contactsService.create(payload)
       toast.success('Cliente registrado')
       onCreated(created)
@@ -167,6 +185,10 @@ export function QuickContactCreateModal({
                 patch({
                   doc_type: e.target.value,
                   doc_number: '',
+                  es_agente_de_retencion: false,
+                  es_agente_de_percepcion: false,
+                  es_agente_de_percepcion_combustible: false,
+                  es_buen_contribuyente: false,
                 })
               }
             >

@@ -7,6 +7,8 @@ export interface PrintData {
   issue_date: string
   issue_time?: string
   currency: string
+  exchange_rate?: number | null
+  operation_type_code?: string
   sunat_hash?: string
   qr_data: string
   /** Leyenda en letras (code 1000), ej. "SESENTA CON 00/100" */
@@ -24,6 +26,33 @@ export interface PrintData {
   payment_condition?: string
   bank_accounts?: PrintBankAccount[]
   payment_wallet?: PrintPaymentWallet
+  /** Información adicional fiscal (retención operativa, O/C, guías). */
+  fiscal?: PrintFiscalContext
+}
+
+export interface PrintFiscalContext {
+  purchase_order_number?: string
+  fiscal_observations?: string
+  guias?: PrintGuiaRef[]
+  has_igv_retention?: boolean
+  igv_retention_amount?: number
+  net_collectible?: number
+  retention_applied?: boolean
+  show_terms_conditions?: boolean
+  terms_text?: string
+  has_detraccion?: boolean
+  detraccion_good_code?: string
+  detraccion_good_label?: string
+  detraccion_rate_percent?: number
+  detraccion_amount?: number
+  detraccion_bank_account?: string
+  detraccion_payment_method_code?: string
+  detraccion_net_payable?: number
+}
+
+export interface PrintGuiaRef {
+  kind?: string
+  number: string
 }
 
 export interface PrintPaymentWallet {

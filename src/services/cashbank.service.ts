@@ -105,6 +105,7 @@ export interface CashSessionReport {
   session: CashSessionReportSession
   income_detail: IncomeDetailRow[]
   expense_detail: ExpenseDetailRow[]
+  cancelled_sales_detail?: IncomeDetailRow[]
   totals_by_method: {
     sales: MethodTotal[]
     purchases: MethodTotal[]
@@ -113,9 +114,32 @@ export interface CashSessionReport {
   totals: {
     total_income: number
     total_expense: number
+    /** Cobrado directo (sin SPOT). */
     total_sales: number
+    total_sales_direct?: number
+    total_detraccion_spot?: number
+    total_sales_commercial?: number
     total_purchases: number
     final_balance: number
+  }
+  cash_physical?: {
+    opening_balance: number
+    total_income: number
+    total_expense: number
+    physical_balance: number
+    sales_total: number
+    cash_sales: IncomeDetailRow[]
+    manual_income: IncomeDetailRow[]
+    expenses: ExpenseDetailRow[]
+  }
+  electronic?: {
+    total_sales: number
+    sales_by_method: MethodTotal[]
+    sales: IncomeDetailRow[]
+  }
+  detraction?: {
+    total_spot: number
+    sales: IncomeDetailRow[]
   }
 }
 
@@ -158,6 +182,11 @@ export interface MovementsReportResult {
   data: MovementReportRow[]
   total: number
   summary: MovementReportSummary
+  detraction?: {
+    data: MovementReportRow[]
+    total: number
+    summary: MovementReportSummary
+  }
 }
 
 export const cashbankService = {
@@ -201,6 +230,7 @@ export const cashbankService = {
     const summaryRaw = r.data.summary ?? {}
     const cashData = r.data.cash?.data ?? []
     const electronicData = r.data.electronic?.data ?? []
+    const detractionBlock = r.data.detraction
     const merged = r.data.data ?? [...cashData, ...electronicData]
     return {
       data: merged,
@@ -211,6 +241,18 @@ export const cashbankService = {
         sum_expense: Number(summaryRaw.sum_expense ?? 0),
         net_movement: Number(summaryRaw.net_movement ?? 0),
       },
+      detraction: detractionBlock
+        ? {
+            data: detractionBlock.data ?? [],
+            total: Number(detractionBlock.total ?? 0),
+            summary: {
+              total_rows: Number(detractionBlock.summary?.total_rows ?? 0),
+              sum_income: Number(detractionBlock.summary?.sum_income ?? 0),
+              sum_expense: Number(detractionBlock.summary?.sum_expense ?? 0),
+              net_movement: Number(detractionBlock.summary?.net_movement ?? 0),
+            },
+          }
+        : undefined,
     }
   },
 

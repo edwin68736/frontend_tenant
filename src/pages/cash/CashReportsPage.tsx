@@ -12,6 +12,8 @@ import {
 import { companyService } from '@/services/company.service'
 import { usersService } from '@/services/users.service'
 import type { TenantUser } from '@/services/users.service'
+import { formatPaymentMethodLabel, isDetractionPaymentMethod } from '@/utils/paymentMethodLabel'
+import { DETRACCION_PAYMENT_METHOD_NAME } from '@/utils/fiscalDetraction'
 
 type Branch = { id: number; name: string }
 
@@ -29,6 +31,7 @@ function CashReportsContent() {
   const [sessions, setSessions] = useState<CashSession[]>([])
   const [report, setReport] = useState<CashSessionReport | null>(null)
   const [movements, setMovements] = useState<MovementReportRow[]>([])
+  const [detractionMovements, setDetractionMovements] = useState<MovementReportRow[]>([])
   const [loading, setLoading] = useState(false)
   const [tab, setTab] = useState<'resumen' | 'movimientos'>('resumen')
 
@@ -84,8 +87,9 @@ function CashReportsContent() {
       if (filters.session_id) params.session_id = filters.session_id
       if (filters.type) params.type = filters.type
       params.per_page = 0
-      const { data: rows } = await cashbankService.listMovementsReport(params)
+      const { data: rows, detraction } = await cashbankService.listMovementsReport(params)
       setMovements(rows ?? [])
+      setDetractionMovements(detraction?.data ?? [])
     } catch {
       toast.error('Error al cargar movimientos')
     } finally {
@@ -99,9 +103,14 @@ function CashReportsContent() {
   }
 
   const formatMoney = (n: number) => `S/ ${Number(n).toFixed(2)}`
-  const methodLabel = (m: string) =>
-    ({ efectivo: 'Efectivo', yape: 'Yape', plin: 'Plin', tarjeta: 'Tarjeta', transferencia: 'Transferencia' }[m?.toLowerCase() ?? ''] ?? m ?? '')
-  const isEfectivo = (m: string) => (m?.toLowerCase() ?? '') === 'efectivo'
+  const methodLabel = (m: string) => formatPaymentMethodLabel(m)
+  const isEfectivo = (m: string) => (m?.toLowerCase() ?? '') === 'efectivo' || m?.toLowerCase() === 'cash'
+  const directIncomeRows = (report?.income_detail ?? []).filter(
+    (row) => row.type === 'venta' && !isDetractionPaymentMethod(row.payment_method),
+  )
+  const spotTotal = report?.detraction?.total_spot ?? report?.totals.total_detraccion_spot ?? 0
+  const directSalesTotal = report?.totals.total_sales_direct ?? report?.totals.total_sales ?? 0
+  const commercialTotal = report?.totals.total_sales_commercial ?? directSalesTotal + spotTotal
   const movTotals = (() => {
     let ingEfe = 0, egreEfe = 0, ingBan = 0, egreBan = 0
     movements.forEach(row => {
@@ -254,31 +263,63 @@ function CashReportsContent() {
           </div>
 
           {/* Totales generales */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             {[
-              { label: 'Total ingresos', val: report.totals.total_income, color: 'text-green-600', bg: 'bg-green-50' },
-              { label: 'Total egresos', val: report.totals.total_expense, color: 'text-red-600', bg: 'bg-red-50' },
-              { label: 'Total ventas', val: report.totals.total_sales, color: 'text-gray-800', bg: 'bg-gray-50' },
-              { label: 'Total compras', val: report.totals.total_purchases, color: 'text-gray-800', bg: 'bg-gray-50' },
-              { label: 'Saldo final', val: report.totals.final_balance, color: 'text-[rgb(var(--p700))]', bg: 'bg-[rgb(var(--p50))]' },
+              { label: 'Cobrado directo', val: directSalesTotal, color: 'text-emerald-700', bg: 'bg-emerald-50', hint: 'Efectivo, Yape, Plin, etc.' },
+              { label: DETRACCION_PAYMENT_METHOD_NAME, val: spotTotal, color: 'text-amber-800', bg: 'bg-amber-50', hint: 'Sin impacto en arqueo' },
+              { label: 'Total comercial', val: commercialTotal, color: 'text-gray-800', bg: 'bg-gray-50', hint: 'Directo + SPOT' },
+              { label: 'Total ingresos caja', val: report.totals.total_income, color: 'text-green-600', bg: 'bg-green-50', hint: 'Movimientos físicos' },
+              { label: 'Total egresos', val: report.totals.total_expense, color: 'text-red-600', bg: 'bg-red-50', hint: '' },
+              { label: 'Saldo final', val: report.totals.final_balance, color: 'text-[rgb(var(--p700))]', bg: 'bg-[rgb(var(--p50))]', hint: '' },
             ].map(c => (
               <div key={c.label} className={`${c.bg} rounded-2xl shadow-sm p-4`}>
                 <p className="text-xs text-gray-500">{c.label}</p>
                 <p className={`text-lg font-bold mt-1 ${c.color}`}>{formatMoney(c.val)}</p>
+                {c.hint && <p className="text-[10px] text-gray-500 mt-0.5">{c.hint}</p>}
               </div>
             ))}
           </div>
 
+          {spotTotal > 0 && (
+            <div className="bg-amber-50 rounded-2xl shadow-sm p-4 border border-amber-100">
+              <h3 className="text-sm font-semibold text-amber-900 mb-2">{DETRACCION_PAYMENT_METHOD_NAME} — trazabilidad</h3>
+              <p className="text-xs text-amber-800 mb-3">
+                Montos de detracción registrados en ventas 1001. No entran al arqueo de caja ni a ingresos bancarios.
+              </p>
+              <div className="max-h-48 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-amber-100/50 sticky top-0">
+                    <tr>
+                      {['Fecha', 'Factura', 'Monto'].map(h => (
+                        <th key={h} className="text-left px-3 py-2 text-xs font-semibold text-amber-900">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(report.detraction?.sales ?? []).map((row, i) => (
+                      <tr key={i} className="border-b border-amber-100/80">
+                        <td className="px-3 py-2 text-xs">{new Date(row.date).toLocaleString()}</td>
+                        <td className="px-3 py-2">{row.doc_number || '—'}</td>
+                        <td className="px-3 py-2 font-semibold text-amber-900">{formatMoney(row.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {/* Efectivo (para arqueo de caja) */}
           {(() => {
             let ingEfe = 0, egreEfe = 0
-            report.income_detail?.forEach(row => { if (isEfectivo(row.payment_method)) ingEfe += row.amount })
+            directIncomeRows.forEach(row => { if (isEfectivo(row.payment_method)) ingEfe += row.amount })
             report.expense_detail?.forEach(row => { if (isEfectivo(row.payment_method)) egreEfe += row.amount })
+            report.cash_physical?.manual_income?.forEach(row => { if (isEfectivo(row.payment_method)) ingEfe += row.amount })
             const saldoEfe = ingEfe - egreEfe
             return (
               <div className="bg-amber-50 rounded-2xl shadow-sm p-4 border border-amber-100">
                 <h3 className="text-sm font-semibold text-amber-800 mb-2">Efectivo en caja (para arqueo)</h3>
-                <p className="text-xs text-amber-700 mb-3">Solo movimientos en efectivo; Yape, Plin y bancos no se arquean.</p>
+                <p className="text-xs text-amber-700 mb-3">Solo pagos directos en efectivo; excluye SPOT, Yape, Plin y bancos.</p>
                 <div className="grid grid-cols-3 gap-4 text-sm">
                   <div><span className="text-gray-600">Ingresos efectivo</span><p className="font-semibold text-green-600">{formatMoney(ingEfe)}</p></div>
                   <div><span className="text-gray-600">Egresos efectivo</span><p className="font-semibold text-red-600">{formatMoney(egreEfe)}</p></div>
@@ -327,12 +368,12 @@ function CashReportsContent() {
 
           {/* Detalle ingresos */}
           <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
-            <h3 className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-700">Detalle de ingresos</h3>
+            <h3 className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-700">Detalle de ingresos (cobro directo)</h3>
             <div className="max-h-60 overflow-y-auto">
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 sticky top-0"><tr>{['Fecha', 'Tipo', 'Documento', 'Referencia', 'Método', 'Monto'].map(h => <th key={h} className="text-left px-4 py-2 text-xs font-semibold text-gray-500">{h}</th>)}</tr></thead>
                 <tbody>
-                  {report.income_detail?.length ? report.income_detail.map((row, i) => (
+                  {directIncomeRows.length ? directIncomeRows.map((row, i) => (
                     <tr key={i} className="border-b border-gray-50">
                       <td className="px-4 py-2 text-xs">{new Date(row.date).toLocaleString()}</td>
                       <td className="px-4 py-2">{row.type === 'venta' ? 'Venta' : row.type === 'ingreso_manual' ? 'Ingreso manual' : 'Otro'}</td>
@@ -396,8 +437,30 @@ function CashReportsContent() {
             </div>
           </div>
 
+          {detractionMovements.length > 0 && (
+            <div className="bg-amber-50 rounded-2xl border border-amber-100 overflow-hidden">
+              <h3 className="px-4 py-3 border-b border-amber-100 text-sm font-semibold text-amber-900">
+                {DETRACCION_PAYMENT_METHOD_NAME} ({detractionMovements.length})
+              </h3>
+              <p className="px-4 py-2 text-xs text-amber-800">Informativo — no suma a efectivo ni bancos.</p>
+              <div className="max-h-48 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <tbody>
+                    {detractionMovements.map((row, i) => (
+                      <tr key={i} className="border-b border-amber-100/80">
+                        <td className="px-4 py-2 text-xs">{new Date(row.date).toLocaleString()}</td>
+                        <td className="px-4 py-2">{row.doc_number}</td>
+                        <td className="px-4 py-2 font-medium text-amber-900">{formatMoney(row.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">
-          <h3 className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-700">Reporte de movimientos</h3>
+          <h3 className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-700">Reporte de movimientos (cobro directo)</h3>
           <div className="max-h-[70vh] overflow-y-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 sticky top-0">

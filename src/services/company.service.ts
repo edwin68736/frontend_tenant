@@ -18,6 +18,8 @@ export interface CompanyConfig {
   wallet_qr_url?: string
   wallet_show_on_a4?: boolean
   wallet_show_on_ticket?: boolean
+  detraction_bn_account?: string
+  detraction_default_payment_method?: string
 }
 
 export interface SunatConfig {

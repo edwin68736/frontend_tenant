@@ -10,6 +10,10 @@ import RequireModule from '@/components/ui/RequireModule'
 import SunatRequiredMessage from '@/components/ui/SunatRequiredMessage'
 import { Modal } from '@/components/ui/Modal'
 import { SunatResponseDetail } from '@/components/billing/SunatResponseDetail'
+import { BillingOperationTypeBadge } from '@/components/billing/BillingOperationTypeBadge'
+import { BillingDetractionDetail } from '@/components/billing/BillingDetractionDetail'
+import { SalePaymentsBreakdown } from '@/components/sales/SalePaymentsBreakdown'
+import { BnConfirmationPanel } from '@/components/receivables/BnConfirmationPanel'
 import { DocumentViewerModal } from '@/components/ui/DocumentViewerModal'
 import { getTodayPeru, formatDisplayDatePeru } from '@/utils/datesPeru'
 import { formatSaleDocumentNumber } from '@/utils/format'
@@ -646,6 +650,11 @@ function BillingContent() {
                       </span>
                     )}
                   </p>
+                  {viewMode === 'invoices' && (
+                    <div className="mt-1">
+                      <BillingOperationTypeBadge operationTypeCode={s.operation_type_code} />
+                    </div>
+                  )}
                 </td>
                 {viewMode === 'credit_notes' && (
                   <td className="px-4 py-3 text-gray-500 text-xs">
@@ -914,7 +923,42 @@ function BillingContent() {
               <div><p className="text-xs text-gray-400">Estado</p><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${billingStatusColor(detail.sale.billing_status)}`}>{billingStatusLabel(detail.sale.billing_status)}</span></div>
               <div><p className="text-xs text-gray-400">Total</p><p className="font-bold">S/ {Number(detail.sale.total).toFixed(2)}</p></div>
               <div><p className="text-xs text-gray-400">Fecha</p><p>{formatDisplayDatePeru(detail.sale.issue_date)}</p></div>
+              {detail.sale.doc_type !== 'NOTA_CREDITO' && detail.sale.doc_type !== 'NOTA_DEBITO' && (
+                <div className="col-span-2">
+                  <p className="text-xs text-gray-400">Tipo operación</p>
+                  <BillingOperationTypeBadge operationTypeCode={detail.sale.operation_type_code ?? detail.print_data?.operation_type_code} />
+                </div>
+              )}
             </div>
+
+            <BillingDetractionDetail
+              operationTypeCode={detail.sale.operation_type_code ?? detail.print_data?.operation_type_code}
+              fiscal={detail.print_data?.fiscal}
+              currency={detail.sale.currency}
+            />
+
+            <SalePaymentsBreakdown
+              payments={detail.payments}
+              invoiceTotal={detail.sale.total}
+              detractionAmount={
+                detail.detraccion?.detraction_amount_pen ??
+                detail.print_data?.fiscal?.detraccion_amount
+              }
+              netPayable={
+                detail.detraccion?.net_payable_pen ??
+                detail.print_data?.fiscal?.detraccion_net_payable
+              }
+              currency={detail.sale.currency}
+            />
+
+            <BnConfirmationPanel
+              saleId={detail.sale.id}
+              detraccion={detail.detraccion}
+              onUpdated={async () => {
+                const refreshed = await salesService.get(detail.sale.id)
+                setDetail(refreshed)
+              }}
+            />
 
             {detail.invoice ? (
               <>
