@@ -3,7 +3,8 @@ import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { receivablesService, type ReceivableRow } from '@/services/receivables.service'
 import type { PaymentMethodRecord } from '@/services/cashbank.service'
-import { formatPaymentMethodLabel, isDetractionPaymentMethod } from '@/utils/paymentMethodLabel'
+import { formatPaymentMethodLabel } from '@/utils/paymentMethodLabel'
+import { defaultOperationalPaymentCode, filterOperationalPaymentMethods } from '@/utils/operationalPaymentMethods'
 
 type Props = {
   row: ReceivableRow
@@ -13,14 +14,8 @@ type Props = {
 }
 
 export function CollectPaymentModal({ row, paymentMethods, onClose, onSuccess }: Props) {
-  const directMethods = paymentMethods.filter(
-    pm =>
-      pm.active &&
-      !isDetractionPaymentMethod(pm.code) &&
-      pm.code !== 'credito' &&
-      pm.code !== 'credit',
-  )
-  const [method, setMethod] = useState(directMethods[0]?.code ?? 'cash')
+  const directMethods = filterOperationalPaymentMethods(paymentMethods).filter((pm) => pm.active)
+  const [method, setMethod] = useState(defaultOperationalPaymentCode(directMethods))
   const [amount, setAmount] = useState(row.direct_due)
   const [loading, setLoading] = useState(false)
 
@@ -51,7 +46,8 @@ export function CollectPaymentModal({ row, paymentMethods, onClose, onSuccess }:
   return (
     <Modal open onClose={onClose} contentClassName="max-w-md">
       <h3 className="font-bold text-gray-800 mb-1">Registrar cobro</h3>
-      <p className="text-sm text-gray-500 mb-4 font-mono">{row.sale_number}</p>
+      <p className="text-sm text-gray-500 mb-1 font-mono">{row.sale_number}</p>
+      <p className="text-xs text-amber-700 mb-3">Condición de pago: Crédito</p>
       <p className="text-sm mb-4">
         Saldo directo: <strong>S/ {row.direct_due.toFixed(2)}</strong>
       </p>

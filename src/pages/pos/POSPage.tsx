@@ -36,6 +36,7 @@ import {
 } from '@/utils/checkoutDiscount'
 import { buildTaxConfigFromSunat } from '@/constants/tax'
 import { findPaymentMethodRecord, isPaymentMethodLinkedForSale } from '@/utils/paymentMethodCheckout'
+import { defaultOperationalPaymentCode, filterOperationalPaymentMethods } from '@/utils/operationalPaymentMethods'
 import { BILLING_NOT_ENABLED_MESSAGE, isElectronicBillingSunatCode } from '@/utils/posCheckoutSeries'
 import { ManualProductModal } from '@/components/pos/ManualProductModal'
 import { PosCartLineRow } from '@/components/pos/PosCartLineRow'
@@ -114,6 +115,7 @@ function POSContent() {
   const [configModifiers, setConfigModifiers] = useState<{ optionId: number; name: string; extraPrice: number }[]>([])
   const [configLoading, setConfigLoading] = useState(false)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
+  const checkoutPaymentMethods = useMemo(() => filterOperationalPaymentMethods(paymentMethods), [paymentMethods])
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [checkoutDiscountMode, setCheckoutDiscountMode] = useState<CheckoutDiscountMode>('percent')
   const [checkoutDiscountValue, setCheckoutDiscountValue] = useState(0)
@@ -485,7 +487,7 @@ function POSContent() {
     if (branchSeriesMissing) return
     if (cart.length === 0) return
     resetCheckoutToNotaVenta()
-    const cashCode = paymentMethods.find((m) => m.code === 'cash')?.code ?? paymentMethods[0]?.code ?? 'cash'
+    const cashCode = defaultOperationalPaymentCode(paymentMethods)
     setPayments([{ method: cashCode, amount: roundSunat(payableTotal), reference: '' }])
     setCheckoutOpen(true)
   }
@@ -1071,7 +1073,7 @@ function POSContent() {
           const variosId = pickVariosContactId(contacts)
           if (variosId) setContactId(variosId)
         }}
-        paymentMethods={paymentMethods}
+        paymentMethods={checkoutPaymentMethods}
         payments={payments}
         onPaymentsChange={setPayments}
         onConfirm={handleCheckout}

@@ -451,7 +451,11 @@ export default function SalesReportPage() {
                   <tr key={row.id ?? i} className="border-b border-gray-50">
                     {COLS.map(col => {
                       const val = col.key === 'doc_display'
-                        ? formatSaleComprobante(row.doc_type, row.series, row.number)
+                        ? formatSaleComprobante(
+                            (row.display_doc_type || row.doc_type) as string,
+                            (row.display_series ?? row.series) as string,
+                            (row.display_number ?? row.number) as string,
+                          )
                         : row[col.key as keyof typeof row]
                       const text = col.format ? col.format(val, row) : String(val ?? '')
                       return <td key={String(col.key)} className="px-4 py-2">{text}</td>

@@ -12,6 +12,14 @@ import { companyService } from '@/services/company.service'
 import { shareReceiptPngViaWhatsApp } from '@/utils/receiptPng'
 import { WhatsAppGlyph } from '@/components/icons/WhatsAppGlyph'
 import { formatSaleDocumentNumber } from '@/utils/format'
+import {
+  formatElectronicIssueDocument,
+  nvStatusBadgeClass,
+  nvStatusEmoji,
+  nvStatusKey,
+  nvStatusLabel,
+  pdfTargetSaleId,
+} from '@/utils/saleDisplayDocument'
 import { downloadReceiptPdf, openReceiptPdfInNewTab } from '@/utils/receiptPdf'
 import { formatPaymentMethodLabel } from '@/utils/paymentMethodLabel'
 import { SalePaymentsBreakdown } from '@/components/sales/SalePaymentsBreakdown'
@@ -375,7 +383,7 @@ function SalesContent() {
           <table className="w-full min-w-[760px] text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                {['Fecha', 'Comprobante', 'Cliente', 'Total', 'PDF', 'Acciones'].map((h) => (
+                {['Fecha', 'Comprobante', 'Cliente', 'Total', 'PDF', 'Estado', 'Acciones'].map((h) => (
                   <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
                     {h}
                   </th>
@@ -386,12 +394,16 @@ function SalesContent() {
               {loading ? (
                 Array.from({ length: TABLE_SKELETON_ROWS }).map((_, idx) => (
                   <tr key={`sales-skeleton-${idx}`} className="border-b border-gray-50">
-                    <td colSpan={6} className="px-4 py-3">
+                    <td colSpan={7} className="px-4 py-3">
                       <div className="h-4 w-full max-w-[680px] animate-pulse rounded bg-gray-100" />
                     </td>
                   </tr>
                 ))
-              ) : sales.map((s) => (
+              ) : sales.map((s) => {
+                const nvKey = nvStatusKey(s)
+                const issuedDoc = formatElectronicIssueDocument(s)
+                const pdfId = pdfTargetSaleId(s)
+                return (
                 <tr key={s.id} className="border-b border-gray-50 hover:bg-gray-50">
                   <td className="px-4 py-3 text-gray-500 text-xs">{formatDisplayDatePeru(s.issue_date)}</td>
                   <td className="px-4 py-3">
@@ -406,41 +418,57 @@ function SalesContent() {
                     <div className="flex items-center gap-1">
                       <button
                         type="button"
-                        disabled={pdfPreviewBusyId === s.id}
-                        onClick={() => void openNotaPdfPreview(s.id)}
+                        disabled={pdfPreviewBusyId === pdfId}
+                        onClick={() => void openNotaPdfPreview(pdfId)}
                         className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-40"
                         title="Ver PDF A4"
                       >
-                        {pdfPreviewBusyId === s.id ? <RefreshCw size={14} className="animate-spin" /> : <Eye size={14} />}
+                        {pdfPreviewBusyId === pdfId ? <RefreshCw size={14} className="animate-spin" /> : <Eye size={14} />}
                       </button>
                       <button
                         type="button"
-                        disabled={pdfDownloadBusyId === s.id}
-                        onClick={() => void downloadNotaPdf(s.id)}
+                        disabled={pdfDownloadBusyId === pdfId}
+                        onClick={() => void downloadNotaPdf(pdfId)}
                         className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-40"
                         title="Descargar PDF A4"
                       >
-                        {pdfDownloadBusyId === s.id ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
+                        {pdfDownloadBusyId === pdfId ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
                       </button>
                       <button
                         type="button"
-                        disabled={pdfTicketPreviewBusyId === s.id}
-                        onClick={() => void openNotaPdfTicketPreview(s.id)}
+                        disabled={pdfTicketPreviewBusyId === pdfId}
+                        onClick={() => void openNotaPdfTicketPreview(pdfId)}
                         className="p-1.5 text-orange-700 hover:bg-orange-50 rounded-lg disabled:opacity-40"
                         title="Ver PDF formato ticket (80 mm)"
                       >
-                        {pdfTicketPreviewBusyId === s.id ? <RefreshCw size={14} className="animate-spin" /> : <Ticket size={14} />}
+                        {pdfTicketPreviewBusyId === pdfId ? <RefreshCw size={14} className="animate-spin" /> : <Ticket size={14} />}
                       </button>
                       <button
                         type="button"
-                        disabled={pdfTicketDownloadBusyId === s.id}
-                        onClick={() => void downloadNotaPdfTicket(s.id)}
+                        disabled={pdfTicketDownloadBusyId === pdfId}
+                        onClick={() => void downloadNotaPdfTicket(pdfId)}
                         className="p-1.5 text-orange-700 hover:bg-orange-50 rounded-lg disabled:opacity-40"
                         title="Descargar PDF formato ticket"
                       >
-                        {pdfTicketDownloadBusyId === s.id ? <RefreshCw size={14} className="animate-spin" /> : <FileDown size={14} />}
+                        {pdfTicketDownloadBusyId === pdfId ? <RefreshCw size={14} className="animate-spin" /> : <FileDown size={14} />}
                       </button>
                     </div>
+                  </td>
+                  <td className="px-4 py-3 align-top">
+                    <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${nvStatusBadgeClass(nvKey)}`}>
+                      <span aria-hidden>{nvStatusEmoji(nvKey)}</span>
+                      {nvStatusLabel(nvKey)}
+                    </span>
+                    {issuedDoc && s.electronic_issue_sale_id ? (
+                      <Link
+                        to="/billing"
+                        state={{ highlightSaleId: s.electronic_issue_sale_id }}
+                        className="mt-1 block font-mono text-xs font-semibold text-[rgb(var(--p600))] hover:underline leading-tight"
+                        title="Ver comprobante en Facturación"
+                      >
+                        {issuedDoc}
+                      </Link>
+                    ) : null}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap items-center justify-end gap-1">
@@ -497,7 +525,7 @@ function SalesContent() {
                     </div>
                   </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </div>
@@ -518,7 +546,8 @@ function SalesContent() {
               role="menuitem"
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-800 hover:bg-gray-50"
               onClick={() => {
-                const id = waMenu.saleId
+                const row = sales.find((x) => x.id === waMenu.saleId)
+                const id = row ? pdfTargetSaleId(row) : waMenu.saleId
                 setWaMenu(null)
                 void sendNotaReceiptWhatsApp(id, 'a4')
               }}
@@ -531,7 +560,8 @@ function SalesContent() {
               role="menuitem"
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-800 hover:bg-gray-50"
               onClick={() => {
-                const id = waMenu.saleId
+                const row = sales.find((x) => x.id === waMenu.saleId)
+                const id = row ? pdfTargetSaleId(row) : waMenu.saleId
                 setWaMenu(null)
                 void sendNotaReceiptWhatsApp(id, 'ticket')
               }}
@@ -783,8 +813,15 @@ function SalesContent() {
                 <p className="text-xs text-gray-400">Comprobante electrónico (SUNAT)</p>
                 {detail.sale.electronic_issue_sale_id ? (
                   <p className="text-xs text-emerald-800 bg-emerald-50 rounded-lg px-2 py-1.5 mt-0.5">
-                    Ya se generó la factura o boleta vinculada (venta #{detail.sale.electronic_issue_sale_id}). Envíela o
-                    consulte su estado en <strong>Facturación</strong>.
+                    <span className="font-semibold">
+                      {nvStatusEmoji('convertida')} Convertida →{' '}
+                      {formatElectronicIssueDocument(detail.sale) ?? `#${detail.sale.electronic_issue_sale_id}`}
+                    </span>
+                    . Consulte o envíe el comprobante en{' '}
+                    <Link to="/billing" className="underline font-medium">
+                      Facturación
+                    </Link>
+                    .
                   </p>
                 ) : (
                   <p className="text-xs text-amber-900 bg-amber-50 rounded-lg px-2 py-1.5 mt-0.5">

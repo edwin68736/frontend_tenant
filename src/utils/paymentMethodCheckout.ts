@@ -1,4 +1,5 @@
 import type { BankAccount, PaymentMethodRecord } from '@/services/cashbank.service'
+import { filterOperationalPaymentMethods } from '@/utils/operationalPaymentMethods'
 
 /** Alinea códigos con el backend (p. ej. efectivo → cash) para buscar el método configurado. */
 export function normalizePaymentMethodCodeForLookup(code: string): string {
@@ -12,9 +13,10 @@ export function normalizePaymentMethodCodeForLookup(code: string): string {
 }
 
 export function findPaymentMethodRecord(methods: PaymentMethodRecord[], code: string): PaymentMethodRecord | undefined {
-  if (!methods.length) return undefined
+  const ops = filterOperationalPaymentMethods(methods)
+  if (!ops.length) return undefined
   const want = normalizePaymentMethodCodeForLookup(code)
-  return methods.find((m) => normalizePaymentMethodCodeForLookup(m.code) === want)
+  return ops.find((m) => normalizePaymentMethodCodeForLookup(m.code) === want)
 }
 
 /**

@@ -285,13 +285,22 @@ export const cashbankService = {
       { id: 0, name: 'Tarjeta', code: 'tarjeta', destination_type: 'bank_account', bank_account_id: null, is_system: false, sort_order: 4, active: true },
     ]
     return api
-      .get('/api/cashbank/payment-methods', { params: all ? { all: '1' } : {} })
+      .get('/api/payment-methods', { params: all ? { all: '1' } : {} })
       .then((r) => {
         const raw = r.data?.data ?? r.data
         const arr = Array.isArray(raw) ? raw : []
         return arr.length > 0 ? arr : fallback
       })
-      .catch(() => fallback)
+      .catch(() =>
+        api
+          .get('/api/cashbank/payment-methods', { params: all ? { all: '1' } : {} })
+          .then((r) => {
+            const raw = r.data?.data ?? r.data
+            const arr = Array.isArray(raw) ? raw : []
+            return arr.length > 0 ? arr : fallback
+          })
+          .catch(() => fallback),
+      )
   },
 
   getPaymentMethod: (id: number): Promise<PaymentMethodRecord> =>
@@ -311,7 +320,9 @@ export interface PaymentMethodRecord {
   id: number
   name: string
   code: string
-  destination_type: 'cash' | 'bank_account'
+  /** payment_method | payment_condition | internal */
+  kind?: string
+  destination_type: 'cash' | 'bank_account' | 'detraction' | 'receivable'
   bank_account_id: number | null
   is_system: boolean
   sort_order: number

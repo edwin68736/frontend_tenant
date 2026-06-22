@@ -26,6 +26,15 @@ export interface Sale {
   original_sale_id?: number | null
   /** Si esta NV ya generó factura/boleta electrónica (backend). */
   electronic_issue_sale_id?: number | null
+  electronic_issue_doc_type?: string | null
+  electronic_issue_series?: string | null
+  electronic_issue_number?: string | null
+  /** registrado | convertida | anulada */
+  nv_status?: string | null
+  display_sale_id?: number | null
+  display_doc_type?: string | null
+  display_series?: string | null
+  display_number?: string | null
   /** Factura 1001: datos de detracción en listados/reportes. */
   has_detraccion?: boolean
   detraccion_amount?: number

@@ -25,6 +25,7 @@ import { formatSaleMoney, saleCurrencySymbol } from '@/utils/formatMoney'
 import { consultaService } from '@/services/consulta.service'
 import { catalogsService, type DetraccionGood } from '@/services/catalogs.service'
 import { previewDetraccion, DETRACCION_PAYMENT_METHOD_CODE, DETRACCION_PAYMENT_METHOD_NAME } from '@/utils/fiscalDetraction'
+import { filterOperationalPaymentMethods } from '@/utils/operationalPaymentMethods'
 import {
   formatTipoDocIdentidadDisplay,
   SALES_OPERATION_TYPE_OPTIONS,
@@ -604,10 +605,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
     contactEsPercepcion: selectedContact?.es_agente_de_percepcion,
   })
 
-  const directPaymentMethods = useMemo(
-    () => paymentMethods.filter((m) => m.code !== DETRACCION_PAYMENT_METHOD_CODE),
-    [paymentMethods],
-  )
+  const directPaymentMethods = useMemo(() => filterOperationalPaymentMethods(paymentMethods), [paymentMethods])
 
   const directPayableTarget =
     isDetraccion && detractionPreview.applicable ? detractionPreview.netPayable : totalGlobal
