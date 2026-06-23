@@ -14,6 +14,7 @@ export interface SunatFiscalDetailView {
   cdrCode: string | null
   summary: string | null
   observations: SunatObservation[]
+  rejectionErrors: SunatObservation[]
   cdrNotes: string[]
   rawMessage: string | null
   pipelineStatus: string | null
@@ -50,6 +51,8 @@ export function extractObservationsFromMessage(message: string): SunatObservatio
   const seen = new Set<string>()
 
   const add = (o: SunatObservation) => {
+    const codeNum = Number(o.code)
+    if (!Number.isNaN(codeNum) && codeNum > 0 && codeNum < 4000) return
     const key = `${o.code}|${o.node ?? ''}|${o.message.slice(0, 80)}`
     if (seen.has(key)) return
     seen.add(key)
@@ -59,6 +62,8 @@ export function extractObservationsFromMessage(message: string): SunatObservatio
   let m: RegExpExecArray | null
   INFO_RE.lastIndex = 0
   while ((m = INFO_RE.exec(message)) !== null) {
+    const codeNum = Number(m[1])
+    if (!Number.isNaN(codeNum) && codeNum > 0 && codeNum < 4000) continue
     add({
       code: m[1],
       message: `Código ${m[1]} en ${m[2]}`,
@@ -85,6 +90,42 @@ export function extractObservationsFromMessage(message: string): SunatObservatio
       continue
     }
     add({ code, message: msg || `Observación SUNAT ${code}` })
+  }
+
+  return out.sort((a, b) => a.code.localeCompare(b.code))
+}
+
+export function extractSunatErrorsFromMessage(message: string, cdrCode: string | null): SunatObservation[] {
+  const out: SunatObservation[] = []
+  const seen = new Set<string>()
+  const add = (o: SunatObservation) => {
+    const codeNum = Number(o.code)
+    if (Number.isNaN(codeNum) || codeNum <= 0 || codeNum >= 4000) return
+    const key = `${o.code}|${o.node ?? ''}|${o.message.slice(0, 80)}`
+    if (seen.has(key)) return
+    seen.add(key)
+    out.push(o)
+  }
+
+  let m: RegExpExecArray | null
+  INFO_RE.lastIndex = 0
+  while ((m = INFO_RE.exec(message)) !== null) {
+    add({
+      code: m[1],
+      message: `Código ${m[1]} en ${m[2]}`,
+      node: m[2],
+      value: m[3],
+    })
+  }
+
+  if (cdrCode && cdrCode !== '0') {
+    const n = Number(cdrCode)
+    if (!Number.isNaN(n) && n > 0 && n < 4000) {
+      add({
+        code: cdrCode,
+        message: `Error SUNAT ${cdrCode}`,
+      })
+    }
   }
 
   return out.sort((a, b) => a.code.localeCompare(b.code))
@@ -149,12 +190,14 @@ export function buildSunatFiscalDetailView(
   }
 
   const outcome = inferSunatOutcome(billingStatus, cdrCode, deduped, rawMessage)
+  const rejectionErrors = outcome === 'rejected' ? extractSunatErrorsFromMessage(rawMessage ?? '', cdrCode) : []
 
   return {
     outcome,
     cdrCode,
     summary,
     observations: deduped,
+    rejectionErrors,
     cdrNotes: cdrNotes.filter((n) => !deduped.some((o) => o.message.includes(n))),
     rawMessage,
     pipelineStatus: invoice.pipeline_status?.trim() || null,
@@ -169,6 +212,9 @@ export const SUNAT_OUTCOME_LABELS: Record<SunatFiscalOutcome, string> = {
   error: 'Error de envío',
   unknown: 'Estado SUNAT',
 }
+
+export const SUNAT_REJECTED_HELP =
+  'SUNAT rechazó el comprobante: no tiene validez tributaria. Debe corregir los datos indicados y emitir una nueva guía con el siguiente correlativo (no reutilice el mismo número rechazado).'
 
 export const SUNAT_OBSERVED_HELP =
   'SUNAT aceptó el comprobante y el CDR es válido: el documento queda emitido y puede usarse (impresión, entrega al cliente, contabilidad). Las observaciones (códigos 4000 en adelante) son advertencias sobre el XML; no anulan el comprobante ni exigen baja. Conviene corregir el sistema para futuras emisiones; no es obligatorio reemitir este mismo número salvo que su asesor lo indique.'

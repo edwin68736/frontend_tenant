@@ -158,7 +158,7 @@ export const billingService = {
   // --- Guías de remisión ---
   listDespatches: (): Promise<{ despatches: SunatDespatch[] }> =>
     api.get('/api/billing/despatches').then(r => r.data),
-  createDespatch: (payload: CreateDespatchInput): Promise<{ success: boolean; despatch: SunatDespatch }> =>
+  createDespatch: (payload: CreateDespatchInput): Promise<{ success: boolean; async?: boolean; message?: string; despatch: SunatDespatch }> =>
     api.post('/api/billing/despatches', payload).then(r => r.data),
   getDespatchStatus: (id: number): Promise<SunatDespatch> =>
     api.get(`/api/billing/despatches/${id}/status`).then(r => r.data),
@@ -233,6 +233,7 @@ export interface InvoiceStatusResult {
 
 export interface SunatDespatch {
   id: number
+  sale_id?: number
   branch_id: number
   series_id: number
   series: string
@@ -242,6 +243,8 @@ export interface SunatDespatch {
   destinatario_razon?: string
   ticket?: string
   status: string
+  billing_status?: string
+  doc_type?: string
   sunat_code?: string
   sunat_message?: string
   cdr_url?: string
@@ -300,12 +303,15 @@ export interface SunatReversion {
 export interface CreateDespatchInput {
   branch_id: number
   series_id: number
+  source_sale_id?: number
   destinatario: { tipo_doc: string; num_doc: string; rzn_social: string; address: string; ubigeo?: string }
+  remitente?: { tipo_doc: string; num_doc: string; rzn_social: string; address: string; ubigeo?: string }
   envio: {
     cod_traslado: string
     des_traslado: string
     mod_traslado: string
     fec_traslado: string
+    fec_entrega_transportista?: string
     partida_ubigueo?: string
     partida_direccion?: string
     llegada_ubigueo?: string
@@ -316,8 +322,14 @@ export interface CreateDespatchInput {
     transportista_ruc?: string
     transportista_razon?: string
     transportista_placa?: string
+    transportista_mtc?: string
+    vehiculo_hab_cert?: string
+    vehiculo_cod_emisor?: string
     chofer_tipo_doc?: string
     chofer_doc?: string
+    chofer_licencia?: string
+    chofer_nombres?: string
+    chofer_apellidos?: string
   }
   details: Array<{ codigo: string; descripcion: string; unidad: string; cantidad: number }>
 }

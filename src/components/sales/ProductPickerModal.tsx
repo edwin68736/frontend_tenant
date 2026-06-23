@@ -1,0 +1,153 @@
+import { useEffect, useState } from 'react'
+import { toast } from 'sonner'
+import { Search, X } from 'lucide-react'
+import { productsService, type Product } from '@/services/products.service'
+import { formatSaleMoney } from '@/utils/formatMoney'
+
+const PER_PAGE = 10
+
+type Props = {
+  onAdd: (p: Product) => void
+  onClose: () => void
+  /** Precio mostrado: venta (P. venta) o compra (Precio compra). */
+  variant?: 'sale' | 'purchase'
+  currency?: string
+}
+
+export function ProductPickerModal({
+  onAdd,
+  onClose,
+  variant = 'sale',
+  currency = 'PEN',
+}: Props) {
+  const fmtPrice = (n: number) =>
+    variant === 'sale' ? formatSaleMoney(n, currency) : `S/ ${Number(n).toFixed(2)}`
+  const priceLabel = variant === 'sale' ? 'P. venta' : 'Precio compra'
+  const priceValue = (p: Product) =>
+    variant === 'sale' ? Number(p.sale_price ?? 0) : Number(p.purchase_price ?? 0)
+
+  const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [products, setProducts] = useState<Product[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(false)
+
+  const loadProducts = () => {
+    setLoading(true)
+    productsService
+      .list(search, undefined, undefined, true, page, PER_PAGE)
+      .then(({ data, total: t }) => {
+        setProducts(data ?? [])
+        setTotal(t ?? 0)
+      })
+      .catch(() => toast.error('Error cargando productos'))
+      .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    loadProducts()
+  }, [page, search])
+
+  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE))
+
+  return (
+    <>
+      <div className="flex items-center justify-between">
+        <h3 className="font-bold text-gray-800 text-lg">Seleccionar producto</h3>
+        <button type="button" onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">
+          <X size={18} />
+        </button>
+      </div>
+      <div className="relative">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <input
+          type="text"
+          className="w-full border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-sm"
+          placeholder="Buscar por nombre, código o código de barras..."
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value)
+            setPage(1)
+          }}
+        />
+      </div>
+      <div className="min-h-[280px] max-h-[50vh] overflow-y-auto border border-gray-200 rounded-xl">
+        {loading ? (
+          <div className="flex justify-center py-16">
+            <div className="w-6 h-6 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : products.length === 0 ? (
+          <div className="text-center py-12 text-gray-400 text-sm">
+            No hay productos o no coinciden con la búsqueda.
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 sticky top-0">
+              <tr>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">Código</th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">Producto</th>
+                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">{priceLabel}</th>
+                <th className="w-24" />
+              </tr>
+            </thead>
+            <tbody>
+              {products.map((p) => (
+                <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50/50">
+                  <td className="px-4 py-2.5 font-mono text-gray-600">{p.code || '-'}</td>
+                  <td className="px-4 py-2.5 font-medium text-gray-800">{p.name}</td>
+                  <td className="px-4 py-2.5 text-gray-700">{fmtPrice(priceValue(p))}</td>
+                  <td className="px-4 py-2.5">
+                    <button
+                      type="button"
+                      onClick={() => onAdd(p)}
+                      className="px-3 py-1.5 rounded-lg bg-[rgb(var(--p600))] text-white text-xs font-medium hover:opacity-90"
+                    >
+                      Agregar
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      {total > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-100">
+          <p className="text-xs text-gray-500">
+            Mostrando {(page - 1) * PER_PAGE + 1}-{Math.min(page * PER_PAGE, total)} de {total} productos
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="px-2.5 py-1 rounded-lg border border-gray-200 text-xs disabled:opacity-40"
+            >
+              Anterior
+            </button>
+            <span className="text-xs text-gray-600">
+              Pág. {page} de {totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page >= totalPages}
+              className="px-2.5 py-1 rounded-lg border border-gray-200 text-xs disabled:opacity-40"
+            >
+              Siguiente
+            </button>
+          </div>
+        </div>
+      )}
+      <div className="pt-2">
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50"
+        >
+          Cerrar
+        </button>
+      </div>
+    </>
+  )
+}

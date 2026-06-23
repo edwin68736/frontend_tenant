@@ -5,15 +5,16 @@ import { companyService, type SeriesRow } from '@/services/company.service'
 import { Modal } from '@/components/ui/Modal'
 import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
 
-const CATEGORIES = ['venta', 'compra', 'nota_credito', 'nota_debito', 'guia_remision'] as const
-const DOC_TYPES = ['FACTURA', 'BOLETA', 'NOTA DE VENTA', 'NOTA DE CRÉDITO', 'NOTA DE DÉBITO', 'GUÍA DE REMISIÓN']
+const CATEGORIES = ['venta', 'compra', 'nota_credito', 'nota_debito', 'guia_remision', 'guia_transportista'] as const
+const DOC_TYPES = ['FACTURA', 'BOLETA', 'NOTA DE VENTA', 'NOTA DE CRÉDITO', 'NOTA DE DÉBITO', 'GUÍA DE REMISIÓN', 'GUÍA TRANSPORTISTA']
 const SUNAT_CODES = [
   { code: '00', label: '00 - Nota de venta (no SUNAT)' },
   { code: '01', label: '01 - Factura' },
   { code: '03', label: '03 - Boleta' },
   { code: '07', label: '07 - Nota de Crédito' },
   { code: '08', label: '08 - Nota de Débito' },
-  { code: '09', label: '09 - Guía de Remisión' },
+  { code: '09', label: '09 - Guía de Remisión Remitente' },
+  { code: '31', label: '31 - Guía Transportista' },
   { code: '02', label: '02 - Recibo por Honorarios' },
   { code: '04', label: '04 - Liquidación de Compra' },
   { code: '20', label: '20 - Comprobante de Retención' },
@@ -24,7 +25,8 @@ const CATEGORY_LABELS: Record<string, string> = {
   compra: 'Compra',
   nota_credito: 'Nota crédito',
   nota_debito: 'Nota débito',
-  guia_remision: 'Guía',
+  guia_remision: 'Guía remitente',
+  guia_transportista: 'Guía transportista',
 }
 
 const NC_SERIES_HINT =
@@ -407,7 +409,11 @@ export default function CompanySeriesPage() {
                     category,
                     ...(category === 'nota_credito'
                       ? { sunat_code: '07', doc_type: 'NOTA DE CRÉDITO' }
-                      : {}),
+                      : category === 'guia_remision'
+                        ? { sunat_code: '09', doc_type: 'GUÍA DE REMISIÓN' }
+                        : category === 'guia_transportista'
+                          ? { sunat_code: '31', doc_type: 'GUÍA TRANSPORTISTA' }
+                          : {}),
                   }))
                 }}
                 disabled={editingLocked}

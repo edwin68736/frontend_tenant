@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Send, Eye, RefreshCw, X, FileText, FileCode, Archive, Download, FileSignature, FileBarChart, Ban, Search, Ticket, FileDown, ChevronDown } from 'lucide-react'
+import { Send, Eye, RefreshCw, X, FileText, FileCode, Archive, Download, FileSignature, FileBarChart, Ban, Search, Ticket, FileDown, ChevronDown, Truck } from 'lucide-react'
 import { salesService, type Sale, type SaleDetail } from '@/services/sales.service'
 import { billingService, type SunatSummary, type SunatVoided, type VoidedDetailInput, type InvoiceStatusResult } from '@/services/billing.service'
 import { companyService } from '@/services/company.service'
@@ -14,6 +14,14 @@ import { BillingOperationTypeBadge } from '@/components/billing/BillingOperation
 import { BillingDetractionDetail } from '@/components/billing/BillingDetractionDetail'
 import { SalePaymentsBreakdown } from '@/components/sales/SalePaymentsBreakdown'
 import { BnConfirmationPanel } from '@/components/receivables/BnConfirmationPanel'
+import { DespatchFormModal, buildDespatchPrefillFromSaleDetail, type DespatchPrefill } from '@/components/billing/DespatchFormModal'
+import {
+  filterAllGuiaSeries,
+  guiaSeriesMissingMessage,
+  hasGuiaSeriesForCode,
+  GUIA_SERIES_SETTINGS_PATH,
+  type GuiaSeriesRow,
+} from '@/utils/despatchSeries'
 import { DocumentViewerModal } from '@/components/ui/DocumentViewerModal'
 import { getTodayPeru, formatDisplayDatePeru } from '@/utils/datesPeru'
 import { formatSaleDocumentNumber } from '@/utils/format'
@@ -68,6 +76,7 @@ export default function BillingPage() {
 }
 
 function BillingContent() {
+  const navigate = useNavigate()
   const [sunatEnabled, setSunatEnabled] = useState<boolean | null>(null)
   const [invoicingMode, setInvoicingMode] = useState<string | null>(null)
   const [searchParams] = useSearchParams()
@@ -94,6 +103,11 @@ function BillingContent() {
   const [downloadingPdfSaleId, setDownloadingPdfSaleId] = useState<number | null>(null)
   const [viewingTicketPdfSaleId, setViewingTicketPdfSaleId] = useState<number | null>(null)
   const [downloadingTicketPdfSaleId, setDownloadingTicketPdfSaleId] = useState<number | null>(null)
+  const [guiaModalOpen, setGuiaModalOpen] = useState(false)
+  const [guiaPrefill, setGuiaPrefill] = useState<DespatchPrefill | null>(null)
+  const [guiaSeries, setGuiaSeries] = useState<GuiaSeriesRow[]>([])
+  const [guiaBranches, setGuiaBranches] = useState<{ id: number; name: string }[]>([])
+  const [guiaLoadingSaleId, setGuiaLoadingSaleId] = useState<number | null>(null)
   const [downloadingDoc, setDownloadingDoc] = useState<{ saleId: number; type: 'xml' | 'xml-generated' | 'cdr' } | null>(null)
   const [documentViewerOpen, setDocumentViewerOpen] = useState(false)
   const [documentViewerUrl, setDocumentViewerUrl] = useState<string | null>(null)
@@ -173,6 +187,11 @@ function BillingContent() {
   useEffect(() => {
     companyService.getSunat().then(d => setSunatEnabled(d.sunat_enabled ?? false)).catch(() => setSunatEnabled(false))
     companyService.getInvoicing().then(d => setInvoicingMode(d.send_mode ?? 'sunat_direct')).catch(() => setInvoicingMode('sunat_direct'))
+    companyService.listSeries({}).then((data: unknown) => {
+      const list = Array.isArray(data) ? data : ((data as { data?: unknown[] })?.data ?? [])
+      setGuiaSeries(filterAllGuiaSeries(list as GuiaSeriesRow[]))
+    }).catch(() => {})
+    companyService.listBranches().then(data => setGuiaBranches(Array.isArray(data) ? data : [])).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -248,6 +267,28 @@ function BillingContent() {
       toast.error(e.response?.data?.error ?? e.message ?? 'Error reenviando', { id: tid })
     } finally {
       setResending(null)
+    }
+  }
+
+  const openGuiaFromSale = async (saleId: number) => {
+    if (!hasGuiaSeriesForCode(guiaSeries, '09')) {
+      toast.error(guiaSeriesMissingMessage('09'), {
+        action: {
+          label: 'Ir a series',
+          onClick: () => navigate(GUIA_SERIES_SETTINGS_PATH),
+        },
+      })
+      return
+    }
+    setGuiaLoadingSaleId(saleId)
+    try {
+      const detailData = await salesService.get(saleId)
+      setGuiaPrefill(buildDespatchPrefillFromSaleDetail(detailData))
+      setGuiaModalOpen(true)
+    } catch {
+      toast.error('No se pudo cargar la venta para generar la guía')
+    } finally {
+      setGuiaLoadingSaleId(null)
     }
   }
 
@@ -841,6 +882,18 @@ function BillingContent() {
                         Anular (NC)
                       </button>
                     )}
+                    {viewMode === 'invoices' && bs === 'accepted' && !isSaleCancelled(s) && (
+                      <button
+                        type="button"
+                        onClick={() => openGuiaFromSale(s.id)}
+                        disabled={guiaLoadingSaleId === s.id}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-medium hover:bg-emerald-700 disabled:opacity-50"
+                        title="Generar guía de remisión desde este comprobante"
+                      >
+                        {guiaLoadingSaleId === s.id ? <RefreshCw size={11} className="animate-spin" /> : <Truck size={11} />}
+                        Generar guía
+                      </button>
+                    )}
                     {s.billing_status === 'error' && !isSaleCancelled(s) && (
                       <button onClick={() => handleResend(s.id)} disabled={resending === s.id}
                         className="flex items-center gap-1 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium hover:bg-amber-700 disabled:opacity-50"
@@ -974,6 +1027,23 @@ function BillingContent() {
                     className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-xl text-sm font-medium hover:bg-amber-700 disabled:opacity-50">
                     {resending === detail.sale.id ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
                     Reenviar a SUNAT
+                  </button>
+                )}
+                {viewMode === 'invoices' && normalizeBillingStatus(detail.sale.billing_status) === 'accepted' && !isSaleCancelled(detail.sale) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!hasGuiaSeriesForCode(guiaSeries, '09')) {
+                        toast.error('Configure una serie Guía Remitente (09) en Empresa → Series')
+                        return
+                      }
+                      setGuiaPrefill(buildDespatchPrefillFromSaleDetail(detail))
+                      setGuiaModalOpen(true)
+                      setDetail(null)
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-medium hover:bg-emerald-700"
+                  >
+                    <Truck size={14} /> Generar guía de remisión
                   </button>
                 )}
 
@@ -1204,6 +1274,17 @@ function BillingContent() {
           {voidNcSubmitting ? 'Procesando…' : 'Generar nota de crédito'}
         </button>
       </Modal>
+
+      <DespatchFormModal
+        open={guiaModalOpen}
+        onClose={() => { setGuiaModalOpen(false); setGuiaPrefill(null) }}
+        onCreated={() => toast.success('Guía encolada. Consulte en Documentos → Guías de remisión.')}
+        series={guiaSeries}
+        branches={guiaBranches}
+        mainBranchId={guiaBranches.find(b => b.name === 'Principal')?.id ?? guiaBranches[0]?.id ?? 1}
+        prefill={guiaPrefill}
+        title="Generar guía desde comprobante"
+      />
     </div>
   )
 }

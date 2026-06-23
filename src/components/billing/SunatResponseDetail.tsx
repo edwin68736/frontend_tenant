@@ -3,6 +3,7 @@ import {
   buildSunatFiscalDetailView,
   SUNAT_OBSERVED_HELP,
   SUNAT_OUTCOME_LABELS,
+  SUNAT_REJECTED_HELP,
   type SunatFiscalInvoiceInput,
   type SunatFiscalOutcome,
 } from '@/utils/sunatFiscalDetail'
@@ -40,7 +41,8 @@ export function SunatResponseDetail({ billingStatus, invoice, statusLabel, statu
   }
 
   const Icon = OUTCOME_ICON[view.outcome]
-  const hasObs = view.observations.length > 0 || view.outcome === 'observed'
+  const hasObs = view.outcome === 'observed' || (view.outcome === 'accepted' && view.observations.length > 0)
+  const hasRejectionDetail = view.outcome === 'rejected' && view.rejectionErrors.length > 0
 
   return (
     <div className="space-y-3">
@@ -76,6 +78,38 @@ export function SunatResponseDetail({ billingStatus, invoice, statusLabel, statu
           </div>
         </div>
       </div>
+
+      {hasRejectionDetail && (
+        <>
+          <div className="rounded-xl border border-red-200 bg-red-50/90 p-3">
+            <p className="text-xs font-semibold text-red-900 uppercase tracking-wide mb-2">
+              Errores SUNAT ({view.rejectionErrors.length})
+            </p>
+            <ul className="space-y-2">
+              {view.rejectionErrors.map((o, i) => (
+                <li key={`${o.code}-${i}`} className="text-xs text-red-950 bg-white/60 rounded-lg p-2 border border-red-100">
+                  <span className="font-mono font-bold text-red-900">{o.code}</span>
+                  {o.code === '2558' ? (
+                    <span className="ml-1">Falta el RUC del transportista en el XML (transporte público).</span>
+                  ) : o.message ? (
+                    <span className="ml-1">{o.message}</span>
+                  ) : null}
+                  {o.node ? (
+                    <p className="mt-1 text-[11px] text-red-800 font-mono break-all">
+                      Nodo: {o.node}
+                      {o.value != null && o.value !== '' ? ` · Valor: "${o.value}"` : ''}
+                    </p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="rounded-xl border border-stone-200 bg-stone-50 p-3 flex gap-2">
+            <HelpCircle className="shrink-0 text-stone-500" size={16} aria-hidden />
+            <p className="text-[11px] text-stone-600 leading-relaxed">{SUNAT_REJECTED_HELP}</p>
+          </div>
+        </>
+      )}
 
       {hasObs && (
         <>

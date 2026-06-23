@@ -86,6 +86,8 @@ export interface SaleDetail {
     business_name?: string
     trade_name?: string
     phone?: string
+    address?: string
+    ubigeo?: string
   }
   print_data?: import('@/types/printData').PrintData
   fiscal_context?: SaleFiscalContextResponse

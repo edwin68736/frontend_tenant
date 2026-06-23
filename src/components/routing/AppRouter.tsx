@@ -37,6 +37,10 @@ const CompanyBranchesPage = lazy(() => import('@/pages/company/CompanyBranchesPa
 const CompanySeriesPage = lazy(() => import('@/pages/company/CompanySeriesPage'))
 const BillingPage = lazy(() => import('@/pages/billing/BillingPage'))
 const SunatDocsPage = lazy(() => import('@/pages/billing/SunatDocsPage'))
+const GuiaRemisionCreatePage = lazy(() => import('@/pages/billing/GuiaRemisionCreatePage'))
+const TransportistasPage = lazy(() => import('@/pages/fleet/TransportistasPage'))
+const ConductoresPage = lazy(() => import('@/pages/fleet/ConductoresPage'))
+const VehiculosPage = lazy(() => import('@/pages/fleet/VehiculosPage'))
 const ModulesPage = lazy(() => import('@/pages/modules/ModulesPage'))
 const MembershipsPage = lazy(() => import('@/pages/memberships/MembershipsPage'))
 const ReportsLayout = lazy(() => import('@/pages/reports/ReportsLayout'))
@@ -141,8 +145,12 @@ function AppRoutes() {
         <Route path="cashbank/bank" element={<Lazy><BankPage /></Lazy>} />
         <Route path="cashbank/payment-methods" element={<Lazy><PaymentMethodsPage /></Lazy>} />
         <Route path="billing" element={<Lazy><BillingPage /></Lazy>} />
+        <Route path="billing/docs/despatches/new" element={<Lazy><GuiaRemisionCreatePage /></Lazy>} />
         <Route path="billing/docs" element={<Navigate to="/billing/docs/despatches" replace />} />
         <Route path="billing/docs/:docType" element={<Lazy><SunatDocsPage /></Lazy>} />
+        <Route path="fleet/carriers" element={<Lazy><TransportistasPage /></Lazy>} />
+        <Route path="fleet/drivers" element={<Lazy><ConductoresPage /></Lazy>} />
+        <Route path="fleet/vehicles" element={<Lazy><VehiculosPage /></Lazy>} />
         <Route path="modules" element={<Lazy><ModulesPage /></Lazy>} />
         <Route path="memberships" element={<Lazy><MembershipsPage /></Lazy>} />
         <Route path="reports" element={<Lazy><ReportsLayout /></Lazy>}>

@@ -1,25 +1,49 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { RefreshCw, Search, Truck, Percent, Receipt, RotateCcw, Plus, X } from 'lucide-react'
-import { billingService, type SunatDespatch, type SunatRetention, type SunatPerception, type SunatReversion, type CreateDespatchInput, type CreateRetentionInput, type CreatePerceptionInput, type VoidedDetailInput } from '@/services/billing.service'
+import { RefreshCw, Truck, Percent, Receipt, RotateCcw, Plus, Download, Eye, X, FileCode, Archive, Search } from 'lucide-react'
+import { billingService, type SunatDespatch, type SunatRetention, type SunatPerception, type SunatReversion, type CreateRetentionInput, type CreatePerceptionInput, type VoidedDetailInput, type InvoiceInfo } from '@/services/billing.service'
+import { SunatResponseDetail } from '@/components/billing/SunatResponseDetail'
 import { companyService } from '@/services/company.service'
 import RequireModule from '@/components/ui/RequireModule'
 import SunatRequiredMessage from '@/components/ui/SunatRequiredMessage'
 import { Modal } from '@/components/ui/Modal'
+import { DocumentViewerModal } from '@/components/ui/DocumentViewerModal'
 import { toISOStringPeru, toDateTimeLocalPeru, fromDateTimeLocalToISOPeru, formatDisplayDatePeru } from '@/utils/datesPeru'
+import { useBillingEvents } from '@/hooks/useBillingEvents'
+import {
+  billingStatusColor,
+  billingStatusLabel,
+  canShowCdr,
+  canShowXmlGenerated,
+  canShowXmlSent,
+  normalizeBillingStatus,
+} from '@/constants/billingStatus'
 
 const STATUS_COLORS: Record<string, string> = {
   pending: 'bg-yellow-100 text-yellow-700',
+  sent: 'bg-blue-100 text-blue-700',
   accepted: 'bg-green-100 text-green-700',
   rejected: 'bg-red-100 text-red-600',
   error: 'bg-orange-100 text-orange-700',
 }
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Pendiente',
+  sent: 'Enviado',
   accepted: 'Aceptado',
   rejected: 'Rechazado',
   error: 'Error',
+}
+
+function despatchDocTypeLabel(docType?: string): string {
+  const dt = String(docType ?? '').toUpperCase()
+  if (dt.includes('TRANSPORT')) return 'Guía transportista (31)'
+  if (dt.includes('GUIA')) return 'Guía remitente (09)'
+  return 'Guía de remisión'
+}
+
+function despatchBillingStatus(d: SunatDespatch): string {
+  return normalizeBillingStatus(d.billing_status || d.status)
 }
 
 type DocSubMode = 'despatches' | 'retentions' | 'perceptions' | 'reversions'
@@ -45,22 +69,23 @@ function SunatDocsContent() {
   const [perceptions, setPerceptions] = useState<SunatPerception[]>([])
   const [reversions, setReversions] = useState<SunatReversion[]>([])
   const [loading, setLoading] = useState(false)
-  const [series, setSeries] = useState<{ id: number; series: string; sunat_code: string; category: string }[]>([])
-  const [branches, setBranches] = useState<{ id: number; name: string }[]>([])
   const [despatchStatusLoading, setDespatchStatusLoading] = useState<number | null>(null)
   const [reversionStatusLoading, setReversionStatusLoading] = useState<number | null>(null)
+  const despatchesRef = useRef(despatches)
+  despatchesRef.current = despatches
 
-  const loadSeries = () => {
-    companyService.listSeries({}).then((data: any) => {
-      const list = Array.isArray(data) ? data : (data?.data ?? [])
-      setSeries(list)
-    }).catch(() => {})
-  }
-  const loadBranches = () => {
-    companyService.listBranches().then((data: any) => {
-      setBranches(Array.isArray(data) ? data : [])
-    }).catch(() => {})
-  }
+  useBillingEvents(
+    (evt) => {
+      if (subMode !== 'despatches') return
+      const d = despatchesRef.current.find((x) => x.sale_id === evt.sale_id)
+      if (!d) return
+      billingService
+        .getDespatchStatus(d.id)
+        .then((updated) => setDespatches((prev) => prev.map((x) => (x.id === updated.id ? updated : x))))
+        .catch(() => {})
+    },
+    sunatEnabled === true && subMode === 'despatches',
+  )
 
   const loadDespatches = () => {
     setLoading(true)
@@ -94,7 +119,6 @@ function SunatDocsContent() {
   useEffect(() => {
     companyService.getSunat().then(d => setSunatEnabled(d.sunat_enabled ?? false)).catch(() => setSunatEnabled(false))
   }, [])
-  useEffect(() => { loadSeries(); loadBranches() }, [])
 
   useEffect(() => {
     if (sunatEnabled !== true) return
@@ -106,9 +130,6 @@ function SunatDocsContent() {
 
   if (sunatEnabled === null) return <div className="flex justify-center py-16"><div className="w-6 h-6 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" /></div>
   if (!sunatEnabled) return <SunatRequiredMessage />
-
-  const guiaSeries = series.filter(s => s.category === 'guia_remision' || s.sunat_code === '09')
-  const mainBranchId = branches.find(b => b.name === 'Principal')?.id ?? branches[0]?.id ?? 1
 
   return (
     <div className="space-y-4">
@@ -135,12 +156,8 @@ function SunatDocsContent() {
           list={despatches}
           loading={loading}
           onRefresh={loadDespatches}
-          series={guiaSeries}
-          branches={branches}
-          mainBranchId={mainBranchId}
           statusLoading={despatchStatusLoading}
           setStatusLoading={setDespatchStatusLoading}
-          onCreated={d => setDespatches(prev => [d, ...prev])}
           onStatusUpdated={d => setDespatches(prev => prev.map(x => x.id === d.id ? d : x))}
         />
       )}
@@ -169,121 +186,368 @@ function GuiasSection({
   list,
   loading,
   onRefresh,
-  series,
-  branches,
-  mainBranchId,
   statusLoading,
   setStatusLoading,
-  onCreated,
   onStatusUpdated,
 }: {
   list: SunatDespatch[]
   loading: boolean
   onRefresh: () => void
-  series: { id: number; series: string }[]
-  branches: { id: number; name: string }[]
-  mainBranchId: number
   statusLoading: number | null
   setStatusLoading: (id: number | null) => void
-  onCreated: (d: SunatDespatch) => void
   onStatusUpdated?: (d: SunatDespatch) => void
 }) {
-  const [modalOpen, setModalOpen] = useState(false)
-  const [sending, setSending] = useState(false)
-  const [form, setForm] = useState<Partial<CreateDespatchInput>>({
-    branch_id: mainBranchId,
-    series_id: series[0]?.id ?? 0,
-    destinatario: { tipo_doc: '6', num_doc: '', rzn_social: '', address: '' },
-    envio: {
-      cod_traslado: '01',
-      des_traslado: 'Venta',
-      mod_traslado: '01',
-      fec_traslado: toISOStringPeru(),
-      partida_direccion: '',
-      llegada_direccion: '',
-      peso_total: 0,
-      num_bultos: 1,
-    },
-    details: [{ codigo: '', descripcion: '', unidad: 'NIU', cantidad: 0 }],
-  })
+  const navigate = useNavigate()
+  const [detailDespatch, setDetailDespatch] = useState<SunatDespatch | null>(null)
+  const [detailInvoice, setDetailInvoice] = useState<InvoiceInfo | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [documentViewerOpen, setDocumentViewerOpen] = useState(false)
+  const [documentViewerUrl, setDocumentViewerUrl] = useState<string | null>(null)
+  const [viewingPdfSaleId, setViewingPdfSaleId] = useState<number | null>(null)
+  const [downloadingPdfSaleId, setDownloadingPdfSaleId] = useState<number | null>(null)
+  const [downloadingDoc, setDownloadingDoc] = useState<{ saleId: number; type: 'xml' | 'xml-generated' | 'cdr' } | null>(null)
+  const documentViewerUrlRef = useRef<string | null>(null)
 
-  const handleSubmit = () => {
-    if (!form.branch_id || !form.series_id || !form.destinatario?.num_doc || !form.destinatario?.rzn_social || !form.details?.length) {
-      toast.error('Complete destinatario y al menos un ítem')
-      return
+  const closeDocumentViewer = () => {
+    setDocumentViewerOpen(false)
+    setDocumentViewerUrl(null)
+    if (documentViewerUrlRef.current) {
+      URL.revokeObjectURL(documentViewerUrlRef.current)
+      documentViewerUrlRef.current = null
     }
-    setSending(true)
-    billingService.createDespatch(form as CreateDespatchInput)
-      .then(({ despatch }) => { toast.success('Guía enviada'); onCreated(despatch); setModalOpen(false) })
-      .catch((e: any) => toast.error(e.response?.data?.error ?? 'Error'))
-      .finally(() => setSending(false))
   }
+
+  const openPdfViewer = async (saleId: number) => {
+    if (documentViewerUrlRef.current) {
+      URL.revokeObjectURL(documentViewerUrlRef.current)
+      documentViewerUrlRef.current = null
+    }
+    setViewingPdfSaleId(saleId)
+    setDocumentViewerOpen(true)
+    setDocumentViewerUrl(null)
+    try {
+      const url = await billingService.getPdfObjectUrl(saleId)
+      documentViewerUrlRef.current = url
+      setDocumentViewerUrl(url)
+    } catch (e: unknown) {
+      toast.error((e as Error)?.message ?? 'Error al cargar PDF')
+      setDocumentViewerOpen(false)
+    } finally {
+      setViewingPdfSaleId(null)
+    }
+  }
+
+  const openDetail = (d: SunatDespatch) => {
+    setDetailDespatch(d)
+    setDetailInvoice(null)
+    if (!d.sale_id) return
+    setDetailLoading(true)
+    billingService
+      .getInvoice(d.sale_id)
+      .then((inv) => setDetailInvoice(inv))
+      .catch(() => setDetailInvoice(null))
+      .finally(() => setDetailLoading(false))
+  }
+
+  const refreshStatus = (d: SunatDespatch) => {
+    setStatusLoading(d.id)
+    billingService.getDespatchStatus(d.id)
+      .then(updated => onStatusUpdated?.(updated))
+      .catch(() => toast.error('Error al consultar estado'))
+      .finally(() => setStatusLoading(null))
+  }
+
+  const colCount = 9
 
   return (
     <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center">
         <h3 className="font-semibold text-gray-800">Guías de remisión</h3>
         <div className="flex gap-2">
-          <button onClick={onRefresh} disabled={loading} className="p-2 text-gray-500 hover:text-gray-700"><RefreshCw size={16} className={loading ? 'animate-spin' : ''} /></button>
-          <button onClick={() => setModalOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700"><Plus size={14} /> Nueva guía</button>
+          <button type="button" onClick={onRefresh} disabled={loading} className="p-2 text-gray-500 hover:text-gray-700" title="Actualizar lista">
+            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
+          </button>
+          <button type="button" onClick={() => navigate('/billing/docs/despatches/new')} className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700">
+            <Plus size={14} /> Nueva guía
+          </button>
+          <button type="button" onClick={() => navigate('/billing/docs/despatches/new?tipo=31')} className="flex items-center gap-1.5 px-3 py-2 border border-blue-200 text-blue-700 rounded-xl text-sm font-medium hover:bg-blue-50" title="Guía transportista GRE 31">
+            <Truck size={14} /> Guía 31
+          </button>
         </div>
       </div>
-      <table className="w-full text-sm">
-        <thead className="bg-gray-50 border-b border-gray-100">
-          <tr>
-            {['Fecha', 'Serie-Nro', 'Destinatario', 'Estado', 'Acción'].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {loading ? <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Cargando...</td></tr> : list.length === 0 ? <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Sin guías.</td></tr> : list.map(d => (
-            <tr key={d.id} className="border-b border-gray-50 hover:bg-gray-50">
-              <td className="px-4 py-3">{formatDisplayDatePeru(d.issue_date)}</td>
-              <td className="px-4 py-3 font-mono">{d.series}-{d.correlative}</td>
-              <td className="px-4 py-3">{d.destinatario_razon ?? d.destinatario_ruc ?? '—'}</td>
-              <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[d.status] ?? ''}`}>{STATUS_LABELS[d.status] ?? d.status}</span></td>
-              <td className="px-4 py-3">
-                {d.ticket && <button onClick={() => { setStatusLoading(d.id); billingService.getDespatchStatus(d.id).then(updated => { onStatusUpdated?.(updated); setStatusLoading(null) }).catch(() => setStatusLoading(null)) }} disabled={statusLoading === d.id} className="text-xs px-2 py-1 rounded-lg bg-blue-100 text-blue-800">Consultar estado</button>}
-              </td>
+      <div className="w-full overflow-x-auto">
+        <table className="w-full text-sm min-w-[980px]">
+          <thead className="bg-gray-50 border-b border-gray-100">
+            <tr>
+              {['Fecha', 'Guía', 'Destinatario', 'Ítems', 'Estado SUNAT', 'PDF', 'XML', 'CDR', 'Acciones'].map(h => (
+                <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">{h}</th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} contentClassName="max-w-2xl">
-        <div className="flex justify-between border-b pb-3 mb-4"><h3 className="font-bold">Nueva guía de remisión</h3><button onClick={() => setModalOpen(false)}><X size={16} /></button></div>
-        <div className="space-y-3 text-sm">
-          <div className="grid grid-cols-2 gap-2">
-            <label>Sucursal <select value={form.branch_id} onChange={e => setForm(f => ({ ...f, branch_id: Number(e.target.value) }))} className="w-full border rounded-lg px-2 py-1.5">{branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
-            <label>Serie <select value={form.series_id} onChange={e => setForm(f => ({ ...f, series_id: Number(e.target.value) }))} className="w-full border rounded-lg px-2 py-1.5">{series.map(s => <option key={s.id} value={s.id}>{s.series}</option>)}</select></label>
-          </div>
-          <p className="font-medium text-gray-700">Destinatario</p>
-          <div className="grid grid-cols-2 gap-2">
-            <input placeholder="RUC/DNI" value={form.destinatario?.num_doc} onChange={e => setForm(f => ({ ...f, destinatario: { ...f.destinatario!, num_doc: e.target.value } }))} className="border rounded-lg px-2 py-1.5" />
-            <input placeholder="Razón social" value={form.destinatario?.rzn_social} onChange={e => setForm(f => ({ ...f, destinatario: { ...f.destinatario!, rzn_social: e.target.value } }))} className="border rounded-lg px-2 py-1.5" />
-            <input placeholder="Dirección" value={form.destinatario?.address} onChange={e => setForm(f => ({ ...f, destinatario: { ...f.destinatario!, address: e.target.value } }))} className="border rounded-lg px-2 py-1.5 col-span-2" />
-          </div>
-          <p className="font-medium text-gray-700">Traslado</p>
-          <div className="grid grid-cols-2 gap-2">
-            <input placeholder="Fecha traslado" type="datetime-local" value={form.envio?.fec_traslado?.slice(0, 16) ?? toDateTimeLocalPeru()} onChange={e => setForm(f => ({ ...f, envio: { ...f.envio!, fec_traslado: fromDateTimeLocalToISOPeru(e.target.value) } }))} className="border rounded-lg px-2 py-1.5" />
-            <input placeholder="Peso total" type="number" value={form.envio?.peso_total || ''} onChange={e => setForm(f => ({ ...f, envio: { ...f.envio!, peso_total: Number(e.target.value) } }))} className="border rounded-lg px-2 py-1.5" />
-            <input placeholder="Partida (dirección)" value={form.envio?.partida_direccion} onChange={e => setForm(f => ({ ...f, envio: { ...f.envio!, partida_direccion: e.target.value } }))} className="border rounded-lg px-2 py-1.5" />
-            <input placeholder="Llegada (dirección)" value={form.envio?.llegada_direccion} onChange={e => setForm(f => ({ ...f, envio: { ...f.envio!, llegada_direccion: e.target.value } }))} className="border rounded-lg px-2 py-1.5" />
-            <input placeholder="Nº bultos" type="number" value={form.envio?.num_bultos ?? 1} onChange={e => setForm(f => ({ ...f, envio: { ...f.envio!, num_bultos: Number(e.target.value) || 1 } }))} className="border rounded-lg px-2 py-1.5" />
-          </div>
-          <p className="font-medium text-gray-700">Detalle (ítems)</p>
-          {form.details?.map((item, i) => (
-            <div key={i} className="grid grid-cols-12 gap-2">
-              <input placeholder="Código" value={item.codigo} onChange={e => setForm(f => ({ ...f, details: f.details!.map((d, j) => j === i ? { ...d, codigo: e.target.value } : d) }))} className="col-span-2 border rounded-lg px-2 py-1.5" />
-              <input placeholder="Descripción" value={item.descripcion} onChange={e => setForm(f => ({ ...f, details: f.details!.map((d, j) => j === i ? { ...d, descripcion: e.target.value } : d) }))} className="col-span-4 border rounded-lg px-2 py-1.5" />
-              <input placeholder="Cantidad" type="number" value={item.cantidad || ''} onChange={e => setForm(f => ({ ...f, details: f.details!.map((d, j) => j === i ? { ...d, cantidad: Number(e.target.value) } : d) }))} className="col-span-2 border rounded-lg px-2 py-1.5" />
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={colCount} className="px-4 py-8 text-center text-gray-400">Cargando...</td></tr>
+            ) : list.length === 0 ? (
+              <tr><td colSpan={colCount} className="px-4 py-8 text-center text-gray-400">Sin guías.</td></tr>
+            ) : list.map(d => {
+              const bs = despatchBillingStatus(d)
+              const saleId = d.sale_id
+              const showXmlSigned = !!saleId && canShowXmlSent(bs)
+              const showXmlGenerated = !!saleId && canShowXmlGenerated(bs)
+              const showCdr = !!saleId && canShowCdr(bs)
+              const showPdf = !!saleId && (showXmlSigned || showXmlGenerated)
+              return (
+                <tr key={d.id} className="border-b border-gray-50 hover:bg-gray-50">
+                  <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{formatDisplayDatePeru(d.issue_date)}</td>
+                  <td className="px-4 py-3">
+                    <p className="text-xs text-gray-400">{despatchDocTypeLabel(d.doc_type)}</p>
+                    <p className="font-mono font-bold text-gray-800">{d.series}-{d.correlative}</p>
+                    {d.ticket && (
+                      <p className="text-[10px] text-gray-400 truncate max-w-[140px]" title={d.ticket}>
+                        Ticket: {d.ticket.slice(0, 12)}…
+                      </p>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="text-sm text-gray-800">{d.destinatario_razon ?? '—'}</div>
+                    {d.destinatario_ruc && <div className="text-xs text-gray-500 font-mono">{d.destinatario_ruc}</div>}
+                    {d.sunat_code && (
+                      <div className="text-xs text-red-600 mt-0.5" title={d.sunat_message}>
+                        SUNAT {d.sunat_code}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-gray-600">{d.details_count ?? 0}</td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${billingStatusColor(bs)}`}>
+                      {billingStatusLabel(bs)}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {showPdf ? (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          disabled={viewingPdfSaleId === saleId}
+                          onClick={() => void openPdfViewer(saleId!)}
+                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
+                          title="Ver PDF"
+                        >
+                          {viewingPdfSaleId === saleId ? <RefreshCw size={14} className="animate-spin" /> : <Eye size={14} />}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={downloadingPdfSaleId === saleId}
+                          onClick={() => {
+                            setDownloadingPdfSaleId(saleId!)
+                            billingService.downloadDocument(saleId!, 'pdf')
+                              .catch(e => toast.error(e?.message ?? 'Error al descargar'))
+                              .finally(() => setDownloadingPdfSaleId(null))
+                          }}
+                          className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
+                          title="Descargar PDF"
+                        >
+                          {downloadingPdfSaleId === saleId ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-gray-300 text-xs">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {showXmlSigned || showXmlGenerated ? (
+                      <div className="flex items-center gap-1">
+                        {showXmlSigned && (
+                          <button
+                            type="button"
+                            disabled={downloadingDoc?.saleId === saleId && downloadingDoc?.type === 'xml'}
+                            onClick={() => {
+                              setDownloadingDoc({ saleId: saleId!, type: 'xml' })
+                              billingService.downloadDocument(saleId!, 'xml')
+                                .catch(e => toast.error(e?.message ?? 'Error al descargar'))
+                                .finally(() => setDownloadingDoc(null))
+                            }}
+                            className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg"
+                            title="XML firmado enviado a SUNAT"
+                          >
+                            {(downloadingDoc?.saleId === saleId && downloadingDoc?.type === 'xml') ? (
+                              <RefreshCw size={14} className="animate-spin" />
+                            ) : (
+                              <FileCode size={14} />
+                            )}
+                          </button>
+                        )}
+                        {showXmlGenerated && (
+                          <button
+                            type="button"
+                            disabled={downloadingDoc?.saleId === saleId && downloadingDoc?.type === 'xml-generated'}
+                            onClick={() => {
+                              setDownloadingDoc({ saleId: saleId!, type: 'xml-generated' })
+                              billingService.downloadDocument(saleId!, 'xml-generated')
+                                .catch(e => toast.error(e?.message ?? 'Error al descargar'))
+                                .finally(() => setDownloadingDoc(null))
+                            }}
+                            className="p-1.5 text-amber-500 hover:bg-amber-50 rounded-lg"
+                            title="XML generado (vista previa)"
+                          >
+                            {(downloadingDoc?.saleId === saleId && downloadingDoc?.type === 'xml-generated') ? (
+                              <RefreshCw size={14} className="animate-spin" />
+                            ) : (
+                              <Download size={14} />
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="text-gray-300 text-xs">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {showCdr ? (
+                      <button
+                        type="button"
+                        disabled={downloadingDoc?.saleId === saleId && downloadingDoc?.type === 'cdr'}
+                        onClick={() => {
+                          setDownloadingDoc({ saleId: saleId!, type: 'cdr' })
+                          billingService.downloadDocument(saleId!, 'cdr')
+                            .catch(e => toast.error(e?.message ?? 'Error al descargar'))
+                            .finally(() => setDownloadingDoc(null))
+                        }}
+                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"
+                        title="Descargar CDR"
+                      >
+                        {(downloadingDoc?.saleId === saleId && downloadingDoc?.type === 'cdr') ? (
+                          <RefreshCw size={14} className="animate-spin" />
+                        ) : (
+                          <Archive size={14} />
+                        )}
+                      </button>
+                    ) : (
+                      <span className="text-gray-300 text-xs">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      <button
+                        type="button"
+                        onClick={() => openDetail(d)}
+                        className="text-xs px-2 py-1 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 inline-flex items-center gap-1"
+                        title="Ver detalle SUNAT"
+                      >
+                        <Search size={12} /> Detalle
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => refreshStatus(d)}
+                        disabled={statusLoading === d.id}
+                        className="text-xs px-2 py-1 rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200"
+                      >
+                        {statusLoading === d.id ? '…' : 'Estado'}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <Modal open={detailDespatch != null} onClose={() => setDetailDespatch(null)} contentClassName="max-w-lg">
+        {detailDespatch && (
+          <>
+            <div className="flex items-center justify-between border-b pb-3 mb-4">
+              <div>
+                <h3 className="font-bold text-gray-800">
+                  {detailDespatch.series}-{detailDespatch.correlative}
+                </h3>
+                <p className="text-xs text-gray-500">{despatchDocTypeLabel(detailDespatch.doc_type)}</p>
+              </div>
+              <button type="button" onClick={() => setDetailDespatch(null)} className="p-2 rounded-lg hover:bg-gray-100">
+                <X size={16} />
+              </button>
             </div>
-          ))}
-          <button type="button" onClick={() => setForm(f => ({ ...f, details: [...(f.details ?? []), { codigo: '', descripcion: '', unidad: 'NIU', cantidad: 0 }] }))} className="text-[rgb(var(--p600))] text-sm">+ Añadir ítem</button>
-        </div>
-        <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
-          <button onClick={() => setModalOpen(false)} className="px-4 py-2 rounded-xl border text-sm">Cancelar</button>
-          <button onClick={handleSubmit} disabled={sending} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium disabled:opacity-50">Enviar a SUNAT</button>
-        </div>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm mb-4">
+              <div>
+                <dt className="text-xs text-gray-500">Fecha emisión</dt>
+                <dd>{formatDisplayDatePeru(detailDespatch.issue_date)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-gray-500">Estado</dt>
+                <dd>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${billingStatusColor(despatchBillingStatus(detailDespatch))}`}>
+                    {billingStatusLabel(despatchBillingStatus(detailDespatch))}
+                  </span>
+                </dd>
+              </div>
+              <div className="col-span-2">
+                <dt className="text-xs text-gray-500">Destinatario</dt>
+                <dd>{detailDespatch.destinatario_razon ?? '—'} {detailDespatch.destinatario_ruc ? `(${detailDespatch.destinatario_ruc})` : ''}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-gray-500">Ítems</dt>
+                <dd>{detailDespatch.details_count ?? 0}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-gray-500">Ticket GRE</dt>
+                <dd className="font-mono text-xs break-all">{detailDespatch.ticket ?? '—'}</dd>
+              </div>
+              {detailDespatch.sunat_code && (
+                <div className="col-span-2">
+                  <dt className="text-xs text-gray-500">Código SUNAT</dt>
+                  <dd className="font-mono">{detailDespatch.sunat_code}</dd>
+                </div>
+              )}
+            </dl>
+            {detailLoading ? (
+              <p className="text-sm text-gray-400">Cargando respuesta fiscal…</p>
+            ) : (
+              <SunatResponseDetail
+                billingStatus={despatchBillingStatus(detailDespatch)}
+                invoice={detailInvoice}
+                statusLabel={billingStatusLabel(despatchBillingStatus(detailDespatch))}
+                statusColorClass={billingStatusColor(despatchBillingStatus(detailDespatch))}
+              />
+            )}
+            {detailDespatch.sale_id && (
+              <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t">
+                <button
+                  type="button"
+                  onClick={() => void openPdfViewer(detailDespatch.sale_id!)}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-100"
+                >
+                  Ver PDF
+                </button>
+                {canShowXmlSent(despatchBillingStatus(detailDespatch)) && (
+                  <button
+                    type="button"
+                    onClick={() => billingService.downloadDocument(detailDespatch.sale_id!, 'xml').catch(e => toast.error(e.message))}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-100"
+                  >
+                    Descargar XML
+                  </button>
+                )}
+                {canShowCdr(despatchBillingStatus(detailDespatch)) && (
+                  <button
+                    type="button"
+                    onClick={() => billingService.downloadDocument(detailDespatch.sale_id!, 'cdr').catch(e => toast.error(e.message))}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-blue-50 text-blue-800 hover:bg-blue-100"
+                  >
+                    Descargar CDR
+                  </button>
+                )}
+              </div>
+            )}
+          </>
+        )}
       </Modal>
+
+      <DocumentViewerModal
+        open={documentViewerOpen}
+        onClose={closeDocumentViewer}
+        src={documentViewerUrl}
+        title="Guía de remisión (PDF)"
+      />
     </div>
   )
 }

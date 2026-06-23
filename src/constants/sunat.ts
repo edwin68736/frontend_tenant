@@ -13,6 +13,7 @@ export const SUNAT_TIPO_COMPROBANTE: Record<string, string> = {
   '07': 'Nota de Crédito',
   '08': 'Nota de Débito',
   '09': 'Guía de Remisión',
+  '31': 'Guía Transportista',
   '20': 'Comprobante de Retención',
   'QT': 'COTIZACIÓN',
 }
@@ -152,3 +153,16 @@ export function toTipoDocIdentidadCode(value: string): string {
   if (SUNAT_TIPO_DOC_IDENTIDAD[value]) return value
   return value
 }
+
+/** Catálogo 20 — Motivo de traslado (guía de remisión). */
+export const SUNAT_MOTIVO_TRASLADO: { code: string; label: string }[] = [
+  { code: '01', label: 'Venta' },
+  { code: '04', label: 'Traslado entre establecimientos' },
+  { code: '13', label: 'Otros' },
+]
+
+/** Catálogo 18 — Modalidad de traslado. */
+export const SUNAT_MODALIDAD_TRASLADO: { code: string; label: string }[] = [
+  { code: '01', label: 'Transporte público' },
+  { code: '02', label: 'Transporte privado' },
+]

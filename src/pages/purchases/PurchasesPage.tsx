@@ -8,6 +8,7 @@ import RequireModule from '@/components/ui/RequireModule'
 import { useAuth } from '@/contexts/AuthContext'
 import { Modal } from '@/components/ui/Modal'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { ProductPickerModal } from '@/components/sales/ProductPickerModal'
 import { getTodayPeru, formatDisplayDatePeru } from '@/utils/datesPeru'
 
 const DOC_TYPES = ['FACTURA','BOLETA','NOTA DE CRÉDITO','TICKET']
@@ -382,6 +383,7 @@ function PurchasesContent() {
       {/* Modal selector de productos — búsqueda y paginación */}
       <Modal open={showProductPicker} onClose={() => setShowProductPicker(false)} contentClassName="max-w-2xl">
         <ProductPickerModal
+          variant="purchase"
           onAdd={addProductToItems}
           onClose={() => setShowProductPicker(false)}
         />
@@ -473,115 +475,5 @@ function PurchasesContent() {
         loading={voiding}
       />
     </div>
-  )
-}
-
-function ProductPickerModal({ onAdd, onClose }: { onAdd: (p: Product) => void; onClose: () => void }) {
-  const [search, setSearch] = useState('')
-  const [page, setPage] = useState(1)
-  const [perPage] = useState(PER_PAGE)
-  const [products, setProducts] = useState<Product[]>([])
-  const [total, setTotal] = useState(0)
-  const [loading, setLoading] = useState(false)
-
-  const loadProducts = () => {
-    setLoading(true)
-    productsService.list(search, undefined, undefined, true, page, perPage)
-      .then(({ data, total: t }) => {
-        setProducts(data ?? [])
-        setTotal(t ?? 0)
-      })
-      .catch(() => toast.error('Error cargando productos'))
-      .finally(() => setLoading(false))
-  }
-
-  useEffect(() => { loadProducts() }, [page, search])
-
-  const totalPages = Math.max(1, Math.ceil(total / perPage))
-
-  return (
-    <>
-      <div className="flex items-center justify-between">
-        <h3 className="font-bold text-gray-800 text-lg">Seleccionar producto</h3>
-        <button type="button" onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg"><X size={18} /></button>
-      </div>
-      <div className="relative">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-        <input
-          type="text"
-          className="w-full border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-sm"
-          placeholder="Buscar por nombre o código..."
-          value={search}
-          onChange={e => { setSearch(e.target.value); setPage(1) }}
-        />
-      </div>
-      <div className="min-h-[280px] max-h-[50vh] overflow-y-auto border border-gray-200 rounded-xl">
-        {loading ? (
-          <div className="flex justify-center py-16"><div className="w-6 h-6 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" /></div>
-        ) : products.length === 0 ? (
-          <div className="text-center py-12 text-gray-400 text-sm">No hay productos o no coinciden con la búsqueda.</div>
-        ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 sticky top-0">
-              <tr>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">Código</th>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">Producto</th>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">Precio compra</th>
-                <th className="w-24" />
-              </tr>
-            </thead>
-            <tbody>
-              {products.map(p => (
-                <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50/50">
-                  <td className="px-4 py-2.5 font-mono text-gray-600">{p.code || '-'}</td>
-                  <td className="px-4 py-2.5 font-medium text-gray-800">{p.name}</td>
-                  <td className="px-4 py-2.5 text-gray-700">S/ {Number(p.purchase_price ?? 0).toFixed(2)}</td>
-                  <td className="px-4 py-2.5">
-                    <button
-                      type="button"
-                      onClick={() => onAdd(p)}
-                      className="px-3 py-1.5 rounded-lg bg-[rgb(var(--p600))] text-white text-xs font-medium hover:opacity-90"
-                    >
-                      Agregar
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-      {total > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-gray-100">
-          <p className="text-xs text-gray-500">
-            Mostrando {(page - 1) * perPage + 1}-{Math.min(page * perPage, total)} de {total} productos
-          </p>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              className="px-2.5 py-1 rounded-lg border border-gray-200 text-xs disabled:opacity-40"
-            >
-              Anterior
-            </button>
-            <span className="text-xs text-gray-600">Pág. {page} de {totalPages}</span>
-            <button
-              type="button"
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-              className="px-2.5 py-1 rounded-lg border border-gray-200 text-xs disabled:opacity-40"
-            >
-              Siguiente
-            </button>
-          </div>
-        </div>
-      )}
-      <div className="pt-2">
-        <button type="button" onClick={onClose} className="w-full py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">
-          Cerrar
-        </button>
-      </div>
-    </>
   )
 }
