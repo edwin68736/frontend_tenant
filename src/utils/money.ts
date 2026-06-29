@@ -54,3 +54,8 @@ export function parseMoneyInput(raw: string): number {
 export function paidCoversTotal(paid: number, expected: number): boolean {
   return roundDisplay(paid) + PAYMENT_TOLERANCE >= roundDisplay(expected)
 }
+
+/** Vuelto cuando el cliente entrega más del monto a pagar. */
+export function calcPaymentChange(paid: number, payable: number): number {
+  return Math.max(0, roundDisplay(paid - payable))
+}

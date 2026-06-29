@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useSearchParams, useNavigate } from 'react-router-dom'
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Send, Eye, RefreshCw, X, FileText, FileCode, Archive, Download, FileSignature, FileBarChart, Ban, Search, Ticket, FileDown, ChevronDown, Truck } from 'lucide-react'
+import { Send, Eye, RefreshCw, X, FileText, FileCode, Archive, Download, FileSignature, FileBarChart, Ban, Search, Ticket, FileDown, ChevronDown, Truck, Receipt } from 'lucide-react'
 import { salesService, type Sale, type SaleDetail } from '@/services/sales.service'
 import { billingService, type SunatSummary, type SunatVoided, type VoidedDetailInput, type InvoiceStatusResult } from '@/services/billing.service'
-import { companyService } from '@/services/company.service'
+import { companyService, type SeriesRow } from '@/services/company.service'
 import RequireModule from '@/components/ui/RequireModule'
 import SunatRequiredMessage from '@/components/ui/SunatRequiredMessage'
 import { Modal } from '@/components/ui/Modal'
@@ -15,6 +15,16 @@ import { BillingDetractionDetail } from '@/components/billing/BillingDetractionD
 import { SalePaymentsBreakdown } from '@/components/sales/SalePaymentsBreakdown'
 import { BnConfirmationPanel } from '@/components/receivables/BnConfirmationPanel'
 import { DespatchFormModal, buildDespatchPrefillFromSaleDetail, type DespatchPrefill } from '@/components/billing/DespatchFormModal'
+import { FiscalRetentionPerceptionModal } from '@/components/billing/FiscalRetentionPerceptionModal'
+import {
+  filterSeriesBySunatCode,
+  FISCAL_DOC_SERIES_SETTINGS_PATH,
+  fiscalSeriesMissingMessage,
+  hasFiscalSeriesForCode,
+} from '@/utils/fiscalDocSeries'
+import { buildPerceptionPrefillFromSale, type FiscalRetentionPerceptionPrefill } from '@/utils/fiscalRetentionPerceptionPrefill'
+import { LinkedFiscalDocPanel, type LinkedFiscalDoc } from '@/components/billing/LinkedFiscalDocPanel'
+import { FiscalLinkedDocBadge } from '@/components/billing/FiscalLinkedDocBadge'
 import {
   filterAllGuiaSeries,
   guiaSeriesMissingMessage,
@@ -77,6 +87,7 @@ export default function BillingPage() {
 
 function BillingContent() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [sunatEnabled, setSunatEnabled] = useState<boolean | null>(null)
   const [invoicingMode, setInvoicingMode] = useState<string | null>(null)
   const [searchParams] = useSearchParams()
@@ -108,6 +119,10 @@ function BillingContent() {
   const [guiaSeries, setGuiaSeries] = useState<GuiaSeriesRow[]>([])
   const [guiaBranches, setGuiaBranches] = useState<{ id: number; name: string }[]>([])
   const [guiaLoadingSaleId, setGuiaLoadingSaleId] = useState<number | null>(null)
+  const [cpeModalOpen, setCpeModalOpen] = useState(false)
+  const [cpePrefill, setCpePrefill] = useState<FiscalRetentionPerceptionPrefill | null>(null)
+  const [cpeSourceSaleId, setCpeSourceSaleId] = useState<number | null>(null)
+  const [perceptionSeries, setPerceptionSeries] = useState<SeriesRow[]>([])
   const [downloadingDoc, setDownloadingDoc] = useState<{ saleId: number; type: 'xml' | 'xml-generated' | 'cdr' } | null>(null)
   const [documentViewerOpen, setDocumentViewerOpen] = useState(false)
   const [documentViewerUrl, setDocumentViewerUrl] = useState<string | null>(null)
@@ -190,6 +205,7 @@ function BillingContent() {
     companyService.listSeries({}).then((data: unknown) => {
       const list = Array.isArray(data) ? data : ((data as { data?: unknown[] })?.data ?? [])
       setGuiaSeries(filterAllGuiaSeries(list as GuiaSeriesRow[]))
+      setPerceptionSeries(filterSeriesBySunatCode(list as SeriesRow[], '40'))
     }).catch(() => {})
     companyService.listBranches().then(data => setGuiaBranches(Array.isArray(data) ? data : [])).catch(() => {})
   }, [])
@@ -200,6 +216,13 @@ function BillingContent() {
   }, [searchParams])
 
   useEffect(() => { load() }, [viewMode, filterStatus, searchTerm, dateRange.from, dateRange.to, page, perPage])
+
+  useEffect(() => {
+    const id = (location.state as { openSaleId?: number } | null)?.openSaleId
+    if (!id) return
+    setViewMode('invoices')
+    void salesService.get(id).then((d) => setDetail(d)).catch(() => toast.error('No se pudo abrir la venta'))
+  }, [location.state])
 
   const applyBillingEvent = useCallback((evt: { sale_id: number; status: string }) => {
     const billingStatus = normalizeBillingStatus(evt.status)
@@ -268,6 +291,25 @@ function BillingContent() {
     } finally {
       setResending(null)
     }
+  }
+
+  const openCpeFromSaleDetail = (saleDetail: SaleDetail) => {
+    if (!saleDetail.contact?.id && !saleDetail.sale.contact_id) {
+      toast.error('La venta no tiene cliente vinculado; complete el contacto antes de emitir percepción')
+      return
+    }
+    if (!hasFiscalSeriesForCode(perceptionSeries, '40')) {
+      toast.error(fiscalSeriesMissingMessage('40'), {
+        action: {
+          label: 'Ir a series',
+          onClick: () => navigate(FISCAL_DOC_SERIES_SETTINGS_PATH),
+        },
+      })
+      return
+    }
+    setCpePrefill(buildPerceptionPrefillFromSale(saleDetail))
+    setCpeSourceSaleId(saleDetail.sale.id)
+    setCpeModalOpen(true)
   }
 
   const openGuiaFromSale = async (saleId: number) => {
@@ -657,7 +699,7 @@ function BillingContent() {
                   </>
                 ) : (
                   <>
-                    {['Fecha','Comprobante','Cliente','Total','Estado SUNAT','PDF','XML','CDR','Acciones'].map(h => (
+                    {['Fecha','Comprobante','Cliente','Total','Estado SUNAT','CPE','PDF','XML','CDR','Acciones'].map(h => (
                       <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">{h}</th>
                     ))}
                   </>
@@ -668,7 +710,7 @@ function BillingContent() {
             {loading ? (
               Array.from({ length: TABLE_SKELETON_ROWS }).map((_, idx) => (
                 <tr key={`billing-skeleton-${idx}`} className="border-b border-gray-50">
-                  <td colSpan={viewMode === 'credit_notes' ? 10 : 9} className="px-4 py-3">
+                  <td colSpan={viewMode === 'credit_notes' ? 10 : 10} className="px-4 py-3">
                     <div className="h-4 w-full max-w-[780px] animate-pulse rounded bg-gray-100" />
                   </td>
                 </tr>
@@ -709,6 +751,19 @@ function BillingContent() {
                     {billingStatusLabel(s.billing_status)}
                   </span>
                 </td>
+                {viewMode === 'invoices' && (
+                  <td className="px-4 py-3">
+                    {s.linked_perception ? (
+                      <FiscalLinkedDocBadge
+                        doc={s.linked_perception}
+                        kind="perception"
+                        onClick={() => void salesService.get(s.id).then(setDetail)}
+                      />
+                    ) : (
+                      <span className="text-xs text-gray-300">—</span>
+                    )}
+                  </td>
+                )}
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1">
                     <button
@@ -1015,6 +1070,16 @@ function BillingContent() {
 
             {detail.invoice ? (
               <>
+                {detail.linked_perception && (
+                  <LinkedFiscalDocPanel
+                    doc={detail.linked_perception as LinkedFiscalDoc}
+                    onStatusRefresh={(updated) => setDetail((d) => (d ? { ...d, linked_perception: updated } : d))}
+                    origin={{
+                      label: formatSaleDocumentNumber(detail.sale.series, detail.sale.number),
+                      sublabel: 'Venta origen',
+                    }}
+                  />
+                )}
                 <p className="text-xs font-semibold text-gray-600 uppercase">Envío y respuesta SUNAT</p>
                 <SunatResponseDetail
                   billingStatus={detail.sale.billing_status}
@@ -1027,6 +1092,15 @@ function BillingContent() {
                     className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-xl text-sm font-medium hover:bg-amber-700 disabled:opacity-50">
                     {resending === detail.sale.id ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
                     Reenviar a SUNAT
+                  </button>
+                )}
+                {viewMode === 'invoices' && normalizeBillingStatus(detail.sale.billing_status) === 'accepted' && !isSaleCancelled(detail.sale) && !detail.linked_perception && (
+                  <button
+                    type="button"
+                    onClick={() => openCpeFromSaleDetail(detail)}
+                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-medium hover:bg-indigo-700"
+                  >
+                    <Receipt size={14} /> Emitir comprobante de percepción
                   </button>
                 )}
                 {viewMode === 'invoices' && normalizeBillingStatus(detail.sale.billing_status) === 'accepted' && !isSaleCancelled(detail.sale) && (
@@ -1284,6 +1358,25 @@ function BillingContent() {
         mainBranchId={guiaBranches.find(b => b.name === 'Principal')?.id ?? guiaBranches[0]?.id ?? 1}
         prefill={guiaPrefill}
         title="Generar guía desde comprobante"
+      />
+
+      <FiscalRetentionPerceptionModal
+        mode="perception"
+        open={cpeModalOpen}
+        prefill={cpePrefill}
+        onClose={() => { setCpeModalOpen(false); setCpePrefill(null) }}
+        onCreated={() => {
+          setCpeModalOpen(false)
+          setCpePrefill(null)
+          const sid = cpeSourceSaleId ?? detail?.sale.id
+          setCpeSourceSaleId(null)
+          toast.success('Percepción encolada. Consulte el estado en Documentos → Percepciones.')
+          if (sid) {
+            void salesService.get(sid).then((d) => { setDetail(d); load() })
+          } else {
+            load()
+          }
+        }}
       />
     </div>
   )

@@ -20,8 +20,12 @@ export interface PrintData {
   subtotal: number
   tax_amount: number
   total: number
+  global_discount_amount?: number
+  line_discount_total?: number
   totals_by_affectation?: Record<string, PrintAffectTotal>
   payments: PrintPayment[]
+  /** Vuelto cuando el cliente pagó de más (p. ej. efectivo). */
+  change_amount?: number
   seller_name?: string
   payment_condition?: string
   bank_accounts?: PrintBankAccount[]
@@ -106,6 +110,8 @@ export interface PrintItem {
   quantity: number
   unit_price: number
   discount: number
+  line_discount_subtotal?: number
+  global_discount_subtotal?: number
   subtotal: number
   tax_amount: number
   total: number

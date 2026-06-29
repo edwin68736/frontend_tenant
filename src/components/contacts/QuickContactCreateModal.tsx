@@ -51,6 +51,8 @@ type Props = {
   onCreated: (contact: Contact) => void
   /** Código SUNAT de tipo doc. identidad (ej. 1 DNI, 6 RUC). */
   defaultDocType?: string
+  /** Tipo de contacto a crear (cliente o proveedor). */
+  contactType?: 'customer' | 'supplier'
   /** Capa superior (p. ej. sobre modal de cobro en POS). */
   stacked?: boolean
 }
@@ -60,6 +62,7 @@ export function QuickContactCreateModal({
   onClose,
   onCreated,
   defaultDocType = '1',
+  contactType = 'customer',
   stacked = false,
 }: Props) {
   const [form, setForm] = useState<QuickContactForm>(() => emptyForm(defaultDocType))
@@ -78,6 +81,8 @@ export function QuickContactCreateModal({
 
   const docType = toTipoDocIdentidadCode(form.doc_type)
   const showConsulta = contactDocSupportsConsulta(docType)
+  const entityLabel = contactType === 'supplier' ? 'proveedor' : 'cliente'
+  const entityLabelCap = contactType === 'supplier' ? 'Proveedor' : 'Cliente'
 
   const patch = (patch: Partial<QuickContactForm>) => setForm((f) => ({ ...f, ...patch }))
 
@@ -144,7 +149,7 @@ export function QuickContactCreateModal({
     setSaving(true)
     try {
       const payload: CreateContactInput = {
-        type: 'customer',
+        type: contactType,
         doc_type: docType,
         doc_number: num,
         business_name: form.business_name.trim(),
@@ -160,7 +165,7 @@ export function QuickContactCreateModal({
         payload.es_buen_contribuyente = form.es_buen_contribuyente
       }
       const created = await contactsService.create(payload)
-      toast.success('Cliente registrado')
+      toast.success(`${entityLabelCap} registrado`)
       onCreated(created)
       onClose()
     } catch (e: unknown) {
@@ -173,7 +178,7 @@ export function QuickContactCreateModal({
 
   const body = (
     <>
-      <h3 className="font-bold text-gray-800 text-lg mb-3">Nuevo cliente</h3>
+      <h3 className="font-bold text-gray-800 text-lg mb-3">Nuevo {entityLabel}</h3>
       <div className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <div>
@@ -269,7 +274,7 @@ export function QuickContactCreateModal({
             <input
               type="email"
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-              placeholder="cliente@ejemplo.com"
+              placeholder={contactType === 'supplier' ? 'proveedor@ejemplo.com' : 'cliente@ejemplo.com'}
               value={form.email}
               onChange={(e) => patch({ email: e.target.value })}
               autoComplete="email"
@@ -290,7 +295,7 @@ export function QuickContactCreateModal({
             disabled={saving || !form.business_name.trim()}
             className="flex-1 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50"
           >
-            {saving ? 'Guardando...' : 'Registrar cliente'}
+            {saving ? 'Guardando...' : `Registrar ${entityLabel}`}
           </button>
         </div>
       </div>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Trash2, X, Package, UserPlus } from 'lucide-react'
+import { Plus, Trash2, X, Package, UserPlus, ScanBarcode } from 'lucide-react'
 import { salesService, type CreateSaleInput } from '@/services/sales.service'
 import { contactsService, type Contact } from '@/services/contacts.service'
 import { productsService, type Product } from '@/services/products.service'
@@ -12,6 +12,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
+import { SearchableSelect } from '@/components/SearchableSelect'
 import { ReceiptPrintModal } from '@/components/ui/ReceiptPrintModal'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
 import { ProductPickerModal } from '@/components/sales/ProductPickerModal'
@@ -23,7 +24,7 @@ import {
 import { usersService, type TenantUser } from '@/services/users.service'
 import { buildFiscalReferences, hasFiscalContextContent, previewIgvRetention, validateIgvRetentionAtSave } from '@/utils/fiscalRetention'
 import { formatSaleMoney, saleCurrencySymbol } from '@/utils/formatMoney'
-import { consultaService } from '@/services/consulta.service'
+import { useExchangeRate } from '@/hooks/useExchangeRate'
 import { catalogsService, type DetraccionGood } from '@/services/catalogs.service'
 import { previewDetraccion, DETRACCION_PAYMENT_METHOD_CODE, DETRACCION_PAYMENT_METHOD_NAME } from '@/utils/fiscalDetraction'
 import { filterOperationalPaymentMethods } from '@/utils/operationalPaymentMethods'
@@ -37,16 +38,15 @@ import type { PrintData } from '@/types/printData'
 import { getTipoComprobanteLabel } from '@/constants/sunat'
 import { SUNAT_MAX_MONTO_CLIENTE_SIN_RUC, SUNAT_RUC_LENGTH } from '@/constants/sunat'
 import { cashbankService, type CashSession, type PaymentMethodRecord } from '@/services/cashbank.service'
-import { calcItem, calcItemWithSubtotalDiscount, getAfectacionGroup, subtotalDiscountToLineDiscount, type SunatAfectacionGroup } from '@/utils/taxCalc'
+import { calcSaleCheckout } from '@/utils/saleEngine'
+import { calcItem, calcItemWithSubtotalDiscount, getAfectacionGroup, type SunatAfectacionGroup } from '@/utils/taxCalc'
 import { getTodayPeru } from '@/utils/datesPeru'
-import { normalizeSunatUnit } from '@/constants/sunatUnits'
-import {
-  calcCheckoutDiscountAmount,
-  distributeCheckoutDiscountToLines,
-  type CheckoutDiscountMode,
-} from '@/utils/checkoutDiscount'
-import { roundSunat } from '@/utils/money'
+import { normalizeSunatUnit, sunatUnitSelectOptions } from '@/constants/sunatUnits'
+import type { CheckoutDiscountMode } from '@/utils/checkoutDiscount'
+import { roundSunat, calcPaymentChange, sumMoney } from '@/utils/money'
 import { quotationsService } from '@/services/quotations.service'
+import { useBarcodeProductScanner } from '@/hooks/useBarcodeProductScanner'
+import { BarcodeScannerModal } from '@/components/barcode/BarcodeScannerModal'
 
 /** Tipo de serie de venta (desde API). */
 type SeriesRow = { id: number; series: string; doc_type: string; sunat_code?: string; branch_id?: number }
@@ -61,6 +61,8 @@ export interface SaleFormItem {
   unit_price: number
   igv_affectation_type: string
   price_includes_igv: boolean
+  line_discount_mode?: CheckoutDiscountMode
+  line_discount_value?: number
   /** Solo para productos con series; no usado en registro avanzado por defecto */
   serials?: string[]
 }
@@ -202,10 +204,16 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
     return emptySaleFiscalForm(sellerId)
   })
   const [tenantUsers, setTenantUsers] = useState<TenantUser[]>([])
-  const [tcLoading, setTcLoading] = useState(false)
-  const [tcError, setTcError] = useState('')
   const [detraccionGoods, setDetraccionGoods] = useState<DetraccionGood[]>([])
   const [detraccionGoodCode, setDetraccionGoodCode] = useState('')
+
+  const {
+    loading: tcLoading,
+    error: tcError,
+    exchangeRate: tcAutoRate,
+    isFallback: tcIsFallback,
+    meta: tcMeta,
+  } = useExchangeRate(form.issue_date, { enabled: !isQuotation })
 
   const isDetraccion = form.operation_type_code === SUNAT_TIPO_OPERACION_DETRACCION
 
@@ -218,32 +226,9 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
   const fmt = (n: number) => formatSaleMoney(n, form.currency)
 
   useEffect(() => {
-    if (!form.issue_date || isNotaVenta || isQuotation) return
-    let cancelled = false
-    setTcLoading(true)
-    setTcError('')
-    consultaService
-      .tipoCambio(form.issue_date)
-      .then((res) => {
-        if (cancelled) return
-        if (res.success && res.venta && res.venta > 0) {
-          setForm((f) => ({ ...f, exchange_rate: String(res.venta) }))
-        } else {
-          setTcError(res.error_message ?? 'No se pudo obtener el tipo de cambio.')
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setTcError('No se pudo consultar el tipo de cambio.')
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setTcLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [form.issue_date, isNotaVenta, isQuotation])
+    if (!tcAutoRate || isQuotation) return
+    setForm((f) => (f.exchange_rate === tcAutoRate ? f : { ...f, exchange_rate: tcAutoRate }))
+  }, [tcAutoRate, isQuotation])
 
   useEffect(() => {
     if (!user?.id) return
@@ -473,6 +458,12 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
     toast.success(`"${p.name}" agregado`)
   }
 
+  const barcodeScan = useBarcodeProductScanner({
+    branchId: activeBranchId,
+    onProductFound: addProductToItems,
+    showSuccessToast: false,
+  })
+
   const addManualItem = (draft: ManualItemDraft) => {
     const description = draft.description.trim()
     if (!description) {
@@ -489,8 +480,8 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
         product_id: null,
         code: draft.code.trim() || 'MANUAL',
         description,
-        unit: draft.unit.trim() || 'NIU',
-        quantity: draft.quantity,
+        unit: normalizeSunatUnit(draft.unit, 'product'),
+        quantity: Math.max(1, Math.floor(draft.quantity)),
         unit_price: Math.max(0, draft.unit_price),
         igv_affectation_type: draft.igv_affectation_type,
         price_includes_igv: draft.price_includes_igv,
@@ -534,34 +525,38 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
 
   const removeItem = (idx: number) => setItems(prev => prev.filter((_, i) => i !== idx))
 
-  const getItemBaseTotals = (it: SaleFormItem) =>
-    calcItem(it.unit_price, it.quantity, 0, it.igv_affectation_type, it.price_includes_igv, taxRate, taxConfig)
-
-  const rawSubtotalGlobal = useMemo(
-    () => roundSunat(items.reduce((s, it) => s + getItemBaseTotals(it).subtotal, 0)),
-    [items, taxRate, taxConfig],
+  const saleCalc = useMemo(
+    () =>
+      calcSaleCheckout({
+        lines: items.map((it) => ({
+          unitPrice: it.unit_price,
+          quantity: it.quantity,
+          igvAffectationType: it.igv_affectation_type,
+          priceIncludesIgv: it.price_includes_igv,
+          lineDiscountMode: it.line_discount_mode,
+          lineDiscountValue: it.line_discount_value,
+        })),
+        globalDiscountMode: discountMode,
+        globalDiscountValue: discountValue,
+        taxRate,
+        taxConfig,
+      }),
+    [items, discountMode, discountValue, taxRate, taxConfig],
   )
 
-  const checkoutDiscountAmount = useMemo(
-    () => calcCheckoutDiscountAmount(rawSubtotalGlobal, discountMode, discountValue),
-    [rawSubtotalGlobal, discountMode, discountValue],
+  const lineDiscountTotal = useMemo(
+    () => roundSunat(saleCalc.lines.reduce((s, l) => s + l.lineDiscountSubtotal, 0)),
+    [saleCalc],
   )
+  const checkoutDiscountAmount = saleCalc.globalDiscountAmount
+  const subtotalGlobal = saleCalc.subtotal
+  const taxGlobal = saleCalc.taxAmount
+  const totalGlobal = saleCalc.total
 
-  const lineSubtotalDiscounts = useMemo(() => {
-    const lineSubtotals = items.map((it) => getItemBaseTotals(it).subtotal)
-    return distributeCheckoutDiscountToLines(lineSubtotals, checkoutDiscountAmount)
-  }, [items, checkoutDiscountAmount, taxRate, taxConfig])
-
-  const getItemTotals = (it: SaleFormItem, idx: number) =>
-    calcItemWithSubtotalDiscount(
-      it.unit_price,
-      it.quantity,
-      lineSubtotalDiscounts[idx] ?? 0,
-      it.igv_affectation_type,
-      it.price_includes_igv,
-      taxRate,
-      taxConfig,
-    )
+  const getItemTotals = (_it: SaleFormItem, idx: number) => {
+    const l = saleCalc.lines[idx]
+    return { subtotal: l?.subtotal ?? 0, taxAmount: l?.taxAmount ?? 0, total: l?.total ?? 0 }
+  }
 
   /** Totales por tipo de afectación SUNAT (gravado, exonerado, inafecto, exportación). */
   const totalsByAfectacion = items.reduce(
@@ -575,10 +570,6 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
     },
     { gravado: { subtotal: 0, taxAmount: 0, total: 0 }, exonerado: { subtotal: 0, taxAmount: 0, total: 0 }, inafecto: { subtotal: 0, taxAmount: 0, total: 0 }, exportacion: { subtotal: 0, taxAmount: 0, total: 0 } } as Record<SunatAfectacionGroup, { subtotal: number; taxAmount: number; total: number }>
   )
-
-  const subtotalGlobal = roundSunat(items.reduce((s, it, idx) => s + getItemTotals(it, idx).subtotal, 0))
-  const taxGlobal = roundSunat(items.reduce((s, it, idx) => s + getItemTotals(it, idx).taxAmount, 0))
-  const totalGlobal = roundSunat(items.reduce((s, it, idx) => s + getItemTotals(it, idx).total, 0))
 
   const selectedContact = form.contact_id ? customers.find(c => c.id === form.contact_id!) : null
 
@@ -609,7 +600,21 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
   const directPaymentMethods = useMemo(() => filterOperationalPaymentMethods(paymentMethods), [paymentMethods])
 
   const directPayableTarget =
-    isDetraccion && detractionPreview.applicable ? detractionPreview.netPayable : totalGlobal
+    isDetraccion && detractionPreview.applicable
+      ? detractionPreview.netPayable
+      : !isNotaVenta && fiscalForm.has_igv_retention && retentionPreview.applicable
+        ? retentionPreview.netCollectible
+        : totalGlobal
+
+  const paymentsTotalPaid = useMemo(
+    () => sumMoney(...payments.map(p => Number(p.amount) || 0)),
+    [payments],
+  )
+
+  const paymentChange = useMemo(
+    () => calcPaymentChange(paymentsTotalPaid, directPayableTarget),
+    [paymentsTotalPaid, directPayableTarget],
+  )
 
   // Un solo método de pago directo: el monto sigue al neto cobrable (1001) o al total.
   useEffect(() => {
@@ -683,15 +688,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
             unit: it.unit,
             quantity: it.quantity,
             unit_price: it.unit_price,
-            discount: subtotalDiscountToLineDiscount(
-              it.unit_price,
-              it.quantity,
-              lineSubtotalDiscounts[idx] ?? 0,
-              it.igv_affectation_type,
-              it.price_includes_igv,
-              taxRate,
-              taxConfig,
-            ),
+            discount: saleCalc.lines[idx]?.storedDiscount ?? 0,
             igv_affectation_type: it.igv_affectation_type,
             price_includes_igv: it.price_includes_igv,
           })),
@@ -743,7 +740,11 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
     const validPayments = payments.filter(p => Number(p.amount) > 0)
     const totalPaid = validPayments.reduce((s, p) => s + Number(p.amount), 0)
     const requiredDirect =
-      isDetraccion && detractionPreview.applicable ? detractionPreview.netPayable : totalGlobal
+      isDetraccion && detractionPreview.applicable
+        ? detractionPreview.netPayable
+        : !isNotaVenta && fiscalForm.has_igv_retention && retentionPreview.applicable
+          ? retentionPreview.netCollectible
+          : totalGlobal
     if (validPayments.length === 0) {
       toast.error('Ingrese al menos un pago directo')
       return
@@ -753,14 +754,6 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
         isDetraccion && detractionPreview.applicable
           ? 'Los pagos directos no cubren el neto cobrable'
           : 'El total de pagos no cubre el monto de la venta',
-      )
-      return
-    }
-    if (totalPaid > requiredDirect + 0.01) {
-      toast.error(
-        isDetraccion && detractionPreview.applicable
-          ? 'Los pagos directos superan el neto cobrable'
-          : 'El total de pagos supera el monto de la venta',
       )
       return
     }
@@ -811,22 +804,17 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
         detraccion: isDetraccion && detraccionGoodCode
           ? { good_code: detraccionGoodCode }
           : undefined,
-        items: items.map((it, idx) => ({
+        global_discount_mode: discountValue > 0 ? discountMode : undefined,
+        global_discount_value: discountValue > 0 ? discountValue : undefined,
+        items: items.map((it) => ({
           product_id: it.product_id ?? null,
           code: it.code,
           description: it.description.trim(),
           unit: it.unit,
           quantity: it.quantity,
           unit_price: it.unit_price,
-          discount: subtotalDiscountToLineDiscount(
-            it.unit_price,
-            it.quantity,
-            lineSubtotalDiscounts[idx] ?? 0,
-            it.igv_affectation_type,
-            it.price_includes_igv,
-            taxRate,
-            taxConfig,
-          ),
+          line_discount_mode: (it.line_discount_value ?? 0) > 0 ? (it.line_discount_mode ?? 'amount') : undefined,
+          line_discount_value: (it.line_discount_value ?? 0) > 0 ? it.line_discount_value : undefined,
           igv_affectation_type: it.igv_affectation_type,
           price_includes_igv: it.price_includes_igv,
         })),
@@ -1045,30 +1033,32 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
             </select>
           </div>
           {!isNotaVenta && !isQuotation && (
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Tipo operación</label>
+              <select
+                className={`w-full border border-gray-200 rounded-xl px-3 py-2 text-sm ${form.sunat_code !== '01' ? 'bg-gray-50' : ''}`}
+                value={form.operation_type_code}
+                disabled={form.sunat_code !== '01'}
+                onChange={(e) => {
+                  const code = e.target.value
+                  setForm((f) => ({
+                    ...f,
+                    operation_type_code: code,
+                    currency: code === SUNAT_TIPO_OPERACION_DETRACCION ? 'PEN' : f.currency,
+                  }))
+                  if (code !== SUNAT_TIPO_OPERACION_DETRACCION) setDetraccionGoodCode('')
+                }}
+              >
+                {operationTypeOptions.map((op) => (
+                  <option key={op.code} value={op.code}>
+                    {op.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          {!isQuotation && (
             <>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Tipo operación</label>
-                <select
-                  className={`w-full border border-gray-200 rounded-xl px-3 py-2 text-sm ${form.sunat_code !== '01' ? 'bg-gray-50' : ''}`}
-                  value={form.operation_type_code}
-                  disabled={form.sunat_code !== '01'}
-                  onChange={(e) => {
-                    const code = e.target.value
-                    setForm((f) => ({
-                      ...f,
-                      operation_type_code: code,
-                      currency: code === SUNAT_TIPO_OPERACION_DETRACCION ? 'PEN' : f.currency,
-                    }))
-                    if (code !== SUNAT_TIPO_OPERACION_DETRACCION) setDetraccionGoodCode('')
-                  }}
-                >
-                  {operationTypeOptions.map((op) => (
-                    <option key={op.code} value={op.code}>
-                      {op.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Moneda</label>
                 <select
@@ -1120,6 +1110,12 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                 )}
                 {form.currency === 'PEN' && tcError && !tcLoading && (
                   <p className="text-[10px] text-gray-400 mt-0.5">{tcError}</p>
+                )}
+                {tcIsFallback && !tcLoading && (
+                  <p className="text-[10px] text-amber-800/90 mt-1 leading-snug">
+                    {tcMeta?.mensaje ??
+                      'Se está utilizando el tipo de cambio de un día anterior porque SUNAT aún no publica el correspondiente al día de hoy. El valor puede modificarse manualmente antes de guardar el documento.'}
+                  </p>
                 )}
               </div>
             </>
@@ -1238,8 +1234,65 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
             >
               <Package size={14} /> Producto manual
             </button>
+            <button
+              type="button"
+              onClick={barcodeScan.toggleScannerMode}
+              disabled={barcodeScan.scanProcessing}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium shrink-0 disabled:opacity-60 ${
+                barcodeScan.scannerMode
+                  ? 'border-primary-400 bg-[rgb(var(--p50))] text-[rgb(var(--p700))]'
+                  : 'border-primary-300 text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))]'
+              }`}
+              title={
+                barcodeScan.scannerMode
+                  ? 'Desactivar escáner'
+                  : barcodeScan.useCameraScanner
+                    ? 'Activar escáner (cámara + código manual)'
+                    : 'Activar escáner de código de barras'
+              }
+            >
+              <ScanBarcode size={14} /> {barcodeScan.scannerMode ? 'Escáner activo' : 'Escanear'}
+            </button>
             <p className="text-xs text-gray-500 ml-auto">Total de ítems: {items.length}</p>
           </div>
+
+          {barcodeScan.scannerMode && (
+            <div className="mb-3">
+              <label className="block text-xs font-medium text-gray-600 mb-1">
+                Código de barras
+              </label>
+              <div className="relative flex items-center">
+                <ScanBarcode
+                  size={16}
+                  className="absolute left-3 text-[rgb(var(--p600))] pointer-events-none"
+                  aria-hidden
+                />
+                <input
+                  ref={barcodeScan.searchInputRef}
+                  type="text"
+                  value={barcodeScan.scanQuery}
+                  onChange={e => barcodeScan.setScanQuery(e.target.value)}
+                  onKeyDown={barcodeScan.handleSearchKeyDown}
+                  disabled={barcodeScan.scanProcessing}
+                  placeholder="Pegue o escanee el código y presione Enter"
+                  className="w-full rounded-xl border border-primary-300 bg-[rgb(var(--p50))]/40 py-2 pl-9 pr-3 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[rgb(var(--p500))]/30 focus:border-primary-400 disabled:opacity-60"
+                  autoComplete="off"
+                  autoFocus
+                />
+                {barcodeScan.scanProcessing && (
+                  <div
+                    className="absolute right-3 h-4 w-4 border-2 border-[rgb(var(--p600))] border-t-transparent rounded-full animate-spin"
+                    aria-hidden
+                  />
+                )}
+              </div>
+              <p className="mt-1 text-xs text-gray-500">
+                {barcodeScan.useCameraScanner
+                  ? 'Use la cámara o ingrese el código manualmente y presione Enter.'
+                  : 'Escanee con lector USB o pegue el código y presione Enter.'}
+              </p>
+            </div>
+          )}
 
           <div className="overflow-x-auto rounded-xl border border-gray-200">
             <table className="w-full text-sm min-w-[720px] table-fixed">
@@ -1252,6 +1305,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[11%]">P. unit.</th>
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[13%]">Afectación</th>
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[9%]">IGV incl.</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[9%]">Desc.</th>
                   <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[10%]">Total</th>
                   <th className="w-10" />
                 </tr>
@@ -1297,6 +1351,38 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                       </td>
                       <td className="px-4 py-2.5">
                         <span className="text-gray-700">{it.price_includes_igv ? 'Sí' : 'No'}</span>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex overflow-hidden rounded-lg border border-gray-200 bg-white max-w-[6.5rem]">
+                          <button
+                            type="button"
+                            className={`w-7 shrink-0 border-r border-gray-200 text-[10px] font-bold text-white ${
+                              (it.line_discount_mode ?? 'amount') === 'percent' ? 'bg-[rgb(var(--p600))]' : 'bg-gray-500'
+                            }`}
+                            onClick={() =>
+                              updateItem(idx, 'line_discount_mode', (it.line_discount_mode ?? 'amount') === 'percent' ? 'amount' : 'percent')
+                            }
+                          >
+                            {(it.line_discount_mode ?? 'amount') === 'percent' ? '%' : moneySym}
+                          </button>
+                          <input
+                            type="number"
+                            min={0}
+                            max={(it.line_discount_mode ?? 'amount') === 'percent' ? 100 : undefined}
+                            step={(it.line_discount_mode ?? 'amount') === 'percent' ? 1 : 0.01}
+                            className="min-w-0 flex-1 bg-transparent px-1.5 py-1 text-xs text-gray-800 focus:outline-none w-12"
+                            value={it.line_discount_value || ''}
+                            onChange={(e) => {
+                              const n = Math.max(0, Number(e.target.value) || 0)
+                              updateItem(
+                                idx,
+                                'line_discount_value',
+                                (it.line_discount_mode ?? 'amount') === 'percent' ? Math.min(100, n) : n,
+                              )
+                            }}
+                            placeholder="0"
+                          />
+                        </div>
                       </td>
                       <td className="px-3 py-2.5 font-medium text-gray-700 text-right tabular-nums">{fmt(total)}</td>
                       <td className="px-2 py-2.5">
@@ -1346,45 +1432,102 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                     placeholder={discountMode === 'percent' ? '0' : '0.00'}
                   />
                 </div>
-                {checkoutDiscountAmount > 0 && (
-                  <p className="text-[10px] text-amber-700 mt-1">
-                    Descuento sobre base imponible: {fmt(checkoutDiscountAmount)}
-                  </p>
-                )}
               </div>
 
               <div className="space-y-2 text-sm">
-                {totalsByAfectacion.gravado.total > 0 && (
+                {(lineDiscountTotal > 0 || checkoutDiscountAmount > 0) ? (
                   <>
                     <div className="flex justify-between text-gray-600 uppercase text-xs tracking-wide">
-                      <span>Op. gravada</span>
-                      <span className="tabular-nums">{fmt(totalsByAfectacion.gravado.subtotal)}</span>
-                    </div>
-                    <div className="flex justify-between text-gray-600 uppercase text-xs tracking-wide">
-                      <span>IGV</span>
-                      <span className="tabular-nums">{fmt(totalsByAfectacion.gravado.taxAmount)}</span>
-                    </div>
-                  </>
-                )}
-                {totalsByAfectacion.exonerado.total > 0 && (
-                  <div className="flex justify-between text-gray-600 text-xs"><span>Op. exonerada</span><span>{fmt(totalsByAfectacion.exonerado.total)}</span></div>
-                )}
-                {totalsByAfectacion.inafecto.total > 0 && (
-                  <div className="flex justify-between text-gray-600 text-xs"><span>Op. inafecta</span><span>{fmt(totalsByAfectacion.inafecto.total)}</span></div>
-                )}
-                {totalsByAfectacion.exportacion.total > 0 && (
-                  <div className="flex justify-between text-gray-600 text-xs"><span>Op. exportación</span><span className="tabular-nums">{fmt(totalsByAfectacion.exportacion.total)}</span></div>
-                )}
-                {totalsByAfectacion.gravado.total === 0 && (
-                  <>
-                    <div className="flex justify-between text-gray-600 uppercase text-xs tracking-wide">
-                      <span>Op. gravada</span>
+                      <span>Subtotal</span>
                       <span className="tabular-nums">{fmt(subtotalGlobal)}</span>
                     </div>
-                    <div className="flex justify-between text-gray-600 uppercase text-xs tracking-wide">
-                      <span>IGV</span>
-                      <span className="tabular-nums">{fmt(taxGlobal)}</span>
-                    </div>
+                    {lineDiscountTotal > 0 && (
+                      <div className="flex justify-between text-amber-800 text-xs">
+                        <span>Desc. por línea</span>
+                        <span className="tabular-nums">− {fmt(lineDiscountTotal)}</span>
+                      </div>
+                    )}
+                    {checkoutDiscountAmount > 0 && (
+                      <div className="flex justify-between text-amber-800 text-xs">
+                        <span>Desc. global</span>
+                        <span className="tabular-nums">− {fmt(checkoutDiscountAmount)}</span>
+                      </div>
+                    )}
+                    {totalsByAfectacion.exonerado.total > 0 && (
+                      <div className="flex justify-between text-gray-600 text-xs">
+                        <span>Op. exonerada</span>
+                        <span>{fmt(totalsByAfectacion.exonerado.subtotal)}</span>
+                      </div>
+                    )}
+                    {totalsByAfectacion.inafecto.total > 0 && (
+                      <div className="flex justify-between text-gray-600 text-xs">
+                        <span>Op. inafecta</span>
+                        <span>{fmt(totalsByAfectacion.inafecto.subtotal)}</span>
+                      </div>
+                    )}
+                    {totalsByAfectacion.exportacion.total > 0 && (
+                      <div className="flex justify-between text-gray-600 text-xs">
+                        <span>Op. exportación</span>
+                        <span className="tabular-nums">{fmt(totalsByAfectacion.exportacion.subtotal)}</span>
+                      </div>
+                    )}
+                    {taxGlobal > 0.000001 && (
+                      <div className="flex justify-between text-gray-600 uppercase text-xs tracking-wide">
+                        <span>IGV</span>
+                        <span className="tabular-nums">{fmt(taxGlobal)}</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {totalsByAfectacion.gravado.total > 0 && (
+                      <>
+                        <div className="flex justify-between text-gray-600 uppercase text-xs tracking-wide">
+                          <span>Op. gravada</span>
+                          <span className="tabular-nums">{fmt(totalsByAfectacion.gravado.subtotal)}</span>
+                        </div>
+                        <div className="flex justify-between text-gray-600 uppercase text-xs tracking-wide">
+                          <span>IGV</span>
+                          <span className="tabular-nums">{fmt(totalsByAfectacion.gravado.taxAmount)}</span>
+                        </div>
+                      </>
+                    )}
+                    {totalsByAfectacion.exonerado.total > 0 && (
+                      <div className="flex justify-between text-gray-600 text-xs">
+                        <span>Op. exonerada</span>
+                        <span>{fmt(totalsByAfectacion.exonerado.total)}</span>
+                      </div>
+                    )}
+                    {totalsByAfectacion.inafecto.total > 0 && (
+                      <div className="flex justify-between text-gray-600 text-xs">
+                        <span>Op. inafecta</span>
+                        <span>{fmt(totalsByAfectacion.inafecto.total)}</span>
+                      </div>
+                    )}
+                    {totalsByAfectacion.exportacion.total > 0 && (
+                      <div className="flex justify-between text-gray-600 text-xs">
+                        <span>Op. exportación</span>
+                        <span className="tabular-nums">{fmt(totalsByAfectacion.exportacion.total)}</span>
+                      </div>
+                    )}
+                    {totalsByAfectacion.gravado.total === 0 &&
+                      totalsByAfectacion.exonerado.total === 0 &&
+                      totalsByAfectacion.inafecto.total === 0 &&
+                      totalsByAfectacion.exportacion.total === 0 &&
+                      items.length > 0 && (
+                      <>
+                        <div className="flex justify-between text-gray-600 uppercase text-xs tracking-wide">
+                          <span>Subtotal</span>
+                          <span className="tabular-nums">{fmt(subtotalGlobal)}</span>
+                        </div>
+                        {taxGlobal > 0 && (
+                          <div className="flex justify-between text-gray-600 uppercase text-xs tracking-wide">
+                            <span>IGV</span>
+                            <span className="tabular-nums">{fmt(taxGlobal)}</span>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </>
                 )}
                 <div className="flex justify-between items-baseline font-bold text-gray-900 text-sm pt-2 mt-1 border-t border-gray-200">
@@ -1460,6 +1603,27 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                 >
                   + Agregar pago
                 </button>
+                <div className="rounded-xl border border-gray-200 bg-gray-50/80 px-3 py-2.5 space-y-1.5 mt-2">
+                  <div className="flex justify-between text-xs text-gray-600">
+                    <span>Monto a pagar</span>
+                    <span className="font-semibold text-gray-800 tabular-nums">{fmt(directPayableTarget)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-600">
+                    <span>Suma de pagos</span>
+                    <span className="font-semibold text-gray-800 tabular-nums">{fmt(paymentsTotalPaid)}</span>
+                  </div>
+                  {paymentChange > 0.009 && (
+                    <div className="flex justify-between items-center rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-amber-900">
+                      <span className="text-xs font-bold uppercase tracking-wide">Vuelto</span>
+                      <span className="text-sm font-bold tabular-nums">{fmt(paymentChange)}</span>
+                    </div>
+                  )}
+                  {paymentsTotalPaid > 0 && paymentsTotalPaid < directPayableTarget - 0.01 && (
+                    <p className="text-[11px] text-red-600">
+                      Falta {fmt(Math.max(0, directPayableTarget - paymentsTotalPaid))}
+                    </p>
+                  )}
+                </div>
                 {isDetraccion && detractionPreview.applicable && (
                   <div className="flex flex-wrap gap-2 items-center rounded-xl bg-amber-50 border border-amber-100 px-3 py-2 mt-2">
                     <span className="flex-1 min-w-[7rem] text-sm text-amber-900 font-medium">{DETRACCION_PAYMENT_METHOD_NAME}</span>
@@ -1521,6 +1685,13 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
         />
       </Modal>
 
+      <BarcodeScannerModal
+        open={barcodeScan.cameraOpen}
+        onClose={() => barcodeScan.setCameraOpen(false)}
+        onScan={barcodeScan.handleBarcodeScan}
+        busy={barcodeScan.scanProcessing}
+      />
+
       <QuickContactCreateModal
         open={addClientOpen}
         onClose={() => setAddClientOpen(false)}
@@ -1546,6 +1717,10 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
       />
     </div>
   )
+}
+
+function isGravadoAfectacion(code: string): boolean {
+  return getAfectacionGroup(code) === 'gravado'
 }
 
 function ManualItemModal({
@@ -1616,10 +1791,11 @@ function ManualItemModal({
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Unidad</label>
-            <input
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+            <SearchableSelect
               value={draft.unit}
-              onChange={e => setField('unit', e.target.value)}
+              onChange={(v) => setField('unit', String(v ?? 'NIU'))}
+              options={sunatUnitSelectOptions()}
+              searchable
             />
           </div>
         </div>
@@ -1628,11 +1804,12 @@ function ManualItemModal({
             <label className="block text-xs font-medium text-gray-600 mb-1">Cantidad</label>
             <input
               type="number"
-              min={0.001}
-              step={0.01}
+              min={1}
+              step={1}
+              inputMode="numeric"
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
               value={draft.quantity}
-              onChange={e => setField('quantity', Math.max(0, Number(e.target.value) || 0))}
+              onChange={e => setField('quantity', Math.max(1, parseInt(e.target.value, 10) || 1))}
             />
           </div>
           <div>
@@ -1647,31 +1824,38 @@ function ManualItemModal({
             />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Afectación IGV</label>
-            <select
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-              value={draft.igv_affectation_type}
-              onChange={e => setField('igv_affectation_type', e.target.value)}
-            >
-              {IGV_AFFECTATION_OPTIONS.map(o => (
-                <option key={o.code} value={o.code}>{o.label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">IGV incluido</label>
-            <select
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-              value={draft.price_includes_igv ? '1' : '0'}
-              onChange={e => setField('price_includes_igv', e.target.value === '1')}
-            >
-              <option value="0">No</option>
-              <option value="1">Sí</option>
-            </select>
-          </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Afectación IGV</label>
+          <select
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+            value={draft.igv_affectation_type}
+            onChange={e => {
+              const code = e.target.value
+              setDraft(prev => ({
+                ...prev,
+                igv_affectation_type: code,
+                price_includes_igv: isGravadoAfectacion(code) ? prev.price_includes_igv : false,
+              }))
+            }}
+          >
+            {IGV_AFFECTATION_OPTIONS.map(o => (
+              <option key={o.code} value={o.code}>{o.label}</option>
+            ))}
+          </select>
         </div>
+        {isGravadoAfectacion(draft.igv_affectation_type) ? (
+          <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={draft.price_includes_igv}
+              onChange={e => setField('price_includes_igv', e.target.checked)}
+              className="h-4 w-4 accent-[rgb(var(--p600))]"
+            />
+            Precio incluye IGV
+          </label>
+        ) : (
+          <p className="text-xs text-gray-500">Esta afectación no aplica IGV al total.</p>
+        )}
         <div className="flex justify-between text-sm text-gray-600 pt-1 border-t border-gray-100">
           <span>Total estimado</span>
           <span className="font-semibold text-gray-900 tabular-nums">{formatSaleMoney(preview.total, currency)}</span>

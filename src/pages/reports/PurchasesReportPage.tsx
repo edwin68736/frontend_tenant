@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { FileDown, FileSpreadsheet, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { purchasesService, type Purchase } from '@/services/purchases.service'
+import { billingStatusLabel, normalizeBillingStatus } from '@/constants/billingStatus'
 import { exportTableToPdf } from '@/utils/exportPdf'
 import { exportTableToExcel } from '@/utils/exportExcel'
 import type { ExportColumn } from '@/utils/exportPdf'
@@ -22,6 +23,38 @@ const COLS: ExportColumn<Purchase>[] = [
     key: 'status',
     label: 'Estado',
     format: (v: unknown) => (String(v).toLowerCase() === 'cancelled' ? 'Anulada' : 'Recibida'),
+  },
+  {
+    key: 'linked_retention',
+    label: 'CRE',
+    format: (_v: unknown, r: Purchase) => {
+      const cre = r.linked_retention
+      if (!cre) return '—'
+      return `${cre.series}-${cre.correlative}`
+    },
+  },
+  {
+    key: 'linked_retention_status',
+    label: 'Estado CRE',
+    format: (_v: unknown, r: Purchase) => {
+      const cre = r.linked_retention
+      if (!cre) return '—'
+      return billingStatusLabel(normalizeBillingStatus(cre.billing_status || cre.status))
+    },
+  },
+  {
+    key: 'linked_rr',
+    label: 'RR',
+    format: (_v: unknown, r: Purchase) => r.linked_retention?.linked_reversion?.correlativo ?? '—',
+  },
+  {
+    key: 'linked_rr_status',
+    label: 'Estado RR',
+    format: (_v: unknown, r: Purchase) => {
+      const rr = r.linked_retention?.linked_reversion
+      if (!rr) return '—'
+      return rr.status === 'accepted' ? 'Aceptada' : (rr.status || '—')
+    },
   },
 ]
 

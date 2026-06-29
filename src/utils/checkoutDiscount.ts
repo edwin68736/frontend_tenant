@@ -7,7 +7,7 @@ export function roundMoney(n: number): number {
   return roundDisplay(n)
 }
 
-/** Monto de descuento en soles (6 decimales) a partir del total bruto. */
+/** Monto de descuento en base imponible (subtotal) a partir del total bruto sin descuento. */
 export function calcCheckoutDiscountAmount(
   rawTotal: number,
   mode: CheckoutDiscountMode,
@@ -58,4 +58,48 @@ export function distributeCheckoutDiscountToLines(lineTotals: number[], discount
 
 function sumLineTotals(lineTotals: number[]): number {
   return roundSunat(lineTotals.reduce((a, t) => a + Math.max(0, t), 0))
+}
+
+export type LineTaxTotals = {
+  subtotal: number
+  taxAmount: number
+  total: number
+}
+
+/** Aplica descuento global sobre subtotales y recalcula IGV/total por línea (alineado con backend). */
+export function applyCheckoutDiscountToLines(
+  lines: LineTaxTotals[],
+  mode: CheckoutDiscountMode,
+  value: number,
+): {
+  discountAmount: number
+  lines: LineTaxTotals[]
+  subtotal: number
+  taxAmount: number
+  payableTotal: number
+} {
+  if (lines.length === 0) {
+    return { discountAmount: 0, lines: [], subtotal: 0, taxAmount: 0, payableTotal: 0 }
+  }
+  const rawSubtotal = roundSunat(lines.reduce((a, l) => a + l.subtotal, 0))
+  const discountAmount = calcCheckoutDiscountAmount(rawSubtotal, mode, value)
+  const lineDiscounts = distributeCheckoutDiscountToLines(
+    lines.map((l) => l.subtotal),
+    discountAmount,
+  )
+  const discountedLines = lines.map((line, i) => {
+    const d = lineDiscounts[i] ?? 0
+    const newSub = roundSunat(Math.max(0, line.subtotal - d))
+    const effRate = line.subtotal > 0 ? line.taxAmount / line.subtotal : 0
+    const newTax = roundSunat(newSub * effRate)
+    const newTotal = roundSunat(newSub + newTax)
+    return { subtotal: newSub, taxAmount: newTax, total: newTotal }
+  })
+  return {
+    discountAmount,
+    lines: discountedLines,
+    subtotal: roundSunat(discountedLines.reduce((a, l) => a + l.subtotal, 0)),
+    taxAmount: roundSunat(discountedLines.reduce((a, l) => a + l.taxAmount, 0)),
+    payableTotal: roundSunat(discountedLines.reduce((a, l) => a + l.total, 0)),
+  }
 }

@@ -2,14 +2,17 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { RefreshCw, Truck, Percent, Receipt, RotateCcw, Plus, Download, Eye, X, FileCode, Archive, Search } from 'lucide-react'
-import { billingService, type SunatDespatch, type SunatRetention, type SunatPerception, type SunatReversion, type CreateRetentionInput, type CreatePerceptionInput, type VoidedDetailInput, type InvoiceInfo } from '@/services/billing.service'
+import { billingService, type SunatDespatch, type SunatRetention, type SunatPerception, type SunatReversion, type InvoiceInfo, type FiscalAuxListParams } from '@/services/billing.service'
+import { FiscalAuxFiltersBar } from '@/components/billing/FiscalAuxFiltersBar'
 import { SunatResponseDetail } from '@/components/billing/SunatResponseDetail'
+import { FiscalAuxDocListSection } from '@/components/billing/FiscalAuxDocListSection'
+import { ReversionCreateModal } from '@/components/billing/ReversionCreateModal'
 import { companyService } from '@/services/company.service'
 import RequireModule from '@/components/ui/RequireModule'
 import SunatRequiredMessage from '@/components/ui/SunatRequiredMessage'
 import { Modal } from '@/components/ui/Modal'
 import { DocumentViewerModal } from '@/components/ui/DocumentViewerModal'
-import { toISOStringPeru, toDateTimeLocalPeru, fromDateTimeLocalToISOPeru, formatDisplayDatePeru } from '@/utils/datesPeru'
+import { formatDisplayDatePeru } from '@/utils/datesPeru'
 import { useBillingEvents } from '@/hooks/useBillingEvents'
 import {
   billingStatusColor,
@@ -71,20 +74,44 @@ function SunatDocsContent() {
   const [loading, setLoading] = useState(false)
   const [despatchStatusLoading, setDespatchStatusLoading] = useState<number | null>(null)
   const [reversionStatusLoading, setReversionStatusLoading] = useState<number | null>(null)
+  const [auxFilters, setAuxFilters] = useState<FiscalAuxListParams>({})
+  const navigateToPurchase = (purchaseId: number) => navigate('/purchases', { state: { openPurchaseId: purchaseId } })
+  const navigateToSale = (saleId: number) => navigate('/billing', { state: { openSaleId: saleId } })
   const despatchesRef = useRef(despatches)
   despatchesRef.current = despatches
 
+  const retentionsRef = useRef(retentions)
+  retentionsRef.current = retentions
+  const perceptionsRef = useRef(perceptions)
+  perceptionsRef.current = perceptions
+
   useBillingEvents(
     (evt) => {
-      if (subMode !== 'despatches') return
-      const d = despatchesRef.current.find((x) => x.sale_id === evt.sale_id)
-      if (!d) return
-      billingService
-        .getDespatchStatus(d.id)
-        .then((updated) => setDespatches((prev) => prev.map((x) => (x.id === updated.id ? updated : x))))
-        .catch(() => {})
+      if (subMode === 'despatches') {
+        const d = despatchesRef.current.find((x) => x.sale_id === evt.sale_id)
+        if (!d) return
+        billingService.getDespatchStatus(d.id)
+          .then((updated) => setDespatches((prev) => prev.map((x) => (x.id === updated.id ? updated : x))))
+          .catch(() => {})
+        return
+      }
+      if (subMode === 'retentions') {
+        const r = retentionsRef.current.find((x) => x.sale_id === evt.sale_id)
+        if (!r) return
+        billingService.getRetentionStatus(r.id)
+          .then((updated) => setRetentions((prev) => prev.map((x) => (x.id === updated.id ? updated : x))))
+          .catch(() => {})
+        return
+      }
+      if (subMode === 'perceptions') {
+        const p = perceptionsRef.current.find((x) => x.sale_id === evt.sale_id)
+        if (!p) return
+        billingService.getPerceptionStatus(p.id)
+          .then((updated) => setPerceptions((prev) => prev.map((x) => (x.id === updated.id ? updated : x))))
+          .catch(() => {})
+      }
     },
-    sunatEnabled === true && subMode === 'despatches',
+    sunatEnabled === true && (subMode === 'despatches' || subMode === 'retentions' || subMode === 'perceptions'),
   )
 
   const loadDespatches = () => {
@@ -96,21 +123,21 @@ function SunatDocsContent() {
   }
   const loadRetentions = () => {
     setLoading(true)
-    billingService.listRetentions()
+    billingService.listRetentions(auxFilters)
       .then(({ retentions: list }) => setRetentions(list ?? []))
       .catch(() => toast.error('Error al cargar retenciones'))
       .finally(() => setLoading(false))
   }
   const loadPerceptions = () => {
     setLoading(true)
-    billingService.listPerceptions()
+    billingService.listPerceptions(auxFilters)
       .then(({ perceptions: list }) => setPerceptions(list ?? []))
       .catch(() => toast.error('Error al cargar percepciones'))
       .finally(() => setLoading(false))
   }
   const loadReversions = () => {
     setLoading(true)
-    billingService.listReversions()
+    billingService.listReversions(auxFilters)
       .then(({ reversions: list }) => setReversions(list ?? []))
       .catch(() => toast.error('Error al cargar reversiones'))
       .finally(() => setLoading(false))
@@ -162,21 +189,46 @@ function SunatDocsContent() {
         />
       )}
       {subMode === 'retentions' && (
-        <RetentionsSection list={retentions} loading={loading} onRefresh={loadRetentions} onCreated={r => setRetentions(prev => [r, ...prev])} />
+        <>
+          <FiscalAuxFiltersBar filters={auxFilters} onChange={setAuxFilters} onSearch={loadRetentions} />
+          <FiscalAuxDocListSection
+            kind="retention"
+            list={retentions}
+            loading={loading}
+            onRefresh={loadRetentions}
+            onCreated={(r) => setRetentions((prev) => [r as SunatRetention, ...prev])}
+            onStatusUpdated={(r) => setRetentions((prev) => prev.map((x) => (x.id === r.id ? r as SunatRetention : x)))}
+            onNavigateToPurchase={navigateToPurchase}
+          />
+        </>
       )}
       {subMode === 'perceptions' && (
-        <PerceptionsSection list={perceptions} loading={loading} onRefresh={loadPerceptions} onCreated={p => setPerceptions(prev => [p, ...prev])} />
+        <>
+          <FiscalAuxFiltersBar filters={auxFilters} onChange={setAuxFilters} onSearch={loadPerceptions} />
+          <FiscalAuxDocListSection
+            kind="perception"
+            list={perceptions}
+            loading={loading}
+            onRefresh={loadPerceptions}
+            onCreated={(p) => setPerceptions((prev) => [p as SunatPerception, ...prev])}
+            onStatusUpdated={(p) => setPerceptions((prev) => prev.map((x) => (x.id === p.id ? p as SunatPerception : x)))}
+            onNavigateToSale={navigateToSale}
+          />
+        </>
       )}
       {subMode === 'reversions' && (
-        <ReversionsSection
-          list={reversions}
-          loading={loading}
-          onRefresh={loadReversions}
-          statusLoading={reversionStatusLoading}
-          setStatusLoading={setReversionStatusLoading}
-          onCreated={r => setReversions(prev => [r, ...prev])}
-          onStatusUpdated={r => setReversions(prev => prev.map(x => x.id === r.id ? r : x))}
-        />
+        <>
+          <FiscalAuxFiltersBar filters={auxFilters} onChange={setAuxFilters} onSearch={loadReversions} showBillingStatus={false} />
+          <ReversionsSection
+            list={reversions}
+            loading={loading}
+            onRefresh={loadReversions}
+            statusLoading={reversionStatusLoading}
+            setStatusLoading={setReversionStatusLoading}
+            onCreated={r => setReversions(prev => [r, ...prev])}
+            onStatusUpdated={r => setReversions(prev => prev.map(x => x.id === r.id ? r : x))}
+          />
+        </>
       )}
     </div>
   )
@@ -552,142 +604,10 @@ function GuiasSection({
   )
 }
 
-function RetentionsSection({ list, loading, onRefresh, onCreated }: { list: SunatRetention[]; loading: boolean; onRefresh: () => void; onCreated: (r: SunatRetention) => void }) {
-  const [modalOpen, setModalOpen] = useState(false)
-  const [sending, setSending] = useState(false)
-  const [form, setForm] = useState<Partial<CreateRetentionInput>>({
-    series: 'R001',
-    correlativo: '1',
-    fecha_emision: toISOStringPeru(),
-    proveedor: { tipo_doc: '6', num_doc: '', rzn_social: '', address: '' },
-    regimen: '01',
-    tasa: 6,
-    imp_retenido: 0,
-    imp_pagado: 0,
-    details: [{ tipo_doc: '01', num_doc: 'F001-1', fecha_emision: toISOStringPeru(), imp_total: 0, fecha_retencion: toISOStringPeru(), imp_retenido: 0, imp_pagar: 0 }],
-  })
-  const handleSubmit = () => {
-    if (!form.proveedor?.num_doc || !form.proveedor?.rzn_social) { toast.error('Complete proveedor'); return }
-    setSending(true)
-    billingService.createRetention(form as CreateRetentionInput)
-      .then(({ retention }) => { toast.success('Retención enviada'); onCreated(retention); setModalOpen(false) })
-      .catch((e: any) => toast.error(e.response?.data?.error ?? 'Error'))
-      .finally(() => setSending(false))
-  }
-  return (
-    <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-      <div className="px-4 py-3 border-b flex justify-between">
-        <h3 className="font-semibold">Comprobantes de retención</h3>
-        <div className="flex gap-2">
-          <button onClick={onRefresh} disabled={loading} className="p-2"><RefreshCw size={16} className={loading ? 'animate-spin' : ''} /></button>
-          <button onClick={() => setModalOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium"><Plus size={14} /> Nueva retención</button>
-        </div>
-      </div>
-      <table className="w-full text-sm">
-        <thead className="bg-gray-50"><tr>{['Fecha', 'Serie-Nro', 'Proveedor', 'Retenido', 'Estado'].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>)}</tr></thead>
-        <tbody>
-          {loading ? <tr><td colSpan={5} className="px-4 py-8 text-center">Cargando...</td></tr> : list.length === 0 ? <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Sin retenciones.</td></tr> : list.map(r => (
-            <tr key={r.id} className="border-b border-gray-50">
-              <td className="px-4 py-3">{formatDisplayDatePeru(r.fecha_emision)}</td>
-              <td className="px-4 py-3 font-mono">{r.series}-{r.correlative}</td>
-              <td className="px-4 py-3">{r.proveedor_razon ?? r.proveedor_ruc}</td>
-              <td className="px-4 py-3">S/ {Number(r.imp_retenido).toFixed(2)}</td>
-              <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[r.status] ?? ''}`}>{STATUS_LABELS[r.status] ?? r.status}</span></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} contentClassName="max-w-xl">
-        <div className="flex justify-between border-b pb-3 mb-4"><h3 className="font-bold">Nueva retención</h3><button onClick={() => setModalOpen(false)}><X size={16} /></button></div>
-        <div className="space-y-3 text-sm">
-          <div className="grid grid-cols-3 gap-2">
-            <input placeholder="Serie" value={form.series} onChange={e => setForm(f => ({ ...f, series: e.target.value }))} className="border rounded-lg px-2 py-1.5" />
-            <input placeholder="Correlativo" value={form.correlativo} onChange={e => setForm(f => ({ ...f, correlativo: e.target.value }))} className="border rounded-lg px-2 py-1.5" />
-            <input type="datetime-local" value={form.fecha_emision?.slice(0, 16) ?? toDateTimeLocalPeru()} onChange={e => setForm(f => ({ ...f, fecha_emision: fromDateTimeLocalToISOPeru(e.target.value) }))} className="border rounded-lg px-2 py-1.5" />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <input placeholder="RUC proveedor" value={form.proveedor?.num_doc} onChange={e => setForm(f => ({ ...f, proveedor: { ...f.proveedor!, num_doc: e.target.value } }))} className="border rounded-lg px-2 py-1.5" />
-            <input placeholder="Razón social" value={form.proveedor?.rzn_social} onChange={e => setForm(f => ({ ...f, proveedor: { ...f.proveedor!, rzn_social: e.target.value } }))} className="border rounded-lg px-2 py-1.5" />
-            <input placeholder="Imp. retenido" type="number" value={form.imp_retenido || ''} onChange={e => setForm(f => ({ ...f, imp_retenido: Number(e.target.value) }))} className="border rounded-lg px-2 py-1.5" />
-            <input placeholder="Imp. pagado" type="number" value={form.imp_pagado || ''} onChange={e => setForm(f => ({ ...f, imp_pagado: Number(e.target.value) }))} className="border rounded-lg px-2 py-1.5" />
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
-          <button onClick={() => setModalOpen(false)} className="px-4 py-2 rounded-xl border text-sm">Cancelar</button>
-          <button onClick={handleSubmit} disabled={sending} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium disabled:opacity-50">Enviar a SUNAT</button>
-        </div>
-      </Modal>
-    </div>
-  )
-}
-
-function PerceptionsSection({ list, loading, onRefresh, onCreated }: { list: SunatPerception[]; loading: boolean; onRefresh: () => void; onCreated: (p: SunatPerception) => void }) {
-  const [modalOpen, setModalOpen] = useState(false)
-  const [sending, setSending] = useState(false)
-  const [form, setForm] = useState<Partial<CreatePerceptionInput>>({
-    series: 'P001',
-    correlativo: '1',
-    fecha_emision: toISOStringPeru(),
-    proveedor: { tipo_doc: '6', num_doc: '', rzn_social: '', address: '' },
-    regimen: '01',
-    tasa: 2,
-    imp_percibido: 0,
-    imp_cobrado: 0,
-    details: [{ tipo_doc: '01', num_doc: 'F001-1', fecha_emision: toISOStringPeru(), imp_total: 0, fecha_percepcion: toISOStringPeru(), imp_percibido: 0, imp_cobrar: 0 }],
-  })
-  const handleSubmit = () => {
-    if (!form.proveedor?.num_doc || !form.proveedor?.rzn_social) { toast.error('Complete proveedor'); return }
-    setSending(true)
-    billingService.createPerception(form as CreatePerceptionInput)
-      .then(({ perception }) => { toast.success('Percepción enviada'); onCreated(perception); setModalOpen(false) })
-      .catch((e: any) => toast.error(e.response?.data?.error ?? 'Error'))
-      .finally(() => setSending(false))
-  }
-  return (
-    <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-      <div className="px-4 py-3 border-b flex justify-between">
-        <h3 className="font-semibold">Comprobantes de percepción</h3>
-        <div className="flex gap-2">
-          <button onClick={onRefresh} disabled={loading} className="p-2"><RefreshCw size={16} className={loading ? 'animate-spin' : ''} /></button>
-          <button onClick={() => setModalOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium"><Plus size={14} /> Nueva percepción</button>
-        </div>
-      </div>
-      <table className="w-full text-sm">
-        <thead className="bg-gray-50"><tr>{['Fecha', 'Serie-Nro', 'Proveedor', 'Percibido', 'Estado'].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>)}</tr></thead>
-        <tbody>
-          {loading ? <tr><td colSpan={5} className="px-4 py-8 text-center">Cargando...</td></tr> : list.length === 0 ? <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Sin percepciones.</td></tr> : list.map(p => (
-            <tr key={p.id} className="border-b border-gray-50">
-              <td className="px-4 py-3">{formatDisplayDatePeru(p.fecha_emision)}</td>
-              <td className="px-4 py-3 font-mono">{p.series}-{p.correlative}</td>
-              <td className="px-4 py-3">{p.proveedor_razon ?? p.proveedor_ruc}</td>
-              <td className="px-4 py-3">S/ {Number(p.imp_percibido).toFixed(2)}</td>
-              <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[p.status] ?? ''}`}>{STATUS_LABELS[p.status] ?? p.status}</span></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} contentClassName="max-w-xl">
-        <div className="flex justify-between border-b pb-3 mb-4"><h3 className="font-bold">Nueva percepción</h3><button onClick={() => setModalOpen(false)}><X size={16} /></button></div>
-        <div className="space-y-3 text-sm">
-          <div className="grid grid-cols-3 gap-2">
-            <input placeholder="Serie" value={form.series} onChange={e => setForm(f => ({ ...f, series: e.target.value }))} className="border rounded-lg px-2 py-1.5" />
-            <input placeholder="Correlativo" value={form.correlativo} onChange={e => setForm(f => ({ ...f, correlativo: e.target.value }))} className="border rounded-lg px-2 py-1.5" />
-            <input type="datetime-local" value={form.fecha_emision?.slice(0, 16) ?? toDateTimeLocalPeru()} onChange={e => setForm(f => ({ ...f, fecha_emision: fromDateTimeLocalToISOPeru(e.target.value) }))} className="border rounded-lg px-2 py-1.5" />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <input placeholder="RUC proveedor" value={form.proveedor?.num_doc} onChange={e => setForm(f => ({ ...f, proveedor: { ...f.proveedor!, num_doc: e.target.value } }))} className="border rounded-lg px-2 py-1.5" />
-            <input placeholder="Razón social" value={form.proveedor?.rzn_social} onChange={e => setForm(f => ({ ...f, proveedor: { ...f.proveedor!, rzn_social: e.target.value } }))} className="border rounded-lg px-2 py-1.5" />
-            <input placeholder="Imp. percibido" type="number" value={form.imp_percibido || ''} onChange={e => setForm(f => ({ ...f, imp_percibido: Number(e.target.value) }))} className="border rounded-lg px-2 py-1.5" />
-            <input placeholder="Imp. cobrado" type="number" value={form.imp_cobrado || ''} onChange={e => setForm(f => ({ ...f, imp_cobrado: Number(e.target.value) }))} className="border rounded-lg px-2 py-1.5" />
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
-          <button onClick={() => setModalOpen(false)} className="px-4 py-2 rounded-xl border text-sm">Cancelar</button>
-          <button onClick={handleSubmit} disabled={sending} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium disabled:opacity-50">Enviar a SUNAT</button>
-        </div>
-      </Modal>
-    </div>
-  )
+function revertedDocTypeLabel(tipo: string) {
+  if (tipo === '20') return 'CRE'
+  if (tipo === '40') return 'CPE'
+  return tipo
 }
 
 function ReversionsSection({
@@ -708,16 +628,6 @@ function ReversionsSection({
   onStatusUpdated?: (r: SunatReversion) => void
 }) {
   const [modalOpen, setModalOpen] = useState(false)
-  const [sending, setSending] = useState(false)
-  const [details, setDetails] = useState<VoidedDetailInput[]>([{ tipo_doc: '40', serie: 'P001', correlativo: '', des_motivo_baja: 'Reversión' }])
-  const handleSubmit = () => {
-    if (!details.every(d => d.serie && d.correlativo && d.des_motivo_baja)) { toast.error('Complete todos los campos'); return }
-    setSending(true)
-    billingService.createReversion(details)
-      .then(({ reversion }) => { toast.success('Reversión enviada'); onCreated(reversion); setModalOpen(false) })
-      .catch((e: any) => toast.error(e.response?.data?.error ?? 'Error'))
-      .finally(() => setSending(false))
-  }
   return (
     <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
       <div className="px-4 py-3 border-b flex justify-between">
@@ -727,13 +637,21 @@ function ReversionsSection({
           <button onClick={() => setModalOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-orange-600 text-white rounded-xl text-sm font-medium"><Plus size={14} /> Nueva reversión</button>
         </div>
       </div>
-      <table className="w-full text-sm">
-        <thead className="bg-gray-50"><tr>{['Fecha', 'Correlativo', 'Ticket', 'Estado', 'Acción'].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>)}</tr></thead>
+      <table className="w-full text-sm min-w-[720px]">
+        <thead className="bg-gray-50"><tr>{['Fecha', 'Correlativo', 'Comprobantes revertidos', 'Ticket', 'Estado', 'Acción'].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>)}</tr></thead>
         <tbody>
-          {loading ? <tr><td colSpan={5} className="px-4 py-8 text-center">Cargando...</td></tr> : list.length === 0 ? <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Sin reversiones.</td></tr> : list.map(r => (
+          {loading ? <tr><td colSpan={6} className="px-4 py-8 text-center">Cargando...</td></tr> : list.length === 0 ? <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Sin reversiones.</td></tr> : list.map(r => (
             <tr key={r.id} className="border-b border-gray-50">
               <td className="px-4 py-3">{new Date(r.fec_comunicacion).toLocaleString()}</td>
               <td className="px-4 py-3 font-mono">{r.correlativo}</td>
+              <td className="px-4 py-3 text-xs space-y-1">
+                {(r.details ?? []).length === 0 ? '—' : (r.details ?? []).map((d, i) => (
+                  <div key={i} className="font-mono">
+                    {revertedDocTypeLabel(d.tipo_doc)} {d.serie}-{d.correlativo}
+                    {d.motivo && <span className="block text-gray-500 font-sans">{d.motivo}</span>}
+                  </div>
+                ))}
+              </td>
               <td className="px-4 py-3 text-xs">{r.ticket ?? '—'}</td>
               <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full ${STATUS_COLORS[r.status] ?? ''}`}>{STATUS_LABELS[r.status] ?? r.status}</span></td>
               <td className="px-4 py-3">
@@ -743,26 +661,7 @@ function ReversionsSection({
           ))}
         </tbody>
       </table>
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} contentClassName="max-w-xl">
-        <div className="flex justify-between border-b pb-3 mb-4"><h3 className="font-bold">Nueva reversión</h3><button onClick={() => setModalOpen(false)}><X size={16} /></button></div>
-        <p className="text-sm text-gray-600 mb-3">Indique los comprobantes a revertir (ej. percepciones tipo 40).</p>
-        <div className="space-y-2">
-          {details.map((d, i) => (
-            <div key={i} className="grid grid-cols-12 gap-2">
-              <select value={d.tipo_doc} onChange={e => setDetails(prev => prev.map((x, j) => j === i ? { ...x, tipo_doc: e.target.value } : x))} className="col-span-2 border rounded-lg px-2 py-1.5 text-sm"><option value="40">40 Percepción</option><option value="20">20 Retención</option></select>
-              <input placeholder="Serie" value={d.serie} onChange={e => setDetails(prev => prev.map((x, j) => j === i ? { ...x, serie: e.target.value } : x))} className="col-span-2 border rounded-lg px-2 py-1.5 text-sm" />
-              <input placeholder="Correlativo" value={d.correlativo} onChange={e => setDetails(prev => prev.map((x, j) => j === i ? { ...x, correlativo: e.target.value } : x))} className="col-span-2 border rounded-lg px-2 py-1.5 text-sm" />
-              <input placeholder="Motivo" value={d.des_motivo_baja} onChange={e => setDetails(prev => prev.map((x, j) => j === i ? { ...x, des_motivo_baja: e.target.value } : x))} className="col-span-5 border rounded-lg px-2 py-1.5 text-sm" />
-              <button type="button" onClick={() => setDetails(prev => prev.filter((_, j) => j !== i))} className="text-red-600 text-xs">Quitar</button>
-            </div>
-          ))}
-          <button type="button" onClick={() => setDetails(prev => [...prev, { tipo_doc: '40', serie: 'P001', correlativo: '', des_motivo_baja: '' }])} className="text-sm text-[rgb(var(--p600))]">+ Añadir comprobante</button>
-        </div>
-        <div className="flex justify-end gap-2 mt-4 pt-4 border-t">
-          <button onClick={() => setModalOpen(false)} className="px-4 py-2 rounded-xl border text-sm">Cancelar</button>
-          <button onClick={handleSubmit} disabled={sending} className="px-4 py-2 bg-orange-600 text-white rounded-xl text-sm font-medium disabled:opacity-50">Enviar a SUNAT</button>
-        </div>
-      </Modal>
+      <ReversionCreateModal open={modalOpen} onClose={() => setModalOpen(false)} onCreated={onCreated} />
     </div>
   )
 }

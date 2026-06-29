@@ -12,6 +12,8 @@ type Props = {
   /** Precio mostrado: venta (P. venta) o compra (Precio compra). */
   variant?: 'sale' | 'purchase'
   currency?: string
+  /** Abre alta rápida de producto (p. ej. desde compras). */
+  onNewProduct?: () => void
 }
 
 export function ProductPickerModal({
@@ -19,6 +21,7 @@ export function ProductPickerModal({
   onClose,
   variant = 'sale',
   currency = 'PEN',
+  onNewProduct,
 }: Props) {
   const fmtPrice = (n: number) =>
     variant === 'sale' ? formatSaleMoney(n, currency) : `S/ ${Number(n).toFixed(2)}`
@@ -77,8 +80,17 @@ export function ProductPickerModal({
             <div className="w-6 h-6 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : products.length === 0 ? (
-          <div className="text-center py-12 text-gray-400 text-sm">
-            No hay productos o no coinciden con la búsqueda.
+          <div className="text-center py-12 text-gray-400 text-sm space-y-2">
+            <p>No hay productos o no coinciden con la búsqueda.</p>
+            {onNewProduct && (
+              <button
+                type="button"
+                onClick={onNewProduct}
+                className="text-[rgb(var(--p600))] font-medium hover:underline text-sm"
+              >
+                + Registrar nuevo producto
+              </button>
+            )}
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -139,7 +151,16 @@ export function ProductPickerModal({
           </div>
         </div>
       )}
-      <div className="pt-2">
+      <div className="pt-2 flex flex-col gap-2">
+        {onNewProduct && (
+          <button
+            type="button"
+            onClick={onNewProduct}
+            className="w-full py-2.5 border border-[rgb(var(--p300))] rounded-xl text-sm text-[rgb(var(--p600))] font-medium hover:bg-[rgb(var(--p50))]"
+          >
+            + Nuevo producto
+          </button>
+        )}
         <button
           type="button"
           onClick={onClose}

@@ -1,4 +1,5 @@
 import api from './api'
+import type { LinkedFiscalDocSummary } from '@/services/billing.service'
 
 export interface Purchase {
   id: number
@@ -17,6 +18,7 @@ export interface Purchase {
   branch_id?: number
   notes?: string
   created_at?: string
+  linked_retention?: LinkedFiscalDocSummary | null
 }
 
 export interface PurchaseItem {
@@ -32,11 +34,21 @@ export interface PurchaseItem {
   serials?: string[]
   /** Solo en formulario: indica si el producto usa series. */
   manage_series?: boolean
+  /** Solo UI: precio de venta actual del catálogo. */
+  current_sale_price?: number
+  /** Solo UI: el producto tiene presentaciones con precio propio. */
+  has_presentations?: boolean
+  /** Solo UI: producto recién creado en esta sesión (sin toggle de precio venta). */
+  is_newly_created?: boolean
+  /** Enviar al backend cuando el usuario desea actualizar precio de venta. */
+  update_sale_price?: boolean
+  new_sale_price?: number
 }
 
 export interface PurchaseDetail {
   purchase: Purchase
   items: PurchaseItem[]
+  linked_retention?: LinkedFiscalDocSummary | null
 }
 
 export interface CreatePurchaseInput {
@@ -73,8 +85,12 @@ export const purchasesService = {
     api.get(`/api/purchases/${id}`).then(r => {
       const raw = (r.data as { data?: Record<string, unknown> })?.data ?? r.data
       if (!raw || typeof raw !== 'object') throw new Error('Sin datos')
-      const { items = [], ...rest } = raw as { items?: PurchaseItem[]; [k: string]: unknown }
-      return { purchase: rest as unknown as Purchase, items: items ?? [] }
+      const { items = [], linked_retention, ...rest } = raw as { items?: PurchaseItem[]; linked_retention?: LinkedFiscalDocSummary | null; [k: string]: unknown }
+      return {
+        purchase: rest as unknown as Purchase,
+        items: items ?? [],
+        linked_retention: linked_retention ?? null,
+      }
     }),
 
   create: (data: CreatePurchaseInput) =>

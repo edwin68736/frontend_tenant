@@ -21,9 +21,14 @@ const QuotationsPage = lazy(() => import('@/pages/quotations/QuotationsPage'))
 const QuotationRegisterPage = lazy(() => import('@/pages/quotations/QuotationRegisterPage'))
 const POSPage = lazy(() => import('@/pages/pos/POSPage'))
 const PurchasesPage = lazy(() => import('@/pages/purchases/PurchasesPage'))
+const PurchaseRegisterPage = lazy(() => import('@/pages/purchases/PurchaseRegisterPage'))
+const SuppliersPage = lazy(() => import('@/pages/contacts/SuppliersPage'))
 const InventoryPage = lazy(() => import('@/pages/inventory/InventoryPage'))
 const InventoryTransfersPage = lazy(() => import('@/pages/inventory/InventoryTransfersPage'))
 const InventoryKardexPage = lazy(() => import('@/pages/inventory/InventoryKardexPage'))
+const InventoryIngressPage = lazy(() => import('@/pages/inventory/InventoryIngressPage'))
+const InventoryEgressPage = lazy(() => import('@/pages/inventory/InventoryEgressPage'))
+const InventoryImportAdjustmentPage = lazy(() => import('@/pages/inventory/InventoryImportAdjustmentPage'))
 const CashPage = lazy(() => import('@/pages/cash/CashPage'))
 const CashReportsPage = lazy(() => import('@/pages/cash/CashReportsPage'))
 const ReceivablesPage = lazy(() => import('@/pages/receivables/ReceivablesPage'))
@@ -129,6 +134,8 @@ function AppRoutes() {
         <Route path="quotations" element={<Lazy><QuotationsPage /></Lazy>} />
         <Route path="quotations/new" element={<Lazy><QuotationRegisterPage /></Lazy>} />
         <Route path="quotations/:id/edit" element={<Lazy><QuotationRegisterPage /></Lazy>} />
+        <Route path="purchases/register" element={<Lazy><PurchaseRegisterPage /></Lazy>} />
+        <Route path="purchases/suppliers" element={<Lazy><SuppliersPage /></Lazy>} />
         <Route path="purchases" element={<Lazy><PurchasesPage /></Lazy>} />
         <Route path="products" element={<Lazy><ProductsPage /></Lazy>} />
         <Route path="products/services" element={<Lazy><ServicesCatalogPage /></Lazy>} />
@@ -138,7 +145,14 @@ function AppRoutes() {
         <Route path="inventory" element={<Lazy><InventoryPage /></Lazy>} />
         <Route path="inventory/services" element={<Navigate to="/products/services" replace />} />
         <Route path="inventory/transfers" element={<Lazy><InventoryTransfersPage /></Lazy>} />
+        <Route path="inventory/ingress" element={<Lazy><InventoryIngressPage /></Lazy>} />
+        <Route path="inventory/ingress/new" element={<Lazy><InventoryIngressPage /></Lazy>} />
+        <Route path="inventory/ingress/:id/edit" element={<Lazy><InventoryIngressPage /></Lazy>} />
+        <Route path="inventory/egress" element={<Lazy><InventoryEgressPage /></Lazy>} />
+        <Route path="inventory/egress/new" element={<Lazy><InventoryEgressPage /></Lazy>} />
+        <Route path="inventory/egress/:id/edit" element={<Lazy><InventoryEgressPage /></Lazy>} />
         <Route path="inventory/kardex" element={<Lazy><InventoryKardexPage /></Lazy>} />
+        <Route path="inventory/import-adjustment" element={<Lazy><InventoryImportAdjustmentPage /></Lazy>} />
         <Route path="cashbank/cash" element={<Lazy><CashPage /></Lazy>} />
         <Route path="cashbank/reports" element={<Lazy><CashReportsPage /></Lazy>} />
         <Route path="cashbank/receivables" element={<Lazy><ReceivablesPage /></Lazy>} />

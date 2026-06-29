@@ -13,6 +13,7 @@ import {
   formatOperationTypeCode,
   isDetractionPaymentMethod,
 } from '@/utils/paymentMethodLabel'
+import { billingStatusLabel, normalizeBillingStatus } from '@/constants/billingStatus'
 
 type Branch = { id: number; name: string }
 type DocTypeFilter = 'all' | 'notes' | 'facturas_boletas' | 'factura' | 'boleta'
@@ -123,6 +124,38 @@ const COLS: ExcelExportColumn<Sale & { doc_display?: string }>[] = [
   },
   { key: 'payment_method', label: 'Método pago', format: (v: unknown) => formatPaymentMethod(String(v || '')) },
   { key: 'status', label: 'Estado', format: (v: unknown) => formatSaleStatus(String(v || '')) },
+  {
+    key: 'linked_perception',
+    label: 'CPE',
+    format: (_v: unknown, r: Sale) => {
+      const cpe = r.linked_perception
+      if (!cpe) return '—'
+      return `${cpe.series}-${cpe.correlative}`
+    },
+  },
+  {
+    key: 'linked_perception_status',
+    label: 'Estado CPE',
+    format: (_v: unknown, r: Sale) => {
+      const cpe = r.linked_perception
+      if (!cpe) return '—'
+      return billingStatusLabel(normalizeBillingStatus(cpe.billing_status || cpe.status))
+    },
+  },
+  {
+    key: 'linked_rr',
+    label: 'RR',
+    format: (_v: unknown, r: Sale) => r.linked_perception?.linked_reversion?.correlativo ?? '—',
+  },
+  {
+    key: 'linked_rr_status',
+    label: 'Estado RR',
+    format: (_v: unknown, r: Sale) => {
+      const rr = r.linked_perception?.linked_reversion
+      if (!rr) return '—'
+      return rr.status === 'accepted' ? 'Aceptada' : (rr.status || '—')
+    },
+  },
 ]
 
 export default function SalesReportPage() {

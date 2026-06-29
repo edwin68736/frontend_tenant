@@ -164,24 +164,72 @@ export const billingService = {
     api.get(`/api/billing/despatches/${id}/status`).then(r => r.data),
 
   // --- Retención ---
-  listRetentions: (): Promise<{ retentions: SunatRetention[] }> =>
-    api.get('/api/billing/retentions').then(r => r.data),
-  createRetention: (payload: CreateRetentionInput): Promise<{ success: boolean; retention: SunatRetention }> =>
+  listRetentions: (params?: FiscalAuxListParams): Promise<{ retentions: SunatRetention[] }> =>
+    api.get('/api/billing/retentions', { params: cleanFiscalAuxParams(params) }).then(r => r.data),
+  createRetention: (payload: CreateRetentionInput): Promise<{ success: boolean; async?: boolean; message?: string; retention: SunatRetention }> =>
     api.post('/api/billing/retentions', payload).then(r => r.data),
+  getRetentionStatus: (id: number): Promise<SunatRetention> =>
+    api.get(`/api/billing/retentions/${id}/status`).then(r => r.data),
 
   // --- Percepción ---
-  listPerceptions: (): Promise<{ perceptions: SunatPerception[] }> =>
-    api.get('/api/billing/perceptions').then(r => r.data),
-  createPerception: (payload: CreatePerceptionInput): Promise<{ success: boolean; perception: SunatPerception }> =>
+  listPerceptions: (params?: FiscalAuxListParams): Promise<{ perceptions: SunatPerception[] }> =>
+    api.get('/api/billing/perceptions', { params: cleanFiscalAuxParams(params) }).then(r => r.data),
+  createPerception: (payload: CreatePerceptionInput): Promise<{ success: boolean; async?: boolean; message?: string; perception: SunatPerception }> =>
     api.post('/api/billing/perceptions', payload).then(r => r.data),
+  getPerceptionStatus: (id: number): Promise<SunatPerception> =>
+    api.get(`/api/billing/perceptions/${id}/status`).then(r => r.data),
 
   // --- Reversión ---
-  listReversions: (): Promise<{ reversions: SunatReversion[] }> =>
-    api.get('/api/billing/reversions').then(r => r.data),
+  listReversions: (params?: FiscalAuxListParams): Promise<{ reversions: SunatReversion[] }> =>
+    api.get('/api/billing/reversions', { params: cleanFiscalAuxParams(params) }).then(r => r.data),
   createReversion: (details: VoidedDetailInput[]): Promise<{ success: boolean; reversion: SunatReversion }> =>
     api.post('/api/billing/reversions', { details }).then(r => r.data),
   getReversionStatus: (id: number): Promise<SunatReversion> =>
     api.get(`/api/billing/reversions/${id}/status`).then(r => r.data),
+}
+
+export interface FiscalAuxListParams {
+  q?: string
+  status?: string
+  billing_status?: string
+  serie?: string
+  correlativo?: string
+  purchase_id?: number
+  source_sale_id?: number
+  from?: string
+  to?: string
+}
+
+function cleanFiscalAuxParams(params?: FiscalAuxListParams): Record<string, string | number> | undefined {
+  if (!params) return undefined
+  const out: Record<string, string | number> = {}
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === '') continue
+    out[k] = v as string | number
+  }
+  return Object.keys(out).length ? out : undefined
+}
+
+export interface LinkedReversionSummary {
+  id: number
+  correlativo: string
+  status: string
+  ticket?: string
+  sunat_code?: string
+  motivo?: string
+}
+
+export interface LinkedFiscalDocSummary {
+  id: number
+  sale_id?: number
+  series: string
+  correlative: string
+  status: string
+  billing_status?: string
+  doc_kind: 'retention' | 'perception'
+  sunat_code?: string
+  sunat_message?: string
+  linked_reversion?: LinkedReversionSummary | null
 }
 
 export interface SunatSummary {
@@ -254,6 +302,8 @@ export interface SunatDespatch {
 
 export interface SunatRetention {
   id: number
+  sale_id?: number
+  purchase_id?: number
   series: string
   correlative: string
   fecha_emision: string
@@ -264,14 +314,20 @@ export interface SunatRetention {
   imp_retenido: number
   imp_pagado: number
   status: string
+  billing_status?: string
   sunat_code?: string
   sunat_message?: string
+  cdr_url?: string
   details_count: number
   created_at?: string
+  linked_reversion?: LinkedReversionSummary | null
+  origin_purchase_label?: string
 }
 
 export interface SunatPerception {
   id: number
+  sale_id?: number
+  source_sale_id?: number
   series: string
   correlative: string
   fecha_emision: string
@@ -282,10 +338,21 @@ export interface SunatPerception {
   imp_percibido: number
   imp_cobrado: number
   status: string
+  billing_status?: string
   sunat_code?: string
   sunat_message?: string
+  cdr_url?: string
   details_count: number
   created_at?: string
+  linked_reversion?: LinkedReversionSummary | null
+  origin_sale_label?: string
+}
+
+export interface RevertedDocLine {
+  tipo_doc: string
+  serie: string
+  correlativo: string
+  motivo: string
 }
 
 export interface SunatReversion {
@@ -298,6 +365,7 @@ export interface SunatReversion {
   sunat_message?: string
   details_count: number
   created_at?: string
+  details?: RevertedDocLine[]
 }
 
 export interface CreateDespatchInput {
@@ -335,9 +403,12 @@ export interface CreateDespatchInput {
 }
 
 export interface CreateRetentionInput {
-  series: string
-  correlativo: string
+  branch_id: number
+  series_id: number
+  contact_id: number
+  source_purchase_id?: number
   fecha_emision: string
+  observacion?: string
   proveedor: { tipo_doc: string; num_doc: string; rzn_social: string; address: string; ubigeo?: string }
   regimen: string
   tasa: number
@@ -349,16 +420,21 @@ export interface CreateRetentionInput {
     fecha_emision: string
     imp_total: number
     moneda?: string
+    pagos: Array<{ moneda?: string; importe: number; fecha: string }>
     fecha_retencion: string
     imp_retenido: number
     imp_pagar: number
+    tipo_cambio?: { moneda_ref: string; moneda_obj: string; factor: number; fecha: string }
   }>
 }
 
 export interface CreatePerceptionInput {
-  series: string
-  correlativo: string
+  branch_id: number
+  series_id: number
+  contact_id: number
+  source_sale_id?: number
   fecha_emision: string
+  observacion?: string
   proveedor: { tipo_doc: string; num_doc: string; rzn_social: string; address: string; ubigeo?: string }
   regimen: string
   tasa: number
@@ -370,8 +446,10 @@ export interface CreatePerceptionInput {
     fecha_emision: string
     imp_total: number
     moneda?: string
+    cobros: Array<{ moneda?: string; importe: number; fecha: string }>
     fecha_percepcion: string
     imp_percibido: number
     imp_cobrar: number
+    tipo_cambio?: { moneda_ref: string; moneda_obj: string; factor: number; fecha: string }
   }>
 }

@@ -5,6 +5,8 @@ import { toast } from 'sonner'
 import type { PrintData } from '@/types/printData'
 import { PortalModal } from '@/components/ui/PortalModal'
 import { formatMoney } from '@/utils/format'
+import { resolvePrintChangeAmount, receiptDirectPaidAmount } from '@/utils/receiptTotals'
+import { buildReceiptTotalLines } from '@/utils/receiptTotals'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
 import { pdfEmbedSrc } from '@/utils/pdfEmbedSrc'
 import { downloadReceiptPdf, printDataToPdfBlob, type ReceiptPdfOptions } from '@/utils/receiptPdf'
@@ -64,11 +66,15 @@ export function ReceiptPrintModal({
   const displayTotal = total ?? printData?.total ?? 0
 
   const paidTotal = useMemo(() => {
-    if (!printData?.payments?.length) return displayTotal
-    return printData.payments.reduce((s, p) => s + (Number(p.amount) || 0), 0)
+    if (!printData) return displayTotal
+    if (printData.payments?.length) return receiptDirectPaidAmount(printData)
+    return displayTotal
   }, [printData, displayTotal])
 
-  const change = Math.max(0, paidTotal - displayTotal)
+  const change = useMemo(() => {
+    if (!printData) return 0
+    return resolvePrintChangeAmount(printData)
+  }, [printData])
 
   const revokePdfUrl = useCallback(() => {
     if (pdfUrlRef.current) {
@@ -471,12 +477,24 @@ export function ReceiptPrintModal({
                   </div>
 
                   <div className="mt-4 space-y-1 rounded-lg border border-stone-200 bg-white p-3 text-sm">
-                    <div className="flex justify-between font-bold text-stone-900">
-                      <span>Total</span>
-                      <span className="text-green-700">
-                        {formatMoney(printData.total, printData.currency)}
-                      </span>
-                    </div>
+                    {buildReceiptTotalLines(printData).map((row, i) => (
+                      <div
+                        key={i}
+                        className={`flex justify-between ${
+                          row.negative
+                            ? 'text-amber-800'
+                            : row.bold
+                              ? 'font-bold text-stone-900 border-t border-stone-200 pt-2'
+                              : 'text-stone-600'
+                        }`}
+                      >
+                        <span>{row.label.replace(/:$/, '')}</span>
+                        <span>
+                          {row.negative ? '− ' : ''}
+                          {formatMoney(Math.abs(row.amount), printData.currency)}
+                        </span>
+                      </div>
+                    ))}
                     {printData.payments.length > 0 && (
                       <div className="border-t border-dashed border-stone-200 pt-2 text-xs text-stone-600">
                         {printData.payments.map((p, i) => (

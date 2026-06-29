@@ -9,8 +9,7 @@ import { calcCheckoutDiscountAmount } from '@/utils/checkoutDiscount'
 import type { PosSeriesRow } from '@/utils/posCheckoutSeries'
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { formatMoney } from '@/utils/format'
-import { formatAmountDisplay, paidCoversTotal, roundDisplay, roundSunat, sumMoney } from '@/utils/money'
-import { normalizeDocTypeKey } from '@/utils/paymentMethodVisual'
+import { formatAmountDisplay, paidCoversTotal, roundDisplay, roundSunat, sumMoney, calcPaymentChange } from '@/utils/money'
 import { filterPosCheckoutSeriesForModal } from '@/utils/posCheckoutSeries'
 import { BranchSeriesEmptyState } from '@/components/pos/BranchSeriesEmptyState'
 import { CheckoutCartBillingFields } from '@/components/pos/CheckoutCartBillingFields'
@@ -46,11 +45,6 @@ function isPrimaryMethod(opt: MethodOption): boolean {
     s.includes('tarjeta') ||
     s.includes('card')
   )
-}
-
-function isCashMethod(code: string, name: string): boolean {
-  const s = `${code} ${name}`.toLowerCase()
-  return s.includes('efectivo') || s.includes('cash') || code === '01'
 }
 
 type Props = {
@@ -171,7 +165,7 @@ export function POSCheckoutModal({
   const paymentSlotsCount = payments.length
   const isModeSimple = paymentSlotsCount === 1
   const paid = sumMoney(...payments.map((p) => Number(p.amount) || 0))
-  const change = Math.max(0, roundDisplay(paid - payableTotal))
+  const change = calcPaymentChange(paid, payableTotal)
   const exactPayment =
     Math.abs(roundDisplay(paid) - roundDisplay(payableTotal)) < 0.02 && paid > 0
   const canSubmit = paidCoversTotal(paid, payableTotal) && seriesId > 0 && !loading && !confirmDisabled
@@ -227,13 +221,6 @@ export function POSCheckoutModal({
     }
     setIsEditingDiscount(false)
   }
-
-  const hasCash =
-    isModeSimple &&
-    payments.some((p) => {
-      const opt = methodOptions.find((m) => m.code === p.method)
-      return opt ? isCashMethod(opt.code, opt.name) : normalizeDocTypeKey(p.method) === 'cash'
-    })
 
   const slotButtons = useMemo(() => {
     const max = Math.min(4, showMoreMethods ? methodOptions.length : Math.max(4, visibleMethods.length))
@@ -459,10 +446,10 @@ export function POSCheckoutModal({
               )}
 
               <div className="mt-3 space-y-2">
-                {change > 0.009 && hasCash && isModeSimple && (
-                  <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-amber-900">
-                    <span className="text-[10px] font-bold uppercase tracking-wide">Vuelto</span>
-                    <span className="text-sm font-bold">{formatMoney(change)}</span>
+                {change > 0.009 && (
+                  <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-amber-900">
+                    <span className="text-xs font-bold uppercase tracking-wide">Vuelto</span>
+                    <span className="text-base font-bold tabular-nums">{formatMoney(change)}</span>
                   </div>
                 )}
                 {!change && exactPayment && (

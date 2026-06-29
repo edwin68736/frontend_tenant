@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
-import { Plus, Search, ShoppingCart, Trash2, X, ChevronRight, UserPlus, Package } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Trash2, X, ChevronRight, UserPlus, Package, ScanBarcode } from 'lucide-react'
 import { clsx } from 'clsx'
 import { productsService, getProductImageUrl, type Product, type Category, type ModifierGroup } from '@/services/products.service'
 import { contactsService, type Contact } from '@/services/contacts.service'
@@ -21,6 +21,7 @@ import {
   SUNAT_MAX_MONTO_CLIENTE_SIN_RUC,
   SUNAT_RUC_LENGTH,
 } from '@/constants/sunat'
+import { calcSaleCheckout } from '@/utils/saleEngine'
 import { calcItem, getAfectacionGroup, type SunatAfectacionGroup } from '@/utils/taxCalc'
 import { getTodayPeru } from '@/utils/datesPeru'
 import { formatMoney, formatSaleDocumentNumber } from '@/utils/format'
@@ -28,12 +29,7 @@ import { docTypeShortLabel } from '@/utils/paymentMethodVisual'
 import { BranchSeriesEmptyState } from '@/components/pos/BranchSeriesEmptyState'
 import { pickVariosContactId, isFacturaDocType, checkoutContactIsValid, isVariosContact } from '@/utils/checkoutContacts'
 import { paidCoversTotal, roundSunat, sumMoney } from '@/utils/money'
-import {
-  calcCheckoutDiscountAmount,
-  calcPayableTotal,
-  distributeCheckoutDiscountToLines,
-  type CheckoutDiscountMode,
-} from '@/utils/checkoutDiscount'
+import type { CheckoutDiscountMode } from '@/utils/checkoutDiscount'
 import { buildTaxConfigFromSunat } from '@/constants/tax'
 import { findPaymentMethodRecord, isPaymentMethodLinkedForSale } from '@/utils/paymentMethodCheckout'
 import { defaultOperationalPaymentCode, filterOperationalPaymentMethods } from '@/utils/operationalPaymentMethods'
@@ -53,6 +49,8 @@ import {
   type PosCartLine,
 } from '@/utils/posCart'
 import { useFlyToCart } from '@/hooks/useFlyToCart'
+import { useBarcodeProductScanner } from '@/hooks/useBarcodeProductScanner'
+import { BarcodeScannerModal } from '@/components/barcode/BarcodeScannerModal'
 
 /** doc_type legacy → código SUNAT cuando sunat_code no viene en la serie */
 function docTypeToSunatCode(docType: string): string {
@@ -332,6 +330,13 @@ function POSContent() {
     [flyToCart, cancelFlyAnimations],
   )
 
+  const barcodeScan = useBarcodeProductScanner({
+    products,
+    branchId: activeBranchId ?? session?.branch_id,
+    onProductFound: product => addToCart(product),
+    onClearSearch: () => setQ(''),
+  })
+
   const setCartQty = (index: number, qty: number) => {
     if (qty <= 0) setCart(c => c.filter((_, k) => k !== index))
     else setCart(c => c.map((i, k) => (k === index ? { ...i, quantity: qty } : i)))
@@ -380,32 +385,40 @@ function POSContent() {
     toast.success('Producto manual agregado')
   }
 
-  const getCartItemTotals = (item: PosCartLine) => {
+  const cartToSaleLine = (item: PosCartLine) => {
     if (isManualCartLine(item)) {
-      return calcItem(
-        item.unit_price,
-        item.quantity,
-        0,
-        item.igv_affectation_type,
-        item.price_includes_igv,
-        taxRate,
-        taxConfig,
-      )
+      return {
+        unitPrice: item.unit_price,
+        quantity: item.quantity,
+        igvAffectationType: item.igv_affectation_type,
+        priceIncludesIgv: item.price_includes_igv,
+      }
     }
     const p = item.product
-    const unitPrice = cartLineUnitPrice(item)
-    return calcItem(
-      unitPrice,
-      item.quantity,
-      0,
-      p.igv_affectation_type ?? '10',
-      p.price_includes_igv ?? true,
-      taxRate,
-      taxConfig,
-    )
+    return {
+      unitPrice: cartLineUnitPrice(item),
+      quantity: item.quantity,
+      igvAffectationType: p.igv_affectation_type ?? '10',
+      priceIncludesIgv: p.price_includes_igv ?? true,
+    }
   }
 
-  const calcItemTotal = (item: PosCartLine) => getCartItemTotals(item).total
+  const saleCalc = useMemo(
+    () =>
+      calcSaleCheckout({
+        lines: cart.map(cartToSaleLine),
+        globalDiscountMode: checkoutDiscountMode,
+        globalDiscountValue: checkoutDiscountValue,
+        taxRate,
+        taxConfig,
+      }),
+    [cart, checkoutDiscountMode, checkoutDiscountValue, taxRate, taxConfig.igvRegime, taxConfig.taxBenefitZone],
+  )
+
+  const getCartItemTotals = (_item: PosCartLine, idx: number) => {
+    const l = saleCalc.lines[idx]
+    return { subtotal: l?.subtotal ?? 0, taxAmount: l?.taxAmount ?? 0, total: l?.total ?? 0 }
+  }
 
   const renderCartLines = () =>
     cart.map((item, i) => (
@@ -419,26 +432,32 @@ function POSContent() {
       />
     ))
 
+  const checkoutDiscountAmount = saleCalc.globalDiscountAmount
+  const payableTotal = saleCalc.total
+  const taxGlobal = saleCalc.taxAmount
+  const rawSubtotalGlobal = useMemo(
+    () => roundSunat(saleCalc.lines.reduce((s, l) => s + l.grossSubtotal, 0)),
+    [saleCalc],
+  )
+
   const totalCart = useMemo(
-    () => sumMoney(...cart.map((i) => calcItemTotal(i))),
+    () =>
+      roundSunat(
+        cart.reduce((s, i) => {
+          const line = cartToSaleLine(i)
+          return s + calcItem(line.unitPrice, line.quantity, 0, line.igvAffectationType, line.priceIncludesIgv, taxRate, taxConfig).total
+        }, 0),
+      ),
     [cart, taxRate, taxConfig.igvRegime, taxConfig.taxBenefitZone],
   )
 
-  const checkoutDiscountAmount = useMemo(
-    () => calcCheckoutDiscountAmount(totalCart, checkoutDiscountMode, checkoutDiscountValue),
-    [totalCart, checkoutDiscountMode, checkoutDiscountValue],
-  )
-
-  const payableTotal = useMemo(
-    () => calcPayableTotal(totalCart, checkoutDiscountMode, checkoutDiscountValue),
-    [totalCart, checkoutDiscountMode, checkoutDiscountValue],
-  )
+  const displayCartTotal = checkoutDiscountAmount > 0 || checkoutDiscountValue > 0 ? payableTotal : totalCart
 
   const totalsByAfectacion = useMemo(
     () =>
       cart.reduce(
-        (acc, i) => {
-          const { subtotal, taxAmount, total } = getCartItemTotals(i)
+        (acc, i, idx) => {
+          const { subtotal, taxAmount, total } = getCartItemTotals(i, idx)
           const aff = isManualCartLine(i) ? i.igv_affectation_type : (i.product.igv_affectation_type ?? '10')
           const group = getAfectacionGroup(aff)
           acc[group].subtotal = roundSunat(acc[group].subtotal + subtotal)
@@ -453,7 +472,7 @@ function POSContent() {
           exportacion: { subtotal: 0, taxAmount: 0, total: 0 },
         } as Record<SunatAfectacionGroup, { subtotal: number; taxAmount: number; total: number }>,
       ),
-    [cart, taxRate, taxConfig.igvRegime, taxConfig.taxBenefitZone],
+    [cart, saleCalc, taxRate, taxConfig.igvRegime, taxConfig.taxBenefitZone],
   )
 
   const defaultContactId = useMemo(() => pickVariosContactId(contacts), [contacts])
@@ -586,9 +605,6 @@ function POSContent() {
       return
     }
 
-    const lineTotals = cart.map((i) => getCartItemTotals(i).total)
-    const lineDiscounts = distributeCheckoutDiscountToLines(lineTotals, checkoutDiscountAmount)
-
     setProcessing(true)
     try {
       const today = getTodayPeru()
@@ -602,7 +618,9 @@ function POSContent() {
         issue_date: today,
         due_date: today,
         payments: validPayments.map((p) => ({ method: p.method, amount: roundSunat(Number(p.amount)) })),
-        items: cart.map((i, idx) => {
+        global_discount_mode: checkoutDiscountValue > 0 ? checkoutDiscountMode : undefined,
+        global_discount_value: checkoutDiscountValue > 0 ? checkoutDiscountValue : undefined,
+        items: cart.map((i) => {
           if (isManualCartLine(i)) {
             return {
               product_id: null,
@@ -611,21 +629,20 @@ function POSContent() {
               unit: i.unit,
               quantity: i.quantity,
               unit_price: i.unit_price,
-              discount: lineDiscounts[idx] ?? 0,
               igv_affectation_type: i.igv_affectation_type || '10',
               price_includes_igv: i.price_includes_igv,
               modifiers_json: '',
               serials: [],
             }
           }
+          const unitPrice = cartLineUnitPrice(i)
           return {
             product_id: i.product.id,
             code: i.product.code,
             description: i.product.name,
             unit: i.product.unit,
             quantity: i.quantity,
-            unit_price: cartLineUnitPrice(i),
-            discount: lineDiscounts[idx] ?? 0,
+            unit_price: unitPrice,
             igv_affectation_type: i.product.igv_affectation_type ?? '10',
             price_includes_igv: i.product.price_includes_igv ?? true,
             modifiers_json: i.modifiersJson ?? '',
@@ -775,18 +792,52 @@ function POSContent() {
         {/* Panel de productos (mismo diseño que POS restaurante) */}
         <div className="flex w-full max-w-full min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-stone-200/80 bg-white shadow-sm sm:rounded-2xl">
           <div className="px-2 py-1.5 sm:px-3 sm:py-2 border-b border-stone-100 shrink-0">
-            <div className="relative flex items-center">
-              <Search size={16} className="absolute left-2.5 text-stone-400 pointer-events-none" aria-hidden />
-              <input
-                type="search"
-                className="w-full rounded-xl border border-stone-200 bg-white py-1.5 pl-8 pr-3 text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-400"
-                placeholder="Buscar producto..."
-                value={q}
-                onChange={e => setQ(e.target.value)}
-              />
-              {loadingProducts && (
-                <div className="absolute right-2.5 h-4 w-4 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" aria-hidden />
-              )}
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1 min-w-0 flex items-center">
+                {barcodeScan.scannerMode ? (
+                  <ScanBarcode size={16} className="absolute left-2.5 text-primary-600 pointer-events-none" aria-hidden />
+                ) : (
+                  <Search size={16} className="absolute left-2.5 text-stone-400 pointer-events-none" aria-hidden />
+                )}
+                <input
+                  ref={barcodeScan.searchInputRef}
+                  type="search"
+                  className={clsx(
+                    'w-full rounded-xl border bg-white py-1.5 pl-8 pr-3 text-sm text-stone-800 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:border-primary-400',
+                    barcodeScan.scannerMode
+                      ? 'border-primary-300 focus:ring-primary-500/40'
+                      : 'border-stone-200 focus:ring-primary-500/30',
+                  )}
+                  placeholder={barcodeScan.scannerMode ? 'Escanear código de barras…' : 'Buscar producto...'}
+                  value={q}
+                  onChange={e => setQ(e.target.value)}
+                  onKeyDown={barcodeScan.handleSearchKeyDown}
+                  disabled={barcodeScan.scanProcessing}
+                />
+                {(loadingProducts || barcodeScan.scanProcessing) && (
+                  <div className="absolute right-2.5 h-4 w-4 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" aria-hidden />
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={barcodeScan.toggleScannerMode}
+                className={clsx(
+                  'shrink-0 inline-flex items-center justify-center rounded-xl border p-2 transition-colors touch-manipulation',
+                  barcodeScan.scannerMode || barcodeScan.cameraOpen
+                    ? 'border-primary-300 bg-primary-50 text-primary-700'
+                    : 'border-stone-200 bg-stone-50 text-stone-600 hover:bg-stone-100',
+                )}
+                title={
+                  barcodeScan.useCameraScanner
+                    ? 'Abrir cámara para escanear códigos'
+                    : barcodeScan.scannerMode
+                      ? 'Modo escáner activo: Enter agrega al carrito'
+                      : 'Activar escáner de código de barras'
+                }
+                aria-label="Escanear código de barras"
+              >
+                <ScanBarcode size={18} aria-hidden />
+              </button>
             </div>
           </div>
 
@@ -891,7 +942,7 @@ function POSContent() {
             {totalsByAfectacion.exportacion.total > 0 && (
               <div className="flex justify-between text-xs text-gray-500"><span>Op. exportación</span><span>S/ {totalsByAfectacion.exportacion.total.toFixed(2)}</span></div>
             )}
-            <div className="flex justify-between font-bold text-gray-800"><span>Total</span><span>{formatMoney(totalCart)}</span></div>
+            <div className="flex justify-between font-bold text-gray-800"><span>Total</span><span>{formatMoney(displayCartTotal)}</span></div>
             <button
               type="button"
               onClick={openCheckout}
@@ -938,7 +989,7 @@ function POSContent() {
             <>
               <div className="flex justify-between font-bold text-gray-800">
                 <span>Total</span>
-                <span>{formatMoney(totalCart)}</span>
+                <span>{formatMoney(displayCartTotal)}</span>
               </div>
               <button
                 type="button"
@@ -1051,13 +1102,13 @@ function POSContent() {
         open={checkoutOpen}
         onClose={() => setCheckoutOpen(false)}
         loading={processing}
-        rawTotal={totalCart}
+        rawTotal={rawSubtotalGlobal}
         payableTotal={payableTotal}
         discountMode={checkoutDiscountMode}
         discountValue={checkoutDiscountValue}
         onDiscountModeChange={setCheckoutDiscountMode}
         onDiscountValueChange={setCheckoutDiscountValue}
-        igvAmount={totalsByAfectacion.gravado.taxAmount}
+        igvAmount={taxGlobal}
         series={checkoutSeries}
         seriesId={seriesId}
         docType={docType}
@@ -1096,6 +1147,13 @@ function POSContent() {
         open={manualProductOpen}
         onClose={() => setManualProductOpen(false)}
         onAdd={addManualToCart}
+      />
+
+      <BarcodeScannerModal
+        open={barcodeScan.cameraOpen}
+        onClose={barcodeScan.deactivateScanner}
+        onScan={barcodeScan.handleBarcodeScan}
+        busy={barcodeScan.scanProcessing}
       />
     </div>
   )

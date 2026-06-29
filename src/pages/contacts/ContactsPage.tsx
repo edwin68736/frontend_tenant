@@ -27,15 +27,16 @@ import {
 } from '@/constants/sunat'
 import { DEFAULT_CONTACT_ADDRESS, DEFAULT_CONTACT_UBIGEO_DISTRITO } from '@/constants/contactDefaults'
 
-const TABS = [
-  { key: 'customer' as const, label: 'Clientes' },
-  { key: 'supplier' as const, label: 'Proveedores' },
-]
+export type ContactListType = 'customer' | 'supplier'
 
-type ContactTab = (typeof TABS)[number]['key']
+type ContactsListConfig = {
+  contactType: ContactListType
+  pageTitle: string
+  pageSubtitle: string
+}
 
-const empty = (): CreateContactInput => ({
-  type: 'customer',
+const empty = (type: ContactListType): CreateContactInput => ({
+  type,
   doc_type: '6',
   doc_number: '',
   business_name: '',
@@ -51,14 +52,21 @@ const empty = (): CreateContactInput => ({
 })
 
 export default function ContactsPage() {
-  return <RequireModule moduleKey="contacts"><ContactsContent /></RequireModule>
+  return (
+    <RequireModule moduleKey="contacts">
+      <ContactsContent
+        contactType="customer"
+        pageTitle="Clientes"
+        pageSubtitle="Gestión de contactos tipo cliente"
+      />
+    </RequireModule>
+  )
 }
 
-function ContactsContent() {
+export function ContactsContent({ contactType, pageTitle, pageSubtitle }: ContactsListConfig) {
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
-  const [tab, setTab] = useState<ContactTab>('customer')
   const [showInactiveOnly, setShowInactiveOnly] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [personsModal, setPersonsModal] = useState<{ contact: Contact; persons: ContactPerson[] } | null>(null)
@@ -66,7 +74,7 @@ function ContactsContent() {
   const [detailContact, setDetailContact] = useState<Contact | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [editing, setEditing] = useState<Contact | null>(null)
-  const [form, setForm] = useState<CreateContactInput>(empty())
+  const [form, setForm] = useState<CreateContactInput>(empty(contactType))
   const [ubigeo, setUbigeo] = useState({ regionId: '', provinciaId: '', distritoId: '' })
   const [saving, setSaving] = useState(false)
   const [consultando, setConsultando] = useState(false)
@@ -78,8 +86,8 @@ function ContactsContent() {
   const photoBlobRef = useRef<string | null>(null)
 
   const showExtraTab = form.type === 'customer' || form.type === 'supplier'
-  const entityLabel = tab === 'supplier' ? 'proveedor' : 'cliente'
-  const entityLabelCap = tab === 'supplier' ? 'Proveedor' : 'Cliente'
+  const entityLabel = contactType === 'supplier' ? 'proveedor' : 'cliente'
+  const entityLabelCap = contactType === 'supplier' ? 'Proveedor' : 'Cliente'
   const countContactPersons = (c: Contact) => (c.contact_persons ?? []).length
 
   const resetExtras = () => {
@@ -137,13 +145,13 @@ function ContactsContent() {
 
   const load = () => {
     setLoading(true)
-    return contactsService.list(q, tab, showInactiveOnly ? 'inactive' : 'active')
+    return contactsService.list(q, contactType, showInactiveOnly ? 'inactive' : 'active')
       .then(d => setContacts(d ?? []))
       .catch(() => toast.error('Error cargando contactos'))
       .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [q, tab, showInactiveOnly])
+  useEffect(() => { load() }, [q, contactType, showInactiveOnly])
 
   // RUC de la empresa (tenant) para las consultas públicas DNI/RUC
   useEffect(() => {
@@ -151,10 +159,9 @@ function ContactsContent() {
   }, [])
 
   const openNew = () => {
-    const typeFromTab = tab === 'supplier' ? 'supplier' : 'customer'
     setEditing(null)
     resetExtras()
-    setForm({ ...empty(), type: typeFromTab })
+    setForm({ ...empty(contactType), type: contactType })
     setUbigeo(ubigeoToIds(DEFAULT_CONTACT_UBIGEO_DISTRITO))
     setShowForm(true)
   }
@@ -253,6 +260,7 @@ function ContactsContent() {
     try {
       const payload: CreateContactInput = {
         ...form,
+        type: editing ? form.type : contactType,
         address: form.address ?? '',
         ubigeo: ubigeo.distritoId || undefined,
       }
@@ -361,8 +369,8 @@ function ContactsContent() {
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h2 className="text-lg font-bold text-gray-800">Clientes</h2>
-          <p className="text-sm text-gray-500">{tab === 'supplier' ? 'Proveedores' : 'Clientes'}</p>
+          <h2 className="text-lg font-bold text-gray-800">{pageTitle}</h2>
+          <p className="text-sm text-gray-500">{pageSubtitle}</p>
         </div>
         <button onClick={openNew} className="flex items-center gap-1.5 px-4 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90">
           <Plus size={15} /> Nuevo {entityLabel}
@@ -370,15 +378,7 @@ function ContactsContent() {
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex bg-white border border-gray-200 rounded-xl overflow-hidden">
-          {TABS.map(t => (
-            <button key={t.key} onClick={() => setTab(t.key)}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${tab === t.key ? 'bg-[rgb(var(--p600))] text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-        <div className="relative flex-1 min-w-52">
+        <div className="relative flex-1 min-w-52 max-w-md">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input className="w-full border border-gray-200 rounded-xl pl-8 pr-3 py-2 text-sm"
             placeholder="Buscar..." value={q} onChange={e => setQ(e.target.value)} />
@@ -493,8 +493,8 @@ function ContactsContent() {
         {!loading && contacts.length === 0 && (
           <div className="text-center py-10 text-gray-400 text-sm">
             {showInactiveOnly
-              ? `No hay ${tab === 'supplier' ? 'proveedores' : 'clientes'} inactivos`
-              : `No se encontraron ${tab === 'supplier' ? 'proveedores' : 'clientes'}`}
+              ? `No hay ${contactType === 'supplier' ? 'proveedores' : 'clientes'} inactivos`
+              : `No se encontraron ${contactType === 'supplier' ? 'proveedores' : 'clientes'}`}
           </div>
         )}
       </div>

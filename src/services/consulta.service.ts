@@ -30,11 +30,19 @@ export interface ConsultaDNIResult {
 export interface TipoCambioResult {
   success: boolean
   fecha?: string
+  fecha_efectiva?: string
   moneda?: string
   venta?: number
   compra?: number
   fuente?: string
+  status?: 'confirmed' | 'fallback' | 'pending' | 'unavailable' | string
+  es_fallback?: boolean
+  proximo_reintento?: string
+  mensaje?: string
   error_message?: string
+  /** Metadatos cache local (opcional). */
+  cached_at?: string
+  expires_at?: string
 }
 
 /**

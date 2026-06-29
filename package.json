@@ -1,7 +1,7 @@
 {
   "name": "tukifac-tenant-panel",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.1.0",
   "type": "module",
   "scripts": {
     "version:sync": "node scripts/sync-app-version.mjs",
@@ -22,11 +22,12 @@
   "dependencies": {
     "@capacitor/android": "^7.4.2",
     "@capacitor/app": "^7.0.2",
+    "@capacitor/camera": "^7.0.5",
     "@capacitor/filesystem": "^7.1.8",
-    "@capacitor/share": "^7.0.4",
     "@capacitor/keyboard": "^7.0.2",
     "@capacitor/preferences": "^7.0.4",
     "@capacitor/screen-orientation": "^7.0.2",
+    "@capacitor/share": "^7.0.4",
     "@capacitor/splash-screen": "^7.0.2",
     "@capacitor/status-bar": "^7.0.2",
     "@hookform/resolvers": "^3.9.1",
@@ -36,6 +37,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
+    "html5-qrcode": "^2.3.8",
     "hucre": "^0.5.1",
     "jspdf": "^4.2.0",
     "lucide-react": "^0.460.0",

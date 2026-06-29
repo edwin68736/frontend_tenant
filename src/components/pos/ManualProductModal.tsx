@@ -2,12 +2,8 @@ import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import { PortalModal } from '@/components/ui/PortalModal'
 import { SearchableSelect } from '@/components/SearchableSelect'
+import { sunatUnitSelectOptions } from '@/constants/sunatUnits'
 import type { ManualCartLine } from '@/utils/posCart'
-
-const UNIT_OPTIONS = [
-  { value: 'NIU', label: 'NIU - Unidad' },
-  { value: 'ZZ', label: 'ZZ - Servicio' },
-]
 
 const IGV_OPTIONS = [
   { value: '10', label: '10 - Gravado IGV' },
@@ -99,6 +95,8 @@ export function ManualProductModal({ open, onClose, onAdd }: Props) {
               <input
                 type="number"
                 min={1}
+                step={1}
+                inputMode="numeric"
                 value={quantity}
                 onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))}
                 className="w-full border border-stone-200 rounded-xl px-3 py-2 text-sm"
@@ -118,7 +116,7 @@ export function ManualProductModal({ open, onClose, onAdd }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-stone-600 mb-1">Unidad</label>
-              <SearchableSelect value={unit} onChange={(v) => setUnit(String(v ?? 'NIU'))} options={UNIT_OPTIONS} searchable={false} />
+              <SearchableSelect value={unit} onChange={(v) => setUnit(String(v ?? 'NIU'))} options={sunatUnitSelectOptions()} searchable />
             </div>
             <div>
               <label className="block text-xs font-medium text-stone-600 mb-1">Afectación IGV</label>

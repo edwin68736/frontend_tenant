@@ -1,12 +1,18 @@
 import { useEffect, useState } from 'react'
 import { FileDown, FileSpreadsheet, Search } from 'lucide-react'
 import { toast } from 'sonner'
-import { inventoryService, type StockMovement } from '@/services/inventory.service'
+import { inventoryService, type StockMovement, type InventoryOperationType } from '@/services/inventory.service'
 import { companyService } from '@/services/company.service'
 import { exportTableToPdf } from '@/utils/exportPdf'
 import { exportTableToExcel } from '@/utils/exportExcel'
 import type { ExportColumn } from '@/utils/exportPdf'
 import { getTodayPeru } from '@/utils/datesPeru'
+import {
+  formatInventoryDocumentRef,
+  formatOperationTypeLabel,
+  formatSunatCode,
+  fmtMovementTypeLabel,
+} from '@/utils/inventoryKardexLabels'
 
 type Branch = { id: number; name: string }
 
@@ -19,16 +25,7 @@ const getCurrentMonthRange = () => {
 }
 
 function fmtMovementType(t: unknown): string {
-  const k = String(t || '').toLowerCase()
-  const map: Record<string, string> = {
-    in: 'Entrada',
-    out: 'Salida',
-    adjustment_in: 'Ajuste (+)',
-    adjustment_out: 'Ajuste (−)',
-    adjustment: 'Ajuste',
-    transfer: 'Transferencia',
-  }
-  return map[k] || String(t || '')
+  return fmtMovementTypeLabel(t)
 }
 
 type Row = StockMovement
@@ -42,7 +39,22 @@ const COLS: ExportColumn<Row>[] = [
   },
   { key: 'product_code', label: 'Código' },
   { key: 'product_name', label: 'Producto' },
-  { key: 'type', label: 'Tipo', format: (v: unknown) => fmtMovementType(v) },
+  { key: 'type', label: 'Movimiento', format: (v: unknown) => fmtMovementType(v) },
+  {
+    key: 'operation_type_name',
+    label: 'Tipo operación',
+    format: (_v: unknown, row: Row) => formatOperationTypeLabel(row),
+  },
+  {
+    key: 'sunat_code',
+    label: 'Código SUNAT',
+    format: (_v: unknown, row: Row) => formatSunatCode(row),
+  },
+  {
+    key: 'inventory_document_id',
+    label: 'Doc. inventario',
+    format: (_v: unknown, row: Row) => formatInventoryDocumentRef(row),
+  },
   { key: 'quantity', label: 'Cantidad', format: (v: unknown) => Number(v).toLocaleString('es-PE', { maximumFractionDigits: 3 }) },
   { key: 'balance', label: 'Saldo', format: (v: unknown) => String(v ?? '') },
   { key: 'branch_name', label: 'Sucursal' },
@@ -57,12 +69,14 @@ const MOVEMENT_KIND_OPTIONS: { value: string; label: string }[] = [
   { value: 'sale_out', label: 'Salida por venta' },
   { value: 'transfer', label: 'Transferencia' },
   { value: 'adjustment', label: 'Ajuste de inventario' },
+  { value: 'inventory_doc', label: 'Documento de inventario' },
   { value: 'in', label: 'Todas las entradas (in)' },
   { value: 'out', label: 'Todas las salidas (out)' },
 ]
 
 export default function KardexReportPage() {
   const [branches, setBranches] = useState<Branch[]>([])
+  const [operationTypes, setOperationTypes] = useState<InventoryOperationType[]>([])
   const [data, setData] = useState<Row[]>([])
   const [loading, setLoading] = useState(false)
   const currentMonthRange = getCurrentMonthRange()
@@ -70,6 +84,8 @@ export default function KardexReportPage() {
     product_q: '',
     branch_id: '' as number | '',
     movement_kind: '',
+    operation_type_id: '' as number | '',
+    sunat_code: '',
     ref_notes_q: '',
     date_from: currentMonthRange.from,
     date_to: currentMonthRange.to,
@@ -79,16 +95,41 @@ export default function KardexReportPage() {
   const [total, setTotal] = useState(0)
 
   useEffect(() => {
-    companyService.listBranches().then((b: Branch[]) => setBranches(b ?? []))
+    Promise.all([companyService.listBranches(), inventoryService.listOperationTypes()]).then(
+      ([b, ops]) => {
+        setBranches(b ?? [])
+        setOperationTypes(ops ?? [])
+      }
+    )
   }, [])
 
   useEffect(() => {
     void load()
-  }, [filters.product_q, filters.branch_id, filters.movement_kind, filters.ref_notes_q, filters.date_from, filters.date_to, page, perPage])
+  }, [
+    filters.product_q,
+    filters.branch_id,
+    filters.movement_kind,
+    filters.operation_type_id,
+    filters.sunat_code,
+    filters.ref_notes_q,
+    filters.date_from,
+    filters.date_to,
+    page,
+    perPage,
+  ])
 
   useEffect(() => {
     setPage(1)
-  }, [filters.product_q, filters.branch_id, filters.movement_kind, filters.ref_notes_q, filters.date_from, filters.date_to])
+  }, [
+    filters.product_q,
+    filters.branch_id,
+    filters.movement_kind,
+    filters.operation_type_id,
+    filters.sunat_code,
+    filters.ref_notes_q,
+    filters.date_from,
+    filters.date_to,
+  ])
 
   const load = async () => {
     setLoading(true)
@@ -102,6 +143,8 @@ export default function KardexReportPage() {
       if (filters.branch_id) params.branch_id = Number(filters.branch_id)
       if (filters.product_q.trim()) params.product_q = filters.product_q.trim()
       if (filters.movement_kind) params.movement_kind = filters.movement_kind
+      if (filters.operation_type_id) params.operation_type_id = Number(filters.operation_type_id)
+      if (filters.sunat_code.trim()) params.sunat_code = filters.sunat_code.trim()
       if (filters.ref_notes_q.trim()) params.q = filters.ref_notes_q.trim()
 
       const { data: list, total: t } = await inventoryService.listMovements(params)
@@ -135,6 +178,8 @@ export default function KardexReportPage() {
     if (filters.branch_id) params.branch_id = Number(filters.branch_id)
     if (filters.product_q.trim()) params.product_q = filters.product_q.trim()
     if (filters.movement_kind) params.movement_kind = filters.movement_kind
+    if (filters.operation_type_id) params.operation_type_id = Number(filters.operation_type_id)
+    if (filters.sunat_code.trim()) params.sunat_code = filters.sunat_code.trim()
     if (filters.ref_notes_q.trim()) params.q = filters.ref_notes_q.trim()
     const { data: list } = await inventoryService.listMovements(params)
     return Array.isArray(list) ? list : []
@@ -232,6 +277,41 @@ export default function KardexReportPage() {
               {MOVEMENT_KIND_OPTIONS.map(o => (
                 <option key={o.value || 'all'} value={o.value}>
                   {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Tipo operación</label>
+            <select
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              value={filters.operation_type_id}
+              onChange={e =>
+                setFilters(f => ({
+                  ...f,
+                  operation_type_id: e.target.value ? Number(e.target.value) : '',
+                }))
+              }
+            >
+              <option value="">Todos</option>
+              {operationTypes.map(o => (
+                <option key={o.id} value={o.id}>
+                  {o.sunat_code} — {o.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Código SUNAT</label>
+            <select
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              value={filters.sunat_code}
+              onChange={e => setFilters(f => ({ ...f, sunat_code: e.target.value }))}
+            >
+              <option value="">Todos</option>
+              {[...new Set(operationTypes.map(o => o.sunat_code))].sort().map(code => (
+                <option key={code} value={code}>
+                  {code}
                 </option>
               ))}
             </select>

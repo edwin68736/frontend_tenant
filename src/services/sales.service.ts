@@ -1,5 +1,6 @@
 import api from './api'
 import type { SaleBillingStatus } from '@/constants/billingStatus'
+import type { LinkedFiscalDocSummary } from '@/services/billing.service'
 
 export type { SaleBillingStatus }
 
@@ -40,6 +41,7 @@ export interface Sale {
   detraccion_amount?: number
   net_payable?: number
   detraccion_rate_percent?: number
+  linked_perception?: LinkedFiscalDocSummary | null
 }
 
 export interface SaleItem {
@@ -102,6 +104,7 @@ export interface SaleDetail {
     sunat_cdr_notes?: string
     sunat_hash?: string
   }
+  linked_perception?: import('@/components/billing/LinkedFiscalDocPanel').LinkedFiscalDoc | null
 }
 
 export interface PaymentInput {
@@ -173,6 +176,8 @@ export interface CreateSaleInput {
   from_quotation_id?: number
   fiscal_context?: SaleFiscalContextInput
   detraccion?: { good_code: string; payment_method_code?: string }
+  global_discount_mode?: 'percent' | 'amount'
+  global_discount_value?: number
   items: {
     product_id?: number | null
     code: string
@@ -181,6 +186,8 @@ export interface CreateSaleInput {
     quantity: number
     unit_price: number
     discount?: number
+    line_discount_mode?: 'percent' | 'amount'
+    line_discount_value?: number
     igv_affectation_type: string
     price_includes_igv: boolean
     modifiers_json?: string

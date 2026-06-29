@@ -29,7 +29,7 @@ import {
   formatTipoDocIdentidadDisplay,
   toTipoDocIdentidadCode,
 } from '@/constants/sunat'
-import { normalizeSunatUnit } from '@/constants/sunatUnits'
+import { normalizeSunatUnit, SUNAT_UNITS, isSunatUnitCode, sunatUnitDisplayName } from '@/constants/sunatUnits'
 import { toISOStringPeru, toDateTimeLocalPeru, fromDateTimeLocalToISOPeru } from '@/utils/datesPeru'
 import { formatSaleDocumentNumber } from '@/utils/format'
 import {
@@ -1779,11 +1779,20 @@ export function DespatchFormModal({
                           {itemsLocked ? (
                             <span>{it.unidad}</span>
                           ) : (
-                            <input
-                              className="w-full border border-gray-200 rounded-lg px-2 py-1 text-sm"
+                            <select
+                              className="w-full min-w-[7rem] border border-gray-200 rounded-lg px-2 py-1 text-sm"
                               value={it.unidad}
                               onChange={(ev) => updateLineItem(idx, { unidad: ev.target.value })}
-                            />
+                            >
+                              {it.unidad && !isSunatUnitCode(it.unidad) && (
+                                <option value={it.unidad}>{sunatUnitDisplayName(it.unidad)}</option>
+                              )}
+                              {SUNAT_UNITS.map((u) => (
+                                <option key={u.code} value={u.code}>
+                                  {u.label}
+                                </option>
+                              ))}
+                            </select>
                           )}
                         </td>
                         <td className="px-3 py-2">

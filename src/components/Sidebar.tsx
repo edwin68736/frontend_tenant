@@ -4,7 +4,7 @@ import { BRAND_APP_LOGO } from '@/config/branding'
 import { companyService } from '@/services/company.service'
 import {
   Home,
-  LayoutDashboard, ShoppingCart, Receipt, Truck, Tag, Boxes, Package,
+  LayoutDashboard, ShoppingCart, Receipt, Truck, Tag, Boxes, Package, PackagePlus, PackageMinus, FileSpreadsheet,
   BookUser, Wallet, Building2, Users, Settings, LogOut,
   Utensils, FileText, X, Grid3x3, Layers, ChefHat, UserCog,
   Shield, MapPin, FileCode, ShieldCheck, ArrowRightLeft, ListOrdered, LayoutGrid,
@@ -126,7 +126,31 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Compras',
     icon: <Truck size={16} />,
     children: [
-      { id: 'compras-lista', to: '/purchases', label: 'Compras', icon: <Truck size={14} />, module: 'purchases', permission: 'purchases.view' },
+      {
+        id: 'compras-register',
+        to: '/purchases/register',
+        label: 'Nueva compra',
+        icon: <FileText size={14} />,
+        module: 'purchases',
+        permission: 'purchases.create',
+      },
+      {
+        id: 'compras-lista',
+        to: '/purchases',
+        label: 'Compras',
+        icon: <Truck size={14} />,
+        module: 'purchases',
+        permission: 'purchases.view',
+        exact: true,
+      },
+      {
+        id: 'compras-proveedores',
+        to: '/purchases/suppliers',
+        label: 'Proveedores',
+        icon: <Building2 size={14} />,
+        module: 'contacts',
+        permission: 'contacts.view',
+      },
     ],
   },
   {
@@ -185,6 +209,9 @@ const NAV_GROUPS: NavGroup[] = [
         exact: true,
       },
       { id: 'inv-transfers', to: '/inventory/transfers', label: 'Transferencias', icon: <ArrowRightLeft size={14} />, module: 'inventory', permission: 'inventory.manage' },
+      { id: 'inv-ingress', to: '/inventory/ingress', label: 'Ingresos', icon: <PackagePlus size={14} />, module: 'inventory', permission: 'inventory.manage' },
+      { id: 'inv-import', to: '/inventory/import-adjustment', label: 'Importar Conteo Físico', icon: <FileSpreadsheet size={14} />, module: 'inventory', permission: 'inventory.manage' },
+      { id: 'inv-egress', to: '/inventory/egress', label: 'Egresos', icon: <PackageMinus size={14} />, module: 'inventory', permission: 'inventory.manage' },
       { id: 'inv-kardex', to: '/inventory/kardex', label: 'Kardex', icon: <ListOrdered size={14} />, module: 'inventory', permission: 'inventory.view' },
     ],
   },

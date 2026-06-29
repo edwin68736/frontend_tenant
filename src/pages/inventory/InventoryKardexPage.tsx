@@ -4,8 +4,14 @@ import { useSearchParams } from 'react-router-dom'
 import { Search, Filter, Package } from 'lucide-react'
 import RequireModule from '@/components/ui/RequireModule'
 import { productsService, type Product } from '@/services/products.service'
-import { inventoryService, type StockMovement } from '@/services/inventory.service'
+import { inventoryService, type StockMovement, type InventoryOperationType } from '@/services/inventory.service'
 import { companyService } from '@/services/company.service'
+import {
+  formatInventoryDocumentRef,
+  formatOperationTypeLabel,
+  formatSunatCode,
+  fmtMovementTypeLabel,
+} from '@/utils/inventoryKardexLabels'
 
 interface Branch {
   id: number
@@ -19,6 +25,10 @@ const MOVEMENT_TYPE_LABELS: Record<string, string> = {
   adjustment_out: 'Ajuste (salida)',
   adjustment: 'Ajuste',
   transfer: 'Transferencia',
+}
+
+function movementKindLabel(type: string): string {
+  return MOVEMENT_TYPE_LABELS[type] ?? fmtMovementTypeLabel(type)
 }
 
 export default function InventoryKardexPage() {
@@ -40,6 +50,10 @@ function InventoryKardexContent() {
   const [branchId, setBranchId] = useState<number | undefined>()
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  const [operationTypeId, setOperationTypeId] = useState<number | ''>('')
+  const [sunatCode, setSunatCode] = useState('')
+  const [inventoryDocOnly, setInventoryDocOnly] = useState(false)
+  const [operationTypes, setOperationTypes] = useState<InventoryOperationType[]>([])
   const [movements, setMovements] = useState<StockMovement[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMov, setLoadingMov] = useState(false)
@@ -56,10 +70,12 @@ function InventoryKardexContent() {
     Promise.all([
       productsService.list(q, undefined, undefined, true),
       companyService.listBranches(),
+      inventoryService.listOperationTypes(),
     ])
-      .then(([p, b]) => {
+      .then(([p, b, ops]) => {
         setProducts((p?.data) ?? [])
         setBranches(b ?? [])
+        setOperationTypes(ops ?? [])
       })
       .catch(() => toast.error('Error cargando datos de kardex'))
       .finally(() => setLoading(false))
@@ -77,6 +93,9 @@ function InventoryKardexContent() {
         branch_id: branchId,
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
+        operation_type_id: operationTypeId || undefined,
+        sunat_code: sunatCode.trim() || undefined,
+        movement_kind: inventoryDocOnly ? 'inventory_doc' : undefined,
       })
       setMovements(Array.isArray(data) ? data : [])
     } catch {
@@ -92,7 +111,7 @@ function InventoryKardexContent() {
       void loadMovements()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedProductId, branchId, dateFrom, dateTo])
+  }, [selectedProductId, branchId, dateFrom, dateTo, operationTypeId, sunatCode, inventoryDocOnly])
 
   const selectedProduct = products.find(p => p.id === selectedProductId)
 
@@ -176,6 +195,47 @@ function InventoryKardexContent() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Tipo operación</label>
+                <select
+                  className="w-full border border-gray-200 rounded-xl px-3 py-1.5 text-xs"
+                  value={operationTypeId}
+                  onChange={e => setOperationTypeId(e.target.value ? Number(e.target.value) : '')}
+                >
+                  <option value="">Todos</option>
+                  {operationTypes.map(o => (
+                    <option key={o.id} value={o.id}>
+                      {o.sunat_code} — {o.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Código SUNAT</label>
+                <select
+                  className="w-full border border-gray-200 rounded-xl px-3 py-1.5 text-xs"
+                  value={sunatCode}
+                  onChange={e => setSunatCode(e.target.value)}
+                >
+                  <option value="">Todos</option>
+                  {[...new Set(operationTypes.map(o => o.sunat_code))].sort().map(code => (
+                    <option key={code} value={code}>
+                      {code}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={inventoryDocOnly}
+                onChange={e => setInventoryDocOnly(e.target.checked)}
+                className="rounded border-gray-300"
+              />
+              Solo documentos de inventario
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Desde</label>
                 <input
                   type="date"
@@ -227,7 +287,10 @@ function InventoryKardexContent() {
                     <tr>
                       <th className="text-left py-2 px-2">Fecha</th>
                       <th className="text-left py-2 px-2">Sucursal</th>
-                      <th className="text-left py-2 px-2">Tipo</th>
+                      <th className="text-left py-2 px-2">Movimiento</th>
+                      <th className="text-left py-2 px-2">Tipo operación</th>
+                      <th className="text-left py-2 px-2">SUNAT</th>
+                      <th className="text-left py-2 px-2">Doc. inventario</th>
                       <th className="text-left py-2 px-2">Usuario</th>
                       <th className="text-left py-2 px-2">Referencia</th>
                       <th className="text-right py-2 px-2">Entrada</th>
@@ -248,15 +311,22 @@ function InventoryKardexContent() {
                             {m.branch_name || branches.find(b => b.id === m.branch_id)?.name || `Sucursal ${m.branch_id}`}
                           </td>
                           <td className="py-2 px-2">
-                            <span className="text-[11px]">
-                              {MOVEMENT_TYPE_LABELS[m.type] ?? m.type}
-                            </span>
+                            <span className="text-[11px]">{movementKindLabel(m.type)}</span>
+                          </td>
+                          <td className="py-2 px-2">
+                            <span className="text-[11px]">{formatOperationTypeLabel(m)}</span>
+                          </td>
+                          <td className="py-2 px-2">
+                            <span className="text-[11px] font-mono">{formatSunatCode(m)}</span>
+                          </td>
+                          <td className="py-2 px-2">
+                            <span className="text-[11px]">{formatInventoryDocumentRef(m)}</span>
                           </td>
                           <td className="py-2 px-2">
                             <span className="text-[11px] text-gray-600">{m.user_name || '—'}</span>
                           </td>
                           <td className="py-2 px-2">
-                            <span className="text-[11px] text-gray-600">{m.reference || '-'}</span>
+                            <span className="text-[11px] text-gray-600">{m.reference || '—'}</span>
                           </td>
                           <td className="py-2 px-2 text-right font-mono text-[11px] text-green-600">
                             {isIn ? `+${m.quantity}` : ''}
@@ -272,7 +342,7 @@ function InventoryKardexContent() {
                     })}
                     {movements.length === 0 && (
                       <tr>
-                        <td colSpan={8} className="py-8 text-center text-gray-400">
+                        <td colSpan={11} className="py-8 text-center text-gray-400">
                           No hay movimientos para los filtros seleccionados.
                         </td>
                       </tr>

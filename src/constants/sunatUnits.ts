@@ -7,17 +7,17 @@
  */
 export type SunatUnitRow = { code: string; label: string }
 
-/** Unidades disponibles en el ERP (todas validadas contra catálogo 03). */
+/** Unidades disponibles en el ERP (código SUNAT 03 interno; label = texto visible al usuario). */
 export const SUNAT_UNITS: SunatUnitRow[] = [
-  { code: 'NIU', label: 'Unidad (bienes)' },
-  { code: 'ZZ', label: 'Unidad (servicios)' },
-  { code: 'KGM', label: 'Kilogramo' },
+  { code: 'NIU', label: 'Unidades' },
+  { code: 'ZZ', label: 'Servicio' },
+  { code: 'KGM', label: 'Kilos' },
   { code: 'LTR', label: 'Litros' },
-  { code: 'MTR', label: 'Metro' },
+  { code: 'MTR', label: 'Metros' },
   { code: 'MTK', label: 'Metro cuadrado' },
   { code: 'MTQ', label: 'Metro cúbico' },
   { code: 'TNE', label: 'Toneladas' },
-  { code: 'GLL', label: 'Galón US (3,7843 L)' },
+  { code: 'GLL', label: 'Galones' },
   { code: 'BX', label: 'Cajas' },
   { code: 'BG', label: 'Bolsa' },
   { code: 'BO', label: 'Botellas' },
@@ -25,7 +25,7 @@ export const SUNAT_UNITS: SunatUnitRow[] = [
   { code: 'SET', label: 'Juego' },
   { code: 'KT', label: 'Kit' },
   { code: 'DZN', label: 'Docena' },
-  { code: 'GRM', label: 'Gramo' },
+  { code: 'GRM', label: 'Gramos' },
   { code: 'C62', label: 'Piezas' },
 ]
 
@@ -120,28 +120,40 @@ export function isProductUnitFormCode(code: string): boolean {
   return PRODUCT_UNIT_FORM_CODE_SET.has((code || '').trim().toUpperCase())
 }
 
-/** Texto para UI sin exponer códigos SUNAT (panel, servicio, unidades heredadas). */
-export function productUnitFormDisplayName(code: string): string {
+/** Nombre visible de una unidad (sin código SUNAT). */
+export function sunatUnitDisplayName(code: string): string {
   const c = (code || '').trim().toUpperCase()
-  if (c === 'ZZ') return 'Servicio'
+  if (!c) return '—'
   const opt = PRODUCT_UNIT_FORM_OPTIONS.find((o) => o.code === c)
   if (opt) return opt.displayName
-  const row = SUNAT_UNITS.find((u) => u.code === c)
+  const aliased = UNIT_ALIASES[c] ?? c
+  const row = SUNAT_UNITS.find((u) => u.code === aliased)
   if (row) return row.label
   if (LEGACY_DISPLAY[c]) return LEGACY_DISPLAY[c]
-  const aliased = UNIT_ALIASES[c]
-  if (aliased) {
-    const row2 = SUNAT_UNITS.find((u) => u.code === aliased)
-    if (row2) return row2.label
-  }
-  return c || '—'
+  return c
+}
+
+/** Texto para UI sin exponer códigos SUNAT (panel, servicio, unidades heredadas). */
+export function productUnitFormDisplayName(code: string): string {
+  return sunatUnitDisplayName(code)
 }
 
 export function sunatUnitLabel(code: string): string {
+  return sunatUnitDisplayName(code)
+}
+
+/** Opciones para selects de unidad: value = código SUNAT, label = nombre visible. */
+export function sunatUnitSelectOptions(): { value: string; label: string }[] {
+  return SUNAT_UNITS.map((u) => ({
+    value: u.code,
+    label: u.label,
+  }))
+}
+
+export function isSunatUnitCode(code: string): boolean {
   const c = (code || '').trim().toUpperCase()
-  const aliased = UNIT_ALIASES[c] ?? c
-  const row = SUNAT_UNITS.find((u) => u.code === aliased)
-  return row ? `${row.code} — ${row.label}` : c
+  if (UNIT_ALIASES[c]) return true
+  return SUNAT_UNITS.some((u) => u.code === c)
 }
 
 /** Código catálogo SUNAT 03 para comprobantes (NIU bienes, ZZ servicios). */

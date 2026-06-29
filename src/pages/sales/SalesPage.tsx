@@ -21,8 +21,9 @@ import {
   pdfTargetSaleId,
 } from '@/utils/saleDisplayDocument'
 import { downloadReceiptPdf, openReceiptPdfInNewTab } from '@/utils/receiptPdf'
-import { formatPaymentMethodLabel } from '@/utils/paymentMethodLabel'
 import { SalePaymentsBreakdown } from '@/components/sales/SalePaymentsBreakdown'
+import { formatPaymentMethodLabel } from '@/utils/paymentMethodLabel'
+import { formatSaleMoney } from '@/utils/formatMoney'
 
 const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
 const TABLE_SKELETON_ROWS = 6
@@ -175,6 +176,9 @@ function SalesContent() {
     () => emitSeriesList.filter((s) => String(s.sunat_code || '').trim() === emitDocKind),
     [emitSeriesList, emitDocKind],
   )
+
+  const emitCurrency = emitDetail?.sale.currency ?? 'PEN'
+  const fmtEmit = (n: number) => formatSaleMoney(n, emitCurrency)
 
   const submitEmit = async () => {
     if (!emitRow || !emitDetail) return
@@ -697,6 +701,24 @@ function SalesContent() {
             {emitDetail && (
               <>
                 <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-3 space-y-2">
+                  <p className="text-xs font-semibold text-gray-600 uppercase">Comercial</p>
+                  <div className="text-xs text-gray-700 flex flex-wrap gap-x-4 gap-y-1">
+                    <p>
+                      <span className="text-gray-400">Moneda:</span>{' '}
+                      {emitCurrency === 'USD' ? 'Dólares (USD)' : 'Soles (PEN)'}
+                    </p>
+                    {emitCurrency === 'USD' && (
+                      <p>
+                        <span className="text-gray-400">Tipo de cambio:</span>{' '}
+                        {emitDetail.sale.exchange_rate != null && emitDetail.sale.exchange_rate > 0
+                          ? Number(emitDetail.sale.exchange_rate).toFixed(3)
+                          : '— (obligatorio para emitir)'}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-3 space-y-2">
                   <p className="text-xs font-semibold text-gray-600 uppercase">Cliente</p>
                   {emitDetail.contact ? (
                     <div className="text-xs text-gray-700 space-y-0.5">
@@ -722,16 +744,16 @@ function SalesContent() {
                         <div>
                           <p className="font-medium text-gray-800">{item.description}</p>
                           <p className="text-gray-400">
-                            {item.quantity} × S/ {Number(item.unit_price).toFixed(2)}
+                            {item.quantity} × {fmtEmit(Number(item.unit_price))}
                           </p>
                         </div>
-                        <p className="font-semibold text-gray-700">S/ {Number(item.total).toFixed(2)}</p>
+                        <p className="font-semibold text-gray-700">{fmtEmit(Number(item.total))}</p>
                       </div>
                     ))}
                   </div>
                   <div className="flex justify-between font-bold text-gray-900 mt-2 px-1">
                     <span>Total</span>
-                    <span>S/ {Number(emitDetail.sale.total).toFixed(2)}</span>
+                    <span>{fmtEmit(Number(emitDetail.sale.total))}</span>
                   </div>
                 </div>
 
@@ -744,7 +766,7 @@ function SalesContent() {
                       (emitDetail.payments ?? []).map((p) => (
                         <li key={p.id} className="flex justify-between border border-gray-100 rounded-lg px-2 py-1">
                           <span>{formatPaymentMethod(p.method)}</span>
-                          <span className="font-mono">S/ {Number(p.amount).toFixed(2)}</span>
+                          <span className="font-mono">{fmtEmit(Number(p.amount))}</span>
                         </li>
                       ))
                     )}
@@ -769,7 +791,12 @@ function SalesContent() {
 
             <button
               type="button"
-              disabled={emitSubmitting || !emitSeriesId || (emitDocKind === '01' && !contactHasValidRuc(emitDetail?.contact))}
+              disabled={
+                emitSubmitting
+                || !emitSeriesId
+                || (emitDocKind === '01' && !contactHasValidRuc(emitDetail?.contact))
+                || (emitCurrency === 'USD' && !(emitDetail?.sale.exchange_rate != null && emitDetail.sale.exchange_rate > 0))
+              }
               onClick={() => void submitEmit()}
               className="w-full py-2.5 rounded-xl bg-[rgb(var(--p600))] text-white text-sm font-medium hover:opacity-95 disabled:opacity-50"
             >

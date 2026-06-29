@@ -3,6 +3,7 @@ import QRCode from 'qrcode'
 import type { PrintData } from '@/types/printData'
 import { paymentWalletVisible, renderPaymentWalletBlock } from '@/utils/receiptPaymentWallet'
 import { getTipoComprobanteLabel, getMedioPagoLabel } from '@/constants/sunat'
+import { buildReceiptTotalLines, formatReceiptTotalAmount, resolvePrintChangeAmount } from '@/utils/receiptTotals'
 import { ticketColumnLayoutMm } from '@/utils/receiptTicketLayout'
 import { getPrintIssuerAddress } from '@/utils/printIssuer'
 
@@ -302,21 +303,13 @@ export async function generateReceiptPdf(
 
     emitTicketDashRow()
 
-    const aff = data.totals_by_affectation || {}
-    const gravado = aff['10']
-    const exonerado = aff['20']
-    const inafecto = aff['30']
-    if (gravado) {
-      emitTicketAmountRow('Op. Gravadas:', formatMoney(gravado.total, data.currency))
+    for (const row of buildReceiptTotalLines(data)) {
+      emitTicketAmountRow(
+        row.label,
+        formatReceiptTotalAmount(row.amount, data.currency, { negative: row.negative }),
+        { bold: row.bold },
+      )
     }
-    if (exonerado) {
-      emitTicketAmountRow('Op. Exoneradas:', formatMoney(exonerado.total, data.currency))
-    }
-    if (inafecto) {
-      emitTicketAmountRow('Op. Inafectas:', formatMoney(inafecto.total, data.currency))
-    }
-    emitTicketAmountRow('IGV:', formatMoney(data.tax_amount, data.currency))
-    emitTicketAmountRow('TOTAL A PAGAR:', formatMoney(data.total, data.currency), { bold: true })
     renderFiscalTotals(data, emitTicketAmountRow)
     doc.setTextColor(0, 0, 0)
     doc.setFont('helvetica', 'normal')
@@ -357,6 +350,10 @@ export async function generateReceiptPdf(
           `${getMedioPagoLabel(p.method) || p.method}: ${formatMoney(p.amount, data.currency)}`,
           FONT_SIZE_SM,
         )
+      }
+      const change = resolvePrintChangeAmount(data)
+      if (change > 0.009) {
+        addTicketWrapped(`VUELTO: ${formatMoney(change, data.currency)}`, FONT_SIZE_SM)
       }
     }
     addSpace(4)
@@ -539,10 +536,14 @@ export async function generateReceiptPdf(
   doc.line(margin, y, A4_WIDTH - margin, y)
   y += 4
 
-  // Totales
-  addLine(`Subtotal: ${formatMoney(data.subtotal, data.currency)}`, { align: 'right' })
-  addLine(`IGV: ${formatMoney(data.tax_amount, data.currency)}`, { align: 'right' })
-  addLine(`TOTAL: ${formatMoney(data.total, data.currency)}`, { size: FONT_SIZE_TITLE, align: 'right' })
+  // Totales (misma secuencia que ticket)
+  for (const row of buildReceiptTotalLines(data)) {
+    const label = row.label.replace(/:$/, '')
+    addLine(
+      `${label}: ${formatReceiptTotalAmount(row.amount, data.currency, { negative: row.negative })}`,
+      { align: 'right', size: row.bold ? FONT_SIZE_TITLE : FONT_SIZE },
+    )
+  }
   if (data.fiscal?.retention_applied) {
     addLine(`Ret. IGV (3%): ${formatMoney(data.fiscal.igv_retention_amount ?? 0, data.currency)}`, { align: 'right' })
     addLine(`Neto a cobrar: ${formatMoney(data.fiscal.net_collectible ?? data.total, data.currency)}`, {
@@ -582,6 +583,10 @@ export async function generateReceiptPdf(
     addLine('PAGOS:', { size: FONT_SIZE_SM })
     for (const p of data.payments) {
       addLine(`${getMedioPagoLabel(p.method) || p.method}: ${formatMoney(p.amount, data.currency)}`)
+    }
+    const change = resolvePrintChangeAmount(data)
+    if (change > 0.009) {
+      addLine(`VUELTO: ${formatMoney(change, data.currency)}`, { size: FONT_SIZE_SM })
     }
     addSpace(2)
   }

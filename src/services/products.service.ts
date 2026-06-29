@@ -75,16 +75,25 @@ export interface CreateProductInput {
   min_stock?: number
   is_restaurant?: boolean
   preparation_area?: string
+  /** Solo en alta: cantidad inicial de inventario (requiere manage_stock). */
+  initial_stock?: number
   category_id?: number | null
   modifier_group_ids?: number[]
   /** Solo para edición: enviar para no cambiar el estado activo por defecto */
   active?: boolean
 }
 
+export interface ProductPresentation {
+  id?: number
+  name: string
+  sale_price: number
+}
+
 /** Respuesta de GET /products/:id (producto + grupos de modificadores asignados) */
 export interface ProductDetailResponse {
   data: Product
   modifier_group_ids: number[]
+  presentations?: ProductPresentation[]
 }
 
 export interface BulkImportItemPayload {
@@ -142,6 +151,21 @@ export const productsService = {
         total: r.data.total ?? 0,
       })),
 
+  /** Búsqueda exacta por código de barras (POS / cámara). Variantes EAN-13 / UPC-A en el servidor. */
+  lookupByBarcode: (code: string, branchId?: number | null) =>
+    api
+      .get<{ data: Product }>('/api/products/lookup-by-code', {
+        params: {
+          code: code.trim(),
+          branch_id: branchId && branchId > 0 ? branchId : undefined,
+        },
+      })
+      .then(r => r.data.data ?? null)
+      .catch((e: { response?: { status?: number } }) => {
+        if (e?.response?.status === 404) return null
+        throw e
+      }),
+
   /** Listado para reportes: stock por sucursal, series, categoría resuelta. */
   listReport: (params: {
     q?: string
@@ -171,7 +195,11 @@ export const productsService = {
       })),
 
   get: (id: number) =>
-    api.get<ProductDetailResponse>('/api/products/' + id).then(r => ({ data: r.data.data, modifier_group_ids: r.data.modifier_group_ids ?? [] })),
+    api.get<ProductDetailResponse>('/api/products/' + id).then(r => ({
+      data: r.data.data,
+      modifier_group_ids: r.data.modifier_group_ids ?? [],
+      presentations: r.data.presentations ?? [],
+    })),
 
   bulkImportCatalog: (items: BulkImportItemPayload[], branchId?: number) =>
     api

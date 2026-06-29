@@ -5,7 +5,7 @@ import { companyService, type SeriesRow } from '@/services/company.service'
 import { Modal } from '@/components/ui/Modal'
 import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
 
-const CATEGORIES = ['venta', 'compra', 'nota_credito', 'nota_debito', 'guia_remision', 'guia_transportista'] as const
+const CATEGORIES = ['venta', 'compra', 'nota_credito', 'nota_debito', 'guia_remision', 'guia_transportista', 'retencion', 'percepcion'] as const
 const DOC_TYPES = ['FACTURA', 'BOLETA', 'NOTA DE VENTA', 'NOTA DE CRÉDITO', 'NOTA DE DÉBITO', 'GUÍA DE REMISIÓN', 'GUÍA TRANSPORTISTA']
 const SUNAT_CODES = [
   { code: '00', label: '00 - Nota de venta (no SUNAT)' },

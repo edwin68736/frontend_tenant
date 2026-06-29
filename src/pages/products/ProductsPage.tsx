@@ -78,6 +78,7 @@ function emptyForm(pageMode: ProductCatalogType): CreateProductInput {
     has_variants: false,
     has_modifiers: false,
     modifier_group_ids: [],
+    initial_stock: undefined,
   }
 }
 
@@ -293,6 +294,11 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     if (!isGravadoIgv(form.igv_affectation_type)) payload.price_includes_igv = false
     if (!payload.is_restaurant) payload.preparation_area = ''
     else if (payload.preparation_area) payload.preparation_area = payload.preparation_area.trim().toLowerCase()
+    if (editing) {
+      delete payload.initial_stock
+    } else if (!payload.manage_stock || !(payload.initial_stock != null && payload.initial_stock > 0)) {
+      delete payload.initial_stock
+    }
     setSaving(true)
     try {
       if (editing) await productsService.update(editing.id, payload)
@@ -702,10 +708,15 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         {pageMode === 'product' && (
           <div className="flex gap-4 flex-wrap">
             <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={form.manage_stock} onChange={(e) => setF('manage_stock', e.target.checked)} className="rounded" />
+              <input type="checkbox" checked={form.manage_stock} onChange={(e) => {
+                const on = e.target.checked
+                setF('manage_stock', on)
+                if (!on) setForm((f) => ({ ...f, manage_stock: false, initial_stock: undefined }))
+              }} className="rounded" />
               <span className="text-sm text-gray-700">Maneja stock</span>
             </label>
             {form.manage_stock && (
+              <>
               <div className="flex items-center gap-2">
                 <span className="text-xs text-gray-600">Stock mín:</span>
                 <input
@@ -716,6 +727,24 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                   onChange={(e) => setF('min_stock', Number(e.target.value))}
                 />
               </div>
+              {!editing && (
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                  <span className="text-xs text-gray-600 shrink-0">Stock inicial:</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.01}
+                    className="w-24 border border-gray-200 rounded-lg px-2 py-1 text-sm"
+                    value={form.initial_stock != null ? form.initial_stock : ''}
+                    onChange={(e) => {
+                      const raw = e.target.value
+                      setF('initial_stock', raw === '' ? undefined : Math.max(0, Number(raw) || 0))
+                    }}
+                    placeholder="0"
+                  />
+                </div>
+              )}
+              </>
             )}
             <label className="flex items-center gap-2 cursor-pointer">
               <input type="checkbox" checked={form.is_restaurant ?? false} onChange={(e) => setF('is_restaurant', e.target.checked)} className="rounded" />
