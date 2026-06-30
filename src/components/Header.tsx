@@ -27,6 +27,7 @@ import {
 import SubscriptionHeaderWidget from '@/components/SubscriptionHeaderWidget'
 import HeaderQuickActions from '@/components/HeaderQuickActions'
 import { BranchSwitcherUserMenu } from '@/components/BranchSwitcher'
+import { canAccessErpSettings } from '@/utils/erpSettingsAccess'
 
 interface Props {
   onMenuClick: () => void
@@ -35,7 +36,8 @@ interface Props {
 }
 
 export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar }: Props) {
-  const { user, logout, hasModule } = useAuth()
+  const { user, logout, hasModule, hasPermission } = useAuth()
+  const showSettings = canAccessErpSettings(hasPermission)
 
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
@@ -253,14 +255,16 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
               <User size={16} className="text-primary-600" />
               Perfil
             </Link>
-            <Link
-              to="/ajustes"
-              onClick={() => setUserMenuOpen(false)}
-              className="flex items-center gap-2 mx-1.5 px-3 py-2.5 text-sm text-gray-700 rounded-xl hover:bg-gray-50 transition-colors"
-            >
-              <Settings size={16} className="text-gray-500" />
-              Ajustes
-            </Link>
+            {showSettings && (
+              <Link
+                to="/ajustes"
+                onClick={() => setUserMenuOpen(false)}
+                className="flex items-center gap-2 mx-1.5 px-3 py-2.5 text-sm text-gray-700 rounded-xl hover:bg-gray-50 transition-colors"
+              >
+                <Settings size={16} className="text-gray-500" />
+                Ajustes
+              </Link>
+            )}
             <a
               href={supportHref ?? undefined}
               target="_blank"

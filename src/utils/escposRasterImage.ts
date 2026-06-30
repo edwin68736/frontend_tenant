@@ -6,11 +6,11 @@ export function escposPrintWidthPx(paperWidthMm: 58 | 80): number {
 }
 
 function escposLogoMaxWidthPx(paperWidthMm: 58 | 80): number {
-  return paperWidthMm === 58 ? 280 : 360
+  return paperWidthMm === 58 ? 320 : 420
 }
 
 function escposLogoMaxHeightPx(paperWidthMm: 58 | 80): number {
-  return paperWidthMm === 58 ? 72 : 96
+  return paperWidthMm === 58 ? 96 : 120
 }
 
 function loadImageElement(src: string): Promise<HTMLImageElement> {
@@ -102,6 +102,24 @@ function trimEmptyRows(grayscale: Uint8Array, width: number, height: number): { 
     trimmed.set(grayscale.subarray((top + y) * width, (top + y + 1) * width), y * width)
   }
   return { gray: trimmed, h }
+}
+
+/** Centra el bitmap en el ancho imprimible (varias ticketeras ignoran ESC a en GS v 0). */
+function padCenterGrayscale(
+  gray: Uint8Array,
+  srcW: number,
+  srcH: number,
+  targetW: number,
+): { gray: Uint8Array; w: number; h: number } {
+  const w = Math.ceil(targetW / 8) * 8
+  if (srcW >= w) return { gray, w: srcW, h: srcH }
+  const padLeft = Math.floor((w - srcW) / 2)
+  const padded = new Uint8Array(w * srcH)
+  padded.fill(255)
+  for (let y = 0; y < srcH; y++) {
+    padded.set(gray.subarray(y * srcW, (y + 1) * srcW), y * w + padLeft)
+  }
+  return { gray: padded, w, h: srcH }
 }
 
 function grayscaleToEscPosRaster(grayscale: Uint8Array, width: number, height: number): Uint8Array {
@@ -202,13 +220,18 @@ export async function buildEscPosImageRaster(
     h = trimmed.h
     if (h < 1) return null
 
+    const centered = padCenterGrayscale(gray, w, h, printW)
+    gray = centered.gray
+    w = centered.w
+    h = centered.h
+
     return grayscaleToEscPosRaster(gray, w, h)
   } catch {
     return null
   }
 }
 
-/** Logo recortado y centrado por alineación ESC/POS (sin lienzo blanco extra arriba). */
+/** Logo recortado y centrado en el ancho del ticket (compatible con ticketeras que ignoran ESC a en raster). */
 export async function buildEscPosLogoRaster(
   logoUrl: string,
   paperWidthMm: 58 | 80,

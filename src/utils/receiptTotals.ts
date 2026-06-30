@@ -1,21 +1,25 @@
 import type { PrintData } from '@/types/printData'
 import { calcPaymentChange, roundDisplay, roundSunat, sumMoney } from '@/utils/money'
-import { receiptTotalDiscount, lineSubtotalDiscount } from '@/utils/receiptDiscount'
-
-/** Descuento global en base imponible desde print_data persistido. */
-export function receiptGlobalDiscount(data: Pick<PrintData, 'global_discount_amount' | 'items'>): number {
-  if (data.global_discount_amount != null && data.global_discount_amount > 0) {
-    return roundSunat(data.global_discount_amount)
-  }
-  return 0
-}
+import { receiptTotalDiscount, lineSubtotalDiscount, lineGlobalSubtotalDiscount } from '@/utils/receiptDiscount'
 
 /** Descuento por línea agregado desde print_data persistido. */
 export function receiptLineDiscountTotal(data: Pick<PrintData, 'line_discount_total' | 'items'>): number {
-  if (data.line_discount_total != null && data.line_discount_total > 0) {
-    return roundSunat(data.line_discount_total)
+  if (data.line_discount_total != null) {
+    return roundSunat(Math.max(0, data.line_discount_total))
   }
   return roundSunat((data.items ?? []).reduce((sum, it) => sum + lineSubtotalDiscount(it), 0))
+}
+
+/** Descuento global en base imponible desde print_data persistido. */
+export function receiptGlobalDiscount(data: Pick<PrintData, 'global_discount_amount' | 'items'>): number {
+  if (data.global_discount_amount != null) {
+    return roundSunat(Math.max(0, data.global_discount_amount))
+  }
+  const fromItems = roundSunat(
+    (data.items ?? []).reduce((sum, it) => sum + lineGlobalSubtotalDiscount(it), 0),
+  )
+  if (fromItems > 0.000001) return fromItems
+  return 0
 }
 
 /** Descuento total (línea + global) en base imponible. */

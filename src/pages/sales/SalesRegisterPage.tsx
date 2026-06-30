@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Trash2, X, Package, UserPlus, ScanBarcode } from 'lucide-react'
+import { Plus, Trash2, X, Package, UserPlus, ScanBarcode, Pencil, Loader2 } from 'lucide-react'
 import { salesService, type CreateSaleInput } from '@/services/sales.service'
 import { contactsService, type Contact } from '@/services/contacts.service'
 import { productsService, type Product } from '@/services/products.service'
@@ -16,6 +16,16 @@ import { SearchableSelect } from '@/components/SearchableSelect'
 import { ReceiptPrintModal } from '@/components/ui/ReceiptPrintModal'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
 import { ProductPickerModal } from '@/components/sales/ProductPickerModal'
+import { PaymentMethodSelect } from '@/components/sales/PaymentMethodSelect'
+import { ProductConfigureModal, productNeedsSaleConfiguration } from '@/components/pos/ProductConfigureModal'
+import { TenantCompanyEditModal } from '@/components/sales/TenantCompanyEditModal'
+import { SaleReceiptPreviewModal } from '@/components/sales/SaleReceiptPreviewModal'
+import {
+  catalogLineModifiersJson,
+  createCatalogCartLine,
+  type CatalogCartLine,
+} from '@/utils/posCart'
+import { formatModifierLines, parseStoredModifiers } from '@/utils/productModifiers'
 import {
   SaleAdditionalInfoDrawer,
   emptySaleFiscalForm,
@@ -40,16 +50,20 @@ import { SUNAT_MAX_MONTO_CLIENTE_SIN_RUC, SUNAT_RUC_LENGTH } from '@/constants/s
 import { cashbankService, type CashSession, type PaymentMethodRecord } from '@/services/cashbank.service'
 import { calcSaleCheckout } from '@/utils/saleEngine'
 import { calcItem, calcItemWithSubtotalDiscount, getAfectacionGroup, type SunatAfectacionGroup } from '@/utils/taxCalc'
-import { getTodayPeru } from '@/utils/datesPeru'
+import { clampIssueDatePeru, getMaxIssueDatePeru, getMinIssueDatePeru, getTodayPeru, isIssueDateAllowed } from '@/utils/datesPeru'
 import { normalizeSunatUnit, sunatUnitSelectOptions } from '@/constants/sunatUnits'
 import type { CheckoutDiscountMode } from '@/utils/checkoutDiscount'
 import { roundSunat, calcPaymentChange, sumMoney } from '@/utils/money'
 import { quotationsService } from '@/services/quotations.service'
 import { useBarcodeProductScanner } from '@/hooks/useBarcodeProductScanner'
-import { BarcodeScannerModal } from '@/components/barcode/BarcodeScannerModal'
+import {
+  buildSalePreviewPrintData,
+  validateSalePreviewInput,
+  type SalePreviewSeries,
+} from '@/utils/salePreviewPrintData'
 
 /** Tipo de serie de venta (desde API). */
-type SeriesRow = { id: number; series: string; doc_type: string; sunat_code?: string; branch_id?: number }
+type SeriesRow = SalePreviewSeries & { id: number; doc_type: string; branch_id?: number }
 
 /** Ítem del detalle en el formulario (incluye datos para cálculo y envío). */
 export interface SaleFormItem {
@@ -65,6 +79,10 @@ export interface SaleFormItem {
   line_discount_value?: number
   /** Solo para productos con series; no usado en registro avanzado por defecto */
   serials?: string[]
+  /** Clave de fusión cuando el mismo producto tiene distinta configuración */
+  line_key?: string
+  modifiers_json?: string
+  item_note?: string
 }
 
 const PER_PAGE = 10
@@ -120,6 +138,32 @@ function resolveCashMethodCode(methods: PaymentMethodRecord[]): string {
   return cash?.code ?? methods[0]?.code ?? 'cash'
 }
 
+function catalogLineToSaleItem(line: CatalogCartLine): SaleFormItem {
+  const p = line.product
+  return {
+    product_id: p.id,
+    line_key: line.configureKey,
+    code: p.code ?? '',
+    description: p.name,
+    unit: normalizeSunatUnit(p.unit ?? '', p.type ?? 'product'),
+    quantity: line.quantity,
+    unit_price: line.unit_price,
+    igv_affectation_type: p.igv_affectation_type ?? '10',
+    price_includes_igv: p.price_includes_igv ?? true,
+    modifiers_json: catalogLineModifiersJson(line),
+    item_note: line.notes?.trim() || undefined,
+    serials: line.serials,
+  }
+}
+
+function saleItemFromProduct(p: Product): SaleFormItem {
+  return catalogLineToSaleItem(createCatalogCartLine(p))
+}
+
+function saleItemMergeKey(it: SaleFormItem): string {
+  return it.line_key ?? `pid-${it.product_id ?? 'manual'}-${it.code}-${it.unit_price}`
+}
+
 type SalesRegisterPageProps = { mode?: SalesRegisterMode; quotationId?: number }
 
 export default function SalesRegisterPage({ mode = 'comprobante', quotationId }: SalesRegisterPageProps) {
@@ -141,12 +185,13 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
   const editingQuotationId = isQuotation && quotationId && quotationId > 0 ? quotationId : null
   const linkQuotationId = fromQuotationId ?? null
   const { user, hasModule } = useAuth()
-  const { activeBranchId } = useBranch()
+  const { activeBranchId, activeBranch } = useBranch()
   const [series, setSeries] = useState<SeriesRow[]>([])
   const [customers, setCustomers] = useState<Contact[]>([])
   const [taxRate, setTaxRate] = useState(18)
   const [taxConfig, setTaxConfig] = useState<{ taxRate: number; igvRegime?: string; taxBenefitZone?: boolean }>({ taxRate: 18 })
   const [showProductPicker, setShowProductPicker] = useState(false)
+  const [productToConfigure, setProductToConfigure] = useState<Product | null>(null)
   const [showManualItemModal, setShowManualItemModal] = useState(false)
   const [form, setForm] = useState<{
     branch_id: number
@@ -187,6 +232,10 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
   const [companyConfig, setCompanyConfig] = useState<CompanyConfig | null>(null)
   const logoInputRef = useRef<HTMLInputElement>(null)
   const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [companyEditOpen, setCompanyEditOpen] = useState(false)
+  const [previewPrintData, setPreviewPrintData] = useState<PrintData | null>(null)
+  const [previewModalOpen, setPreviewModalOpen] = useState(false)
+  const [previewLoading, setPreviewLoading] = useState(false)
   const [discountMode, setDiscountMode] = useState<CheckoutDiscountMode>('percent')
   const [discountValue, setDiscountValue] = useState(0)
   const [fiscalDrawerOpen, setFiscalDrawerOpen] = useState(false)
@@ -379,7 +428,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
           toast.error('Esta cotización ya fue convertida')
           return
         }
-        const issueYmd = (q.issue_date ?? '').slice(0, 10)
+        const issueYmd = clampIssueDatePeru((q.issue_date ?? '').slice(0, 10) || getTodayPeru())
         const validYmd = q.valid_until ? String(q.valid_until).slice(0, 10) : issueYmd
         setForm((f) => ({
           ...f,
@@ -435,27 +484,33 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
     }))
   }, [form.sunat_code])
 
-  const addProductToItems = (p: Product) => {
+  const appendSaleItem = (item: SaleFormItem) => {
+    const key = saleItemMergeKey(item)
     setItems(prev => {
-      const existing = prev.find(it => it.product_id === p.id)
+      const existing = prev.find(it => saleItemMergeKey(it) === key)
       if (existing) {
-        return prev.map(it => (it.product_id === p.id ? { ...it, quantity: it.quantity + 1 } : it))
+        return prev.map(it =>
+          saleItemMergeKey(it) === key ? { ...it, quantity: it.quantity + item.quantity } : it,
+        )
       }
-      return [
-        ...prev,
-        {
-          product_id: p.id as number,
-          code: p.code ?? '',
-          description: p.name,
-          unit: normalizeSunatUnit(p.unit ?? '', p.type ?? 'product'),
-          quantity: 1,
-          unit_price: p.sale_price ?? 0,
-          igv_affectation_type: p.igv_affectation_type ?? '10',
-          price_includes_igv: p.price_includes_igv ?? false,
-        },
-      ]
+      return [...prev, item]
     })
-    toast.success(`"${p.name}" agregado`)
+    toast.success(`"${item.description}" agregado`)
+  }
+
+  const addProductToItems = (p: Product) => {
+    if (productNeedsSaleConfiguration(p)) {
+      setShowProductPicker(false)
+      setProductToConfigure(p)
+      toast.message(`Configura «${p.name}» antes de agregarlo`, { duration: 3500 })
+      return
+    }
+    appendSaleItem(saleItemFromProduct(p))
+  }
+
+  const handleSaleConfigureConfirm = (line: CatalogCartLine) => {
+    appendSaleItem(catalogLineToSaleItem(line))
+    setProductToConfigure(null)
   }
 
   const barcodeScan = useBarcodeProductScanner({
@@ -584,6 +639,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
   )
 
   const selectedGood = detraccionGoods.find((g) => g.code === detraccionGoodCode)
+  const detractionBnAccount = companyConfig?.detraction_bn_account?.trim() ?? ''
   const detractionPreview = previewDetraccion({
     sunatCode: form.sunat_code,
     operationTypeCode: form.operation_type_code,
@@ -593,9 +649,21 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
     goodCode: detraccionGoodCode,
     goodRatePercent: selectedGood?.rate_percent ?? 0,
     minAmountPen: selectedGood?.min_amount_pen ?? 700,
-    bankAccount: companyConfig?.detraction_bn_account ?? '',
+    bankAccount: detractionBnAccount,
     contactEsPercepcion: selectedContact?.es_agente_de_percepcion,
   })
+
+  const issueDateMin = getMinIssueDatePeru()
+  const issueDateMax = getMaxIssueDatePeru()
+
+  const handleIssueDateChange = (raw: string) => {
+    const newIssue = clampIssueDatePeru(raw)
+    setForm((f) => ({
+      ...f,
+      issue_date: newIssue,
+      due_date: f.due_date === f.issue_date ? newIssue : f.due_date,
+    }))
+  }
 
   const directPaymentMethods = useMemo(() => filterOperationalPaymentMethods(paymentMethods), [paymentMethods])
 
@@ -641,6 +709,74 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
     references: buildFiscalReferences(fiscalForm),
   })
 
+  const selectedSeries = useMemo(
+    () => series.find((s) => s.id === form.series_id) ?? null,
+    [series, form.series_id],
+  )
+
+  const sellerName = useMemo(() => {
+    const id = fiscalForm.seller_user_id
+    if (id) {
+      const u = tenantUsers.find((tu) => tu.id === id)
+      if (u?.name?.trim()) return u.name.trim()
+    }
+    return user?.name?.trim() || undefined
+  }, [fiscalForm.seller_user_id, tenantUsers, user?.name])
+
+  const buildSalePreviewInput = () => ({
+    mode,
+    form: {
+      sunat_code: form.sunat_code,
+      series_id: form.series_id,
+      issue_date: form.issue_date,
+      due_date: form.due_date,
+      currency: form.currency,
+      operation_type_code: form.operation_type_code,
+      exchange_rate: parsedExchangeRate,
+      notes: form.notes,
+    },
+    items,
+    saleCalc,
+    subtotalGlobal,
+    taxGlobal,
+    totalGlobal,
+    lineDiscountTotal,
+    checkoutDiscountAmount,
+    selectedSeries,
+    selectedContact: selectedContact ?? null,
+    companyConfig,
+    branchName: activeBranch?.name ?? 'Principal',
+    payments,
+    fiscalForm,
+    isNotaVenta,
+    isDetraccion,
+    detractionPreview,
+    detraccionGoodCode,
+    detraccionGoodLabel: selectedGood?.description,
+    detractionBnAccount,
+    retentionPreview,
+    sellerName,
+  })
+
+  const handleSalePreview = async () => {
+    const input = buildSalePreviewInput()
+    const err = validateSalePreviewInput(input)
+    if (err) {
+      toast.error(err)
+      return
+    }
+    setPreviewLoading(true)
+    try {
+      setPreviewPrintData(buildSalePreviewPrintData(input))
+      setPreviewModalOpen(true)
+    } catch (e) {
+      console.error(e)
+      toast.error('No se pudo generar la previsualización')
+    } finally {
+      setPreviewLoading(false)
+    }
+  }
+
   const handleSave = async () => {
     if (!activeBranchId) {
       toast.error('No hay sucursal activa')
@@ -669,6 +805,11 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
       }
     }
 
+    if (!isIssueDateAllowed(form.issue_date)) {
+      toast.error('La fecha de emisión debe ser hoy o hasta 3 días anteriores (hora Perú).')
+      return
+    }
+
     if (isQuotation) {
       setSaving(true)
       try {
@@ -691,6 +832,8 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
             discount: saleCalc.lines[idx]?.storedDiscount ?? 0,
             igv_affectation_type: it.igv_affectation_type,
             price_includes_igv: it.price_includes_igv,
+            modifiers_json: it.modifiers_json ?? '',
+            serials: it.serials ?? [],
           })),
         }
         if (editingQuotationId) {
@@ -781,7 +924,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
 
     setSaving(true)
     try {
-      let notes = form.notes || ''
+      let notes = isNotaVenta ? form.notes.trim() : ''
       if (linkQuotationId) {
         const refNote = `(Desde cotización #${linkQuotationId})`
         notes = notes ? `${notes} ${refNote}` : refNote
@@ -817,6 +960,8 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
           line_discount_value: (it.line_discount_value ?? 0) > 0 ? it.line_discount_value : undefined,
           igv_affectation_type: it.igv_affectation_type,
           price_includes_igv: it.price_includes_igv,
+          modifiers_json: it.modifiers_json ?? '',
+          serials: it.serials ?? [],
         })),
       }
       const sale = await salesService.create(payload)
@@ -884,7 +1029,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
     )
   }
 
-  const companyDisplayName = (companyConfig?.business_name || companyConfig?.trade_name || '').trim()
+  const companyDisplayName = (companyConfig?.trade_name || companyConfig?.business_name || '').trim()
   const companyContactLine = [companyConfig?.email?.trim(), companyConfig?.phone?.trim()].filter(Boolean).join(' - ')
   const companyLogoSrc = companyConfig?.logo_url?.trim()
     ? (companyConfig.logo_url.startsWith('data:')
@@ -952,9 +1097,22 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
               {companyConfig?.address?.trim() ? (
                 <p className="text-xs text-gray-600 mt-0.5 leading-snug">{companyConfig.address.trim()}</p>
               ) : null}
-              {companyContactLine ? (
-                <p className="text-xs text-gray-500 mt-0.5 leading-snug">{companyContactLine}</p>
-              ) : null}
+              <div className="mt-0.5 flex items-center gap-1 min-w-0">
+                {companyContactLine ? (
+                  <p className="text-xs text-gray-500 leading-snug min-w-0">{companyContactLine}</p>
+                ) : (
+                  <p className="text-xs text-gray-400 leading-snug">Sin teléfono / correo</p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setCompanyEditOpen(true)}
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-amber-600 hover:bg-amber-50 hover:text-amber-700"
+                  title="Editar datos de la empresa"
+                  aria-label="Editar datos de la empresa"
+                >
+                  <Pencil size={14} strokeWidth={2.25} />
+                </button>
+              </div>
             </div>
           </div>
           <div className="flex flex-col items-stretch sm:items-end gap-1 shrink-0 sm:ml-4">
@@ -965,14 +1123,10 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                   type="date"
                   className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm"
                   value={form.issue_date}
-                  onChange={e => {
-                    const newIssue = e.target.value
-                    setForm(f => ({
-                      ...f,
-                      issue_date: newIssue,
-                      due_date: f.due_date === f.issue_date ? newIssue : f.due_date,
-                    }))
-                  }}
+                  min={issueDateMin}
+                  max={issueDateMax}
+                  title={`Entre ${issueDateMin} y ${issueDateMax} (hora Perú)`}
+                  onChange={(e) => handleIssueDateChange(e.target.value)}
                 />
               </div>
               <div className="w-[9.5rem]">
@@ -993,9 +1147,9 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
           </div>
         </header>
 
-        {/* Tipo comprobante, serie, operación, moneda y tipo de cambio */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
-          <div className="lg:col-span-2">
+        {/* Documento y condiciones comerciales */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
+          <div className="lg:col-span-4">
             <label className="block text-xs font-medium text-gray-600 mb-1">Tipo comprobante</label>
             {isNotaVenta ? (
               <div className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50 text-gray-700">
@@ -1019,7 +1173,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
               </select>
             )}
           </div>
-          <div>
+          <div className={isNotaVenta || isQuotation ? 'lg:col-span-8' : 'lg:col-span-2'}>
             <label className="block text-xs font-medium text-gray-600 mb-1">Serie</label>
             <select
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono"
@@ -1033,7 +1187,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
             </select>
           </div>
           {!isNotaVenta && !isQuotation && (
-            <div>
+            <div className="lg:col-span-6">
               <label className="block text-xs font-medium text-gray-600 mb-1">Tipo operación</label>
               <select
                 className={`w-full border border-gray-200 rounded-xl px-3 py-2 text-sm ${form.sunat_code !== '01' ? 'bg-gray-50' : ''}`}
@@ -1057,9 +1211,51 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
               </select>
             </div>
           )}
+        </div>
+
+        {/* Cliente, moneda y tipo de cambio */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
+          <div
+            className={
+              isQuotation
+                ? 'sm:col-span-2 lg:col-span-8'
+                : isNotaVenta
+                  ? 'sm:col-span-2 lg:col-span-5'
+                  : 'sm:col-span-2 lg:col-span-7'
+            }
+          >
+            <label className="block text-xs font-medium text-gray-600 mb-1">Cliente *</label>
+            <div className="flex gap-2 items-stretch">
+              <select
+                className="flex-1 min-w-0 border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                value={form.contact_id ?? ''}
+                onChange={e => setForm(f => ({ ...f, contact_id: e.target.value ? Number(e.target.value) : null }))}
+              >
+                <option value="">Seleccionar cliente...</option>
+                {customers.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.business_name}
+                    {c.doc_type === '0' && c.doc_number === '99999999' ? ' (por defecto)' : ''}
+                    {formatTipoDocIdentidadDisplay(c.doc_type, c.doc_number)
+                      ? ` — ${formatTipoDocIdentidadDisplay(c.doc_type, c.doc_number)}`
+                      : ''}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setAddClientOpen(true)}
+                className="shrink-0 inline-flex items-center justify-center rounded-xl border border-gray-200 px-3 py-2 text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] min-h-[42px]"
+                title="Nuevo cliente"
+                aria-label="Nuevo cliente"
+              >
+                <UserPlus size={18} />
+              </button>
+            </div>
+          </div>
           {!isQuotation && (
             <>
-              <div>
+              <div className="lg:col-span-2">
                 <label className="block text-xs font-medium text-gray-600 mb-1">Moneda</label>
                 <select
                   className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
@@ -1071,7 +1267,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                   <option value="USD">Dólares (USD)</option>
                 </select>
               </div>
-              <div>
+              <div className={isNotaVenta ? 'lg:col-span-2' : 'lg:col-span-3'}>
                 <label
                   className="block text-xs font-medium text-gray-600 mb-1"
                   title="TC SUNAT venta del día de emisión (USD/PEN)"
@@ -1120,6 +1316,18 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
               </div>
             </>
           )}
+
+          {(isQuotation || isNotaVenta) && (
+            <div className={isQuotation ? 'sm:col-span-2 lg:col-span-4' : 'sm:col-span-2 lg:col-span-3'}>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Notas</label>
+              <input
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                placeholder="Opcional"
+                value={form.notes}
+                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+              />
+            </div>
+          )}
         </div>
 
         {isDetraccion && !isNotaVenta && (
@@ -1151,12 +1359,25 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Cuenta BN (emisor)</label>
-                <input
-                  readOnly
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50 font-mono"
-                  value={companyConfig?.detraction_bn_account?.trim() || 'Sin configurar'}
-                  title="Configúrela en Empresa → SUNAT"
-                />
+                {detractionBnAccount ? (
+                  <input
+                    readOnly
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50 font-mono"
+                    value={detractionBnAccount}
+                    title="Configurada en Empresa → SUNAT / IGV"
+                  />
+                ) : (
+                  <div className="rounded-xl border border-dashed border-amber-300 bg-white px-3 py-2.5 text-sm">
+                    <p className="text-amber-900">Sin configurar</p>
+                    <Link
+                      to="/ajustes"
+                      state={{ erpSettingsTab: 'empresa', erpCompanyTab: 'impuestos' }}
+                      className="mt-1 inline-block text-xs font-semibold text-primary-600 hover:text-primary-700 hover:underline"
+                    >
+                      Configurar cuenta de detracción en SUNAT / IGV →
+                    </Link>
+                  </div>
+                )}
               </div>
             </div>
             {detractionPreview.reason && !detractionPreview.applicable && (
@@ -1174,48 +1395,6 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
             )}
           </div>
         )}
-
-        {/* Cliente */}
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Cliente *</label>
-          <div className="flex gap-2 items-stretch">
-            <select
-              className="flex-1 min-w-0 border border-gray-200 rounded-xl px-3 py-2 text-sm"
-              value={form.contact_id ?? ''}
-              onChange={e => setForm(f => ({ ...f, contact_id: e.target.value ? Number(e.target.value) : null }))}
-            >
-              <option value="">Seleccionar cliente...</option>
-              {customers.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.business_name}
-                  {c.doc_type === '0' && c.doc_number === '99999999' ? ' (por defecto)' : ''}
-                  {formatTipoDocIdentidadDisplay(c.doc_type, c.doc_number)
-                    ? ` — ${formatTipoDocIdentidadDisplay(c.doc_type, c.doc_number)}`
-                    : ''}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={() => setAddClientOpen(true)}
-              className="shrink-0 inline-flex items-center justify-center rounded-xl border border-gray-200 px-3 py-2 text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] min-h-[42px]"
-              title="Nuevo cliente"
-              aria-label="Nuevo cliente"
-            >
-              <UserPlus size={18} />
-            </button>
-          </div>
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Notas</label>
-          <input
-            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-            placeholder="Opcional"
-            value={form.notes}
-            onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-          />
-        </div>
 
         {/* Detalle de ítems */}
         <section className="border-t border-gray-100 pt-5">
@@ -1246,9 +1425,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
               title={
                 barcodeScan.scannerMode
                   ? 'Desactivar escáner'
-                  : barcodeScan.useCameraScanner
-                    ? 'Activar escáner (cámara + código manual)'
-                    : 'Activar escáner de código de barras'
+                  : 'Activar escáner de código de barras'
               }
             >
               <ScanBarcode size={14} /> {barcodeScan.scannerMode ? 'Escáner activo' : 'Escanear'}
@@ -1287,9 +1464,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                 )}
               </div>
               <p className="mt-1 text-xs text-gray-500">
-                {barcodeScan.useCameraScanner
-                  ? 'Use la cámara o ingrese el código manualmente y presione Enter.'
-                  : 'Escanee con lector USB o pegue el código y presione Enter.'}
+                Escanee con lector USB o pegue el código y presione Enter.
               </p>
             </div>
           )}
@@ -1313,10 +1488,26 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
               <tbody>
                 {items.map((it, idx) => {
                   const { total } = getItemTotals(it, idx)
+                  const modifierLines = it.modifiers_json
+                    ? formatModifierLines(parseStoredModifiers(it.modifiers_json))
+                    : []
                   return (
-                    <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50/50">
+                    <tr key={it.line_key ?? idx} className="border-b border-gray-50 hover:bg-gray-50/50">
                       <td className="px-4 py-2.5">
                         <span className="text-gray-800">{it.description || '—'}</span>
+                        {modifierLines.map((mLine) => (
+                          <span key={mLine} className="block text-[11px] text-[rgb(var(--p700))] mt-0.5">
+                            {mLine}
+                          </span>
+                        ))}
+                        {it.item_note ? (
+                          <span className="block text-[11px] text-gray-500 italic mt-0.5">Nota: {it.item_note}</span>
+                        ) : null}
+                        {it.serials?.length ? (
+                          <span className="block text-[11px] text-gray-500 font-mono mt-0.5">
+                            Serie: {it.serials.join(', ')}
+                          </span>
+                        ) : null}
                       </td>
                       <td className="px-4 py-2.5">
                         <span className="font-mono text-gray-600">{it.code || '—'}</span>
@@ -1402,10 +1593,103 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
             )}
           </div>
 
-          <div className="flex flex-col lg:flex-row lg:items-start gap-4 mt-4">
-            <div className="flex-1" />
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mt-4">
+            {!isQuotation && (
+              <div className="md:col-span-3 min-w-0 border border-gray-200 rounded-xl p-4 space-y-3 bg-white">
+                <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                  {isDetraccion && detractionPreview.applicable ? 'Pagos directos' : 'Métodos de pago'}
+                </p>
+                {payments.map((p, idx) => (
+                  <div key={idx} className="flex flex-wrap gap-2 items-center">
+                    <PaymentMethodSelect
+                      methods={directPaymentMethods}
+                      value={p.method}
+                      onChange={(code) =>
+                        setPayments((prev) =>
+                          prev.map((x, i) => (i === idx ? { ...x, method: code } : x)),
+                        )
+                      }
+                      className="relative flex-1 min-w-[10rem]"
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      placeholder="Monto"
+                      className="w-24 border border-gray-200 rounded-xl px-3 py-2 text-sm tabular-nums bg-white shrink-0"
+                      value={p.amount}
+                      onChange={(e) =>
+                        setPayments((prev) =>
+                          prev.map((x, i) => (i === idx ? { ...x, amount: e.target.value } : x)),
+                        )
+                      }
+                    />
+                    {payments.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setPayments((prev) => prev.filter((_, i) => i !== idx))}
+                        className="text-red-500 hover:text-red-700 p-1 shrink-0"
+                        aria-label="Quitar pago"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPayments((prev) => [
+                      ...prev,
+                      { method: directPaymentMethods[0]?.code ?? 'cash', amount: '' },
+                    ])
+                  }
+                  className="text-xs text-[rgb(var(--p600))] hover:underline"
+                >
+                  + Agregar pago
+                </button>
+                <div className="rounded-xl border border-gray-200 bg-gray-50/80 px-3 py-2.5 space-y-1.5">
+                  <div className="flex justify-between text-xs text-gray-600">
+                    <span>Monto a pagar</span>
+                    <span className="font-semibold text-gray-800 tabular-nums">{fmt(directPayableTarget)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-600">
+                    <span>Suma de pagos</span>
+                    <span className="font-semibold text-gray-800 tabular-nums">{fmt(paymentsTotalPaid)}</span>
+                  </div>
+                  {paymentChange > 0.009 && (
+                    <div className="flex justify-between items-center rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-amber-900">
+                      <span className="text-xs font-bold uppercase tracking-wide">Vuelto</span>
+                      <span className="text-sm font-bold tabular-nums">{fmt(paymentChange)}</span>
+                    </div>
+                  )}
+                  {paymentsTotalPaid > 0 && paymentsTotalPaid < directPayableTarget - 0.01 && (
+                    <p className="text-[11px] text-red-600">
+                      Falta {fmt(Math.max(0, directPayableTarget - paymentsTotalPaid))}
+                    </p>
+                  )}
+                </div>
+                {isDetraccion && detractionPreview.applicable && (
+                  <div className="flex flex-wrap gap-2 items-center rounded-xl bg-amber-50 border border-amber-100 px-3 py-2">
+                    <span className="flex-1 min-w-[7rem] text-sm text-amber-900 font-medium">
+                      {DETRACCION_PAYMENT_METHOD_NAME}
+                    </span>
+                    <span className="text-sm tabular-nums text-amber-900 font-semibold">
+                      {fmt(detractionPreview.detractionAmount)}
+                    </span>
+                    <span className="text-[10px] uppercase tracking-wide text-amber-700/80 w-full">
+                      Registro automático · sin impacto en caja
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
-            <div className="w-full lg:w-[min(100%,22rem)] lg:shrink-0 border border-gray-200 rounded-xl p-4 space-y-4 bg-gray-50/40">
+            <div
+              className={`min-w-0 border border-gray-200 rounded-xl p-4 space-y-4 bg-gray-50/40 ${
+                isQuotation ? 'md:col-span-2 md:col-start-4' : 'md:col-span-2'
+              }`}
+            >
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Descuento</label>
                 <div className="flex overflow-hidden rounded-xl border border-gray-200 bg-white">
@@ -1563,85 +1847,11 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                   </>
                 )}
               </div>
-
-              {!isQuotation && (
-              <div className="space-y-2 pt-1 border-t border-gray-200">
-                <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                  {isDetraccion && detractionPreview.applicable ? 'Pagos directos' : 'Métodos de pago'}
-                </p>
-                {payments.map((p, idx) => (
-                  <div key={idx} className="flex flex-wrap gap-2 items-center">
-                    <select
-                      className="flex-1 min-w-[7rem] border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white shrink-0"
-                      value={p.method}
-                      onChange={e => setPayments(prev => prev.map((x, i) => i === idx ? { ...x, method: e.target.value } : x))}
-                    >
-                      {directPaymentMethods.map(m => (
-                        <option key={m.id} value={m.code}>{m.name}</option>
-                      ))}
-                    </select>
-                    <input
-                      type="number"
-                      min={0}
-                      step={0.01}
-                      placeholder="Monto"
-                      className="w-24 border border-gray-200 rounded-xl px-3 py-2 text-sm tabular-nums bg-white"
-                      value={p.amount}
-                      onChange={e => setPayments(prev => prev.map((x, i) => i === idx ? { ...x, amount: e.target.value } : x))}
-                    />
-                    {payments.length > 1 && (
-                      <button type="button" onClick={() => setPayments(prev => prev.filter((_, i) => i !== idx))} className="text-red-500 hover:text-red-700 p-1 shrink-0">
-                        <Trash2 size={14} />
-                      </button>
-                    )}
-                  </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setPayments(prev => [...prev, { method: directPaymentMethods[0]?.code ?? 'cash', amount: '' }])}
-                  className="text-xs text-[rgb(var(--p600))] hover:underline"
-                >
-                  + Agregar pago
-                </button>
-                <div className="rounded-xl border border-gray-200 bg-gray-50/80 px-3 py-2.5 space-y-1.5 mt-2">
-                  <div className="flex justify-between text-xs text-gray-600">
-                    <span>Monto a pagar</span>
-                    <span className="font-semibold text-gray-800 tabular-nums">{fmt(directPayableTarget)}</span>
-                  </div>
-                  <div className="flex justify-between text-xs text-gray-600">
-                    <span>Suma de pagos</span>
-                    <span className="font-semibold text-gray-800 tabular-nums">{fmt(paymentsTotalPaid)}</span>
-                  </div>
-                  {paymentChange > 0.009 && (
-                    <div className="flex justify-between items-center rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-amber-900">
-                      <span className="text-xs font-bold uppercase tracking-wide">Vuelto</span>
-                      <span className="text-sm font-bold tabular-nums">{fmt(paymentChange)}</span>
-                    </div>
-                  )}
-                  {paymentsTotalPaid > 0 && paymentsTotalPaid < directPayableTarget - 0.01 && (
-                    <p className="text-[11px] text-red-600">
-                      Falta {fmt(Math.max(0, directPayableTarget - paymentsTotalPaid))}
-                    </p>
-                  )}
-                </div>
-                {isDetraccion && detractionPreview.applicable && (
-                  <div className="flex flex-wrap gap-2 items-center rounded-xl bg-amber-50 border border-amber-100 px-3 py-2 mt-2">
-                    <span className="flex-1 min-w-[7rem] text-sm text-amber-900 font-medium">{DETRACCION_PAYMENT_METHOD_NAME}</span>
-                    <span className="w-24 text-sm tabular-nums text-amber-900 text-right font-semibold">
-                      {fmt(detractionPreview.detractionAmount)}
-                    </span>
-                    <span className="text-[10px] uppercase tracking-wide text-amber-700/80 w-full">
-                      Registro automático · sin impacto en caja
-                    </span>
-                  </div>
-                )}
-              </div>
-              )}
             </div>
           </div>
         </section>
 
-        <div className="flex flex-col-reverse sm:flex-row sm:justify-between gap-2 pt-4 border-t border-gray-100">
+        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-4 border-t border-gray-100">
           <button
             type="button"
             onClick={() => navigate(isQuotation ? '/quotations' : '/sales')}
@@ -1649,7 +1859,15 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
           >
             Cancelar
           </button>
-          <div className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
+          <button
+            type="button"
+            onClick={() => void handleSalePreview()}
+            disabled={previewLoading || saving || items.length === 0}
+            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border border-amber-300 bg-amber-50 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50 sm:min-w-[9rem]"
+          >
+            {previewLoading ? <Loader2 size={16} className="animate-spin" /> : null}
+            Previsualizar
+          </button>
           <button
             type="button"
             onClick={handleSave}
@@ -1666,13 +1884,20 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                   ? 'Registrar nota de venta'
                   : 'Generar'}
           </button>
-          </div>
         </div>
       </div>
 
       <Modal open={showProductPicker} onClose={() => setShowProductPicker(false)} contentClassName="max-w-2xl">
         <ProductPickerModal variant="sale" currency={form.currency} onAdd={addProductToItems} onClose={() => setShowProductPicker(false)} />
       </Modal>
+
+      <ProductConfigureModal
+        product={productToConfigure}
+        branchId={activeBranchId}
+        stacked
+        onClose={() => setProductToConfigure(null)}
+        onConfirm={handleSaleConfigureConfirm}
+      />
 
       <Modal open={showManualItemModal} onClose={() => setShowManualItemModal(false)} contentClassName="max-w-lg">
         <ManualItemModal
@@ -1685,13 +1910,6 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
         />
       </Modal>
 
-      <BarcodeScannerModal
-        open={barcodeScan.cameraOpen}
-        onClose={() => barcodeScan.setCameraOpen(false)}
-        onScan={barcodeScan.handleBarcodeScan}
-        busy={barcodeScan.scanProcessing}
-      />
-
       <QuickContactCreateModal
         open={addClientOpen}
         onClose={() => setAddClientOpen(false)}
@@ -1700,6 +1918,22 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
           setCustomers((prev) => [...prev, contact])
           setForm((f) => ({ ...f, contact_id: contact.id }))
         }}
+      />
+
+      <TenantCompanyEditModal
+        open={companyEditOpen}
+        onClose={() => setCompanyEditOpen(false)}
+        company={companyConfig}
+        onSaved={(patch) => setCompanyConfig((prev) => (prev ? { ...prev, ...patch } : prev))}
+      />
+
+      <SaleReceiptPreviewModal
+        open={previewModalOpen}
+        onClose={() => {
+          setPreviewModalOpen(false)
+          setPreviewPrintData(null)
+        }}
+        printData={previewPrintData}
       />
 
       <ReceiptPrintModal

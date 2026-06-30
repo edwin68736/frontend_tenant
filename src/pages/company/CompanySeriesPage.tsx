@@ -1,80 +1,28 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Plus, Pencil, Trash2, FileText, Lock } from 'lucide-react'
-import { companyService, type SeriesRow } from '@/services/company.service'
+import { companyService, type SeriesDocumentType, type SeriesRow } from '@/services/company.service'
 import { Modal } from '@/components/ui/Modal'
 import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
-
-const CATEGORIES = ['venta', 'compra', 'nota_credito', 'nota_debito', 'guia_remision', 'guia_transportista', 'retencion', 'percepcion'] as const
-const DOC_TYPES = ['FACTURA', 'BOLETA', 'NOTA DE VENTA', 'NOTA DE CRÉDITO', 'NOTA DE DÉBITO', 'GUÍA DE REMISIÓN', 'GUÍA TRANSPORTISTA']
-const SUNAT_CODES = [
-  { code: '00', label: '00 - Nota de venta (no SUNAT)' },
-  { code: '01', label: '01 - Factura' },
-  { code: '03', label: '03 - Boleta' },
-  { code: '07', label: '07 - Nota de Crédito' },
-  { code: '08', label: '08 - Nota de Débito' },
-  { code: '09', label: '09 - Guía de Remisión Remitente' },
-  { code: '31', label: '31 - Guía Transportista' },
-  { code: '02', label: '02 - Recibo por Honorarios' },
-  { code: '04', label: '04 - Liquidación de Compra' },
-  { code: '20', label: '20 - Comprobante de Retención' },
-]
-
-const CATEGORY_LABELS: Record<string, string> = {
-  venta: 'Venta',
-  compra: 'Compra',
-  nota_credito: 'Nota crédito',
-  nota_debito: 'Nota débito',
-  guia_remision: 'Guía remitente',
-  guia_transportista: 'Guía transportista',
-}
-
-const NC_SERIES_HINT =
-  'Nota de crédito (SUNAT 07): FC## anula facturas (ej. FC01); BC## anula boletas (ej. BC01).'
-
-function isValidNotaCreditoSeries(code: string): boolean {
-  return /^(FC|BC)\d{2}$/i.test(code.trim())
-}
-
-type FormState = {
-  branch_id: number
-  doc_type: string
-  series: string
-  current_number: number
-  category: string
-  sunat_code: string
-}
-
-const emptyForm = (branchId = 0): FormState => ({
-  branch_id: branchId,
-  doc_type: 'NOTA DE VENTA',
-  series: '',
-  current_number: 0,
-  category: 'venta',
-  sunat_code: '00',
-})
-
-function normalizeSeries(list: SeriesRow[], branches: { id: number; name: string }[]): SeriesRow[] {
-  return (list ?? []).map((s) => ({
-    ...s,
-    current_number: s.current_number ?? s.correlative ?? 0,
-    branch_name: s.branch_name ?? branches.find((b) => b.id === s.branch_id)?.name,
-    category: s.category ?? 'venta',
-    locked: s.locked ?? (Number(s.correlative ?? s.current_number ?? 0) > 1 || Number(s.sales_count ?? 0) > 0),
-    can_delete: s.can_delete ?? !(Number(s.correlative ?? s.current_number ?? 0) > 1 || Number(s.sales_count ?? 0) > 0),
-  }))
-}
-
-function groupSeriesByBranch(series: SeriesRow[], branches: { id: number; name: string }[]) {
-  return branches.map((b) => ({
-    branchId: b.id,
-    branchName: b.name,
-    items: series.filter((s) => s.branch_id === b.id),
-  }))
-}
+import {
+  SERIES_FORM_COPY,
+  DOCUMENT_CODE_LABEL,
+  emptySeriesForm,
+  type SeriesFormState,
+  resolveSeriesDocumentTypeId,
+  isValidNotaCreditoSeries,
+  normalizeSeriesRows,
+  buildSeriesFilterCategories,
+  categoryLabel,
+  formatDocumentCode,
+  groupSeriesByBranch,
+  isInternalDocumentOnlySeries,
+} from '@/utils/seriesDocumentForm'
 
 export default function CompanySeriesPage() {
   const { invalidateCheckoutSeries } = useBranchCheckoutSeries()
+  const [documentTypes, setDocumentTypes] = useState<SeriesDocumentType[]>([])
+  const [categoryLabels, setCategoryLabels] = useState<Record<string, string>>({})
   const [sunatEnabled, setSunatEnabled] = useState(false)
   const [series, setSeries] = useState<SeriesRow[]>([])
   const [branches, setBranches] = useState<{ id: number; name: string }[]>([])
@@ -82,7 +30,7 @@ export default function CompanySeriesPage() {
   const [filterCategory, setFilterCategory] = useState('')
   const [show, setShow] = useState(false)
   const [editing, setEditing] = useState<SeriesRow | null>(null)
-  const [form, setForm] = useState<FormState>(emptyForm())
+  const [form, setForm] = useState<SeriesFormState>(emptySeriesForm())
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<number | null>(null)
   const [activeBranchId, setActiveBranchId] = useState(0)
@@ -90,6 +38,9 @@ export default function CompanySeriesPage() {
   const grouped = groupSeriesByBranch(series, branches)
   const activeBranchGroup = grouped.find((g) => g.branchId === activeBranchId) ?? grouped[0]
   const editingLocked = editing?.locked ?? false
+  const selectedDocType = documentTypes.find((t) => t.id === form.doc_type_id) ?? null
+  const legacyDocType = editing && !selectedDocType
+  const allFilterCategories = buildSeriesFilterCategories(categoryLabels, series)
 
   useEffect(() => {
     if (branches.length === 0) return
@@ -103,12 +54,15 @@ export default function CompanySeriesPage() {
       companyService.listSeries({ category: filterCategory || undefined }),
       companyService.listBranches(),
       companyService.getSunat(),
+      companyService.listSeriesDocumentTypes(),
     ])
-      .then(([s, b, sunat]) => {
+      .then(([s, b, sunat, docTypesRes]) => {
         const branchList = (b ?? []).map((x) => ({ id: x.id, name: x.name }))
         setBranches(branchList)
-        setSeries(normalizeSeries(s ?? [], branchList))
+        setSeries(normalizeSeriesRows(s ?? [], branchList))
         setSunatEnabled(sunat.sunat_enabled ?? false)
+        setDocumentTypes(docTypesRes.types ?? [])
+        setCategoryLabels(docTypesRes.categoryLabels ?? {})
       })
       .catch(() => toast.error('Error cargando series'))
       .finally(() => setLoading(false))
@@ -118,28 +72,26 @@ export default function CompanySeriesPage() {
     load()
   }, [filterCategory])
 
-  const sunatOptions = sunatEnabled ? SUNAT_CODES : SUNAT_CODES.filter((o) => o.code === '00')
-
   const openNew = () => {
     const branchId = activeBranchId || branches[0]?.id || 0
+    const defaultTypeId = documentTypes[0]?.id ?? 'nota_venta'
     setEditing(null)
-    setForm(sunatEnabled ? emptyForm(branchId) : { ...emptyForm(branchId), sunat_code: '00' })
+    setForm(emptySeriesForm(branchId, defaultTypeId))
     setShow(true)
   }
 
   const openEdit = (s: SeriesRow) => {
-    if (!sunatEnabled && (s.sunat_code ?? '01') !== '00') {
-      toast.error('Solo puede editar series de nota de venta (00) sin facturación electrónica')
+    if (!sunatEnabled && !isInternalDocumentOnlySeries(s)) {
+      toast.error('Solo puede editar series de nota de venta sin facturación electrónica')
       return
     }
     setEditing(s)
     setForm({
       branch_id: s.branch_id,
-      doc_type: s.doc_type,
+      doc_type_id: resolveSeriesDocumentTypeId(documentTypes, s) ?? '',
       series: s.series,
       current_number: s.current_number ?? 0,
-      category: s.category,
-      sunat_code: (s.sunat_code ?? '01') === '00' || !sunatEnabled ? '00' : (s.sunat_code ?? '01'),
+      active: s.active ?? true,
     })
     setShow(true)
   }
@@ -149,7 +101,12 @@ export default function CompanySeriesPage() {
       toast.error('Serie requerida')
       return
     }
-    if (form.category === 'nota_credito' && !isValidNotaCreditoSeries(form.series)) {
+    const docTypeDef = selectedDocType
+    if (!docTypeDef && !editing) {
+      toast.error('Seleccione un tipo de documento')
+      return
+    }
+    if (docTypeDef?.category === 'nota_credito' && !isValidNotaCreditoSeries(form.series)) {
       toast.error('Serie NC inválida: use FC01–FC99 para facturas o BC01–BC99 para boletas')
       return
     }
@@ -157,24 +114,26 @@ export default function CompanySeriesPage() {
       toast.error('Seleccione una sucursal')
       return
     }
+    if (form.current_number < 1) {
+      toast.error('El correlativo inicial debe ser al menos 1')
+      return
+    }
     setSaving(true)
     try {
+      const docType = docTypeDef?.doc_type ?? editing?.doc_type ?? ''
       if (editing) {
         await companyService.updateSeries(editing.id, {
           series: form.series,
-          active: editing.active ?? true,
-          doc_type: form.doc_type,
-          sunat_code: form.sunat_code || '01',
-          category: form.category,
+          active: form.active,
+          doc_type: docType,
           correlative: form.current_number,
         })
       } else {
         await companyService.createSeries({
           branch_id: form.branch_id,
-          doc_type: form.doc_type,
+          doc_type: docType,
           series: form.series,
-          category: form.category,
-          sunat_code: form.sunat_code || '01',
+          correlative: form.current_number,
         })
       }
       toast.success(editing ? 'Serie actualizada' : 'Serie creada')
@@ -191,7 +150,7 @@ export default function CompanySeriesPage() {
 
   const handleDelete = async (s: SeriesRow) => {
     if (!s.can_delete) {
-      toast.error('No se puede eliminar: la serie ya tiene documentos emitidos')
+      toast.error(s.usage_reason || 'No se puede eliminar: la serie ya está en uso')
       return
     }
     if (!confirm(`¿Eliminar la serie ${s.series}? Esta acción no se puede deshacer.`)) return
@@ -240,12 +199,12 @@ export default function CompanySeriesPage() {
 
       {!sunatEnabled && (
         <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-          Sin facturación electrónica: solo series con código SUNAT 00 (nota de venta).
+          {SERIES_FORM_COPY.noSunatBanner}
         </p>
       )}
 
       <div className="flex gap-2 flex-wrap">
-        {['', ...CATEGORIES].map((c) => (
+        {allFilterCategories.map((c) => (
           <button
             key={c || 'all'}
             type="button"
@@ -256,7 +215,7 @@ export default function CompanySeriesPage() {
                 : 'bg-white border border-gray-200 text-gray-600 hover:border-[rgb(var(--p300))]'
             }`}
           >
-            {c === '' ? 'Todas' : CATEGORY_LABELS[c] ?? c}
+            {c === '' ? 'Todas' : categoryLabel(categoryLabels, c)}
           </button>
         ))}
       </div>
@@ -314,7 +273,7 @@ export default function CompanySeriesPage() {
                 <table className="w-full text-sm min-w-[560px]">
                   <thead className="bg-gray-50 border-b border-gray-100">
                     <tr>
-                      {['Categoría', 'Tipo', 'Serie', 'N° actual', 'SUNAT', 'Estado', ''].map((h) => (
+                      {['Categoría', 'Tipo', 'Serie', 'N° actual', 'Cód. doc.', 'Estado', ''].map((h) => (
                         <th key={h || 'actions'} className="text-left px-4 py-2 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">
                           {h}
                         </th>
@@ -324,11 +283,11 @@ export default function CompanySeriesPage() {
                   <tbody>
                     {(activeBranchGroup?.items ?? []).map((s) => (
                       <tr key={s.id} className="border-b border-gray-50 hover:bg-gray-50">
-                        <td className="px-4 py-2 text-gray-600 text-xs">{CATEGORY_LABELS[s.category] ?? s.category}</td>
+                        <td className="px-4 py-2 text-gray-600 text-xs">{categoryLabel(categoryLabels, s.category)}</td>
                         <td className="px-4 py-2 text-gray-700 whitespace-nowrap">{s.doc_type}</td>
                         <td className="px-4 py-2 font-mono font-bold text-[rgb(var(--p700))]">{s.series}</td>
                         <td className="px-4 py-2 tabular-nums text-gray-600">{s.current_number}</td>
-                        <td className="px-4 py-2 font-mono text-gray-600">{s.sunat_code ?? '—'}</td>
+                        <td className="px-4 py-2 font-mono text-gray-600">{formatDocumentCode(s)}</td>
                         <td className="px-4 py-2">
                           {s.locked ? (
                             <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-100">
@@ -377,7 +336,7 @@ export default function CompanySeriesPage() {
         <div className="space-y-3 mt-3 max-h-[70vh] overflow-y-auto pr-1">
           {editingLocked && (
             <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-              Esta serie ya tiene documentos emitidos. No puede cambiar serie, tipo, correlativo ni código SUNAT.
+              {editing?.usage_reason || SERIES_FORM_COPY.lockedFallback}
             </p>
           )}
           <div>
@@ -396,98 +355,80 @@ export default function CompanySeriesPage() {
               ))}
             </select>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Categoría</label>
-              <select
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm disabled:bg-gray-50"
-                value={form.category}
-                onChange={(e) => {
-                  const category = e.target.value
-                  setForm((f) => ({
-                    ...f,
-                    category,
-                    ...(category === 'nota_credito'
-                      ? { sunat_code: '07', doc_type: 'NOTA DE CRÉDITO' }
-                      : category === 'guia_remision'
-                        ? { sunat_code: '09', doc_type: 'GUÍA DE REMISIÓN' }
-                        : category === 'guia_transportista'
-                          ? { sunat_code: '31', doc_type: 'GUÍA TRANSPORTISTA' }
-                          : {}),
-                  }))
-                }}
-                disabled={editingLocked}
-              >
-                {CATEGORIES.map((c) => (
-                  <option key={c} value={c}>
-                    {CATEGORY_LABELS[c]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Código SUNAT</label>
-              <select
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono disabled:bg-gray-50"
-                value={form.sunat_code}
-                onChange={(e) => setForm((f) => ({ ...f, sunat_code: e.target.value }))}
-                disabled={editingLocked}
-              >
-                {sunatOptions.map((o) => (
-                  <option key={o.code} value={o.code}>
-                    {o.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Tipo documento</label>
-            <select
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm disabled:bg-gray-50"
-              value={form.doc_type}
-              onChange={(e) => setForm((f) => ({ ...f, doc_type: e.target.value }))}
-              disabled={editingLocked}
-            >
-              {DOC_TYPES.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </select>
+            <label className="block text-xs font-medium text-gray-600 mb-1">{SERIES_FORM_COPY.documentTypeLabel}</label>
+            {legacyDocType ? (
+              <div className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-gray-50 text-gray-700">
+                {editing?.doc_type}
+                <p className="text-xs text-gray-500 mt-1 font-mono">
+                  {DOCUMENT_CODE_LABEL}: {formatDocumentCode(editing!)}
+                </p>
+              </div>
+            ) : (
+              <>
+                <select
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm disabled:bg-gray-50"
+                  value={form.doc_type_id}
+                  onChange={(e) => setForm((f) => ({ ...f, doc_type_id: e.target.value }))}
+                  disabled={editingLocked}
+                >
+                  {documentTypes.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+                {selectedDocType && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    {SERIES_FORM_COPY.documentCodeLabel}: <span className="font-mono">{selectedDocType.document_code}</span>
+                    {selectedDocType.series_prefix_hint ? (
+                      <> · {SERIES_FORM_COPY.prefixHint}: {selectedDocType.series_prefix_hint}</>
+                    ) : null}
+                  </p>
+                )}
+              </>
+            )}
           </div>
-          {form.category === 'nota_credito' && (
+          {selectedDocType?.category === 'nota_credito' && (
             <p className="text-xs text-violet-800 bg-violet-50 border border-violet-100 rounded-xl px-3 py-2">
-              {NC_SERIES_HINT}
+              {SERIES_FORM_COPY.ncSeriesHint}
             </p>
           )}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Serie *</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1">{SERIES_FORM_COPY.seriesLabel} *</label>
               <input
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono uppercase disabled:bg-gray-50"
                 value={form.series}
                 onChange={(e) => setForm((f) => ({ ...f, series: e.target.value.toUpperCase() }))}
                 disabled={editingLocked}
-                placeholder={form.category === 'nota_credito' ? 'FC01 o BC01' : undefined}
+                placeholder={selectedDocType?.category === 'nota_credito' ? 'FC01 o BC01' : undefined}
               />
             </div>
-            {editing && (
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Correlativo actual</label>
-                <input
-                  type="number"
-                  min={0}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm disabled:bg-gray-50"
-                  value={form.current_number}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, current_number: Math.max(0, parseInt(e.target.value, 10) || 0) }))
-                  }
-                  disabled={editingLocked}
-                />
-              </div>
-            )}
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">{SERIES_FORM_COPY.correlativeLabel}</label>
+              <input
+                type="number"
+                min={1}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm disabled:bg-gray-50"
+                value={form.current_number}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, current_number: Math.max(1, parseInt(e.target.value, 10) || 1) }))
+                }
+                disabled={editingLocked}
+              />
+            </div>
           </div>
+          {editing && (
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={form.active}
+                onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))}
+              />
+              {SERIES_FORM_COPY.activeLabel}
+            </label>
+          )}
           <div className="flex gap-2 pt-2">
             <button type="button" onClick={() => setShow(false)} className="flex-1 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">
               Cancelar

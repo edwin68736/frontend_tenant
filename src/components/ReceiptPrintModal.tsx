@@ -36,6 +36,8 @@ interface ReceiptPrintModalProps {
   printData: PrintData | null
   saleNumber?: string
   total?: number
+  /** POS en navegador: abrir directamente el comprobante en formato ticket (sin impresión nativa). */
+  autoShowTicketOnWeb?: boolean
 }
 
 export function ReceiptPrintModal({
@@ -44,6 +46,7 @@ export function ReceiptPrintModal({
   printData,
   saleNumber,
   total,
+  autoShowTicketOnWeb = false,
 }: ReceiptPrintModalProps) {
   const [panelView, setPanelView] = useState<PanelView>('details')
   const [pdfFormat, setPdfFormat] = useState<PdfFormat>('ticket')
@@ -53,6 +56,7 @@ export function ReceiptPrintModal({
   const pdfUrlRef = useRef<string | null>(null)
   const loadedFormatRef = useRef<PdfFormat | null>(null)
   const autoPrintedRef = useRef(false)
+  const autoShowReceiptRef = useRef(false)
 
   const printerCfg = getConfiguredPrinter('documentos')
   const hasDirectPrinter = isNativePrintAvailable() && Boolean(printerCfg)
@@ -134,16 +138,25 @@ export function ReceiptPrintModal({
   useEffect(() => {
     if (!open) {
       autoPrintedRef.current = false
+      autoShowReceiptRef.current = false
       revokePdfUrl()
       setPanelView('details')
       setPdfFormat('ticket')
       setBusy(null)
       return
     }
-    setPanelView('details')
-    setPdfFormat('ticket')
     revokePdfUrl()
-  }, [open, revokePdfUrl])
+    setPdfFormat('ticket')
+    const showTicketOnWeb =
+      autoShowTicketOnWeb && !isNativePrintAvailable() && Boolean(printData)
+    if (showTicketOnWeb) {
+      autoShowReceiptRef.current = true
+      setPanelView('receipt')
+      void loadPdf('ticket')
+    } else {
+      setPanelView('details')
+    }
+  }, [open, revokePdfUrl, autoShowTicketOnWeb, printData, loadPdf])
 
   useEffect(() => {
     if (!open || !printData || autoPrintedRef.current) return
@@ -318,7 +331,7 @@ export function ReceiptPrintModal({
                       ) : (
                         <Printer className={ACTION_ICON} strokeWidth={2.25} />
                       )}
-                      <span className={ACTION_LABEL}>Imprimir</span>
+                      <span className={ACTION_LABEL}>Reimprimir</span>
                     </button>
                   )}
 
@@ -393,6 +406,7 @@ export function ReceiptPrintModal({
                         )}
                       >
                         <Receipt className={ACTION_ICON} strokeWidth={2.25} />
+                        <span className={ACTION_LABEL}>Ticket</span>
                       </button>
                       <button
                         type="button"
@@ -408,6 +422,7 @@ export function ReceiptPrintModal({
                         )}
                       >
                         <FileText className={ACTION_ICON} strokeWidth={2.25} />
+                        <span className={ACTION_LABEL}>A4</span>
                       </button>
                     </div>
                   </div>

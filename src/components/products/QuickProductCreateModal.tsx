@@ -43,7 +43,7 @@ const emptyForm = (): QuickProductForm => ({
   sale_price: 0,
   igv_affectation_type: '10',
   price_includes_igv: true,
-  manage_stock: true,
+  manage_stock: false,
   manage_series: false,
 })
 
@@ -213,7 +213,7 @@ export function QuickProductCreateModal({ open, onClose, onCreated }: Props) {
               }}
               className="rounded border-gray-300"
             />
-            <span className="text-xs text-gray-600">Maneja stock</span>
+            <span className="text-xs text-gray-600">Control stock</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input

@@ -1,12 +1,25 @@
 import type { PrintItem } from '@/types/printData'
 import { roundSunat } from '@/utils/money'
 
-/** Descuento en base imponible (subtotal) de una línea a partir del print_data. */
-export function lineSubtotalDiscount(
-  it: Pick<PrintItem, 'quantity' | 'unit_price' | 'discount' | 'subtotal' | 'tax_amount' | 'line_discount_subtotal'>,
-): number {
-  if (it.line_discount_subtotal != null && it.line_discount_subtotal > 0) {
-    return roundSunat(it.line_discount_subtotal)
+type LineDiscountFields = Pick<
+  PrintItem,
+  | 'quantity'
+  | 'unit_price'
+  | 'discount'
+  | 'subtotal'
+  | 'tax_amount'
+  | 'line_discount_subtotal'
+  | 'global_discount_subtotal'
+>
+
+/** Descuento en base imponible (subtotal) solo por línea, no el global repartido. */
+export function lineSubtotalDiscount(it: LineDiscountFields): number {
+  if (it.line_discount_subtotal != null) {
+    return roundSunat(Math.max(0, it.line_discount_subtotal))
+  }
+  // print_data estructurado: item.discount incluye global + línea; no usarlo como desc. línea.
+  if (it.global_discount_subtotal != null) {
+    return 0
   }
   const disc = Number(it.discount) || 0
   if (disc <= 0) return 0
@@ -22,6 +35,13 @@ export function lineSubtotalDiscount(
     return roundSunat(disc / (1 + rate))
   }
   return roundSunat(disc)
+}
+
+/** Descuento global repartido en ítems (p. ej. POS con descuento a toda la venta). */
+export function lineGlobalSubtotalDiscount(
+  it: Pick<PrintItem, 'global_discount_subtotal'>,
+): number {
+  return roundSunat(Math.max(0, Number(it.global_discount_subtotal) || 0))
 }
 
 export function receiptTotalDiscount(data: { items?: PrintItem[] }): number {

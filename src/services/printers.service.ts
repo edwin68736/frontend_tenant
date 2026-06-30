@@ -472,6 +472,46 @@ function escposPushLines(out: number[], lines: string[], align: 'left' | 'center
   for (const l of lines) out.push(...Array.from(textBytes(`${l}\n`)))
 }
 
+function escposPushWrappedCenter(
+  out: number[],
+  lines: string[],
+  opts?: { bold?: boolean; widthMul?: number; heightMul?: number },
+) {
+  out.push(...escposAlign('center'))
+  if (opts?.bold) out.push(...escposBold(true))
+  if ((opts?.widthMul ?? 1) !== 1 || (opts?.heightMul ?? 1) !== 1) {
+    out.push(...escposSize(opts?.widthMul ?? 1, opts?.heightMul ?? 1))
+  }
+  for (const line of lines) out.push(...Array.from(textBytes(`${line}\n`)))
+  if ((opts?.widthMul ?? 1) !== 1 || (opts?.heightMul ?? 1) !== 1) {
+    out.push(...escposSize(1, 1))
+  }
+  if (opts?.bold) out.push(...escposBold(false))
+}
+
+function pushCompanyHeaderEscPos(out: number[], printData: PrintData, cols: number) {
+  const tradeName = String(printData.company?.trade_name ?? '').trim()
+  const businessName = String(printData.company?.business_name ?? '').trim() || 'Empresa'
+  const showBusinessName =
+    Boolean(businessName) &&
+    businessName.localeCompare(tradeName, undefined, { sensitivity: 'accent' }) !== 0
+
+  if (tradeName) {
+    escposPushWrappedCenter(out, wrapText(tradeName, cols))
+    if (showBusinessName) escposPushWrappedCenter(out, wrapText(businessName, cols))
+  } else {
+    escposPushWrappedCenter(out, wrapText(businessName, cols), { bold: true })
+  }
+
+  const metaLines: string[] = []
+  if (printData.company?.ruc) metaLines.push(`RUC: ${printData.company.ruc}`)
+  const addr = getPrintIssuerAddress(printData)
+  if (addr) wrapText(addr, cols).forEach((x) => metaLines.push(x))
+  if (printData.company?.phone) metaLines.push(`Telf: ${printData.company.phone}`)
+  if (printData.company?.email) metaLines.push(`Email: ${printData.company.email}`)
+  if (metaLines.length) escposPushLines(out, metaLines, 'center')
+}
+
 export async function buildSaleDocumentEscPos(
   printData: PrintData,
   paperWidthMm: PrinterPaperWidth,
@@ -482,15 +522,6 @@ export async function buildSaleDocumentEscPos(
   const money = (n: number) => moneyEsc(currency, n)
   const showQr = isElectronicSunatCode(printData.sunat_code) && Boolean(printData.qr_data)
 
-  const companyLines: string[] = []
-  const companyName = printData.company?.business_name || 'Empresa'
-  wrapText(companyName, cols).forEach((x) => companyLines.push(x))
-  if (printData.company?.trade_name) wrapText(printData.company.trade_name, cols).forEach((x) => companyLines.push(x))
-  if (printData.company?.ruc) companyLines.push(`RUC: ${printData.company.ruc}`)
-  const addr = getPrintIssuerAddress(printData)
-  if (addr) wrapText(addr, cols).forEach((x) => companyLines.push(x))
-  if (printData.company?.phone) companyLines.push(`Telf: ${printData.company.phone}`)
-  if (printData.company?.email) companyLines.push(`Email: ${printData.company.email}`)
   const additionalNotes = trimCompanyAdditionalNotes(printData.company?.additional_notes)
   const companyAdditionalLines = additionalNotes
     ? wrapCompanyAdditionalNotes(additionalNotes, cols, wrapText)
@@ -511,6 +542,18 @@ export async function buildSaleDocumentEscPos(
     wrapText(`Cliente: ${printData.client.business_name}`, cols).forEach((x) => detailLines.push(x))
     detailLines.push(`Doc: ${printData.client.doc_number}`)
     if (printData.client.address) wrapText(`Dir: ${printData.client.address}`, cols).forEach((x) => detailLines.push(x))
+  }
+  if (printData.fiscal?.purchase_order_number) {
+    detailLines.push(`O/C: ${printData.fiscal.purchase_order_number}`)
+  }
+  if (printData.fiscal?.guias?.length) {
+    for (const g of printData.fiscal.guias) {
+      const label = g.kind === 'guia_transportista' ? 'Guia transp.' : 'Guia rem.'
+      detailLines.push(`${label}: ${g.number}`)
+    }
+  }
+  if (printData.fiscal?.fiscal_observations) {
+    wrapText(`Obs.: ${printData.fiscal.fiscal_observations}`, cols).forEach((x) => detailLines.push(x))
   }
   detailLines.push('-'.repeat(cols))
   detailLines.push(itemDetailHeaderRow(cols, narrow))
@@ -562,11 +605,11 @@ export async function buildSaleDocumentEscPos(
     if (logoRaster?.length) {
       out.push(...escposAlign('center'))
       out.push(...Array.from(logoRaster))
-      // Sin LF extra: la raster ya avanza el papel; un \n añadía hueco al inicio del texto.
+      out.push(...Array.from(textBytes('\n\n')))
     }
   }
 
-  escposPushLines(out, companyLines, 'center')
+  pushCompanyHeaderEscPos(out, printData, cols)
   if (companyAdditionalLines.length) escposPushLines(out, companyAdditionalLines, 'left')
   if (companyTailLines.length) escposPushLines(out, companyTailLines, 'center')
   escposPushLines(out, ['-'.repeat(cols)], 'center')

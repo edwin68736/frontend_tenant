@@ -79,8 +79,14 @@ export interface CreateProductInput {
   initial_stock?: number
   category_id?: number | null
   modifier_group_ids?: number[]
+  presentations?: ProductPresentation[]
   /** Solo para edición: enviar para no cambiar el estado activo por defecto */
   active?: boolean
+}
+
+export interface ModifierOptionInput {
+  name: string
+  extra_price?: number
 }
 
 export interface ProductPresentation {
@@ -230,14 +236,36 @@ export const productsService = {
   listModifierGroups: () =>
     api.get<{ data: ModifierGroup[] }>('/api/modifier-groups').then(r => r.data.data ?? []),
 
-  /** Crea un grupo de modificadores. options: nombres de las opciones (el backend puede no soportar extra_price en create). */
-  createModifierGroup: (data: { name: string; required: boolean; multi_select?: boolean; options: string[] }) =>
-    api.post<{ group: ModifierGroup }>('/api/modifier-groups', {
-      name: data.name,
-      required: data.required,
-      multi_select: data.multi_select ?? false,
-      options: data.options,
-    }).then(r => r.data),
+  createModifierGroup: (data: {
+    name: string
+    required: boolean
+    multi_select?: boolean
+    options: ModifierOptionInput[] | string[]
+  }) =>
+    api
+      .post<{ group: ModifierGroup }>('/api/modifier-groups', {
+        name: data.name,
+        required: data.required,
+        multi_select: data.multi_select ?? false,
+        options: data.options ?? [],
+      })
+      .then((r) => r.data.group),
+
+  updateModifierGroup: (
+    id: number,
+    data: { name: string; required: boolean; multi_select?: boolean; options: ModifierOptionInput[] },
+  ) =>
+    api
+      .put<{ group: ModifierGroup }>(`/api/modifier-groups/${id}`, {
+        name: data.name,
+        required: data.required ?? false,
+        multi_select: data.multi_select ?? false,
+        options: data.options ?? [],
+      })
+      .then((r) => r.data.group),
+
+  deleteModifierGroup: (id: number) =>
+    api.delete(`/api/modifier-groups/${id}`).then((r) => r.data),
 
   /** Lista números de serie del producto (todas las sucursales) para el detalle. */
   getSerials: (productId: number) =>

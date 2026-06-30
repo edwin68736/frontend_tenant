@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
 import { Plus, Search, ShoppingCart, Trash2, X, ChevronRight, UserPlus, Package, ScanBarcode } from 'lucide-react'
 import { clsx } from 'clsx'
-import { productsService, getProductImageUrl, type Product, type Category, type ModifierGroup } from '@/services/products.service'
+import { productsService, getProductImageUrl, type Product, type Category } from '@/services/products.service'
 import { contactsService, type Contact } from '@/services/contacts.service'
 import { salesService } from '@/services/sales.service'
 import { cashbankService, type CashSession, type PaymentMethodRecord, type BankAccount } from '@/services/cashbank.service'
@@ -36,21 +36,26 @@ import { defaultOperationalPaymentCode, filterOperationalPaymentMethods } from '
 import { BILLING_NOT_ENABLED_MESSAGE, isElectronicBillingSunatCode } from '@/utils/posCheckoutSeries'
 import { ManualProductModal } from '@/components/pos/ManualProductModal'
 import { PosCartLineRow } from '@/components/pos/PosCartLineRow'
+import { ProductConfigureModal } from '@/components/pos/ProductConfigureModal'
 import { roundMoney } from '@/utils/checkoutDiscount'
 import {
+  appendCatalogLine,
   applyCatalogLineUnitPrice,
   cartLineKey,
   cartLineTotal,
   cartLineUnitPrice,
+  catalogLineModifiersJson,
   createCatalogCartLine,
   isCatalogCartLine,
   isManualCartLine,
+  type CatalogCartLine,
   type ManualCartLine,
   type PosCartLine,
 } from '@/utils/posCart'
 import { useFlyToCart } from '@/hooks/useFlyToCart'
 import { useBarcodeProductScanner } from '@/hooks/useBarcodeProductScanner'
-import { BarcodeScannerModal } from '@/components/barcode/BarcodeScannerModal'
+import { playCartAddSound, playCartRemoveSound } from '@/utils/cartSounds'
+import { productConfigurationBadge, productNeedsSaleConfiguration } from '@/utils/productModifiers'
 
 /** doc_type legacy → código SUNAT cuando sunat_code no viene en la serie */
 function docTypeToSunatCode(docType: string): string {
@@ -105,13 +110,6 @@ function POSContent() {
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
   const [cartModalOpen, setCartModalOpen] = useState(false)
   const [productToConfigure, setProductToConfigure] = useState<Product | null>(null)
-  const [productDetail, setProductDetail] = useState<{ modifier_group_ids: number[] } | null>(null)
-  const [modifierGroups, setModifierGroups] = useState<ModifierGroup[]>([])
-  const [availableSerials, setAvailableSerials] = useState<{ serial: string; branch_id: number; status: string }[]>([])
-  const [configVariant, setConfigVariant] = useState<{ groupId: number; optionId: number; name: string; extraPrice: number } | null>(null)
-  const [configSerials, setConfigSerials] = useState<string[]>([])
-  const [configModifiers, setConfigModifiers] = useState<{ optionId: number; name: string; extraPrice: number }[]>([])
-  const [configLoading, setConfigLoading] = useState(false)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
   const checkoutPaymentMethods = useMemo(() => filterOperationalPaymentMethods(paymentMethods), [paymentMethods])
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
@@ -201,60 +199,21 @@ function POSContent() {
       .finally(() => setLoadingProducts(false))
   }, [q, selectedCat, session])
 
-  // Cargar detalle y opciones cuando se abre el modal de configurar producto
-  useEffect(() => {
-    if (!productToConfigure) return
-    setConfigLoading(true)
-    setConfigVariant(null)
-    setConfigSerials([])
-    setConfigModifiers([])
-    const branchId = session?.branch_id ?? 1
-    Promise.all([
-      productsService.get(productToConfigure.id),
-      productsService.listModifierGroups(),
-      productToConfigure.manage_series ? productsService.getSerials(productToConfigure.id) : Promise.resolve([]),
-    ]).then(([detail, groups, serials]) => {
-      setProductDetail(detail)
-      setModifierGroups(groups ?? [])
-      setAvailableSerials((serials ?? []).filter((s: { branch_id: number; status: string }) => s.branch_id === branchId && s.status === 'available'))
-    }).catch(() => toast.error('Error al cargar opciones')).finally(() => setConfigLoading(false))
-  }, [productToConfigure, session?.branch_id])
-
   const billingModule = hasModule('billing')
   const sunatEnabled = billingModule && Boolean(cachedSunat?.sunat_enabled ?? sunat?.sunat_enabled)
 
-  const addConfiguredToCart = () => {
-    if (!productToConfigure || !productDetail) return
-    const p = productToConfigure
-    const groupIds = productDetail.modifier_group_ids ?? []
-    const variantGroup = modifierGroups.find(g => groupIds.includes(g.id) && g.required && !g.multi_select)
-    if (p.has_variants && variantGroup && !configVariant) {
-      toast.error('Selecciona una variante')
-      return
-    }
-    const n = 1
-    const unitPrice = p.sale_price + (configVariant?.extraPrice ?? 0) + configModifiers.reduce((s, m) => s + m.extraPrice, 0)
-    const serialsToUse = p.manage_series ? (configSerials.length >= n ? configSerials.slice(0, n) : availableSerials.slice(0, n).map(s => s.serial)) : undefined
-    if (p.manage_series && (serialsToUse?.length ?? 0) < n) {
-      toast.error('No hay suficientes series disponibles')
-      return
-    }
-    const modifiersPayload = [
-      ...(configVariant ? [{ option_id: configVariant.optionId, name: configVariant.name, extra_price: configVariant.extraPrice }] : []),
-      ...configModifiers.map(m => ({ option_id: m.optionId, name: m.name, extra_price: m.extraPrice })),
-    ]
+  const handleConfigureConfirm = (line: CatalogCartLine) => {
     const source = configureFlySourceRef.current
     configureFlySourceRef.current = undefined
-    const imageUrl = getProductImageUrl(p.image_url)
-    setCart(c => [...c, createCatalogCartLine(p, {
-      quantity: 1,
-      unitPrice,
-      serials: serialsToUse,
-      modifiersJson: JSON.stringify(modifiersPayload),
-    })])
-    if (source) flyToCart(source, imageUrl)
+    let merged = false
+    setCart((c) => {
+      const result = appendCatalogLine(c, line)
+      merged = result.merged
+      return result.cart
+    })
+    if (!merged && source) flyToCart(source, getProductImageUrl(line.product.image_url))
+    playCartAddSound()
     setProductToConfigure(null)
-    setProductDetail(null)
   }
 
   // Arrastre horizontal en la lista de categorías (touch + ratón)
@@ -300,8 +259,7 @@ function POSContent() {
 
   const addToCart = useCallback(
     (product: Product, sourceEl?: HTMLElement) => {
-      const needsConfig = product.has_variants || product.manage_series || product.has_modifiers
-      if (needsConfig) {
+      if (productNeedsSaleConfiguration(product)) {
         configureFlySourceRef.current = sourceEl
         cancelFlyAnimations()
         setProductToConfigure(product)
@@ -309,23 +267,13 @@ function POSContent() {
       }
       const imageUrl = getProductImageUrl(product.image_url)
       let merged = false
-      setCart(c => {
-        const defaultPrice = Number(product.sale_price) || 0
-        const idx = c.findIndex(
-          i =>
-            isCatalogCartLine(i) &&
-            i.product.id === product.id &&
-            !i.serials?.length &&
-            !i.modifiersJson &&
-            (i.unitPrice == null || Math.abs(cartLineUnitPrice(i) - defaultPrice) < 0.009),
-        )
-        if (idx >= 0) {
-          merged = true
-          return c.map((i, k) => (k === idx && isCatalogCartLine(i) ? { ...i, quantity: i.quantity + 1 } : i))
-        }
-        return [...c, createCatalogCartLine(product)]
+      setCart((c) => {
+        const result = appendCatalogLine(c, createCatalogCartLine(product))
+        merged = result.merged
+        return result.cart
       })
       if (!merged && sourceEl) flyToCart(sourceEl, imageUrl)
+      playCartAddSound()
     },
     [flyToCart, cancelFlyAnimations],
   )
@@ -338,8 +286,10 @@ function POSContent() {
   })
 
   const setCartQty = (index: number, qty: number) => {
-    if (qty <= 0) setCart(c => c.filter((_, k) => k !== index))
-    else setCart(c => c.map((i, k) => (k === index ? { ...i, quantity: qty } : i)))
+    if (qty <= 0) {
+      playCartRemoveSound()
+      setCart(c => c.filter((_, k) => k !== index))
+    } else setCart(c => c.map((i, k) => (k === index ? { ...i, quantity: qty } : i)))
   }
 
   const setCartUnitPrice = (index: number, raw: string) => {
@@ -354,12 +304,16 @@ function POSContent() {
     )
   }
 
-  const removeFromCart = (index: number) => setCart(c => c.filter((_, k) => k !== index))
+  const removeFromCart = (index: number) => {
+    playCartRemoveSound()
+    setCart(c => c.filter((_, k) => k !== index))
+  }
 
   const emptyCart = () => {
     if (cart.length === 0) return
     cancelFlyAnimations()
     setCart([])
+    playCartRemoveSound()
     toast.success('Carrito vaciado')
   }
 
@@ -382,6 +336,7 @@ function POSContent() {
 
   const addManualToCart = (line: ManualCartLine) => {
     setCart(c => [...c, line])
+    playCartAddSound()
     toast.success('Producto manual agregado')
   }
 
@@ -645,7 +600,7 @@ function POSContent() {
             unit_price: unitPrice,
             igv_affectation_type: i.product.igv_affectation_type ?? '10',
             price_includes_igv: i.product.price_includes_igv ?? true,
-            modifiers_json: i.modifiersJson ?? '',
+            modifiers_json: catalogLineModifiersJson(i),
             serials: i.serials ?? [],
           }
         }),
@@ -823,16 +778,14 @@ function POSContent() {
                 onClick={barcodeScan.toggleScannerMode}
                 className={clsx(
                   'shrink-0 inline-flex items-center justify-center rounded-xl border p-2 transition-colors touch-manipulation',
-                  barcodeScan.scannerMode || barcodeScan.cameraOpen
+                  barcodeScan.scannerMode
                     ? 'border-primary-300 bg-primary-50 text-primary-700'
                     : 'border-stone-200 bg-stone-50 text-stone-600 hover:bg-stone-100',
                 )}
                 title={
-                  barcodeScan.useCameraScanner
-                    ? 'Abrir cámara para escanear códigos'
-                    : barcodeScan.scannerMode
-                      ? 'Modo escáner activo: Enter agrega al carrito'
-                      : 'Activar escáner de código de barras'
+                  barcodeScan.scannerMode
+                    ? 'Modo escáner activo: Enter agrega al carrito'
+                    : 'Activar escáner de código de barras'
                 }
                 aria-label="Escanear código de barras"
               >
@@ -850,6 +803,7 @@ function POSContent() {
               <div className="grid w-full max-w-full grid-cols-3 gap-1.5 sm:grid-cols-4 sm:gap-2 md:grid-cols-5 lg:grid-cols-6 justify-items-stretch">
                 {products.filter(p => p.active).map(p => {
                   const imgUrl = getProductImageUrl(p.image_url)
+                  const configBadge = productConfigurationBadge(p)
                   return (
                     <button
                       key={p.id}
@@ -881,7 +835,13 @@ function POSContent() {
                         <p className="font-medium text-stone-800 text-xs leading-tight line-clamp-2 min-h-[2rem]">
                           {p.name}
                         </p>
+                        {configBadge ? (
+                          <p className="text-[9px] text-[rgb(var(--p700))] leading-tight mt-0.5 line-clamp-1">
+                            {configBadge}
+                          </p>
+                        ) : null}
                         <p className="text-primary-600 font-semibold text-xs mt-1 tabular-nums">
+                          {productNeedsSaleConfiguration(p) ? 'Desde ' : ''}
                           {formatMoney(Number(p.sale_price))}
                         </p>
                       </div>
@@ -1005,87 +965,13 @@ function POSContent() {
         </div>
       </Modal>
 
-      {/* Modal configurar producto (variante, series, modificadores) */}
-      <Modal open={!!productToConfigure} onClose={() => setProductToConfigure(null)} contentClassName="max-w-md">
-        {productToConfigure && (
-          <>
-            <h3 className="font-bold text-gray-800">{productToConfigure.name}</h3>
-            {configLoading ? (
-              <div className="flex justify-center py-6"><div className="w-6 h-6 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" /></div>
-            ) : (
-              <div className="space-y-4">
-                {productToConfigure.has_variants && productDetail && (() => {
-                  const groupIds = productDetail.modifier_group_ids ?? []
-                  const variantGroup = modifierGroups.find(g => groupIds.includes(g.id) && g.required && !g.multi_select)
-                  if (!variantGroup) return null
-                  return (
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Variante: {variantGroup.name}</label>
-                      <div className="flex flex-wrap gap-2">
-                        {(variantGroup.options ?? []).map(opt => (
-                          <button key={opt.id} type="button"
-                            onClick={() => setConfigVariant(configVariant?.optionId === opt.id ? null : { groupId: variantGroup.id, optionId: opt.id, name: opt.name, extraPrice: opt.extra_price ?? 0 })}
-                            className={`px-3 py-1.5 rounded-xl text-sm font-medium ${configVariant?.optionId === opt.id ? 'bg-[rgb(var(--p600))] text-white' : 'border border-gray-200 text-gray-700 hover:bg-gray-50'}`}>
-                            {opt.name}{(opt.extra_price ?? 0) > 0 ? ` (+S/ ${Number(opt.extra_price).toFixed(2)})` : ''}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                })()}
-                {productToConfigure.manage_series && (
-                  <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">Serie (obligatorio)</label>
-                    {availableSerials.length === 0 ? (
-                      <p className="text-xs text-amber-600">No hay series disponibles en esta sucursal.</p>
-                    ) : (
-                      <select className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" value={configSerials[0] ?? ''} onChange={e => setConfigSerials(e.target.value ? [e.target.value] : [])}>
-                        <option value="">Seleccionar...</option>
-                        {availableSerials.map(s => (
-                          <option key={s.serial} value={s.serial}>{s.serial}</option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                )}
-                {productToConfigure.has_modifiers && productDetail && (() => {
-                  const groupIds = productDetail.modifier_group_ids ?? []
-                  const modGroups = modifierGroups.filter(g => groupIds.includes(g.id) && (g.multi_select || !g.required))
-                  if (modGroups.length === 0) return null
-                  return (
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Modificadores</label>
-                      {modGroups.map(g => (
-                        <div key={g.id} className="mb-2">
-                          <p className="text-xs text-gray-500 mb-1">{g.name}</p>
-                          <div className="flex flex-wrap gap-1">
-                            {(g.options ?? []).map(opt => {
-                              const isSelected = configModifiers.some(m => m.optionId === opt.id)
-                              return (
-                                <button key={opt.id} type="button"
-                                  onClick={() => setConfigModifiers(prev => isSelected ? prev.filter(m => m.optionId !== opt.id) : [...prev, { optionId: opt.id, name: opt.name, extraPrice: opt.extra_price ?? 0 }])}
-                                  className={`px-2 py-1 rounded-lg text-xs ${isSelected ? 'bg-[rgb(var(--p600))] text-white' : 'border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-                                  {opt.name}{(opt.extra_price ?? 0) > 0 ? ` +S/ ${Number(opt.extra_price).toFixed(2)}` : ''}
-                                </button>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )
-                })()}
-                <div className="flex gap-2 pt-2">
-                  <button type="button" onClick={() => setProductToConfigure(null)} className="flex-1 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>
-                  <button type="button" onClick={addConfiguredToCart} disabled={configLoading || (productToConfigure.manage_series && configSerials.length === 0 && availableSerials.length > 0)} className="flex-1 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50">
-                    Agregar al carrito
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </Modal>
+      {/* Modal configurar producto (presentaciones, extras, series) */}
+      <ProductConfigureModal
+        product={productToConfigure}
+        branchId={session?.branch_id ?? activeBranchId}
+        onClose={() => setProductToConfigure(null)}
+        onConfirm={handleConfigureConfirm}
+      />
 
       <QuickContactCreateModal
         open={addClientModal}
@@ -1141,19 +1027,13 @@ function POSContent() {
         printData={printData}
         saleNumber={successSale ? (successSale.number?.includes('-') ? successSale.number : `${successSale.series}-${String(successSale.number).padStart(8, '0')}`) : undefined}
         total={successSale?.total}
+        autoShowTicketOnWeb
       />
 
       <ManualProductModal
         open={manualProductOpen}
         onClose={() => setManualProductOpen(false)}
         onAdd={addManualToCart}
-      />
-
-      <BarcodeScannerModal
-        open={barcodeScan.cameraOpen}
-        onClose={barcodeScan.deactivateScanner}
-        onScan={barcodeScan.handleBarcodeScan}
-        busy={barcodeScan.scanProcessing}
       />
     </div>
   )

@@ -60,7 +60,7 @@ export default function CompanySunatPage() {
   if (loading) return <div className="flex justify-center py-16"><div className="w-6 h-6 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" /></div>
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6 w-full min-w-0">
       <div className="flex items-center gap-3">
         <Shield size={20} className="text-gray-400" />
         <div>

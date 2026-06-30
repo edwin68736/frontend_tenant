@@ -2,7 +2,6 @@ import { useCallback, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { productsService, type Product } from '@/services/products.service'
 import { findProductByBarcodeInList } from '@/utils/barcodeLookup'
-import { isCapacitorNative } from '@/lib/platform/detect'
 
 type Options = {
   products?: Product[]
@@ -14,6 +13,7 @@ type Options = {
   showSuccessToast?: boolean
 }
 
+/** Escáner por input + foco + lector USB (sin cámara ni html5-qrcode). */
 export function useBarcodeProductScanner({
   products = [],
   branchId,
@@ -25,9 +25,14 @@ export function useBarcodeProductScanner({
   const wedgeInputRef = useRef<HTMLInputElement>(null)
   const [scannerMode, setScannerMode] = useState(false)
   const [scanQuery, setScanQuery] = useState('')
-  const [cameraOpen, setCameraOpen] = useState(false)
   const [scanProcessing, setScanProcessing] = useState(false)
-  const useCameraScanner = isCapacitorNative()
+
+  const focusScanInput = useCallback(() => {
+    window.setTimeout(() => {
+      searchInputRef.current?.focus()
+      searchInputRef.current?.select()
+    }, 0)
+  }, [])
 
   const resolveProduct = useCallback(
     async (code: string): Promise<Product | null> => {
@@ -53,7 +58,7 @@ export function useBarcodeProductScanner({
           setScanQuery('')
           onClearSearch?.()
           if (showSuccessToast) toast.success(`${product.name} agregado`)
-          searchInputRef.current?.focus()
+          focusScanInput()
         } else {
           toast.error('No se encontró un producto con ese código')
         }
@@ -63,19 +68,17 @@ export function useBarcodeProductScanner({
         setScanProcessing(false)
       }
     },
-    [onClearSearch, onProductFound, resolveProduct, scanProcessing, showSuccessToast],
+    [focusScanInput, onClearSearch, onProductFound, resolveProduct, scanProcessing, showSuccessToast],
   )
 
   const activateScanner = useCallback(() => {
     setScannerMode(true)
-    if (useCameraScanner) setCameraOpen(true)
-    window.setTimeout(() => searchInputRef.current?.focus(), 0)
-  }, [useCameraScanner])
+    focusScanInput()
+  }, [focusScanInput])
 
   const deactivateScanner = useCallback(() => {
     setScannerMode(false)
     setScanQuery('')
-    setCameraOpen(false)
   }, [])
 
   const toggleScannerMode = useCallback(() => {
@@ -83,14 +86,12 @@ export function useBarcodeProductScanner({
       const next = !on
       if (!next) {
         setScanQuery('')
-        setCameraOpen(false)
       } else {
-        if (useCameraScanner) setCameraOpen(true)
-        window.setTimeout(() => searchInputRef.current?.focus(), 0)
+        focusScanInput()
       }
       return next
     })
-  }, [useCameraScanner])
+  }, [focusScanInput])
 
   const handleSearchKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -119,10 +120,7 @@ export function useBarcodeProductScanner({
     scannerMode,
     scanQuery,
     setScanQuery,
-    cameraOpen,
-    setCameraOpen,
     scanProcessing,
-    useCameraScanner,
     activateScanner,
     deactivateScanner,
     toggleScannerMode,

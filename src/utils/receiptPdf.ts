@@ -6,6 +6,7 @@ import { getTipoComprobanteLabel, getMedioPagoLabel } from '@/constants/sunat'
 import { buildReceiptTotalLines, formatReceiptTotalAmount, resolvePrintChangeAmount } from '@/utils/receiptTotals'
 import { ticketColumnLayoutMm } from '@/utils/receiptTicketLayout'
 import { getPrintIssuerAddress } from '@/utils/printIssuer'
+import { trimCompanyAdditionalNotes } from '@/utils/receiptCompanyNotes'
 
 const FONT_SIZE = 10
 const FONT_SIZE_SM = 8
@@ -180,13 +181,14 @@ export async function generateReceiptPdf(
     }
 
     // Logo (más visible que en layout solo texto)
+    addSpace(3)
     if (data.company.logo_url) {
       try {
         const logoW = Math.min(32, innerW)
         const logoH = 11
         const fmt = /image\/jpe?g/i.test(data.company.logo_url) ? 'JPEG' : 'PNG'
         doc.addImage(data.company.logo_url, fmt, (pageW - logoW) / 2, y, logoW, logoH)
-        y += logoH + 3
+        y += logoH + 5
       } catch {
         // continuar sin logo
       }
@@ -209,6 +211,17 @@ export async function generateReceiptPdf(
     }
     if (data.company.phone) addTicketWrapped(`Telf: ${data.company.phone}`, FONT_SIZE_SM)
     if (data.company.email) addTicketWrapped(`Email: ${data.company.email}`, FONT_SIZE_SM)
+    const extraNotes = trimCompanyAdditionalNotes(data.company.additional_notes)
+    if (extraNotes) {
+      doc.setTextColor(0, 0, 0)
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(FONT_SIZE_SM)
+      const noteLines = doc.splitTextToSize(extraNotes, innerW)
+      for (const line of noteLines) {
+        doc.text(line, pageW / 2, y, { align: 'center' })
+        y += ticketLineH
+      }
+    }
     if (data.company.website) addTicketWrapped(`Web: ${data.company.website}`, FONT_SIZE_SM)
     addSpace(2)
 
@@ -375,7 +388,7 @@ export async function generateReceiptPdf(
 
   // Logo + bloque derecho (tipo comprobante) similar a ejemplo:
   // Logo arriba izquierda, cuadro a la derecha con "BOLETA DE VENTA ELECTRÓNICA", RUC y serie-número.
-  const startY = y
+  const startY = y + 2
   const logoSize = 25
   if (data.company.logo_url) {
     try {
@@ -399,7 +412,7 @@ export async function generateReceiptPdf(
   doc.text(`R.U.C.: ${data.company.ruc}`, boxX + boxW / 2, y, { align: 'center' })
   y += lineH + 1
   doc.text(formatDocNumber(data), boxX + boxW / 2, y, { align: 'center' })
-  y = startY + boxH + 6
+  y = startY + boxH + 8
 
   // Bloque con datos de empresa/cliente debajo del logo/cuadro (como en imagen)
   doc.setLineWidth(0.3)
@@ -572,7 +585,7 @@ export async function generateReceiptPdf(
 
   renderFiscalFooter(data, (text, size) => addLine(text, { size: size ?? FONT_SIZE_SM }), addSpace)
 
-  if (data.notes?.trim()) {
+  if (data.notes?.trim() && data.notes.trim() !== data.fiscal?.fiscal_observations?.trim()) {
     addLine('Observaciones:', { size: FONT_SIZE_SM })
     addLine(data.notes.trim(), { size: FONT_SIZE_SM })
     addSpace(2)

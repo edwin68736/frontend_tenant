@@ -9,10 +9,12 @@ export interface CompanyConfig {
   ubigeo?: string
   phone: string
   email: string
+  website?: string
   currency: string
   tax_rate: number
   color_theme: string
   logo_url: string
+  additional_notes?: string
   wallet_provider?: string
   wallet_phone?: string
   wallet_qr_url?: string
@@ -47,6 +49,26 @@ export interface BranchRow {
   active?: boolean
 }
 
+export interface SeriesDocumentType {
+  id: string
+  doc_type: string
+  label: string
+  document_code: string
+  category: string
+  category_label: string
+  series_prefix_hint: string
+  electronic: boolean
+  sunat_numbering: boolean
+  form_selectable?: boolean
+  restaurant_form?: boolean
+  requires_sunat?: boolean
+}
+
+export interface SeriesDocumentTypesResponse {
+  types: SeriesDocumentType[]
+  categoryLabels: Record<string, string>
+}
+
 export interface SeriesRow {
   id: number
   branch_id: number
@@ -59,8 +81,10 @@ export interface SeriesRow {
   active?: boolean
   sunat_code?: string
   locked?: boolean
-  sales_count?: number
   can_delete?: boolean
+  usage_table?: string
+  usage_count?: number
+  usage_reason?: string
 }
 
 export const companyService = {
@@ -102,21 +126,19 @@ export const companyService = {
   deleteBranch: (id: number) => api.delete(`/api/company/branches/${id}`).then((r) => r.data),
   listSeries: (params?: { branch_id?: number; category?: string }): Promise<SeriesRow[]> =>
     api.get<{ data: SeriesRow[] }>('/api/company/series', { params }).then((r) => r.data.data ?? []),
-  createSeries: (data: {
-    branch_id: number
-    doc_type: string
-    series: string
-    category: string
-    sunat_code: string
-  }) => api.post('/api/company/series', data).then((r) => r.data),
+  listSeriesDocumentTypes: (): Promise<SeriesDocumentTypesResponse> =>
+    api.get<{ data: SeriesDocumentType[]; category_labels: Record<string, string> }>('/api/company/series/document-types').then((r) => ({
+      types: r.data.data ?? [],
+      categoryLabels: r.data.category_labels ?? {},
+    })),
+  createSeries: (data: { branch_id: number; doc_type: string; series: string; correlative?: number }) =>
+    api.post('/api/company/series', data).then((r) => r.data),
   updateSeries: (
     id: number,
     data: {
       series: string
       active: boolean
       doc_type: string
-      sunat_code: string
-      category: string
       correlative?: number
     },
   ) => api.put(`/api/company/series/${id}`, data).then((r) => r.data),

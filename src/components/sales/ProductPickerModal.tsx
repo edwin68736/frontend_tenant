@@ -3,6 +3,10 @@ import { toast } from 'sonner'
 import { Search, X } from 'lucide-react'
 import { productsService, type Product } from '@/services/products.service'
 import { formatSaleMoney } from '@/utils/formatMoney'
+import {
+  productConfigurationBadge,
+  productNeedsSaleConfiguration,
+} from '@/utils/productModifiers'
 
 const PER_PAGE = 10
 
@@ -103,10 +107,18 @@ export function ProductPickerModal({
               </tr>
             </thead>
             <tbody>
-              {products.map((p) => (
+              {products.map((p) => {
+                const configBadge = productConfigurationBadge(p)
+                const needsConfig = productNeedsSaleConfiguration(p)
+                return (
                 <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50/50">
                   <td className="px-4 py-2.5 font-mono text-gray-600">{p.code || '-'}</td>
-                  <td className="px-4 py-2.5 font-medium text-gray-800">{p.name}</td>
+                  <td className="px-4 py-2.5">
+                    <span className="font-medium text-gray-800">{p.name}</span>
+                    {configBadge ? (
+                      <span className="block text-[10px] text-[rgb(var(--p700))] mt-0.5">{configBadge}</span>
+                    ) : null}
+                  </td>
                   <td className="px-4 py-2.5 text-gray-700">{fmtPrice(priceValue(p))}</td>
                   <td className="px-4 py-2.5">
                     <button
@@ -114,11 +126,11 @@ export function ProductPickerModal({
                       onClick={() => onAdd(p)}
                       className="px-3 py-1.5 rounded-lg bg-[rgb(var(--p600))] text-white text-xs font-medium hover:opacity-90"
                     >
-                      Agregar
+                      {needsConfig ? 'Configurar' : 'Agregar'}
                     </button>
                   </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         )}

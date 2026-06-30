@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Package } from 'lucide-react'
+import { Package, Trash2 } from 'lucide-react'
 import { roundMoney } from '@/utils/checkoutDiscount'
 import { getProductImageUrl } from '@/services/products.service'
 import type { PosCartLine } from '@/utils/posCart'
@@ -9,6 +9,7 @@ import {
   isCatalogCartLine,
   isManualCartLine,
 } from '@/utils/posCart'
+import { formatModifierLines } from '@/utils/productModifiers'
 
 type Props = {
   line: PosCartLine
@@ -95,6 +96,8 @@ export function PosCartLineRow({
   const manual = isManualCartLine(line)
   const catalog = isCatalogCartLine(line)
   const thumbUrl = catalog ? getProductImageUrl(line.product.image_url) : null
+  const modifierLines = catalog && line.modifiers.length > 0 ? formatModifierLines(line.modifiers) : []
+  const itemNote = catalog ? (line.notes ?? '').trim() : ''
 
   return (
     <li className="px-3 py-2.5 border-b border-gray-50 last:border-0 space-y-1.5">
@@ -120,6 +123,17 @@ export function PosCartLineRow({
             {manual && (
               <span className="text-[10px] font-medium text-amber-700">{line.code}</span>
             )}
+            {modifierLines.map((mLine) => (
+              <span key={mLine} className="block text-[10px] text-[rgb(var(--p700))] leading-snug">
+                {mLine}
+              </span>
+            ))}
+            {itemNote ? (
+              <span className="block text-[10px] text-gray-500 italic leading-snug">Nota: {itemNote}</span>
+            ) : null}
+            {catalog && line.serials?.length ? (
+              <span className="block text-[10px] text-gray-500 font-mono">Serie: {line.serials.join(', ')}</span>
+            ) : null}
             <div className="text-[11px] text-stone-400 mt-0.5">
               x{line.quantity} · {subtotalLabel}
             </div>
@@ -130,7 +144,7 @@ export function PosCartLineRow({
               <button
                 type="button"
                 onClick={() => onQtyChange(-1)}
-                className="w-7 h-7 rounded-lg bg-gray-100 flex items-center justify-center hover:bg-gray-200"
+                className="w-7 h-7 rounded-lg bg-stone-900 text-white flex items-center justify-center hover:bg-black transition-colors"
                 aria-label="Quitar uno"
               >
                 <span className="text-sm font-bold leading-none">−</span>
@@ -139,19 +153,19 @@ export function PosCartLineRow({
               <button
                 type="button"
                 onClick={() => onQtyChange(1)}
-                className="w-7 h-7 rounded-lg bg-primary-100 flex items-center justify-center hover:bg-primary-200"
+                className="w-7 h-7 rounded-lg bg-green-800 text-white flex items-center justify-center hover:bg-green-900 transition-colors"
                 aria-label="Agregar uno"
               >
-                <span className="text-sm font-bold leading-none text-primary-700">+</span>
+                <span className="text-sm font-bold leading-none">+</span>
               </button>
               {onRemove && (
                 <button
                   type="button"
                   onClick={onRemove}
-                  className="w-7 h-7 rounded-lg text-red-400 hover:bg-red-50 flex items-center justify-center"
+                  className="w-7 h-7 rounded-lg text-red-500 hover:bg-red-50 flex items-center justify-center transition-colors"
                   aria-label="Eliminar línea"
                 >
-                  ×
+                  <Trash2 size={14} strokeWidth={2.25} aria-hidden />
                 </button>
               )}
             </div>

@@ -8,11 +8,41 @@ import { format, addDays } from 'date-fns'
 
 const ZONE_PERU = 'America/Lima'
 
+/** Máximo de días hacia atrás permitidos para fecha de emisión (SUNAT / operación). */
+export const ISSUE_DATE_MAX_DAYS_BACK = 3
+
 /**
  * Devuelve la fecha de hoy en Perú en formato YYYY-MM-DD (para issue_date, due_date, etc.).
  */
 export function getTodayPeru(): string {
   return formatInTimeZone(new Date(), ZONE_PERU, 'yyyy-MM-dd')
+}
+
+/** Fecha mínima de emisión: hoy menos {@link ISSUE_DATE_MAX_DAYS_BACK} días (Perú). */
+export function getMinIssueDatePeru(daysBack: number = ISSUE_DATE_MAX_DAYS_BACK): string {
+  return getTodayPlusDaysPeru(-Math.max(0, daysBack))
+}
+
+/** Fecha máxima de emisión: hoy (Perú). No se permite fecha futura. */
+export function getMaxIssueDatePeru(): string {
+  return getTodayPeru()
+}
+
+export function isIssueDateAllowed(issueDate: string, daysBack: number = ISSUE_DATE_MAX_DAYS_BACK): boolean {
+  const d = String(issueDate ?? '').slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false
+  return d >= getMinIssueDatePeru(daysBack) && d <= getMaxIssueDatePeru()
+}
+
+/** Ajusta una fecha YYYY-MM-DD al rango permitido de emisión. */
+export function clampIssueDatePeru(issueDate: string, daysBack: number = ISSUE_DATE_MAX_DAYS_BACK): string {
+  const d = String(issueDate ?? '').slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return getTodayPeru()
+  const min = getMinIssueDatePeru(daysBack)
+  const max = getMaxIssueDatePeru()
+  if (d < min) return min
+  if (d > max) return max
+  return d
 }
 
 /**

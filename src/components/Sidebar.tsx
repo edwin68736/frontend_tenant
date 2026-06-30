@@ -84,6 +84,14 @@ const NAV_GROUPS: NavGroup[] = [
     icon: <ShoppingCart size={16} />,
     children: [
       {
+        id: 'ventas-register',
+        to: '/sales/register',
+        label: 'Nuevo comprobante',
+        icon: <FileText size={14} />,
+        module: 'sales',
+        permission: 'sales.view',
+      },
+      {
         id: 'membresias',
         to: '/memberships',
         label: 'Membresías',
@@ -97,14 +105,6 @@ const NAV_GROUPS: NavGroup[] = [
         to: '/sales/nota-venta',
         label: 'Registrar nota de venta',
         icon: <Receipt size={14} />,
-        module: 'sales',
-        permission: 'sales.view',
-      },
-      {
-        id: 'ventas-register',
-        to: '/sales/register',
-        label: 'Nuevo comprobante',
-        icon: <FileText size={14} />,
         module: 'sales',
         permission: 'sales.view',
       },
@@ -261,17 +261,6 @@ const NAV_GROUPS: NavGroup[] = [
     children: [
       { id: 'admin-users', to: '/users', label: 'Usuarios', icon: <Users size={14} />, permission: 'users.view' },
       { id: 'admin-roles', to: '/roles', label: 'Roles y permisos', icon: <ShieldCheck size={14} />, permission: 'roles.view' },
-    ],
-  },
-  {
-    id: 'empresa',
-    label: 'Empresa',
-    icon: <Settings size={16} />,
-    children: [
-      { id: 'emp-config', to: '/company/config', label: 'Mi empresa', icon: <Settings size={14} />, permission: 'company.view' },
-      { id: 'emp-sunat', to: '/company/sunat', label: 'SUNAT / IGV', icon: <Shield size={14} />, permission: 'company.view' },
-      { id: 'emp-branches', to: '/company/branches', label: 'Sucursales', icon: <MapPin size={14} />, permission: 'company.view' },
-      { id: 'emp-series', to: '/company/series', label: 'Series', icon: <FileCode size={14} />, permission: 'company.view' },
     ],
   },
 ]

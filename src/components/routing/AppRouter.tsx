@@ -37,9 +37,9 @@ const PaymentMethodsPage = lazy(() => import('@/pages/cashbank/PaymentMethodsPag
 const UsersPage = lazy(() => import('@/pages/users/UsersPage'))
 const RolesPage = lazy(() => import('@/pages/users/RolesPage'))
 const CompanyConfigPage = lazy(() => import('@/pages/company/CompanyConfigPage'))
-const CompanySunatPage = lazy(() => import('@/pages/company/CompanySunatPage'))
-const CompanyBranchesPage = lazy(() => import('@/pages/company/CompanyBranchesPage'))
-const CompanySeriesPage = lazy(() => import('@/pages/company/CompanySeriesPage'))
+const ErpSettingsRedirect = lazy(() =>
+  import('@/components/settings/ErpSettingsRedirect').then((m) => ({ default: m.ErpSettingsRedirect })),
+)
 const BillingPage = lazy(() => import('@/pages/billing/BillingPage'))
 const SunatDocsPage = lazy(() => import('@/pages/billing/SunatDocsPage'))
 const GuiaRemisionCreatePage = lazy(() => import('@/pages/billing/GuiaRemisionCreatePage'))
@@ -186,9 +186,9 @@ function AppRoutes() {
         <Route path="ajustes" element={<Lazy><AjustesPage /></Lazy>} />
         <Route path="subscription" element={<Lazy><SubscriptionPage /></Lazy>} />
         <Route path="company/config" element={<Lazy><CompanyConfigPage /></Lazy>} />
-        <Route path="company/sunat" element={<Lazy><CompanySunatPage /></Lazy>} />
-        <Route path="company/branches" element={<Lazy><CompanyBranchesPage /></Lazy>} />
-        <Route path="company/series" element={<Lazy><CompanySeriesPage /></Lazy>} />
+        <Route path="company/sunat" element={<Lazy><ErpSettingsRedirect companyTab="impuestos" /></Lazy>} />
+        <Route path="company/branches" element={<Lazy><ErpSettingsRedirect companyTab="sucursales" /></Lazy>} />
+        <Route path="company/series" element={<Lazy><ErpSettingsRedirect companyTab="series" /></Lazy>} />
         <Route path="*" element={<Navigate to="/home" replace />} />
       </Route>
       <Route path="*" element={<FallbackRedirect />} />

@@ -34,7 +34,7 @@ const COLS: ExportColumn<ProductReportRow>[] = [
   { key: 'unit', label: 'Unidad' },
   { key: 'sale_price', label: 'Precio venta', format: (v: unknown) => `S/ ${Number(v).toFixed(2)}` },
   { key: 'purchase_price', label: 'Precio compra', format: (v: unknown) => `S/ ${Number(v).toFixed(2)}` },
-  { key: 'manage_stock', label: 'Maneja stock', format: (v: unknown) => (v ? 'Sí' : 'No') },
+  { key: 'manage_stock', label: 'Control stock', format: (v: unknown) => (v ? 'Sí' : 'No') },
   { key: 'stock_total', label: 'Stock total', format: (v: unknown, r) => (r.manage_stock ? String(v ?? 0) : '—') },
   {
     key: 'stock_by_branch',

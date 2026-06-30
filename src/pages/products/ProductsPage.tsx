@@ -1,15 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Settings2, Package, Upload, Layers, RefreshCw, FileSpreadsheet } from 'lucide-react'
+import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Settings2, Package, Upload, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Trash2 } from 'lucide-react'
 import { ProductImportModal } from '@/components/products/ProductImportModal'
-import { productsService, getProductImageUrl, type Product, type Category, type CreateProductInput, type ModifierGroup, type ProductCatalogType } from '@/services/products.service'
+import { ProductPresentationsModal } from '@/components/products/ProductPresentationsModal'
+import { ModifierOptionsEditor } from '@/components/modifiers/ModifierOptionsEditor'
+import { productsService, getProductImageUrl, type Product, type Category, type CreateProductInput, type ModifierGroup, type ProductCatalogType, type ProductPresentation } from '@/services/products.service'
+import { createEmptyOptionDraft, draftsFromApiOptions, optionDraftsToPayload, validateOptionDrafts, type ModifierOptionDraft } from '@/utils/modifierOptionText'
 import { PRODUCT_UNIT_FORM_OPTIONS, productUnitFormDisplayName, isProductUnitFormCode } from '@/constants/sunatUnits'
 import { inventoryService, type StockByBranch } from '@/services/inventory.service'
 import { companyService } from '@/services/company.service'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { SearchSelect, MIN_OPTIONS_FOR_SEARCH } from '@/components/ui/SearchSelect'
+import { useBarcodeFieldScanner } from '@/hooks/useBarcodeFieldScanner'
+import { clsx } from 'clsx'
 
 const IGV_TYPES = [
   { code: '10', label: '10 - Gravado IGV' },
@@ -66,7 +71,7 @@ function emptyForm(pageMode: ProductCatalogType): CreateProductInput {
     purchase_price: 0,
     igv_affectation_type: '10',
     price_includes_igv: true,
-    manage_stock: true,
+    manage_stock: false,
     min_stock: 0,
     is_restaurant: false,
     preparation_area: '',
@@ -83,6 +88,13 @@ function emptyForm(pageMode: ProductCatalogType): CreateProductInput {
 }
 
 const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
+
+/** Layout responsive del modal crear/editar producto. */
+const PRODUCT_FORM_GRID = 'grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4'
+const PRODUCT_FORM_INPUT =
+  'w-full min-w-0 border border-gray-200 rounded-xl px-3 py-2.5 sm:py-2 text-base sm:text-sm outline-none focus:ring-2 focus:ring-[rgb(var(--p200))] focus:border-[rgb(var(--p400))]'
+const PRODUCT_FORM_MODAL_CLASS =
+  'w-full max-w-none sm:max-w-2xl lg:max-w-3xl max-h-[min(92dvh,880px)]'
 
 const PREPARATION_AREAS = [
   { value: '', label: 'Sin área' },
@@ -132,16 +144,19 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
 
   // Modal grupos de modificadores
   const [showModifierGroups, setShowModifierGroups] = useState(false)
-  const [newGroupName, setNewGroupName] = useState('')
-  const [newGroupRequired, setNewGroupRequired] = useState(false)
-  const [newGroupMultiSelect, setNewGroupMultiSelect] = useState(false)
-  const [newGroupOptionsText, setNewGroupOptionsText] = useState('')
+  const [editingModifierGroup, setEditingModifierGroup] = useState<ModifierGroup | null>(null)
+  const [groupFormName, setGroupFormName] = useState('')
+  const [groupFormRequired, setGroupFormRequired] = useState(false)
+  const [groupFormMultiSelect, setGroupFormMultiSelect] = useState(false)
+  const [groupOptionDrafts, setGroupOptionDrafts] = useState<ModifierOptionDraft[]>([createEmptyOptionDraft()])
   const [savingGroup, setSavingGroup] = useState(false)
+  const [presentations, setPresentations] = useState<ProductPresentation[]>([])
+  const [showPresentationsModal, setShowPresentationsModal] = useState(false)
 
   // Panel avanzado
   const [panelProduct, setPanelProduct] = useState<Product | null>(null)
   const [panelTab, setPanelTab] = useState<AdvancedTab>('datos')
-  const [panelDetail, setPanelDetail] = useState<{ data: Product; modifier_group_ids: number[] } | null>(null)
+  const [panelDetail, setPanelDetail] = useState<{ data: Product; modifier_group_ids: number[]; presentations?: ProductPresentation[] } | null>(null)
   const [panelSerials, setPanelSerials] = useState<{ serial: string; branch_id: number; status: string }[]>([])
   const [branches, setBranches] = useState<{ id: number; name: string }[]>([])
   const [stockRows, setStockRows] = useState<StockByBranch[]>([])
@@ -151,6 +166,28 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const [stockByProductId, setStockByProductId] = useState<Record<string, number>>({})
   const [adjustmentProduct, setAdjustmentProduct] = useState<Product | null>(null)
   const [importModalOpen, setImportModalOpen] = useState(false)
+
+  const handleProductCodeScan = useCallback((code: string) => {
+    setForm(f => ({ ...f, code: code.trim() }))
+    toast.success('Código de barras capturado')
+  }, [])
+
+  const codeBarcodeScan = useBarcodeFieldScanner({ onScan: handleProductCodeScan })
+
+  const closeProductModal = () => {
+    setShow(false)
+    setPresentations([])
+    setShowPresentationsModal(false)
+    codeBarcodeScan.deactivateScanner()
+  }
+
+  const resetModifierGroupForm = () => {
+    setEditingModifierGroup(null)
+    setGroupFormName('')
+    setGroupFormRequired(false)
+    setGroupFormMultiSelect(false)
+    setGroupOptionDrafts([createEmptyOptionDraft()])
+  }
 
   const load = () => {
     setLoading(true)
@@ -195,6 +232,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const openNew = () => {
     setEditing(null)
     setForm({ ...emptyForm(pageMode), code: generateRandomProductCode() })
+    setPresentations([])
     setShowMoreOptions(false)
     setShow(true)
   }
@@ -225,6 +263,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     })
     setShow(true)
     setShowMoreOptions(false)
+    setPresentations([])
     try {
       const detail = await productsService.get(p.id)
       setForm(f => ({
@@ -232,6 +271,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         modifier_group_ids: detail.modifier_group_ids ?? [],
         preparation_area: detail.data.preparation_area ?? '',
       }))
+      setPresentations(detail.presentations ?? [])
     } catch {
       // Si GET /products/:id falla (ej. backend en otro puerto), los datos ya vienen del listado
     }
@@ -294,6 +334,27 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     if (!isGravadoIgv(form.igv_affectation_type)) payload.price_includes_igv = false
     if (!payload.is_restaurant) payload.preparation_area = ''
     else if (payload.preparation_area) payload.preparation_area = payload.preparation_area.trim().toLowerCase()
+    if (pageMode === 'product') {
+      payload.manage_stock = Boolean(form.manage_stock)
+      if (!payload.manage_stock) {
+        payload.min_stock = 0
+        delete payload.initial_stock
+      }
+      if (payload.has_variants) {
+        const pres = presentations.filter((p) => p.name.trim())
+        if (pres.length === 0) {
+          toast.error('Agrega al menos una presentación con nombre')
+          return
+        }
+        payload.presentations = pres.map((p) => ({
+          id: p.id,
+          name: p.name.trim(),
+          sale_price: Number(p.sale_price) || 0,
+        }))
+      } else if (editing) {
+        payload.presentations = []
+      }
+    }
     if (editing) {
       delete payload.initial_stock
     } else if (!payload.manage_stock || !(payload.initial_stock != null && payload.initial_stock > 0)) {
@@ -304,7 +365,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       if (editing) await productsService.update(editing.id, payload)
       else await productsService.create(payload)
       toast.success(editing ? 'Producto actualizado' : 'Producto creado')
-      setShow(false)
+      closeProductModal()
       load()
     } catch (e: any) { toast.error(e.response?.data?.error ?? 'Error') }
     finally { setSaving(false) }
@@ -315,22 +376,41 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     catch { toast.error('Error') }
   }
 
-  const handleCreateModifierGroup = async () => {
-    const name = newGroupName.trim()
+  const handleSaveModifierGroup = async () => {
+    const name = groupFormName.trim()
     if (!name) { toast.error('Nombre del grupo requerido'); return }
-    const options = newGroupOptionsText.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
-    if (options.length === 0) { toast.error('Agrega al menos una opción (una por línea)'); return }
+    const validationErr = validateOptionDrafts(groupOptionDrafts)
+    if (validationErr) { toast.error(validationErr); return }
+    const options = optionDraftsToPayload(groupOptionDrafts)
     setSavingGroup(true)
     try {
-      await productsService.createModifierGroup({ name, required: newGroupRequired, multi_select: newGroupMultiSelect, options })
-      toast.success('Grupo creado')
-      setNewGroupName('')
-      setNewGroupOptionsText('')
-      setNewGroupRequired(false)
-      setNewGroupMultiSelect(false)
+      const payload = { name, required: groupFormRequired, multi_select: groupFormMultiSelect, options }
+      if (editingModifierGroup) {
+        await productsService.updateModifierGroup(editingModifierGroup.id, payload)
+        toast.success('Grupo actualizado')
+      } else {
+        await productsService.createModifierGroup(payload)
+        toast.success('Grupo creado')
+      }
+      resetModifierGroupForm()
       load()
     } catch (e: any) {
-      toast.error(e.response?.data?.error ?? 'Error al crear grupo')
+      toast.error(e.response?.data?.error ?? 'Error al guardar grupo')
+    } finally {
+      setSavingGroup(false)
+    }
+  }
+
+  const handleDeleteModifierGroup = async (g: ModifierGroup) => {
+    if (!window.confirm(`¿Eliminar el grupo «${g.name}»?`)) return
+    setSavingGroup(true)
+    try {
+      await productsService.deleteModifierGroup(g.id)
+      toast.success('Grupo eliminado')
+      if (editingModifierGroup?.id === g.id) resetModifierGroupForm()
+      load()
+    } catch (e: any) {
+      toast.error(e.response?.data?.error ?? 'No se pudo eliminar')
     } finally {
       setSavingGroup(false)
     }
@@ -364,15 +444,15 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const branchName = (id: number) => branches.find(b => b.id === id)?.name ?? `Sucursal ${id}`
 
   const categoryField = (
-    <div>
-      <div className="flex items-center justify-between mb-1">
+    <div className="min-w-0">
+      <div className="flex items-center justify-between gap-2 mb-1">
         <label className="text-xs font-medium text-gray-600">Categoría</label>
-        <button type="button" onClick={() => { setAddingCat(true); setTimeout(() => catInputRef.current?.focus(), 50) }} className="text-xs text-[rgb(var(--p600))] hover:underline">+ Nueva</button>
+        <button type="button" onClick={() => { setAddingCat(true); setTimeout(() => catInputRef.current?.focus(), 50) }} className="text-xs text-[rgb(var(--p600))] hover:underline shrink-0">+ Nueva</button>
       </div>
       {addingCat ? (
-        <div className="flex gap-1">
-          <input ref={catInputRef} className="flex-1 border border-[rgb(var(--p300))] rounded-xl px-2 py-1.5 text-sm" placeholder="Nombre categoría" value={newCatName} onChange={e => setNewCatName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleAddCategory(); if (e.key === 'Escape') setAddingCat(false) }} />
-          <button type="button" onClick={handleAddCategory} className="px-2 py-1.5 bg-[rgb(var(--p600))] text-white rounded-xl text-xs">OK</button>
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-1">
+          <input ref={catInputRef} className={`flex-1 ${PRODUCT_FORM_INPUT}`} placeholder="Nombre categoría" value={newCatName} onChange={e => setNewCatName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleAddCategory(); if (e.key === 'Escape') setAddingCat(false) }} />
+          <button type="button" onClick={handleAddCategory} className="touch-target sm:min-h-0 sm:min-w-0 px-4 py-2.5 sm:px-2 sm:py-1.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm sm:text-xs font-medium shrink-0">OK</button>
         </div>
       ) : categories.filter(Boolean).length >= MIN_OPTIONS_FOR_SEARCH ? (
         <SearchSelect
@@ -382,7 +462,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           placeholder="Sin categoría"
         />
       ) : (
-        <select className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" value={form.category_id ?? ''} onChange={e => setF('category_id', e.target.value ? Number(e.target.value) : null)}>
+        <select className={PRODUCT_FORM_INPUT} value={form.category_id ?? ''} onChange={e => setF('category_id', e.target.value ? Number(e.target.value) : null)}>
           <option value="">Sin categoría</option>
           {categories.filter(Boolean).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
@@ -418,7 +498,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 onClick={() => setShowModifierGroups(true)}
                 className="flex items-center gap-1.5 px-4 py-2 border border-[rgb(var(--p300))] text-[rgb(var(--p700))] rounded-xl text-sm font-medium hover:bg-[rgb(var(--p50))]"
               >
-                <Layers size={15} /> Grupos de modificadores
+                <Layers size={15} /> Grupos de extras
               </button>
             </>
           )}
@@ -614,8 +694,13 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       )}
 
       {/* Modal crear/editar */}
-      <Modal open={show} onClose={() => setShow(false)} closeOnBackdropClick={false}>
-        <h3 className="font-bold text-gray-800">
+      <Modal
+        open={show}
+        onClose={closeProductModal}
+        closeOnBackdropClick={false}
+        contentClassName={PRODUCT_FORM_MODAL_CLASS}
+      >
+        <h3 className="text-base sm:text-lg font-bold text-gray-800 pr-2">
           {pageMode === 'service'
             ? editing
               ? 'Editar servicio'
@@ -624,38 +709,90 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               ? 'Editar producto'
               : 'Nuevo producto'}
         </h3>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Código</label>
-            <div className="flex rounded-xl border border-gray-200 overflow-hidden bg-white focus-within:ring-2 focus-within:ring-[rgb(var(--p200))] focus-within:border-[rgb(var(--p400))]">
-              <input
-                className="flex-1 min-w-0 px-3 py-2 text-sm font-mono border-0 outline-none bg-transparent"
-                placeholder="Ej. A3K9Z1"
-                value={form.code ?? ''}
-                onChange={(e) => setF('code', e.target.value)}
-                aria-label="Código de producto"
-              />
-              <button
-                type="button"
-                title="Generar otro código"
-                aria-label="Generar otro código"
-                className="shrink-0 px-2.5 border-l border-gray-200 text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] active:bg-[rgb(var(--p100))] transition-colors"
-                onClick={() => setF('code', generateRandomProductCode())}
+        <div className={PRODUCT_FORM_GRID}>
+          <div className="min-w-0 sm:col-span-2 lg:col-span-1">
+            <label className="block text-xs font-medium text-gray-600 mb-1">
+              {pageMode === 'product' ? 'Código (barras)' : 'Código'}
+            </label>
+            <div className="flex flex-col sm:flex-row sm:items-start gap-2">
+              <div
+                className={clsx(
+                  'flex flex-1 min-w-0 rounded-xl border overflow-hidden bg-white focus-within:ring-2',
+                  pageMode === 'product' && codeBarcodeScan.scannerMode
+                    ? 'border-primary-300 focus-within:ring-primary-500/40 focus-within:border-primary-400'
+                    : 'border-gray-200 focus-within:ring-[rgb(var(--p200))] focus-within:border-[rgb(var(--p400))]',
+                )}
               >
-                <RefreshCw size={16} strokeWidth={2} className="mx-auto" />
-              </button>
+                {pageMode === 'product' && codeBarcodeScan.scannerMode && (
+                  <span className="pl-2.5 flex items-center text-primary-600 shrink-0">
+                    <ScanBarcode size={16} aria-hidden />
+                  </span>
+                )}
+                <input
+                  ref={pageMode === 'product' ? codeBarcodeScan.inputRef : undefined}
+                  className="flex-1 min-w-0 px-3 py-2.5 sm:py-2 text-base sm:text-sm font-mono border-0 outline-none bg-transparent"
+                  placeholder={
+                    pageMode === 'product' && codeBarcodeScan.scannerMode
+                      ? 'Escanear código de barras…'
+                      : pageMode === 'product'
+                        ? 'Código de barras'
+                        : 'Ej. A3K9Z1'
+                  }
+                  value={form.code ?? ''}
+                  onChange={(e) => setF('code', e.target.value)}
+                  onKeyDown={pageMode === 'product' ? codeBarcodeScan.handleKeyDown : undefined}
+                  aria-label={pageMode === 'product' ? 'Código de barras' : 'Código de producto'}
+                  autoComplete="off"
+                />
+                <button
+                  type="button"
+                  title="Generar otro código"
+                  aria-label="Generar otro código"
+                  className="touch-target sm:min-h-0 sm:min-w-0 shrink-0 px-2.5 border-l border-gray-200 text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] active:bg-[rgb(var(--p100))] transition-colors"
+                  onClick={() => setF('code', generateRandomProductCode())}
+                >
+                  <RefreshCw size={16} strokeWidth={2} className="mx-auto" />
+                </button>
+              </div>
+              {pageMode === 'product' && (
+                <button
+                  type="button"
+                  onClick={codeBarcodeScan.toggleScannerMode}
+                  className={clsx(
+                    'inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 sm:p-2 transition-colors touch-manipulation shrink-0 w-full sm:w-auto',
+                    codeBarcodeScan.scannerMode
+                      ? 'border-primary-300 bg-primary-50 text-primary-700'
+                      : 'border-gray-200 bg-stone-50 text-stone-600 hover:bg-stone-100',
+                  )}
+                  title={
+                    codeBarcodeScan.scannerMode
+                      ? 'Modo escáner activo: escanee o pegue el código'
+                      : 'Activar escáner de código de barras'
+                  }
+                  aria-label="Escanear código de barras"
+                >
+                  <ScanBarcode size={18} aria-hidden />
+                  <span className="text-sm font-medium sm:sr-only">Escanear</span>
+                </button>
+              )}
             </div>
+            {pageMode === 'product' && codeBarcodeScan.scannerMode && (
+              <p className="mt-1.5 text-xs text-gray-500 leading-snug">
+                Escanee con lector USB o pegue el código. El valor se rellena en el campo al escanear.
+              </p>
+            )}
           </div>
-          <div><label className="block text-xs font-medium text-gray-600 mb-1">Nombre *</label>
-            <input className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" value={form.name} onChange={e => setF('name', e.target.value)} />
+          <div className="min-w-0">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Nombre *</label>
+            <input className={PRODUCT_FORM_INPUT} value={form.name} onChange={e => setF('name', e.target.value)} />
           </div>
         </div>
         {pageMode === 'product' ? (
-          <div className="grid grid-cols-2 gap-3">
-            <div>
+          <div className={PRODUCT_FORM_GRID}>
+            <div className="min-w-0">
               <label className="block text-xs font-medium text-gray-600 mb-1">Unidad</label>
               <select
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                className={PRODUCT_FORM_INPUT}
                 value={form.unit}
                 onChange={(e) => setF('unit', e.target.value)}
               >
@@ -674,19 +811,22 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         ) : (
           categoryField
         )}
-        <div className={pageMode === 'service' ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-2 gap-3'}>
-          <div><label className="block text-xs font-medium text-gray-600 mb-1">Precio venta *</label>
-            <input type="number" min={0} step={0.01} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" value={form.sale_price} onChange={e => setF('sale_price', Math.max(0, Number(e.target.value) || 0))} />
+        <div className={PRODUCT_FORM_GRID}>
+          <div className="min-w-0">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Precio venta *</label>
+            <input type="number" min={0} step={0.01} inputMode="decimal" className={PRODUCT_FORM_INPUT} value={form.sale_price} onChange={e => setF('sale_price', Math.max(0, Number(e.target.value) || 0))} />
           </div>
           {pageMode === 'product' && (
-            <div><label className="block text-xs font-medium text-gray-600 mb-1">Precio compra</label>
-              <input type="number" min={0} step={0.01} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" value={form.purchase_price ?? 0} onChange={e => setF('purchase_price', Math.max(0, Number(e.target.value) || 0))} />
+            <div className="min-w-0">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Precio compra</label>
+              <input type="number" min={0} step={0.01} inputMode="decimal" className={PRODUCT_FORM_INPUT} value={form.purchase_price ?? 0} onChange={e => setF('purchase_price', Math.max(0, Number(e.target.value) || 0))} />
             </div>
           )}
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div><label className="block text-xs font-medium text-gray-600 mb-1">Tipo afectación IGV</label>
-            <select className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" value={form.igv_affectation_type} onChange={e => {
+        <div className={PRODUCT_FORM_GRID}>
+          <div className="min-w-0">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Tipo afectación IGV</label>
+            <select className={PRODUCT_FORM_INPUT} value={form.igv_affectation_type} onChange={e => {
               const v = e.target.value
               setF('igv_affectation_type', v)
               if (!isGravadoIgv(v)) setF('price_includes_igv', false)
@@ -695,66 +835,68 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
             </select>
           </div>
           {isGravadoIgv(form.igv_affectation_type) && (
-            <div className="flex flex-col justify-end">
-              <label className="flex items-center gap-2 cursor-pointer py-2">
-                <div onClick={() => setF('price_includes_igv', !form.price_includes_igv)} className={`w-10 h-5 rounded-full transition-colors ${form.price_includes_igv ? 'bg-[rgb(var(--p500))]' : 'bg-gray-300'}`}>
-                  <div className={`w-4 h-4 bg-white rounded-full shadow mt-0.5 transition-transform ${form.price_includes_igv ? 'translate-x-5 ml-0.5' : 'translate-x-0.5'}`} />
+            <div className="flex flex-col justify-end min-w-0">
+              <label className="flex items-center gap-2 cursor-pointer py-2 touch-manipulation">
+                <div onClick={() => setF('price_includes_igv', !form.price_includes_igv)} className={`w-11 h-6 shrink-0 rounded-full transition-colors ${form.price_includes_igv ? 'bg-[rgb(var(--p500))]' : 'bg-gray-300'}`}>
+                  <div className={`w-5 h-5 bg-white rounded-full shadow mt-0.5 transition-transform ${form.price_includes_igv ? 'translate-x-5 ml-0.5' : 'translate-x-0.5'}`} />
                 </div>
-                <span className="text-xs text-gray-600">Precio incluye IGV</span>
+                <span className="text-xs sm:text-sm text-gray-600">Precio incluye IGV</span>
               </label>
             </div>
           )}
         </div>
         {pageMode === 'product' && (
-          <div className="flex gap-4 flex-wrap">
-            <label className="flex items-center gap-2 cursor-pointer">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-xl border border-gray-100 bg-gray-50/60 p-3 sm:p-4">
+            <label className="flex items-center gap-2.5 cursor-pointer touch-manipulation min-h-[2.75rem] sm:min-h-0">
               <input type="checkbox" checked={form.manage_stock} onChange={(e) => {
                 const on = e.target.checked
                 setF('manage_stock', on)
                 if (!on) setForm((f) => ({ ...f, manage_stock: false, initial_stock: undefined }))
-              }} className="rounded" />
-              <span className="text-sm text-gray-700">Maneja stock</span>
+              }} className="rounded w-4 h-4 shrink-0" />
+              <span className="text-sm text-gray-700">Control stock</span>
             </label>
             {form.manage_stock && (
-              <>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-600">Stock mín:</span>
-                <input
-                  type="number"
-                  min={0}
-                  className="w-16 border border-gray-200 rounded-lg px-2 py-1 text-sm"
-                  value={form.min_stock ?? 0}
-                  onChange={(e) => setF('min_stock', Number(e.target.value))}
-                />
-              </div>
-              {!editing && (
-                <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <span className="text-xs text-gray-600 shrink-0">Stock inicial:</span>
+              <div className="flex flex-row flex-wrap items-center gap-x-4 gap-y-2 sm:col-span-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-xs text-gray-600 shrink-0 whitespace-nowrap">Stock mín:</span>
                   <input
                     type="number"
                     min={0}
-                    step={0.01}
-                    className="w-24 border border-gray-200 rounded-lg px-2 py-1 text-sm"
-                    value={form.initial_stock != null ? form.initial_stock : ''}
-                    onChange={(e) => {
-                      const raw = e.target.value
-                      setF('initial_stock', raw === '' ? undefined : Math.max(0, Number(raw) || 0))
-                    }}
-                    placeholder="0"
+                    inputMode="numeric"
+                    className="w-20 sm:w-24 border border-gray-200 rounded-lg px-2 py-2 sm:py-1 text-base sm:text-sm"
+                    value={form.min_stock ?? 0}
+                    onChange={(e) => setF('min_stock', Number(e.target.value))}
                   />
                 </div>
-              )}
-              </>
+                {!editing && (
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-xs text-gray-600 shrink-0 whitespace-nowrap">Stock inicial:</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      inputMode="decimal"
+                      className="w-24 sm:w-28 border border-gray-200 rounded-lg px-2 py-2 sm:py-1 text-base sm:text-sm"
+                      value={form.initial_stock != null ? form.initial_stock : ''}
+                      onChange={(e) => {
+                        const raw = e.target.value
+                        setF('initial_stock', raw === '' ? undefined : Math.max(0, Number(raw) || 0))
+                      }}
+                      placeholder="0"
+                    />
+                  </div>
+                )}
+              </div>
             )}
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={form.is_restaurant ?? false} onChange={(e) => setF('is_restaurant', e.target.checked)} className="rounded" />
+            <label className="flex items-center gap-2.5 cursor-pointer touch-manipulation min-h-[2.75rem] sm:min-h-0">
+              <input type="checkbox" checked={form.is_restaurant ?? false} onChange={(e) => setF('is_restaurant', e.target.checked)} className="rounded w-4 h-4 shrink-0" />
               <span className="text-sm text-gray-700">Producto de restaurante</span>
             </label>
             {form.is_restaurant && (
-              <div className="flex items-center gap-2 min-w-[10rem]">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 min-w-0 sm:col-span-2">
                 <span className="text-xs text-gray-600 shrink-0">Área prep.:</span>
                 <select
-                  className="border border-gray-200 rounded-lg px-2 py-1 text-sm flex-1 min-w-0"
+                  className={`${PRODUCT_FORM_INPUT} sm:max-w-xs`}
                   value={form.preparation_area ?? ''}
                   onChange={(e) => setF('preparation_area', e.target.value)}
                 >
@@ -770,14 +912,15 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         {/* Más opciones (colapsable) — solo catálogo de productos */}
         {pageMode === 'product' && (
         <div className="border border-gray-100 rounded-xl overflow-hidden">
-          <button type="button" onClick={() => setShowMoreOptions(!showMoreOptions)} className="w-full flex items-center justify-between px-3 py-2 text-left text-sm text-gray-600 hover:bg-gray-50">
+          <button type="button" onClick={() => setShowMoreOptions(!showMoreOptions)} className="w-full flex items-center justify-between px-3 py-3 sm:py-2 text-left text-sm text-gray-600 hover:bg-gray-50 touch-manipulation">
             <span className="font-medium">Más opciones</span>
             {showMoreOptions ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
           </button>
           {showMoreOptions && (
             <div className="px-3 pb-3 pt-0 space-y-3 border-t border-gray-100">
-              <div><label className="block text-xs font-medium text-gray-600 mb-1">Descripción</label>
-                <textarea className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none" rows={2} value={form.description ?? ''} onChange={e => setF('description', e.target.value)} placeholder="Opcional" />
+              <div className="min-w-0">
+                <label className="block text-xs font-medium text-gray-600 mb-1">Descripción</label>
+                <textarea className={`${PRODUCT_FORM_INPUT} resize-none min-h-[5rem]`} rows={2} value={form.description ?? ''} onChange={e => setF('description', e.target.value)} placeholder="Opcional" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Imagen del producto</label>
@@ -824,16 +967,41 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 <span className="text-sm text-gray-700">Maneja series/lotes</span>
               </label>
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={form.has_variants ?? false} onChange={e => setF('has_variants', e.target.checked)} className="rounded" />
-                <span className="text-sm text-gray-700">Tiene variantes (ej. talla, color)</span>
+                <input
+                  type="checkbox"
+                  checked={form.has_variants ?? false}
+                  onChange={e => {
+                    const checked = e.target.checked
+                    setF('has_variants', checked)
+                    if (!checked) setPresentations([])
+                  }}
+                  className="rounded"
+                />
+                <span className="text-sm text-gray-700">Tiene presentaciones (tamaño, empaque, etc.)</span>
               </label>
+              {form.has_variants && (
+                <div className="rounded-xl border border-[rgb(var(--p200))] bg-[rgb(var(--p50))]/40 px-3 py-2.5 space-y-2">
+                  <p className="text-xs text-gray-600">
+                    {presentations.filter(p => p.name.trim()).length > 0
+                      ? `${presentations.filter(p => p.name.trim()).length} presentación(es) configurada(s).`
+                      : 'Aún no hay presentaciones. Configúralas antes de guardar.'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setShowPresentationsModal(true)}
+                    className="w-full sm:w-auto px-4 py-2 rounded-xl text-sm font-medium border border-[rgb(var(--p300))] text-[rgb(var(--p700))] hover:bg-[rgb(var(--p100))]"
+                  >
+                    Gestionar presentaciones
+                  </button>
+                </div>
+              )}
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={form.has_modifiers ?? false} onChange={e => setF('has_modifiers', e.target.checked)} className="rounded" />
-                <span className="text-sm text-gray-700">Tiene modificadores</span>
+                <span className="text-sm text-gray-700">Tiene extras / adicionales</span>
               </label>
               {form.has_modifiers && modifierGroups.length > 0 && (
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Grupos de modificadores</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Grupos de extras</label>
                   <div className="flex flex-wrap gap-2">
                     {modifierGroups.map(g => (
                       <label key={g.id} className="inline-flex items-center gap-1.5 px-2 py-1 border border-gray-200 rounded-lg text-xs cursor-pointer hover:bg-gray-50">
@@ -848,7 +1016,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 </div>
               )}
               {form.has_modifiers && modifierGroups.length === 0 && (
-                <p className="text-xs text-amber-600">Crea grupos en el botón &quot;Grupos de modificadores&quot; de la parte superior y luego asígnalos aquí.</p>
+                <p className="text-xs text-amber-600">Crea grupos en &quot;Grupos de extras&quot; arriba y asígnalos aquí.</p>
               )}
             </div>
           )}
@@ -856,10 +1024,10 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         )}
 
         {pageMode === 'service' && (
-          <div>
+          <div className="min-w-0">
             <label className="block text-xs font-medium text-gray-600 mb-1">Descripción (opcional)</label>
             <textarea
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none"
+              className={`${PRODUCT_FORM_INPUT} resize-none min-h-[5rem]`}
               rows={2}
               value={form.description ?? ''}
               onChange={(e) => setF('description', e.target.value)}
@@ -868,53 +1036,90 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           </div>
         )}
 
-        <div className="flex gap-2 pt-2">
-          <button type="button" onClick={() => setShow(false)} className="flex-1 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>
-          <button type="button" onClick={handleSave} disabled={saving} className="flex-1 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50">{saving ? 'Guardando...' : 'Guardar'}</button>
+        <div className="sticky bottom-0 z-10 -mx-4 sm:-mx-6 md:-mx-7 px-4 sm:px-6 md:px-7 pt-3 pb-2 sm:pb-0 bg-white border-t border-gray-100 mt-1 flex flex-col-reverse sm:flex-row gap-2">
+          <button type="button" onClick={closeProductModal} className="touch-target sm:min-h-0 flex-1 py-2.5 sm:py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 font-medium">Cancelar</button>
+          <button type="button" onClick={handleSave} disabled={saving} className="touch-target sm:min-h-0 flex-1 py-2.5 sm:py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50">{saving ? 'Guardando...' : 'Guardar'}</button>
         </div>
       </Modal>
 
-      {/* Modal Grupos de modificadores */}
-      <Modal open={showModifierGroups} onClose={() => setShowModifierGroups(false)} contentClassName="max-w-lg" closeOnBackdropClick={false}>
-        <h3 className="font-bold text-gray-800 flex items-center gap-2">
-          <Layers size={18} /> Grupos de modificadores
+      <ProductPresentationsModal
+        open={showPresentationsModal}
+        productName={form.name || editing?.name}
+        presentations={presentations}
+        onClose={() => setShowPresentationsModal(false)}
+        onSave={setPresentations}
+      />
+
+      {/* Modal Grupos de extras */}
+      <Modal
+        open={showModifierGroups}
+        onClose={() => { setShowModifierGroups(false); resetModifierGroupForm() }}
+        contentClassName="max-w-lg max-h-[min(92dvh,720px)] flex flex-col"
+        closeOnBackdropClick={false}
+      >
+        <h3 className="font-bold text-gray-800 flex items-center gap-2 shrink-0">
+          <Layers size={18} /> Grupos de extras
         </h3>
-        <p className="text-xs text-gray-500">Crea grupos (ej. Talla, Color) y sus opciones. Luego asígnalos a productos en &quot;Más opciones&quot; al editar.</p>
-        <div className="border border-gray-100 rounded-xl p-3 space-y-3 bg-gray-50/50">
-          <p className="text-xs font-semibold text-gray-600">Nuevo grupo</p>
-          <input className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" placeholder="Nombre (ej. Talla)" value={newGroupName} onChange={e => setNewGroupName(e.target.value)} />
+        <p className="text-xs text-gray-500 shrink-0">
+          Extras reutilizables entre productos (garantía, instalación…). Las presentaciones se configuran en cada producto.
+        </p>
+        <div className="border border-gray-100 rounded-xl p-3 space-y-3 bg-gray-50/50 shrink-0">
+          <p className="text-xs font-semibold text-gray-600">{editingModifierGroup ? 'Editar grupo' : 'Nuevo grupo'}</p>
+          <input
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+            placeholder="Nombre (ej. Servicios adicionales)"
+            value={groupFormName}
+            onChange={e => setGroupFormName(e.target.value)}
+          />
           <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={newGroupRequired} onChange={e => setNewGroupRequired(e.target.checked)} className="rounded" />
-            <span className="text-sm text-gray-700">Obligatorio</span>
+            <input type="checkbox" checked={groupFormRequired} onChange={e => setGroupFormRequired(e.target.checked)} className="rounded" />
+            <span className="text-sm text-gray-700">Obligatorio en venta</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={newGroupMultiSelect} onChange={e => setNewGroupMultiSelect(e.target.checked)} className="rounded" />
+            <input type="checkbox" checked={groupFormMultiSelect} onChange={e => setGroupFormMultiSelect(e.target.checked)} className="rounded" />
             <span className="text-sm text-gray-700">Permitir varias opciones</span>
           </label>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Opciones (una por línea)</label>
-            <textarea className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none" rows={3} placeholder="S&#10;M&#10;L" value={newGroupOptionsText} onChange={e => setNewGroupOptionsText(e.target.value)} />
+          <ModifierOptionsEditor options={groupOptionDrafts} onChange={setGroupOptionDrafts} />
+          <div className="flex gap-2">
+            {editingModifierGroup && (
+              <button type="button" onClick={resetModifierGroupForm} className="flex-1 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">
+                Cancelar edición
+              </button>
+            )}
+            <button type="button" onClick={handleSaveModifierGroup} disabled={savingGroup} className="flex-1 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50">
+              {savingGroup ? 'Guardando...' : editingModifierGroup ? 'Actualizar grupo' : 'Crear grupo'}
+            </button>
           </div>
-          <button type="button" onClick={handleCreateModifierGroup} disabled={savingGroup} className="w-full py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50">
-            {savingGroup ? 'Creando...' : 'Crear grupo'}
-          </button>
         </div>
-        <div>
-          <p className="text-xs font-semibold text-gray-600 mb-2">Grupos existentes ({modifierGroups.length})</p>
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <p className="text-xs font-semibold text-gray-600 mb-2 sticky top-0 bg-white py-1">Grupos existentes ({modifierGroups.length})</p>
           {modifierGroups.length === 0 ? (
             <p className="text-sm text-gray-400">Aún no hay grupos. Crea uno arriba.</p>
           ) : (
             <ul className="space-y-1 text-sm">
               {modifierGroups.map(g => (
-                <li key={g.id} className="flex items-center justify-between py-1.5 border-b border-gray-50">
-                  <span className="font-medium text-gray-800">{g.name}</span>
-                  <span className="text-xs text-gray-500">{(g.options ?? []).length} opciones{g.required ? ' · Obligatorio' : ''}</span>
+                <li key={g.id} className="flex items-center justify-between gap-2 py-2 border-b border-gray-50">
+                  <div className="min-w-0">
+                    <span className="font-medium text-gray-800">{g.name}</span>
+                    <p className="text-xs text-gray-500 truncate">
+                      {(g.options ?? []).map(o => o.name + (o.extra_price ? ` (+S/ ${Number(o.extra_price).toFixed(2)})` : '')).join(', ') || 'Sin opciones'}
+                      {g.required ? ' · Obligatorio' : ''}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button type="button" onClick={() => { setEditingModifierGroup(g); setGroupFormName(g.name); setGroupFormRequired(!!g.required); setGroupFormMultiSelect(!!g.multi_select); setGroupOptionDrafts(draftsFromApiOptions(g.options)) }} className="p-1.5 text-gray-500 hover:text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] rounded-lg" aria-label="Editar">
+                      <Pencil size={14} />
+                    </button>
+                    <button type="button" onClick={() => handleDeleteModifierGroup(g)} disabled={savingGroup} className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg" aria-label="Eliminar">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
           )}
         </div>
-        <button type="button" onClick={() => setShowModifierGroups(false)} className="w-full py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cerrar</button>
+        <button type="button" onClick={() => { setShowModifierGroups(false); resetModifierGroupForm() }} className="w-full py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 shrink-0">Cerrar</button>
       </Modal>
 
       {/* Modal Ajuste de stock */}
@@ -955,7 +1160,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                     }`}
                   >
                     {tab === 'datos' && 'Datos'}
-                    {tab === 'modificadores' && 'Modificadores'}
+                    {tab === 'modificadores' && 'Presentaciones y extras'}
                     {tab === 'stock' && 'Stock'}
                   </button>
                 ),
@@ -974,7 +1179,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                       {productUnitFormDisplayName(panelDetail.data.unit)}
                     </p>
                     <p><span className="text-gray-500">Precio venta:</span> S/ {Number(panelDetail.data.sale_price).toFixed(2)}</p>
-                    <p><span className="text-gray-500">Maneja stock:</span> {panelDetail.data.manage_stock ? 'Sí' : 'No'}</p>
+                    <p><span className="text-gray-500">Control stock:</span> {panelDetail.data.manage_stock ? 'Sí' : 'No'}</p>
                     {panelDetail.data.manage_stock && <p><span className="text-gray-500">Stock mínimo:</span> {panelDetail.data.min_stock}</p>}
                     <p><span className="text-gray-500">Series/lotes:</span> {panelDetail.data.manage_series ? 'Sí' : 'No'}</p>
                     <p><span className="text-gray-500">Modificadores:</span> {panelDetail.data.has_modifiers ? 'Sí' : 'No'}</p>
@@ -994,7 +1199,19 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 )}
 
                 {panelTab === 'modificadores' && panelDetail && (
-                  <div className="text-sm">
+                  <div className="text-sm space-y-4">
+                    {panelDetail.data.has_variants && (panelDetail.presentations ?? []).length > 0 && (
+                      <div>
+                        <p className="font-medium text-gray-700 mb-1">Presentaciones</p>
+                        <ul className="space-y-1">
+                          {(panelDetail.presentations ?? []).map((pres, i) => (
+                            <li key={pres.id ?? i} className="text-gray-600 text-xs border border-gray-100 rounded-lg px-2 py-1.5">
+                              {pres.name} — S/ {Number(pres.sale_price).toFixed(2)}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                     {panelDetail.data.has_modifiers ? (
                       <div className="space-y-3">
                         <p className="text-gray-500">Grupos asignados y opciones:</p>
@@ -1015,9 +1232,9 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                           </ul>
                         )}
                       </div>
-                    ) : (
-                      <p className="text-gray-500">Este producto no usa modificadores.</p>
-                    )}
+                    ) : !panelDetail.data.has_variants ? (
+                      <p className="text-gray-500">Este producto no usa presentaciones ni extras.</p>
+                    ) : null}
                   </div>
                 )}
 
