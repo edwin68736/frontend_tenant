@@ -9,4 +9,5 @@ android/.gradle/
 android/app/build/
 android/build/
 android/local.properties
-assets/
+# Iconos fuente Capacitor/Tauri (solo carpeta raíz; no ignorar src/assets/)
+/assets/
