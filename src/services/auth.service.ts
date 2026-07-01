@@ -65,6 +65,8 @@ export interface JWTPayload {
   branch_session_version?: number
   status: string
   type: string
+  auth_method?: string
+  impersonated?: boolean
   exp: number
   iat: number
 }

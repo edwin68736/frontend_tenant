@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
+import SupportModeBanner from '@/components/SupportModeBanner'
 import { SubscriptionStatusProvider } from '@/contexts/SubscriptionStatusContext'
 import { BRAND_TOP_BAR } from '@/config/branding'
 import { useEffect, useState } from 'react'
@@ -67,6 +68,7 @@ export default function MainLayout() {
 
             {/* Contenido: scroll interno */}
             <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-2 overflow-hidden px-2 pb-safe pt-2 sm:px-4 md:gap-4 md:px-3 md:pb-3 md:pt-3 pl-2 lg:pl-2">
+              <SupportModeBanner />
               <div className="relative z-10 shrink-0 overflow-visible rounded-2xl bg-white shadow-md">
                 <Header
                   onMenuClick={() => setSidebarOpen(true)}

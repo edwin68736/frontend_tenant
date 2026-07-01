@@ -8,6 +8,7 @@ interface AuthState {
   modules: string[]
   permissions: string[]
   tenantStatus: string
+  isImpersonated: boolean
   isAuthenticated: boolean
   isLoading: boolean
 }
@@ -37,6 +38,11 @@ function extractStatusFromToken(token: string): string {
   return decoded?.status ?? ''
 }
 
+function extractImpersonatedFromToken(token: string): boolean {
+  const decoded = decodeJWT<JWTPayload>(token)
+  return decoded?.impersonated === true
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
     user: null,
@@ -44,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     modules: [],
     permissions: [],
     tenantStatus: '',
+    isImpersonated: false,
     isAuthenticated: false,
     isLoading: true,
   })
@@ -58,10 +65,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const modules = extractModulesFromToken(token)
         const permissions = extractPermissionsFromToken(token)
         const tenantStatus = extractStatusFromToken(token)
-        setState({ user, token, modules, permissions, tenantStatus, isAuthenticated: true, isLoading: false })
+        const isImpersonated = extractImpersonatedFromToken(token)
+        setState({ user, token, modules, permissions, tenantStatus, isImpersonated, isAuthenticated: true, isLoading: false })
       } catch {
         localStorage.clear()
-        setState({ user: null, token: null, modules: [], permissions: [], tenantStatus: '', isAuthenticated: false, isLoading: false })
+        setState({ user: null, token: null, modules: [], permissions: [], tenantStatus: '', isImpersonated: false, isAuthenticated: false, isLoading: false })
       }
     } else {
       setState(s => ({ ...s, isLoading: false }))
@@ -74,6 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const modules = data.modules ?? extractModulesFromToken(data.token)
     const permissions = data.permissions ?? extractPermissionsFromToken(data.token)
     const tenantStatus = extractStatusFromToken(data.token)
+    const isImpersonated = extractImpersonatedFromToken(data.token)
 
     localStorage.setItem('token', data.token)
     localStorage.setItem('user', JSON.stringify(data.user))
@@ -93,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       modules,
       permissions,
       tenantStatus,
+      isImpersonated,
       isAuthenticated: true,
       isLoading: false,
     })
@@ -105,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('active_branch')
     localStorage.removeItem('can_switch_branch')
     localStorage.removeItem('allowed_branches')
-    setState({ user: null, token: null, modules: [], permissions: [], tenantStatus: '', isAuthenticated: false, isLoading: false })
+    setState({ user: null, token: null, modules: [], permissions: [], tenantStatus: '', isImpersonated: false, isAuthenticated: false, isLoading: false })
     toast.info('Sesión cerrada')
     window.location.href = '/login'
   }

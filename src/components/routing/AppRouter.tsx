@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useTenantBinding } from '@/contexts/TenantBindingContext'
 import MainLayout from '@/layouts/MainLayout'
 import LoginPage from '@/pages/auth/LoginPage'
+import SsoPage from '@/pages/auth/SsoPage'
 import RucPage from '@/pages/auth/RucPage'
 import { isNativeShell } from '@/lib/platform/detect'
 
@@ -108,6 +109,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/ruc" element={<RucPage />} />
+      <Route path="/auth/sso" element={<SsoPage />} />
       <Route
         path="/login"
         element={
