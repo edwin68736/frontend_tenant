@@ -1,5 +1,11 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { authService, decodeJWT, type AuthUser, type LoginPayload, type JWTPayload } from '@/services/auth.service'
+import {
+  buildUserFromMasterToken,
+  clearMasterSsoFromUrl,
+  persistMasterSsoSession,
+  readMasterSsoTokenFromUrl,
+} from '@/lib/masterSso'
 import { toast } from 'sonner'
 
 interface AuthState {
@@ -55,8 +61,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isLoading: true,
   })
 
-  // Restaurar sesión desde localStorage al cargar — leer módulos del JWT almacenado
+  // Restaurar sesión o acceso maestro (/?master_sso=...) — sin recarga de página
   useEffect(() => {
+    const masterToken = readMasterSsoTokenFromUrl()
+    if (masterToken) {
+      const user = buildUserFromMasterToken(masterToken)
+      if (user) {
+        persistMasterSsoSession(masterToken, user)
+        clearMasterSsoFromUrl()
+        setState({
+          user,
+          token: masterToken,
+          modules: extractModulesFromToken(masterToken),
+          permissions: extractPermissionsFromToken(masterToken),
+          tenantStatus: extractStatusFromToken(masterToken),
+          isImpersonated: extractImpersonatedFromToken(masterToken),
+          isAuthenticated: true,
+          isLoading: false,
+        })
+        return
+      }
+      toast.error('Enlace de acceso maestro inválido o expirado')
+      clearMasterSsoFromUrl()
+    }
+
     const token = localStorage.getItem('token')
     const userStr = localStorage.getItem('user')
     if (token && userStr) {
