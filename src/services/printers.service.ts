@@ -59,10 +59,13 @@ export {
   saveStoredPrinterSettings,
 } from '@/services/printers/storage'
 export {
+  checkBluetoothPermissions,
   connectBluetoothPrinter,
   disconnectBluetoothPrinter,
+  ensureBluetoothPermissions,
   getBluetoothConnectionStatus,
   listPairedBluetoothPrinters,
+  requestBluetoothPermissions,
   scanBluetoothPrinters,
 } from '@/services/printers/bluetooth'
 export {
@@ -630,9 +633,14 @@ export async function buildSaleDocumentEscPos(
   if (hasPayBlock) {
     out.push(...Array.from(textBytes('\n')))
     const leftCol = Math.max(14, Math.floor(cols * 0.5))
+    const payTextCols = showQr ? leftCol : cols
     const leftLines: string[] = []
-    for (const raw of paymentConditionLeftLines(printData)) {
-      wrapText(raw, leftCol).forEach((l) => leftLines.push(l))
+    for (const raw of paymentConditionLeftLines(printData, { cols: payTextCols, ticketMoney: true })) {
+      if (raw.length <= payTextCols || raw.startsWith('Pagos detallados')) {
+        leftLines.push(raw)
+        continue
+      }
+      wrapText(raw, payTextCols).forEach((l) => leftLines.push(l))
     }
 
     if (showQr && printData.qr_data) {

@@ -14,6 +14,7 @@ import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { SearchSelect, MIN_OPTIONS_FOR_SEARCH } from '@/components/ui/SearchSelect'
 import { useBarcodeFieldScanner } from '@/hooks/useBarcodeFieldScanner'
+import { BarcodeScannerModal } from '@/components/barcode/BarcodeScannerModal'
 import { clsx } from 'clsx'
 
 const IGV_TYPES = [
@@ -733,7 +734,9 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                   className="flex-1 min-w-0 px-3 py-2.5 sm:py-2 text-base sm:text-sm font-mono border-0 outline-none bg-transparent"
                   placeholder={
                     pageMode === 'product' && codeBarcodeScan.scannerMode
-                      ? 'Escanear código de barras…'
+                      ? codeBarcodeScan.useCameraBarcodeScanner
+                        ? 'Cámara activa — apunta al código'
+                        : 'Escanear código de barras…'
                       : pageMode === 'product'
                         ? 'Código de barras'
                         : 'Ej. A3K9Z1'
@@ -776,9 +779,14 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 </button>
               )}
             </div>
-            {pageMode === 'product' && codeBarcodeScan.scannerMode && (
+            {pageMode === 'product' && codeBarcodeScan.scannerMode && !codeBarcodeScan.useCameraBarcodeScanner && (
               <p className="mt-1.5 text-xs text-gray-500 leading-snug">
                 Escanee con lector USB o pegue el código. El valor se rellena en el campo al escanear.
+              </p>
+            )}
+            {pageMode === 'product' && codeBarcodeScan.scannerMode && codeBarcodeScan.useCameraBarcodeScanner && (
+              <p className="mt-1.5 text-xs text-primary-700 leading-snug">
+                Apunta la cámara al código de barras del producto.
               </p>
             )}
           </div>
@@ -1301,6 +1309,15 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           setImportModalOpen(false)
           load()
         }}
+      />
+
+      <BarcodeScannerModal
+        open={codeBarcodeScan.cameraScannerOpen}
+        onClose={codeBarcodeScan.closeScanner}
+        onScan={codeBarcodeScan.handleCameraScan}
+        title="Código de barras"
+        subtitle="Apunta al código del producto"
+        footerHint="El código reemplazará el valor del campo al detectarlo"
       />
     </div>
   )

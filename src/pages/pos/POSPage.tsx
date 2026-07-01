@@ -12,7 +12,6 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useBranch } from '@/contexts/BranchContext'
 import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
 import RequireModule from '@/components/ui/RequireModule'
-import { Modal } from '@/components/ui/Modal'
 import { ReceiptPrintModal } from '@/components/ui/ReceiptPrintModal'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
 import { POSCheckoutModal, type CheckoutPaymentLine } from '@/components/pos/POSCheckoutModal'
@@ -34,7 +33,9 @@ import { buildTaxConfigFromSunat } from '@/constants/tax'
 import { findPaymentMethodRecord, isPaymentMethodLinkedForSale } from '@/utils/paymentMethodCheckout'
 import { defaultOperationalPaymentCode, filterOperationalPaymentMethods } from '@/utils/operationalPaymentMethods'
 import { BILLING_NOT_ENABLED_MESSAGE, isElectronicBillingSunatCode } from '@/utils/posCheckoutSeries'
+import { PosMobileCartDrawer } from '@/components/pos/PosMobileCartDrawer'
 import { ManualProductModal } from '@/components/pos/ManualProductModal'
+import { isTabletCapacitorDevice } from '@/lib/platform/detect'
 import { PosCartLineRow } from '@/components/pos/PosCartLineRow'
 import { ProductConfigureModal } from '@/components/pos/ProductConfigureModal'
 import { roundMoney } from '@/utils/checkoutDiscount'
@@ -54,6 +55,7 @@ import {
 } from '@/utils/posCart'
 import { useFlyToCart } from '@/hooks/useFlyToCart'
 import { useBarcodeProductScanner } from '@/hooks/useBarcodeProductScanner'
+import { BarcodeScannerModal } from '@/components/barcode/BarcodeScannerModal'
 import { playCartAddSound, playCartRemoveSound } from '@/utils/cartSounds'
 import { productConfigurationBadge, productNeedsSaleConfiguration } from '@/utils/productModifiers'
 
@@ -626,6 +628,7 @@ function POSContent() {
 
   const cartCount = cart.length
   const branchSeriesMissing = Boolean(activeBranchId) && seriesMetaReady && !hasCheckoutSeries
+  const posTablet = isTabletCapacitorDevice()
 
   const posSeriesLoading = Boolean(session) && Boolean(activeBranchId) && !seriesMetaReady
 
@@ -674,35 +677,37 @@ function POSContent() {
     )
   }
 
-  const floatingCartButton = typeof window !== 'undefined'
-    ? createPortal(
-        <button
-          ref={cartBtnRef}
-          type="button"
-          onClick={() => cartCount > 0 && setCartModalOpen(true)}
-          className={`md:hidden fixed bottom-4 right-4 z-[105] flex items-center justify-center w-14 h-14 rounded-full shadow-lg transition-transform active:scale-95 ${
-            cartCount > 0
-              ? 'bg-[rgb(var(--p600))] text-white'
-              : 'bg-gray-300 text-gray-500 cursor-not-allowed opacity-70'
-          }`}
-        >
-          <ShoppingCart size={22} />
-          {cartCount > 0 && (
-            <span className="absolute -top-1 -right-1 min-w-[20px] h-[20px] px-1 flex items-center justify-center rounded-full bg-red-500 text-white text-[11px] font-bold">
-              {cartCount}
-            </span>
-          )}
-        </button>,
-        document.body,
-      )
-    : null
+  const floatingCartButton =
+    !cartModalOpen && typeof window !== 'undefined'
+      ? createPortal(
+          <button
+            ref={cartBtnRef}
+            type="button"
+            onClick={() => cartCount > 0 && setCartModalOpen(true)}
+            disabled={cartCount === 0}
+            className={clsx(
+              'pos-cart-fab fixed z-[105] touch-manipulation transition-transform',
+              cartCount > 0 ? 'hover:bg-primary-700 active:scale-95' : 'pos-cart-fab--empty cursor-default',
+            )}
+            aria-label={cartCount > 0 ? `Abrir carrito, ${cartCount} artículos` : 'Carrito vacío'}
+          >
+            <ShoppingCart size={posTablet ? 32 : 28} strokeWidth={2.25} aria-hidden />
+            {cartCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[1.35rem] h-[1.35rem] px-1 flex items-center justify-center rounded-full bg-red-600 text-white text-[11px] font-bold ring-2 ring-white tabular-nums">
+                {cartCount > 99 ? '99+' : cartCount}
+              </span>
+            )}
+          </button>,
+          document.body,
+        )
+      : null
 
   return (
-    <div className="-m-2 flex h-[calc(100dvh-9.5rem)] min-h-[28rem] flex-col overflow-hidden sm:-m-3 md:-m-4 md:flex-row md:gap-3">
+    <div className="pos-layout -m-2 flex h-[calc(100dvh-9.5rem)] min-h-[28rem] flex-col overflow-hidden pt-2 sm:pt-3 sm:-m-3 md:-m-4 md:pt-3">
       {/* Columna izquierda: catálogo */}
       <div className="flex w-full min-w-0 max-w-full flex-1 flex-col min-h-0 overflow-hidden">
         {/* Filtro categorías */}
-        <div className="flex w-full gap-1.5 overflow-x-auto pb-1.5 min-w-0 shrink-0 scroll-drag-x">
+        <div className="flex w-full gap-1.5 overflow-x-auto pb-2 pt-0.5 min-w-0 shrink-0 scroll-drag-x mb-2">
           <button
             type="button"
             onClick={() => setSelectedCat(null)}
@@ -763,7 +768,13 @@ function POSContent() {
                       ? 'border-primary-300 focus:ring-primary-500/40'
                       : 'border-stone-200 focus:ring-primary-500/30',
                   )}
-                  placeholder={barcodeScan.scannerMode ? 'Escanear código de barras…' : 'Buscar producto...'}
+                  placeholder={
+                    barcodeScan.scannerMode
+                      ? barcodeScan.useCameraBarcodeScanner
+                        ? 'Cámara activa — apunta al código'
+                        : 'Escanear código de barras…'
+                      : 'Buscar producto...'
+                  }
                   value={q}
                   onChange={e => setQ(e.target.value)}
                   onKeyDown={barcodeScan.handleSearchKeyDown}
@@ -859,10 +870,10 @@ function POSContent() {
         </div>
       </div>
 
-      {/* Columna derecha: carrito (desktop) */}
+      {/* Columna derecha: carrito (solo landscape ancho) */}
       <div
         ref={desktopCartRef}
-        className="hidden md:flex md:w-80 lg:w-[22rem] md:min-h-0 md:h-full md:max-h-full md:flex-shrink-0 flex-col bg-white rounded-2xl shadow-sm border border-stone-200/80 overflow-hidden"
+        className="pos-cart-sidebar md:w-80 lg:w-[22rem] md:min-h-0 md:h-full md:max-h-full md:flex-shrink-0 flex-col bg-white rounded-2xl shadow-sm border border-stone-200/80 overflow-hidden"
       >
         <div className="px-4 py-3 border-b border-gray-100 shrink-0">
           {renderCartHeader()}
@@ -916,54 +927,100 @@ function POSContent() {
         </div>
       </div>
 
-      {/* Botón flotante de carrito (móvil, portal al body para evitar interferencias de layout) */}
+      {/* Botón flotante de carrito (portrait / móvil) */}
       {floatingCartButton}
 
       <FlyToCartLayer />
 
-      {/* Modal carrito (móvil) */}
-      <Modal open={cartModalOpen} onClose={() => setCartModalOpen(false)} contentClassName="max-w-md">
-        <div className="flex flex-col max-h-[min(85dvh,32rem)] min-h-[20rem]">
-          <div className="px-1 pb-2 border-b border-gray-100 shrink-0">
-            {renderCartHeader('py-2')}
-          </div>
-          <ul className="flex-1 min-h-0 overflow-y-auto overscroll-contain list-none m-0 p-0">
-            {cart.length === 0 ? (
-              <li className="flex flex-col items-center justify-center text-center py-10">
-                <ShoppingCart size={28} className="text-gray-300 mb-2" />
-                <p className="text-gray-400 text-sm">Carrito vacío</p>
-              </li>
-            ) : (
-              renderCartLines()
-            )}
-          </ul>
-          <div className="p-3 border-t border-gray-100 space-y-2 shrink-0">
+      {/* Panel carrito móvil (bottom sheet) */}
+      <PosMobileCartDrawer
+        open={cartModalOpen}
+        onClose={() => setCartModalOpen(false)}
+        itemCount={cartCount}
+        footer={
+          <div className="p-3 sm:p-4 border-t border-gray-100 space-y-2 shrink-0 bg-white pb-[max(0.75rem,var(--safe-bottom))]">
             <button
               type="button"
               onClick={() => setManualProductOpen(true)}
-              className="w-full inline-flex items-center justify-center gap-1 py-2 border border-amber-300 bg-amber-50 text-amber-900 rounded-xl text-xs font-semibold hover:bg-amber-100"
+              className="w-full inline-flex items-center justify-center gap-1 py-2.5 border border-amber-300 bg-amber-50 text-amber-900 rounded-xl text-xs font-semibold hover:bg-amber-100"
             >
               <Plus size={14} /> Producto manual
             </button>
-          {cart.length > 0 && (
-            <>
-              <div className="flex justify-between font-bold text-gray-800">
-                <span>Total</span>
-                <span>{formatMoney(displayCartTotal)}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => { setCartModalOpen(false); openCheckout() }}
-                disabled={branchSeriesMissing}
-                className="w-full flex items-center justify-center gap-2 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-bold hover:opacity-90 disabled:opacity-50"
-              >
-                Cobrar <ChevronRight size={15} />
-              </button>
-            </>
-          )}
+            {cart.length > 0 && (
+              <>
+                {totalsByAfectacion.gravado.total > 0 && (
+                  <>
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>Op. gravada – Subtotal</span>
+                      <span>S/ {totalsByAfectacion.gravado.subtotal.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>Op. gravada – IGV</span>
+                      <span>S/ {totalsByAfectacion.gravado.taxAmount.toFixed(2)}</span>
+                    </div>
+                  </>
+                )}
+                {totalsByAfectacion.exonerado.total > 0 && (
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Op. exonerada</span>
+                    <span>S/ {totalsByAfectacion.exonerado.total.toFixed(2)}</span>
+                  </div>
+                )}
+                {totalsByAfectacion.inafecto.total > 0 && (
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Op. inafecta</span>
+                    <span>S/ {totalsByAfectacion.inafecto.total.toFixed(2)}</span>
+                  </div>
+                )}
+                {totalsByAfectacion.exportacion.total > 0 && (
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Op. exportación</span>
+                    <span>S/ {totalsByAfectacion.exportacion.total.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-bold text-gray-800 text-base">
+                  <span>Total</span>
+                  <span>{formatMoney(displayCartTotal)}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCartModalOpen(false)
+                    openCheckout()
+                  }}
+                  disabled={branchSeriesMissing}
+                  className="w-full flex items-center justify-center gap-2 py-3 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-bold hover:opacity-90 disabled:opacity-50"
+                >
+                  Cobrar <ChevronRight size={15} />
+                </button>
+              </>
+            )}
           </div>
-        </div>
-      </Modal>
+        }
+      >
+        {cart.length > 0 && (
+          <div className="px-4 py-2 border-b border-gray-100 shrink-0 flex justify-end">
+            <button
+              type="button"
+              onClick={emptyCart}
+              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50 transition-colors"
+            >
+              <Trash2 size={13} />
+              Vaciar
+            </button>
+          </div>
+        )}
+        <ul className="flex-1 min-h-[min(50dvh,22rem)] overflow-y-auto overscroll-contain list-none m-0 p-0">
+          {cart.length === 0 ? (
+            <li className="flex flex-col items-center justify-center text-center py-16 px-4">
+              <ShoppingCart size={36} className="text-gray-300 mb-3" />
+              <p className="text-gray-400 text-sm">Carrito vacío</p>
+            </li>
+          ) : (
+            renderCartLines()
+          )}
+        </ul>
+      </PosMobileCartDrawer>
 
       {/* Modal configurar producto (presentaciones, extras, series) */}
       <ProductConfigureModal
@@ -1034,6 +1091,16 @@ function POSContent() {
         open={manualProductOpen}
         onClose={() => setManualProductOpen(false)}
         onAdd={addManualToCart}
+      />
+
+      <BarcodeScannerModal
+        open={barcodeScan.cameraScannerOpen}
+        onClose={barcodeScan.closeScanner}
+        onScan={barcodeScan.handleBarcodeScan}
+        busy={barcodeScan.scanProcessing}
+        title="Escanear producto"
+        subtitle="Apunta al código de barras"
+        footerHint="El producto se agregará al carrito al detectar el código"
       />
     </div>
   )

@@ -27,7 +27,7 @@ export async function bootstrapCapacitor(): Promise<void> {
     await StatusBar.setOverlaysWebView({ overlay: true })
     await StatusBar.setStyle({ style: Style.Light })
     if (isCapacitorAndroid()) {
-      await StatusBar.setBackgroundColor({ color: '#00000000' })
+      await StatusBar.setBackgroundColor({ color: '#16a34a' })
     }
   } catch (e) {
     console.warn('[Tukifac] StatusBar', e)

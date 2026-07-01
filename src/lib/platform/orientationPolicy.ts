@@ -1,15 +1,19 @@
 import { ScreenOrientation } from '@capacitor/screen-orientation'
-import { isCapacitorNative } from './detect'
+import { isCapacitorNative, isTabletCapacitorDevice } from './detect'
 
 /**
- * Android: solo portrait (requisito producto). Sin landscape en tablets.
+ * Android: portrait en teléfonos; tablets pueden rotar (vertical / horizontal).
  */
 export async function applyOrientationPolicy(): Promise<void> {
   if (!isCapacitorNative()) return
   try {
-    await ScreenOrientation.lock({ orientation: 'portrait' })
+    if (isTabletCapacitorDevice()) {
+      await ScreenOrientation.unlock()
+    } else {
+      await ScreenOrientation.lock({ orientation: 'portrait' })
+    }
   } catch (e) {
-    console.warn('[Tukifac] Orientación portrait', e)
+    console.warn('[Tukifac] Orientación', e)
   }
 }
 

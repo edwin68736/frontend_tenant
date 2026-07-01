@@ -2,12 +2,27 @@
 import { TukichefPrinter } from '@/plugins/tukichef-printer'
 import type { BluetoothDeviceInfo, PrinterConnectionStatus } from './types'
 
-export async function ensureBluetoothPermissions(): Promise<boolean> {
+const BT_PERMISSION_MESSAGE =
+  'Se necesitan permisos de Bluetooth para buscar, conectar e imprimir en la ticketera.'
+
+export async function checkBluetoothPermissions(): Promise<boolean> {
   if (!isCapacitorAndroid()) return false
   const check = await TukichefPrinter.checkBluetoothPermissions()
-  if (check.granted) return true
+  return Boolean(check.granted)
+}
+
+export async function requestBluetoothPermissions(): Promise<boolean> {
+  if (!isCapacitorAndroid()) return false
   const req = await TukichefPrinter.requestBluetoothPermissions()
-  return req.granted
+  return Boolean(req.granted)
+}
+
+export async function ensureBluetoothPermissions(): Promise<boolean> {
+  if (!isCapacitorAndroid()) return false
+  if (await checkBluetoothPermissions()) return true
+  const granted = await requestBluetoothPermissions()
+  if (!granted) throw new Error(BT_PERMISSION_MESSAGE)
+  return true
 }
 
 export async function isBluetoothEnabled(): Promise<boolean> {

@@ -56,6 +56,7 @@ import type { CheckoutDiscountMode } from '@/utils/checkoutDiscount'
 import { roundSunat, calcPaymentChange, sumMoney } from '@/utils/money'
 import { quotationsService } from '@/services/quotations.service'
 import { useBarcodeProductScanner } from '@/hooks/useBarcodeProductScanner'
+import { BarcodeScannerModal } from '@/components/barcode/BarcodeScannerModal'
 import {
   buildSalePreviewPrintData,
   validateSalePreviewInput,
@@ -1433,7 +1434,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
             <p className="text-xs text-gray-500 ml-auto">Total de ítems: {items.length}</p>
           </div>
 
-          {barcodeScan.scannerMode && (
+          {barcodeScan.scannerMode && !barcodeScan.useCameraBarcodeScanner && (
             <div className="mb-3">
               <label className="block text-xs font-medium text-gray-600 mb-1">
                 Código de barras
@@ -1467,6 +1468,11 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                 Escanee con lector USB o pegue el código y presione Enter.
               </p>
             </div>
+          )}
+          {barcodeScan.scannerMode && barcodeScan.useCameraBarcodeScanner && (
+            <p className="mb-3 text-xs text-primary-700 bg-primary-50 border border-primary-200 rounded-xl px-3 py-2">
+              Cámara activa — apunta al código de barras del producto.
+            </p>
           )}
 
           <div className="overflow-x-auto rounded-xl border border-gray-200">
@@ -1948,6 +1954,16 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
         printData={printData}
         saleNumber={lastSale?.number}
         total={lastSale?.total}
+      />
+
+      <BarcodeScannerModal
+        open={barcodeScan.cameraScannerOpen}
+        onClose={barcodeScan.closeScanner}
+        onScan={barcodeScan.handleBarcodeScan}
+        busy={barcodeScan.scanProcessing}
+        title="Escanear producto"
+        subtitle="Apunta al código de barras"
+        footerHint="El producto se agregará al comprobante al detectar el código"
       />
     </div>
   )

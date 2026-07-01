@@ -1,5 +1,6 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { isCapacitorNative } from '@/lib/platform/detect'
 import { productsService, type Product } from '@/services/products.service'
 import { findProductByBarcodeInList } from '@/utils/barcodeLookup'
 
@@ -11,21 +12,26 @@ type Options = {
   onClearSearch?: () => void
   /** Si false, no muestra toast de éxito (p. ej. cuando onProductFound ya lo hace). */
   showSuccessToast?: boolean
+  /** Cierra la cámara tras agregar un producto (por defecto true). */
+  closeCameraOnScan?: boolean
 }
 
-/** Escáner por input + foco + lector USB (sin cámara ni html5-qrcode). */
+/** Escáner por cámara (Capacitor) o input + lector USB (web/Tauri). */
 export function useBarcodeProductScanner({
   products = [],
   branchId,
   onProductFound,
   onClearSearch,
   showSuccessToast = true,
+  closeCameraOnScan = true,
 }: Options) {
   const searchInputRef = useRef<HTMLInputElement>(null)
   const wedgeInputRef = useRef<HTMLInputElement>(null)
   const [scannerMode, setScannerMode] = useState(false)
+  const [cameraScannerOpen, setCameraScannerOpen] = useState(false)
   const [scanQuery, setScanQuery] = useState('')
   const [scanProcessing, setScanProcessing] = useState(false)
+  const useCameraBarcodeScanner = isCapacitorNative()
 
   const focusScanInput = useCallback(() => {
     window.setTimeout(() => {
@@ -46,6 +52,12 @@ export function useBarcodeProductScanner({
     [products, branchId],
   )
 
+  const closeScanner = useCallback(() => {
+    setScannerMode(false)
+    setCameraScannerOpen(false)
+    setScanQuery('')
+  }, [])
+
   const handleBarcodeScan = useCallback(
     async (rawCode: string) => {
       const code = rawCode.trim()
@@ -58,7 +70,11 @@ export function useBarcodeProductScanner({
           setScanQuery('')
           onClearSearch?.()
           if (showSuccessToast) toast.success(`${product.name} agregado`)
-          focusScanInput()
+          if (useCameraBarcodeScanner && closeCameraOnScan) {
+            closeScanner()
+          } else if (!useCameraBarcodeScanner) {
+            focusScanInput()
+          }
         } else {
           toast.error('No se encontró un producto con ese código')
         }
@@ -68,30 +84,58 @@ export function useBarcodeProductScanner({
         setScanProcessing(false)
       }
     },
-    [focusScanInput, onClearSearch, onProductFound, resolveProduct, scanProcessing, showSuccessToast],
+    [
+      closeCameraOnScan,
+      closeScanner,
+      focusScanInput,
+      onClearSearch,
+      onProductFound,
+      resolveProduct,
+      scanProcessing,
+      showSuccessToast,
+      useCameraBarcodeScanner,
+    ],
   )
 
   const activateScanner = useCallback(() => {
     setScannerMode(true)
-    focusScanInput()
-  }, [focusScanInput])
+    if (useCameraBarcodeScanner) {
+      setCameraScannerOpen(true)
+    } else {
+      focusScanInput()
+    }
+  }, [focusScanInput, useCameraBarcodeScanner])
 
   const deactivateScanner = useCallback(() => {
-    setScannerMode(false)
-    setScanQuery('')
-  }, [])
+    closeScanner()
+  }, [closeScanner])
 
   const toggleScannerMode = useCallback(() => {
     setScannerMode(on => {
       const next = !on
       if (!next) {
+        setCameraScannerOpen(false)
         setScanQuery('')
+      } else if (useCameraBarcodeScanner) {
+        setCameraScannerOpen(true)
       } else {
         focusScanInput()
       }
       return next
     })
-  }, [focusScanInput])
+  }, [focusScanInput, useCameraBarcodeScanner])
+
+  useEffect(() => {
+    if (!scannerMode) {
+      setCameraScannerOpen(false)
+      return
+    }
+    if (useCameraBarcodeScanner) {
+      setCameraScannerOpen(true)
+      return
+    }
+    focusScanInput()
+  }, [scannerMode, useCameraBarcodeScanner, focusScanInput])
 
   const handleSearchKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -118,11 +162,14 @@ export function useBarcodeProductScanner({
     searchInputRef,
     wedgeInputRef,
     scannerMode,
+    cameraScannerOpen,
+    useCameraBarcodeScanner,
     scanQuery,
     setScanQuery,
     scanProcessing,
     activateScanner,
     deactivateScanner,
+    closeScanner,
     toggleScannerMode,
     handleBarcodeScan,
     handleSearchKeyDown,

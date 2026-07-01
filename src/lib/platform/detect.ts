@@ -40,3 +40,10 @@ export function getCapacitorPlatform(): CapacitorPlatform {
 export function isCapacitorAndroid(): boolean {
   return isCapacitorNative() && getCapacitorPlatform() === 'android'
 }
+
+/** Tablet Capacitor: lado corto ≥ 600px (landscape y portrait). */
+export function isTabletCapacitorDevice(): boolean {
+  if (typeof window === 'undefined' || !isCapacitorNative()) return false
+  const minSide = Math.min(window.innerWidth, window.innerHeight)
+  return minSide >= 600
+}

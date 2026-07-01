@@ -57,17 +57,21 @@ export default function RucPage() {
   }
 
   return (
-    <div className="flex min-h-screen min-h-screen-safe items-center justify-center bg-gradient-to-br from-green-900 via-green-800 to-emerald-900 p-4 pt-safe pb-safe">
-      <div className="w-full max-w-sm rounded-2xl bg-white/95 p-8 shadow-xl backdrop-blur">
+    <div className="ruc-bind-screen bg-gradient-to-br from-green-900 via-green-800 to-emerald-900">
+      <div className="ruc-bind-card rounded-2xl bg-white/95 p-6 shadow-xl backdrop-blur sm:p-8">
         <div className="mb-3 flex justify-center">
-          <img src="/logo.png" alt="Tukifac" className="h-16 w-auto object-contain" />
+          <img src="/logo.png" alt="Tukifac" className="ruc-bind-logo h-16 w-auto object-contain" />
         </div>
         <p className="mb-1 text-center text-sm text-gray-600">Panel ERP Tukifac</p>
-        <p className="mb-6 text-center text-xs text-gray-500">
+        <p className="ruc-bind-lead mb-6 text-center text-xs leading-relaxed text-gray-500">
           Ingrese el RUC de su empresa. La vinculación queda guardada en este dispositivo. Para cambiar de
           empresa debe desinstalar la aplicación.
         </p>
-        {isDevelopmentMode() && <DevServerSettings />}
+        {isDevelopmentMode() && (
+          <div className="mb-4">
+            <DevServerSettings />
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="mb-1 block text-xs font-medium text-gray-700">RUC de la empresa</label>

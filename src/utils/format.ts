@@ -3,6 +3,12 @@ export function formatMoney(n: number, currency = 'PEN'): string {
   return `${sym} ${Number(n).toFixed(2)}`
 }
 
+/** Ticket térmico: sin espacio tras el símbolo (evita salto de línea en S/ | monto). */
+export function formatMoneyTicket(n: number, currency = 'PEN'): string {
+  const sym = currency === 'USD' ? '$' : 'S/'
+  return `${sym}${Number(n).toFixed(2)}`
+}
+
 /** El backend guarda `number` como SERIE-00001234; no concatenar la serie otra vez. */
 export function formatSaleDocumentNumber(series: string, numberRaw: string | number | undefined): string {
   const s = String(series ?? '').trim()

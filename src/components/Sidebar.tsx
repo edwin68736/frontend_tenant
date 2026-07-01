@@ -13,6 +13,8 @@ import {
 import { clsx } from 'clsx'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { isCapacitorNative } from '@/lib/platform/detect'
+import { MODAL_FOOTER_SAFE } from '@/utils/safeAreaClasses'
 
 type SimpleItem = {
   id: string
@@ -287,6 +289,8 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
 
   const isDesktop = !!embedded
   const isCollapsed = isDesktop && !!collapsed
+  const nativeCapacitor = isCapacitorNative()
+  const mobileDrawer = !embedded && mobileOpen
 
   const [companyProfile, setCompanyProfile] = useState<{ business_name: string; ruc: string } | null>(null)
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
@@ -356,9 +360,13 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
     'relative flex min-h-0 flex-col flex-shrink-0 h-full transition-transform duration-300 z-40',
     embedded
       ? 'lg:relative lg:translate-x-0 lg:w-full lg:h-full'
-      : 'lg:relative lg:translate-x-0',
-    mobileOpen ? 'fixed inset-y-0 left-0 translate-x-0 w-64' : 'fixed inset-y-0 left-0 -translate-x-full lg:translate-x-0 w-64',
-    !embedded && 'lg:fixed lg:inset-y-0 lg:left-0',
+      : mobileDrawer
+        ? 'h-full w-full translate-x-0'
+        : clsx(
+            'fixed inset-y-0 left-0 w-64 -translate-x-full lg:translate-x-0',
+            'lg:relative lg:inset-auto',
+          ),
+    !embedded && !mobileDrawer && 'lg:fixed lg:inset-y-0 lg:left-0',
   )
 
   // Al cambiar de ruta, abrir solo el grupo que contiene la página actual (así Ventas se cierra al ir a Documentos avanzados)
@@ -586,7 +594,12 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
       </nav>
 
       {/* Usuario y logout — siempre al pie del sidebar */}
-      <div className="mt-auto shrink-0 px-3 py-3 border-t border-gray-100">
+      <div
+        className={clsx(
+          'mt-auto shrink-0 px-3 py-3 border-t border-gray-100',
+          !embedded && nativeCapacitor && MODAL_FOOTER_SAFE,
+        )}
+      >
         <div className={clsx('flex items-center px-3 py-2.5 rounded-xl bg-gray-50 ring-1 ring-gray-100', isCollapsed ? 'justify-center gap-2' : 'gap-2.5')}>
           <div
             className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"

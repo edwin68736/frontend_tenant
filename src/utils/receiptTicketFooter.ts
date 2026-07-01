@@ -1,31 +1,70 @@
 ﻿import type { jsPDF } from 'jspdf'
 import QRCode from 'qrcode'
 import type { PrintData } from '@/types/printData'
-import { formatMoney } from '@/utils/format'
+import { formatMoney, formatMoneyTicket } from '@/utils/format'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
 import { resolvePrintChangeAmount } from '@/utils/receiptTotals'
 
 /** Mismo cuerpo que detalle/fecha en ticket PDF (receiptPdf FONT_SIZE_SM). */
 const FONT_SIZE_TICKET_BODY = 8
 
-export function paymentConditionLeftLines(data: PrintData): string[] {
-  const lines: string[] = ['Condicion de pago:']
-  const cond = String(data.payment_condition ?? '').trim()
-  if (cond) {
-    lines.push(cond)
-  } else if (data.payments.length > 0) {
-    lines.push('Contado')
+export type PaymentConditionLineOpts = {
+  /** Ancho de columna ESC/POS: mantiene método + monto en la misma línea. */
+  cols?: number
+  /** Montos compactos S/12.34 (ticketera). Por defecto true. */
+  ticketMoney?: boolean
+}
+
+/** Línea método + monto sin partir el símbolo de moneda. */
+export function formatPaymentDetailLine(
+  label: string,
+  amount: string,
+  suffix: string,
+  cols: number,
+): string {
+  const tail = `${amount}${suffix}`
+  const spaced = `${label}: ${tail}`
+  if (spaced.length <= cols) return spaced
+  const tight = `${label}:${tail}`
+  if (tight.length <= cols) return tight
+  const room = cols - tail.length - 1
+  if (room >= 3) {
+    const short = label.length > room ? `${label.slice(0, Math.max(1, room - 2))}..` : label
+    return `${short} ${tail}`.slice(0, cols)
   }
+  return tight.slice(0, cols)
+}
+
+export function paymentConditionLeftLines(data: PrintData, opts?: PaymentConditionLineOpts): string[] {
+  const moneyFmt = opts?.ticketMoney !== false ? formatMoneyTicket : formatMoney
+  const cols = opts?.cols
+  const lines: string[] = []
+
+  const cond = String(data.payment_condition ?? '').trim()
+  const condValue = cond || (data.payments.length > 0 ? 'Contado' : '')
+  if (condValue) {
+    lines.push(`Condicion de pago: ${condValue}`)
+  } else {
+    lines.push('Condicion de pago:')
+  }
+
   if (data.payments.length > 0) {
     lines.push('Pagos detallados:')
     for (const p of data.payments) {
       const ref = p.reference?.trim() ? ` Ref:${p.reference}` : ''
-      lines.push(`${salePaymentMethodLabelEs(p.method)}: ${formatMoney(p.amount, data.currency)}${ref}`)
+      const label = salePaymentMethodLabelEs(p.method)
+      const amt = moneyFmt(p.amount, data.currency)
+      lines.push(
+        cols != null
+          ? formatPaymentDetailLine(label, amt, ref, cols)
+          : `${label}: ${amt}${ref}`,
+      )
     }
-  }
-  const change = resolvePrintChangeAmount(data)
-  if (change > 0.009) {
-    lines.push(`Vuelto: ${formatMoney(change, data.currency)}`)
+    const change = resolvePrintChangeAmount(data)
+    if (change > 0.009) {
+      const amt = moneyFmt(change, data.currency)
+      lines.push(cols != null ? formatPaymentDetailLine('Vuelto', amt, '', cols) : `Vuelto: ${amt}`)
+    }
   }
   return lines
 }
