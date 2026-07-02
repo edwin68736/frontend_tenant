@@ -39,6 +39,17 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const [showPass, setShowPass] = useState(false)
 
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<FormData>({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      slug: localStorage.getItem('tenantSlug') ?? import.meta.env.VITE_TENANT_SLUG ?? '',
+    },
+  })
+
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-100">
@@ -50,17 +61,6 @@ export default function LoginPage() {
   if (isAuthenticated) {
     return <Navigate to="/home" replace />
   }
-
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<FormData>({
-    resolver: zodResolver(schema),
-    defaultValues: {
-      slug: localStorage.getItem('tenantSlug') ?? import.meta.env.VITE_TENANT_SLUG ?? '',
-    },
-  })
 
   const onSubmit = async (data: FormData) => {
     if (!isNativeShell()) {

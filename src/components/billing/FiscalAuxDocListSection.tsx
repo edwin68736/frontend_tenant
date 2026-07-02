@@ -12,6 +12,7 @@ import { FiscalRetentionPerceptionModal } from '@/components/billing/FiscalReten
 import { ReversionCreateModal } from '@/components/billing/ReversionCreateModal'
 import { Modal } from '@/components/ui/Modal'
 import { DocumentViewerModal } from '@/components/ui/DocumentViewerModal'
+import { createLocalReceiptPdfObjectUrl, downloadLocalReceiptPdf } from '@/utils/localReceiptPdf'
 import { formatDisplayDatePeru } from '@/utils/datesPeru'
 import {
   billingStatusColor,
@@ -95,11 +96,11 @@ export function FiscalAuxDocListSection({ kind, list, loading, onRefresh, onCrea
     setDocumentViewerOpen(true)
     setDocumentViewerUrl(null)
     try {
-      const url = await billingService.getPdfObjectUrl(saleId)
+      const url = await createLocalReceiptPdfObjectUrl(saleId, 'a4')
       documentViewerUrlRef.current = url
       setDocumentViewerUrl(url)
     } catch (e: unknown) {
-      toast.error((e as Error)?.message ?? 'Error al cargar PDF')
+      toast.error((e as Error)?.message ?? 'Error al generar PDF')
       setDocumentViewerOpen(false)
     } finally {
       setViewingPdfSaleId(null)
@@ -212,7 +213,7 @@ export function FiscalAuxDocListSection({ kind, list, loading, onRefresh, onCrea
                         </button>
                         <button type="button" disabled={downloadingPdfSaleId === saleId} onClick={() => {
                           setDownloadingPdfSaleId(saleId!)
-                          billingService.downloadDocument(saleId!, 'pdf').catch((e) => toast.error(e?.message ?? 'Error')).finally(() => setDownloadingPdfSaleId(null))
+                          downloadLocalReceiptPdf(saleId!, 'a4').catch((e) => toast.error(e?.message ?? 'Error')).finally(() => setDownloadingPdfSaleId(null))
                         }} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg" title="Descargar PDF">
                           {downloadingPdfSaleId === saleId ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
                         </button>

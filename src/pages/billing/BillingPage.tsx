@@ -35,7 +35,7 @@ import {
 import { DocumentViewerModal } from '@/components/ui/DocumentViewerModal'
 import { getTodayPeru, formatDisplayDatePeru } from '@/utils/datesPeru'
 import { formatSaleDocumentNumber } from '@/utils/format'
-import { generateReceiptPdf, downloadReceiptPdf } from '@/utils/receiptPdf'
+import { createLocalReceiptPdfObjectUrl, downloadLocalReceiptPdf } from '@/utils/localReceiptPdf'
 import { shareReceiptPngViaWhatsApp } from '@/utils/receiptPng'
 import { WhatsAppGlyph } from '@/components/icons/WhatsAppGlyph'
 import { useBillingEvents } from '@/hooks/useBillingEvents'
@@ -89,7 +89,6 @@ function BillingContent() {
   const navigate = useNavigate()
   const location = useLocation()
   const [sunatEnabled, setSunatEnabled] = useState<boolean | null>(null)
-  const [invoicingMode, setInvoicingMode] = useState<string | null>(null)
   const [searchParams] = useSearchParams()
   const [viewMode, setViewMode] = useState<'invoices' | 'credit_notes' | 'summaries_voided'>('invoices')
   const [filterStatus, setFilterStatus] = useState<string>(() => searchParams.get('status') || '')
@@ -201,7 +200,6 @@ function BillingContent() {
 
   useEffect(() => {
     companyService.getSunat().then(d => setSunatEnabled(d.sunat_enabled ?? false)).catch(() => setSunatEnabled(false))
-    companyService.getInvoicing().then(d => setInvoicingMode(d.send_mode ?? 'sunat_direct')).catch(() => setInvoicingMode('sunat_direct'))
     companyService.listSeries({}).then((data: unknown) => {
       const list = Array.isArray(data) ? data : ((data as { data?: unknown[] })?.data ?? [])
       setGuiaSeries(filterAllGuiaSeries(list as GuiaSeriesRow[]))
@@ -411,27 +409,7 @@ function BillingContent() {
     }
   }
 
-  const openPdfViewer = async (saleId: number) => {
-    if (documentViewerUrlRef.current) {
-      URL.revokeObjectURL(documentViewerUrlRef.current)
-      documentViewerUrlRef.current = null
-    }
-    setViewingPdfSaleId(saleId)
-    setDocumentViewerOpen(true)
-    setDocumentViewerUrl(null)
-    try {
-      const url = await billingService.getPdfObjectUrl(saleId)
-      documentViewerUrlRef.current = url
-      setDocumentViewerUrl(url)
-    } catch (e: any) {
-      toast.error(e?.message ?? 'Error al cargar PDF')
-      setDocumentViewerOpen(false)
-    } finally {
-      setViewingPdfSaleId(null)
-    }
-  }
-
-  const openPsePdfViewer = async (saleId: number, format: 'a4' | 'ticket' = 'a4') => {
+  const openLocalPdfViewer = async (saleId: number, format: 'a4' | 'ticket' = 'a4') => {
     if (documentViewerUrlRef.current) {
       URL.revokeObjectURL(documentViewerUrlRef.current)
       documentViewerUrlRef.current = null
@@ -444,11 +422,7 @@ function BillingContent() {
     setDocumentViewerOpen(true)
     setDocumentViewerUrl(null)
     try {
-      const d = await salesService.get(saleId)
-      if (!d.print_data) throw new Error('No hay datos para generar el PDF')
-      const doc = await generateReceiptPdf(d.print_data, format)
-      const blob = doc.output('blob')
-      const url = URL.createObjectURL(blob)
+      const url = await createLocalReceiptPdfObjectUrl(saleId, format)
       documentViewerUrlRef.current = url
       setDocumentViewerUrl(url)
     } catch (e: any) {
@@ -463,16 +437,14 @@ function BillingContent() {
     }
   }
 
-  const downloadPsePdf = async (saleId: number, format: 'a4' | 'ticket' = 'a4') => {
+  const downloadLocalPdf = async (saleId: number, format: 'a4' | 'ticket' = 'a4') => {
     if (format === 'ticket') {
       setDownloadingTicketPdfSaleId(saleId)
     } else {
       setDownloadingPdfSaleId(saleId)
     }
     try {
-      const d = await salesService.get(saleId)
-      if (!d.print_data) throw new Error('No hay datos para generar el PDF')
-      await downloadReceiptPdf(d.print_data, format)
+      await downloadLocalReceiptPdf(saleId, format)
     } catch (e: any) {
       toast.error(e?.message ?? 'Error al descargar')
     } finally {
@@ -492,8 +464,6 @@ function BillingContent() {
     setDocumentViewerUrl(null)
     setDocumentViewerOpen(false)
   }
-
-  const isPSE = invoicingMode === 'pse'
 
   if (viewMode === 'summaries_voided') {
     return (
@@ -770,49 +740,25 @@ function BillingContent() {
                     <button
                       type="button"
                       disabled={viewingPdfSaleId === s.id}
-                      onClick={() => {
-                        if (isPSE || s.billing_status === 'pending') {
-                          void openPsePdfViewer(s.id, 'a4')
-                        } else {
-                          void openPdfViewer(s.id)
-                        }
-                      }}
+                      onClick={() => void openLocalPdfViewer(s.id, 'a4')}
                       className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
-                      title={
-                        s.billing_status === 'pending'
-                          ? 'Ver PDF (vista previa local, antes de SUNAT)'
-                          : 'Ver PDF'
-                      }
+                      title="Ver PDF (formato local A4)"
                     >
                       {viewingPdfSaleId === s.id ? <RefreshCw size={14} className="animate-spin" /> : <Eye size={14} />}
                     </button>
                     <button
                       type="button"
                       disabled={downloadingPdfSaleId === s.id}
-                      onClick={() => {
-                        if (isPSE || s.billing_status === 'pending') {
-                          void downloadPsePdf(s.id, 'a4')
-                          return
-                        }
-                        setDownloadingPdfSaleId(s.id)
-                        billingService
-                          .downloadDocument(s.id, 'pdf')
-                          .catch((e) => toast.error(e?.message ?? 'Error al descargar'))
-                          .finally(() => setDownloadingPdfSaleId(null))
-                      }}
+                      onClick={() => void downloadLocalPdf(s.id, 'a4')}
                       className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
-                      title={
-                        s.billing_status === 'pending'
-                          ? 'Descargar PDF (vista previa local, antes de SUNAT)'
-                          : 'Descargar PDF'
-                      }
+                      title="Descargar PDF (formato local A4)"
                     >
                       {downloadingPdfSaleId === s.id ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
                     </button>
                     <button
                       type="button"
                       disabled={viewingTicketPdfSaleId === s.id}
-                      onClick={() => void openPsePdfViewer(s.id, 'ticket')}
+                      onClick={() => void openLocalPdfViewer(s.id, 'ticket')}
                       className="p-1.5 text-orange-700 hover:bg-orange-50 rounded-lg disabled:opacity-40"
                       title="Ver PDF formato ticket (80 mm, desde datos del comprobante)"
                     >
@@ -821,7 +767,7 @@ function BillingContent() {
                     <button
                       type="button"
                       disabled={downloadingTicketPdfSaleId === s.id}
-                      onClick={() => void downloadPsePdf(s.id, 'ticket')}
+                      onClick={() => void downloadLocalPdf(s.id, 'ticket')}
                       className="p-1.5 text-orange-700 hover:bg-orange-50 rounded-lg disabled:opacity-40"
                       title="Descargar PDF formato ticket"
                     >
@@ -1132,19 +1078,9 @@ function BillingContent() {
                       <button
                         type="button"
                         disabled={viewingPdfSaleId === detail.sale.id}
-                        onClick={() => {
-                          if (isPSE || detail.sale.billing_status === 'pending') {
-                            void openPsePdfViewer(detail.sale.id, 'a4')
-                          } else {
-                            void openPdfViewer(detail.sale.id)
-                          }
-                        }}
+                        onClick={() => void openLocalPdfViewer(detail.sale.id, 'a4')}
                         className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-100 text-red-800 hover:bg-red-200 text-xs font-medium disabled:opacity-70 disabled:cursor-wait"
-                        title={
-                          detail.sale.billing_status === 'pending'
-                            ? 'Abrir PDF (vista previa local, antes de SUNAT)'
-                            : 'Abrir en ventana de documento'
-                        }
+                        title="Abrir PDF (formato local A4)"
                       >
                         {viewingPdfSaleId === detail.sale.id ? <RefreshCw size={14} className="animate-spin" /> : <Eye size={14} />}
                         Ver
@@ -1152,22 +1088,9 @@ function BillingContent() {
                       <button
                         type="button"
                         disabled={downloadingPdfSaleId === detail.sale.id}
-                        onClick={() => {
-                          if (isPSE || detail.sale.billing_status === 'pending') {
-                            void downloadPsePdf(detail.sale.id, 'a4')
-                            return
-                          }
-                          setDownloadingPdfSaleId(detail.sale.id)
-                          billingService.downloadDocument(detail.sale.id, 'pdf')
-                            .catch(e => toast.error(e?.message ?? 'Error al descargar'))
-                            .finally(() => setDownloadingPdfSaleId(null))
-                        }}
+                        onClick={() => void downloadLocalPdf(detail.sale.id, 'a4')}
                         className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-100 text-red-800 hover:bg-red-200 text-xs font-medium disabled:opacity-70 disabled:cursor-wait"
-                        title={
-                          detail.sale.billing_status === 'pending'
-                            ? 'Descargar PDF (vista previa local, antes de SUNAT)'
-                            : 'Descargar PDF'
-                        }
+                        title="Descargar PDF (formato local A4)"
                       >
                         {downloadingPdfSaleId === detail.sale.id ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
                         Descargar
@@ -1175,7 +1098,7 @@ function BillingContent() {
                       <button
                         type="button"
                         disabled={viewingTicketPdfSaleId === detail.sale.id}
-                        onClick={() => void openPsePdfViewer(detail.sale.id, 'ticket')}
+                        onClick={() => void openLocalPdfViewer(detail.sale.id, 'ticket')}
                         className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-orange-100 text-orange-900 hover:bg-orange-200 text-xs font-medium disabled:opacity-70 disabled:cursor-wait"
                         title="Abrir PDF formato ticket (80 mm)"
                       >
@@ -1185,7 +1108,7 @@ function BillingContent() {
                       <button
                         type="button"
                         disabled={downloadingTicketPdfSaleId === detail.sale.id}
-                        onClick={() => void downloadPsePdf(detail.sale.id, 'ticket')}
+                        onClick={() => void downloadLocalPdf(detail.sale.id, 'ticket')}
                         className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-orange-100 text-orange-900 hover:bg-orange-200 text-xs font-medium disabled:opacity-70 disabled:cursor-wait"
                         title="Descargar PDF formato ticket"
                       >

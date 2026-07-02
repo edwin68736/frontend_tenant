@@ -2,7 +2,7 @@ import { jsPDF, GState } from 'jspdf'
 import QRCode from 'qrcode'
 import type { PrintData } from '@/types/printData'
 import { paymentWalletVisible, renderPaymentWalletBlock } from '@/utils/receiptPaymentWallet'
-import { getTipoComprobanteLabel, getMedioPagoLabel, isElectronicSunatCode } from '@/constants/sunat'
+import { getTipoComprobanteLabel, isElectronicSunatCode } from '@/constants/sunat'
 import { buildReceiptTotalLines, formatReceiptTotalAmount, resolvePrintChangeAmount } from '@/utils/receiptTotals'
 import { ticketColumnLayoutMm } from '@/utils/receiptTicketLayout'
 import { getPrintIssuerAddress } from '@/utils/printIssuer'
@@ -16,6 +16,7 @@ import {
 import { renderTicketPaymentAndSunatQrRow } from '@/utils/receiptTicketFooter'
 import { fitReceiptLogoMm, resolveReceiptLogoForPdf } from '@/utils/receiptLogoPdf'
 import { rasterPxForMm } from '@/utils/receiptPdfRaster'
+import { renderReceiptA4 } from '@/utils/receiptPdfA4'
 
 const FONT_SIZE = 10
 const FONT_SIZE_SM = 8
@@ -432,263 +433,10 @@ export async function generateReceiptPdf(
   }
 
   // === FORMATO A4 ===
-
-  // Logo + bloque derecho (tipo comprobante) similar a ejemplo:
-  // Logo arriba izquierda, cuadro a la derecha con "BOLETA DE VENTA ELECTRÓNICA", RUC y serie-número.
-  const startY = y + 2
-  const logoSize = 25
-  if (data.company.logo_url) {
-    try {
-      const logo = await resolveReceiptLogoForPdf(data.company.logo_url)
-      if (logo) {
-        const { w, h } = fitReceiptLogoMm(logo.naturalW, logo.naturalH, logoSize, logoSize)
-        doc.addImage(logo.dataUrl, logo.format, margin, startY, w, h, undefined, 'NONE')
-      }
-    } catch {
-      // si falla el logo, seguimos sin interrumpir
-    }
-  }
-  // Cuadro derecho del comprobante
-  const boxX = A4_WIDTH / 2
-  const boxW = A4_WIDTH / 2 - margin
-  const boxH = 30
-  doc.setLineWidth(0.3)
-  doc.rect(boxX, startY, boxW, boxH)
-  y = startY + 8
-  doc.setFontSize(FONT_SIZE_TITLE)
-  doc.text(getTipoComprobanteLabel(data.sunat_code), boxX + boxW / 2, y, { align: 'center' })
-  y += lineH + 1
-  doc.setFontSize(FONT_SIZE)
-  doc.text(`R.U.C.: ${data.company.ruc}`, boxX + boxW / 2, y, { align: 'center' })
-  y += lineH + 1
-  doc.text(formatDocNumber(data), boxX + boxW / 2, y, { align: 'center' })
-  y = startY + boxH + 8
-
-  // Bloque con datos de empresa/cliente debajo del logo/cuadro (como en imagen)
-  doc.setLineWidth(0.3)
-  const infoBoxY = y
-  const infoBoxH = 20
-  doc.rect(margin, infoBoxY, A4_WIDTH - 2 * margin, infoBoxH)
-  y += 6
-  doc.setFontSize(FONT_SIZE)
-  doc.text(data.company.trade_name || data.company.business_name, margin + 2, y)
-  y += lineH
-  const issuerAddressA4 = getPrintIssuerAddress(data)
-  if (issuerAddressA4) {
-    doc.setFontSize(FONT_SIZE_SM)
-    doc.text(`Dirección: ${issuerAddressA4}`, margin + 2, y)
-    y += lineH
-  }
-  y = infoBoxY + infoBoxH + 4
-
-  // Segunda fila: datos de cliente y moneda
-  doc.setLineWidth(0.3)
-  const clientBoxH = 18
-  doc.rect(margin, y, A4_WIDTH - 2 * margin, clientBoxH)
-  y += 5
-  doc.setFontSize(FONT_SIZE_SM)
-  if (data.client) {
-    doc.text(`Razón Social: ${data.client.business_name}`, margin + 2, y)
-    doc.text(
-      `ND: ${data.client.doc_number || ''}`,
-      A4_WIDTH - margin - 60,
-      y
-    )
-    y += lineH
-    if (data.client.address) {
-      doc.text(`Dirección: ${data.client.address}`, margin + 2, y)
-    }
-  }
-  y += lineH
-  doc.text(`Fecha Emisión: ${data.issue_date}`, margin + 2, y)
-  doc.text(
-    `Tipo Moneda: ${data.currency === 'USD' ? 'DÓLARES' : 'SOLES'}`,
-    A4_WIDTH - margin - 60,
-    y
-  )
-  y += lineH
-  if (data.valid_until) {
-    doc.text(`Válida hasta: ${data.valid_until}`, margin + 2, y)
-    y += lineH
-  }
-  if (data.fiscal?.purchase_order_number) {
-    doc.text(`O/C: ${data.fiscal.purchase_order_number}`, margin + 2, y)
-    y += lineH
-  }
-  if (data.fiscal?.guias?.length) {
-    for (const g of data.fiscal.guias) {
-      const label = g.kind === 'guia_transportista' ? 'Guía transp.' : 'Guía rem.'
-      doc.text(`${label}: ${g.number}`, margin + 2, y)
-      y += lineH
-    }
-  }
-  if (data.fiscal?.fiscal_observations) {
-    const obsLines = doc.splitTextToSize(`Obs.: ${data.fiscal.fiscal_observations}`, A4_WIDTH - 2*margin - 4)
-    for (const line of obsLines) {
-      doc.text(line, margin + 2, y)
-      y += lineH
-    }
-  }
-  if (data.seller_name) {
-    doc.text(`Vendedor: ${data.seller_name}`, margin + 2, y)
-    y += lineH
-  }
-  y += 6
-
-  // Detalle (A4): encabezado de columnas + filas alineadas
-  addLine('DETALLE', { size: FONT_SIZE_SM })
-  y += 2.5
-  doc.setLineWidth(0.2)
-  doc.setDrawColor(0)
-  doc.line(margin, y, A4_WIDTH - margin, y)
-  y += 5
-
-  const a4Inner = A4_WIDTH - 2 * margin
-  const col = {
-    wCode: 16,
-    wDesc: 90,
-    wQty: 12,
-    wUnit: 15,
-    wPUnit: 22,
-    wTotal: 25,
-  }
-  const colSum =
-    col.wCode + col.wDesc + col.wQty + col.wUnit + col.wPUnit + col.wTotal
-  if (Math.abs(colSum - a4Inner) > 0.5) {
-    col.wDesc = Math.max(40, a4Inner - (col.wCode + col.wQty + col.wUnit + col.wPUnit + col.wTotal))
-  }
-  const xCode = margin
-  const xDesc = xCode + col.wCode
-  const xQty = xDesc + col.wDesc
-  const xUnit = xQty + col.wQty
-  const xPUnit = xUnit + col.wUnit
-  const xTotalCol = xPUnit + col.wPUnit
-
-  doc.setFontSize(FONT_SIZE_SM)
-  doc.setFont('helvetica', 'bold')
-  doc.text('COD.', xCode, y)
-  doc.text('DESCRIPCIÓN', xDesc, y)
-  doc.text('CANT.', xQty + col.wQty, y, { align: 'right' })
-  doc.text('UNID.', xUnit, y)
-  doc.text('P. UNIT', xPUnit + col.wPUnit, y, { align: 'right' })
-  doc.text('TOTAL', xTotalCol + col.wTotal, y, { align: 'right' })
-  doc.setFont('helvetica', 'normal')
-  y += lineH + 1.5
-  doc.line(margin, y, A4_WIDTH - margin, y)
-  y += 5
-
-  for (const it of data.items) {
-    doc.setFontSize(FONT_SIZE_SM)
-    const descLines = doc.splitTextToSize((it.description || '').trim() || '—', col.wDesc)
-    const codeStr = (it.code || '—').trim().slice(0, 16) || '—'
-
-    doc.text(codeStr, xCode, y, { maxWidth: col.wCode })
-    doc.text(descLines[0] ?? '—', xDesc, y, { maxWidth: col.wDesc })
-    doc.text(String(it.quantity), xQty + col.wQty, y, { align: 'right' })
-    doc.text((it.unit || '—').slice(0, 10), xUnit, y, { maxWidth: col.wUnit })
-    doc.text(formatMoney(it.unit_price, data.currency), xPUnit + col.wPUnit, y, { align: 'right' })
-    doc.text(formatMoney(it.total, data.currency), xTotalCol + col.wTotal, y, { align: 'right' })
-    y += lineH
-    for (let i = 1; i < descLines.length; i++) {
-      doc.text(descLines[i], xDesc, y, { maxWidth: col.wDesc })
-      y += lineH
-    }
-    addSpace(0.5)
-  }
-  y += 1.5
-  doc.line(margin, y, A4_WIDTH - margin, y)
-  y += 4
-
-  // Totales (misma secuencia que ticket)
-  for (const row of buildReceiptTotalLines(data)) {
-    const label = row.label.replace(/:$/, '')
-    addLine(
-      `${label}: ${formatReceiptTotalAmount(row.amount, data.currency, { negative: row.negative })}`,
-      { align: 'right', size: row.bold ? FONT_SIZE_TITLE : FONT_SIZE },
-    )
-  }
-  if (data.fiscal?.retention_applied) {
-    addLine(`Ret. IGV (3%): ${formatMoney(data.fiscal.igv_retention_amount ?? 0, data.currency)}`, { align: 'right' })
-    addLine(`Neto a cobrar: ${formatMoney(data.fiscal.net_collectible ?? data.total, data.currency)}`, {
-      size: FONT_SIZE_TITLE,
-      align: 'right',
-    })
-  }
-  if (data.fiscal?.has_detraccion) {
-    const pct = data.fiscal.detraccion_rate_percent ?? 0
-    addLine(`Detracción (${pct}%): ${formatMoney(data.fiscal.detraccion_amount ?? 0, 'PEN')}`, { align: 'right' })
-    if (data.fiscal.detraccion_bank_account) {
-      addLine(`Cta. BN: ${data.fiscal.detraccion_bank_account}`, { size: FONT_SIZE_SM, align: 'right' })
-    }
-    addLine(`Neto a cobrar: ${formatMoney(data.fiscal.detraccion_net_payable ?? data.total, data.currency)}`, {
-      size: FONT_SIZE_TITLE,
-      align: 'right',
-    })
-  }
-  addSpace(2)
-
-  // Leyenda (monto en letras)
-  if (data.legend_text) {
-    addLine(data.legend_text, { size: FONT_SIZE_SM })
-    addSpace(2)
-  }
-
-  renderFiscalFooter(data, (text, size) => addLine(text, { size: size ?? FONT_SIZE_SM }), addSpace)
-
-  if (data.notes?.trim() && data.notes.trim() !== data.fiscal?.fiscal_observations?.trim()) {
-    addLine('Observaciones:', { size: FONT_SIZE_SM })
-    addLine(data.notes.trim(), { size: FONT_SIZE_SM })
-    addSpace(2)
-  }
-
-  // Pagos
-  if (data.payments.length > 0) {
-    addLine('PAGOS:', { size: FONT_SIZE_SM })
-    for (const p of data.payments) {
-      addLine(`${getMedioPagoLabel(p.method) || p.method}: ${formatMoney(p.amount, data.currency)}`)
-    }
-    const change = resolvePrintChangeAmount(data)
-    if (change > 0.009) {
-      addLine(`VUELTO: ${formatMoney(change, data.currency)}`, { size: FONT_SIZE_SM })
-    }
-    addSpace(2)
-  }
-
-  if (paymentWalletVisible(data, 'a4')) {
-    y = await renderPaymentWalletBlock(doc, data, 'a4', y, pageW, margin)
-    addSpace(2)
-  }
-
-  // QR
-  if (data.qr_data) {
-    try {
-      const qrSize = 35
-      const qrDataUrl = await qrDataUrlForPrint(qrSize, data.qr_data)
-      doc.addImage(qrDataUrl, 'PNG', (pageW - qrSize) / 2, y, qrSize, qrSize, undefined, 'NONE')
-      y += qrSize + 5
-    } catch {
-      // ignorar si falla el QR
-    }
-  }
-
-  if (!isNonElectronicDoc(data.sunat_code)) {
-    addLine('Representación impresa del comprobante electrónico', {
-      size: FONT_SIZE_SM,
-      align: 'center',
-    })
-    addLine('Consulte su comprobante en sunat.gob.pe', {
-      size: FONT_SIZE_SM,
-      align: 'center',
-    })
-  } else if (data.sunat_code === 'QT') {
-    addLine('Documento comercial — no válido como comprobante de pago SUNAT', {
-      size: FONT_SIZE_SM,
-      align: 'center',
-    })
-  }
+  await renderReceiptA4(doc, data)
 
   if (options?.preview) {
-    applyPreviewWatermark(doc, pageW, Math.min(y + margin, A4_HEIGHT))
+    applyPreviewWatermark(doc, pageW, A4_HEIGHT)
   }
 
   return doc
@@ -729,6 +477,67 @@ export async function openReceiptPdfInNewTab(
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
+/** Espera a que el usuario cierre el diálogo de impresión del navegador (imprimir o cancelar). */
+function waitForBrowserPrintDialog(printWindow: Window): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false
+    let printDialogOpened = false
+    let noDialogTimer: number | undefined
+    let focusTimer: number | undefined
+    let maxTimer: number | undefined
+
+    const cleanupListeners = () => {
+      window.removeEventListener('afterprint', onAfterPrint)
+      printWindow.removeEventListener('afterprint', onAfterPrint)
+      window.removeEventListener('blur', onBlur)
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibility)
+      if (noDialogTimer) clearTimeout(noDialogTimer)
+      if (focusTimer) clearTimeout(focusTimer)
+      if (maxTimer) clearTimeout(maxTimer)
+    }
+
+    const finish = () => {
+      if (settled) return
+      settled = true
+      cleanupListeners()
+      resolve()
+    }
+
+    const onAfterPrint = () => finish()
+
+    const onBlur = () => {
+      printDialogOpened = true
+      if (noDialogTimer) clearTimeout(noDialogTimer)
+    }
+
+    const onFocus = () => {
+      if (!printDialogOpened) return
+      if (focusTimer) clearTimeout(focusTimer)
+      focusTimer = window.setTimeout(finish, 450)
+    }
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible' && printDialogOpened) {
+        if (focusTimer) clearTimeout(focusTimer)
+        focusTimer = window.setTimeout(finish, 450)
+      }
+    }
+
+    window.addEventListener('afterprint', onAfterPrint)
+    printWindow.addEventListener('afterprint', onAfterPrint)
+    window.addEventListener('blur', onBlur)
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisibility)
+
+    noDialogTimer = window.setTimeout(() => {
+      if (!printDialogOpened) finish()
+    }, 3_000)
+
+    maxTimer = window.setTimeout(finish, 90_000)
+  })
+}
+
 /** Abre el diálogo de impresión del navegador (mejor nitidez que imprimir desde iframe embebido). */
 export async function printReceiptPdf(
   data: PrintData,
@@ -749,40 +558,48 @@ export async function printReceiptPdf(
     iframe.style.border = '0'
     iframe.src = url
 
-    const cleanup = () => {
+    let settled = false
+    const cleanupFrame = () => {
       window.setTimeout(() => {
         iframe.remove()
         URL.revokeObjectURL(url)
       }, 2_000)
     }
 
+    const finish = () => {
+      if (settled) return
+      settled = true
+      cleanupFrame()
+      resolve()
+    }
+
+    const fail = (err: Error) => {
+      if (settled) return
+      settled = true
+      cleanupFrame()
+      reject(err)
+    }
+
     iframe.onload = () => {
-      try {
-        const win = iframe.contentWindow
-        if (!win) {
-          reject(new Error('No se pudo abrir el visor de impresión'))
-          cleanup()
-          return
+      void (async () => {
+        try {
+          const win = iframe.contentWindow
+          if (!win) {
+            fail(new Error('No se pudo abrir el visor de impresión'))
+            return
+          }
+          win.focus()
+          win.print()
+          await waitForBrowserPrintDialog(win)
+          finish()
+        } catch (e) {
+          fail(e instanceof Error ? e : new Error(String(e)))
         }
-        win.focus()
-        win.addEventListener('afterprint', () => {
-          cleanup()
-          resolve()
-        }, { once: true })
-        win.print()
-        window.setTimeout(() => {
-          cleanup()
-          resolve()
-        }, 120_000)
-      } catch (e) {
-        cleanup()
-        reject(e)
-      }
+      })()
     }
 
     iframe.onerror = () => {
-      cleanup()
-      reject(new Error('No se pudo cargar el PDF para imprimir'))
+      fail(new Error('No se pudo cargar el PDF para imprimir'))
     }
 
     document.body.appendChild(iframe)

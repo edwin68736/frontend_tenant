@@ -12,6 +12,7 @@ import RequireModule from '@/components/ui/RequireModule'
 import SunatRequiredMessage from '@/components/ui/SunatRequiredMessage'
 import { Modal } from '@/components/ui/Modal'
 import { DocumentViewerModal } from '@/components/ui/DocumentViewerModal'
+import { createLocalReceiptPdfObjectUrl, downloadLocalReceiptPdf } from '@/utils/localReceiptPdf'
 import { formatDisplayDatePeru } from '@/utils/datesPeru'
 import { useBillingEvents } from '@/hooks/useBillingEvents'
 import {
@@ -278,11 +279,11 @@ function GuiasSection({
     setDocumentViewerOpen(true)
     setDocumentViewerUrl(null)
     try {
-      const url = await billingService.getPdfObjectUrl(saleId)
+      const url = await createLocalReceiptPdfObjectUrl(saleId, 'a4')
       documentViewerUrlRef.current = url
       setDocumentViewerUrl(url)
     } catch (e: unknown) {
-      toast.error((e as Error)?.message ?? 'Error al cargar PDF')
+      toast.error((e as Error)?.message ?? 'Error al generar PDF')
       setDocumentViewerOpen(false)
     } finally {
       setViewingPdfSaleId(null)
@@ -392,7 +393,7 @@ function GuiasSection({
                           disabled={downloadingPdfSaleId === saleId}
                           onClick={() => {
                             setDownloadingPdfSaleId(saleId!)
-                            billingService.downloadDocument(saleId!, 'pdf')
+                            downloadLocalReceiptPdf(saleId!, 'a4')
                               .catch(e => toast.error(e?.message ?? 'Error al descargar'))
                               .finally(() => setDownloadingPdfSaleId(null))
                           }}

@@ -109,6 +109,20 @@ export const companyService = {
       })
       .then((r) => r.data)
   },
+
+  /** Sube logo a disco del tenant. Devuelve URL /uploads/tenants/{RUC}/company/logo.* */
+  uploadLogo: (file: File) => {
+    const fd = new FormData()
+    fd.append('image', file)
+    return api
+      .post<{ success: boolean; logo_url: string; data: CompanyConfig }>('/api/company/logo', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then((r) => r.data)
+  },
+
+  deleteLogo: () =>
+    api.delete<{ success: boolean; data: CompanyConfig }>('/api/company/logo').then((r) => r.data),
   getSunat: () => api.get<SunatConfig>('/api/company/sunat').then((r) => r.data),
   getInvoicing: () => api.get<InvoicingSettings>('/api/company/invoicing').then((r) => r.data),
   updateSunat: (data: Pick<SunatConfig, 'tax_rate' | 'igv_regime' | 'tax_benefit_zone'>) =>

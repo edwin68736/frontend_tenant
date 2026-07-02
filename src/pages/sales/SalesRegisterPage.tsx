@@ -582,25 +582,25 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
       toast.error('Selecciona una imagen (PNG, JPG, etc.)')
       return
     }
-    const reader = new FileReader()
-    reader.onload = () => {
-      const logo_url = reader.result as string
-      setUploadingLogo(true)
-      companyService
-        .updateConfig({ logo_url })
-        .then(() => {
+    setUploadingLogo(true)
+    companyService
+      .uploadLogo(file)
+      .then(res => {
+        if (res.data) {
+          setCompanyConfig(res.data)
+        } else {
+          const logo_url = res.logo_url ?? ''
           setCompanyConfig(prev => (prev ? { ...prev, logo_url } : prev))
-          toast.success('Logo actualizado')
-        })
-        .catch((err: { response?: { data?: { error?: string } } }) => {
-          toast.error(err.response?.data?.error ?? 'Error al guardar el logo')
-        })
-        .finally(() => {
-          setUploadingLogo(false)
-          if (logoInputRef.current) logoInputRef.current.value = ''
-        })
-    }
-    reader.readAsDataURL(file)
+        }
+        toast.success('Logo actualizado')
+      })
+      .catch((err: { response?: { data?: { error?: string } } }) => {
+        toast.error(err.response?.data?.error ?? 'Error al guardar el logo')
+      })
+      .finally(() => {
+        setUploadingLogo(false)
+        if (logoInputRef.current) logoInputRef.current.value = ''
+      })
   }
 
   const updateItem = (idx: number, field: keyof SaleFormItem, value: string | number | boolean) => {

@@ -6,6 +6,7 @@ import { SunatResponseDetail } from '@/components/billing/SunatResponseDetail'
 import { ReversionCreateModal } from '@/components/billing/ReversionCreateModal'
 import { FiscalDocumentTimeline, type FiscalTimelineOrigin } from '@/components/billing/FiscalDocumentTimeline'
 import { DocumentViewerModal } from '@/components/ui/DocumentViewerModal'
+import { createLocalReceiptPdfObjectUrl, downloadLocalReceiptPdf } from '@/utils/localReceiptPdf'
 import {
   billingStatusColor,
   billingStatusLabel,
@@ -84,10 +85,10 @@ export function LinkedFiscalDocPanel({ doc, onStatusRefresh, origin, showTimelin
     setPdfOpen(true)
     setPdfUrl(null)
     try {
-      const url = await billingService.getPdfObjectUrl(saleId)
+      const url = await createLocalReceiptPdfObjectUrl(saleId, 'a4')
       setPdfUrl(url)
     } catch (e: unknown) {
-      toast.error((e as Error)?.message ?? 'Error al cargar PDF')
+      toast.error((e as Error)?.message ?? 'Error al generar PDF')
       setPdfOpen(false)
     }
   }
@@ -153,7 +154,7 @@ export function LinkedFiscalDocPanel({ doc, onStatusRefresh, origin, showTimelin
               disabled={downloading === 'pdf'}
               onClick={() => {
                 setDownloading('pdf')
-                billingService.downloadDocument(saleId!, 'pdf')
+                downloadLocalReceiptPdf(saleId!, 'a4')
                   .catch((e) => toast.error(e?.message ?? 'Error'))
                   .finally(() => setDownloading(null))
               }}

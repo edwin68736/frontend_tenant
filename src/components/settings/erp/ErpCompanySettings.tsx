@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Save, Building2, ImagePlus, X } from 'lucide-react'
 import { companyService, type CompanyConfig } from '@/services/company.service'
+import { resolvePublicAssetUrl } from '@/config/apiBaseUrl'
 import { UbigeoSelects } from '@/components/UbigeoSelects'
 import { ubigeoToIds } from '@/services/ubigeo.service'
 
@@ -22,7 +23,14 @@ export function ErpCompanySettings() {
   const [ubigeo, setUbigeo] = useState({ regionId: '', provinciaId: '', distritoId: '' })
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const logoPreviewSrc = form.logo_url?.trim()
+    ? form.logo_url.startsWith('data:')
+      ? form.logo_url
+      : resolvePublicAssetUrl(form.logo_url)
+    : ''
 
   useEffect(() => {
     companyService
@@ -45,21 +53,45 @@ export function ErpCompanySettings() {
       toast.error('Selecciona una imagen (PNG, JPG, etc.)')
       return
     }
-    const reader = new FileReader()
-    reader.onload = () => set('logo_url', reader.result as string)
-    reader.readAsDataURL(file)
+    setUploadingLogo(true)
+    void companyService
+      .uploadLogo(file)
+      .then(res => {
+        const logo_url = res.logo_url ?? res.data?.logo_url ?? ''
+        setForm(f => ({ ...f, logo_url }))
+        toast.success('Logo guardado')
+      })
+      .catch((err: { response?: { data?: { error?: string } } }) => {
+        toast.error(err.response?.data?.error ?? 'Error al guardar el logo')
+      })
+      .finally(() => {
+        setUploadingLogo(false)
+        if (fileInputRef.current) fileInputRef.current.value = ''
+      })
   }
 
   const clearLogo = () => {
-    set('logo_url', '')
-    if (fileInputRef.current) fileInputRef.current.value = ''
+    setUploadingLogo(true)
+    void companyService
+      .deleteLogo()
+      .then(res => {
+        const logo_url = res.data?.logo_url ?? ''
+        setForm(f => ({ ...f, logo_url }))
+        if (fileInputRef.current) fileInputRef.current.value = ''
+        toast.success('Logo eliminado')
+      })
+      .catch((err: { response?: { data?: { error?: string } } }) => {
+        toast.error(err.response?.data?.error ?? 'Error al quitar el logo')
+      })
+      .finally(() => setUploadingLogo(false))
   }
 
   const handleSave = async () => {
     setSaving(true)
     try {
+      const { logo_url: _logo, ...rest } = form
       await companyService.updateConfig({
-        ...form,
+        ...rest,
         ubigeo: ubigeo.distritoId || form.ubigeo,
         additional_notes: form.additional_notes ?? '',
         terms_and_conditions: form.terms_and_conditions ?? '',
@@ -207,27 +239,28 @@ export function ErpCompanySettings() {
           {form.logo_url ? (
             <div className="relative">
               <img
-                src={form.logo_url}
+                src={logoPreviewSrc}
                 alt="Logo"
                 className="h-24 w-auto max-w-[200px] object-contain border border-gray-200 rounded-xl bg-gray-50 p-2"
               />
               <button
                 type="button"
                 onClick={clearLogo}
-                className="absolute -top-2 -right-2 p-1 bg-red-100 text-red-600 rounded-full"
+                disabled={uploadingLogo}
+                className="absolute -top-2 -right-2 p-1 bg-red-100 text-red-600 rounded-full disabled:opacity-50"
               >
                 <X size={14} />
               </button>
             </div>
           ) : null}
           <div>
-            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleLogoFile} className="hidden" id="erp-logo" />
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleLogoFile} className="hidden" id="erp-logo" disabled={uploadingLogo} />
             <label
               htmlFor="erp-logo"
-              className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-700 hover:bg-gray-50"
+              className={`cursor-pointer inline-flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-xl text-sm text-gray-700 hover:bg-gray-50 ${uploadingLogo ? 'opacity-50 pointer-events-none' : ''}`}
             >
               <ImagePlus size={16} />
-              {form.logo_url ? 'Cambiar logo' : 'Cargar logo'}
+              {uploadingLogo ? 'Guardando...' : form.logo_url ? 'Cambiar logo' : 'Cargar logo'}
             </label>
           </div>
         </div>
