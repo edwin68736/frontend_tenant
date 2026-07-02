@@ -394,6 +394,11 @@ export default function CompanySeriesPage() {
               {SERIES_FORM_COPY.ncSeriesHint}
             </p>
           )}
+          {selectedDocType?.category === 'almacen' && (
+            <p className="text-xs text-sky-800 bg-sky-50 border border-sky-100 rounded-xl px-3 py-2">
+              {SERIES_FORM_COPY.inventorySeriesHint}
+            </p>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">{SERIES_FORM_COPY.seriesLabel} *</label>

@@ -14,6 +14,8 @@ export const SERIES_FORM_COPY = {
     'Esta serie ya está en uso. Solo puede cambiar el estado activo; serie, tipo y correlativo están bloqueados.',
   ncSeriesHint:
     'Nota de crédito: use FC## para anular facturas (ej. FC01) y BC## para anular boletas (ej. BC01).',
+  inventorySeriesHint:
+    'Defina una serie de ingreso y otra de egreso por sucursal (ej. ING001 en Principal, ING002 en Sucursal 2). El código no puede repetirse dentro de la misma sucursal.',
   prefixHint: 'Prefijo sugerido',
 } as const
 
