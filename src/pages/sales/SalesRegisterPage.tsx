@@ -18,6 +18,7 @@ import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreat
 import { ProductPickerModal } from '@/components/sales/ProductPickerModal'
 import { PaymentMethodSelect } from '@/components/sales/PaymentMethodSelect'
 import { ProductConfigureModal, productNeedsSaleConfiguration } from '@/components/pos/ProductConfigureModal'
+import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { TenantCompanyEditModal } from '@/components/sales/TenantCompanyEditModal'
 import { SaleReceiptPreviewModal } from '@/components/sales/SaleReceiptPreviewModal'
 import {
@@ -31,6 +32,7 @@ import {
   emptySaleFiscalForm,
   type SaleFiscalFormState,
 } from '@/components/sales/SaleAdditionalInfoDrawer'
+import { SaleTermsConditionsControl } from '@/components/sales/SaleTermsConditionsControl'
 import { usersService, type TenantUser } from '@/services/users.service'
 import { buildFiscalReferences, hasFiscalContextContent, previewIgvRetention, validateIgvRetentionAtSave } from '@/utils/fiscalRetention'
 import { formatSaleMoney, saleCurrencySymbol } from '@/utils/formatMoney'
@@ -220,11 +222,14 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
     notes: '',
   })
   const [items, setItems] = useState<SaleFormItem[]>([])
+  const [lastAddedProductId, setLastAddedProductId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [sunatEnabled, setSunatEnabled] = useState(true)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
-  const [payments, setPayments] = useState<{ method: string; amount: string }[]>([{ method: 'cash', amount: '0.00' }])
+  const [payments, setPayments] = useState<{ method: string; amount: string; reference: string }[]>([
+    { method: 'cash', amount: '0.00', reference: '' },
+  ])
   const [cashSession, setCashSession] = useState<CashSession | null>(null)
   const [printData, setPrintData] = useState<PrintData | null>(null)
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
@@ -354,7 +359,9 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
           const cashCode = resolveCashMethodCode(methods as PaymentMethodRecord[])
           setPaymentMethods(methods as PaymentMethodRecord[])
           setPayments((prev) =>
-            prev.length === 1 ? [{ method: cashCode, amount: prev[0].amount || '0.00' }] : prev,
+            prev.length === 1
+              ? [{ method: cashCode, amount: prev[0].amount || '0.00', reference: prev[0].reference ?? '' }]
+              : prev,
           )
         }
       })
@@ -388,7 +395,9 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
           const cashCode = resolveCashMethodCode(methods as PaymentMethodRecord[])
           setPaymentMethods(methods as PaymentMethodRecord[])
           setPayments((prev) =>
-            prev.length === 1 ? [{ method: cashCode, amount: prev[0].amount || '0.00' }] : prev,
+            prev.length === 1
+              ? [{ method: cashCode, amount: prev[0].amount || '0.00', reference: prev[0].reference ?? '' }]
+              : prev,
           )
         }
         const billingOk = hasModule('billing') && (sunat?.sunat_enabled ?? true)
@@ -441,6 +450,12 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
           notes: q.notes || '',
           series_id: isQuotation ? q.series_id : f.series_id,
         }))
+        if (isQuotation) {
+          setFiscalForm((prev) => ({
+            ...prev,
+            show_terms_conditions: Boolean(q.show_terms_conditions),
+          }))
+        }
         setItems(
           (detail.items ?? []).map((it) => ({
             product_id: it.product_id ?? null,
@@ -496,8 +511,21 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
       }
       return [...prev, item]
     })
+    if (item.product_id != null) {
+      setLastAddedProductId(item.product_id)
+    }
     toast.success(`"${item.description}" agregado`)
   }
+
+  const cartProductIds = useMemo(
+    () => [...new Set(items.map((it) => it.product_id).filter((id): id is number => id != null))],
+    [items],
+  )
+
+  const pickerLastAddedProductId =
+    lastAddedProductId != null && cartProductIds.includes(lastAddedProductId)
+      ? lastAddedProductId
+      : null
 
   const addProductToItems = (p: Product) => {
     if (productNeedsSaleConfiguration(p)) {
@@ -823,6 +851,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
           currency: form.currency,
           exchange_rate: form.currency === 'USD' ? parsedExchangeRate ?? undefined : undefined,
           notes: form.notes || undefined,
+          show_terms_conditions: fiscalForm.show_terms_conditions,
           items: items.map((it, idx) => ({
             product_id: it.product_id ?? null,
             code: it.code,
@@ -837,14 +866,21 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
             serials: it.serials ?? [],
           })),
         }
+        let result
         if (editingQuotationId) {
-          await quotationsService.update(editingQuotationId, payload)
+          result = await quotationsService.update(editingQuotationId, payload)
           toast.success('Cotización actualizada')
         } else {
-          await quotationsService.create(payload)
+          result = await quotationsService.create(payload)
           toast.success('Cotización registrada')
         }
-        navigate('/quotations')
+        setPrintData(result.print_data ?? null)
+        setLastSale({
+          id: result.quotation.id,
+          number: result.quotation.number,
+          total: result.quotation.total,
+        })
+        setReceiptModalOpen(true)
       } catch (e: unknown) {
         const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error
         toast.error(msg ?? 'Error al guardar cotización')
@@ -941,10 +977,14 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
         cash_session_id: cashSession?.id ?? null,
         issue_date: form.issue_date,
         due_date: form.due_date,
-        payments: validPayments.map(p => ({ method: p.method, amount: Number(p.amount) })),
+        payments: validPayments.map((p) => ({
+          method: p.method,
+          amount: Number(p.amount),
+          reference: p.reference.trim() || undefined,
+        })),
         notes: notes || undefined,
         from_quotation_id: linkQuotationId ?? undefined,
-        fiscal_context: !isNotaVenta && !isDetraccion && hasFiscalContextContent(fiscalForm) ? buildFiscalPayload() : undefined,
+        fiscal_context: !isDetraccion && hasFiscalContextContent(fiscalForm) ? buildFiscalPayload() : undefined,
         detraccion: isDetraccion && detraccionGoodCode
           ? { good_code: detraccionGoodCode }
           : undefined,
@@ -1021,6 +1061,12 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
           No hay series de cotización para esta sucursal. Configúrelas en Empresa → Series (categoría cotización).
         </p>
         <Link
+          to="/company/series"
+          className="inline-flex px-5 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90"
+        >
+          Ir a series
+        </Link>
+        <Link
           to="/quotations"
           className="inline-flex px-5 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50"
         >
@@ -1059,6 +1105,10 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
           contact={selectedContact ?? null}
           users={tenantUsers}
           disabled={saving}
+          termsText={companyConfig?.terms_and_conditions ?? ''}
+          onTermsSaved={(terms) =>
+            setCompanyConfig((c) => (c ? { ...c, terms_and_conditions: terms } : c))
+          }
         />
       )}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 space-y-5">
@@ -1532,13 +1582,12 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                         />
                       </td>
                       <td className="px-4 py-2.5">
-                        <input
-                          type="number"
-                          min={0}
-                          step={0.01}
+                        <MoneyAmountInput
                           className="w-full max-w-[5.5rem] border border-gray-200 rounded-lg px-2 py-1 text-sm"
                           value={it.unit_price}
-                          onChange={e => updateItem(idx, 'unit_price', Math.max(0, Number(e.target.value) || 0))}
+                          onChange={(v) => updateItem(idx, 'unit_price', Math.max(0, v))}
+                          clearOnFocus
+                          emptyWhenZero
                         />
                       </td>
                       <td className="px-4 py-2.5">
@@ -1615,7 +1664,19 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                           prev.map((x, i) => (i === idx ? { ...x, method: code } : x)),
                         )
                       }
-                      className="relative flex-1 min-w-[10rem]"
+                      className="relative flex-1 min-w-[8rem]"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Referencia (opc.)"
+                      title="N° transferencia, depósito, voucher…"
+                      className="flex-1 min-w-[7rem] border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
+                      value={p.reference}
+                      onChange={(e) =>
+                        setPayments((prev) =>
+                          prev.map((x, i) => (i === idx ? { ...x, reference: e.target.value } : x)),
+                        )
+                      }
                     />
                     <input
                       type="number"
@@ -1647,7 +1708,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                   onClick={() =>
                     setPayments((prev) => [
                       ...prev,
-                      { method: directPaymentMethods[0]?.code ?? 'cash', amount: '' },
+                      { method: directPaymentMethods[0]?.code ?? 'cash', amount: '', reference: '' },
                     ])
                   }
                   className="text-xs text-[rgb(var(--p600))] hover:underline"
@@ -1688,6 +1749,40 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                     </span>
                   </div>
                 )}
+                {isNotaVenta && (
+                  <div className="pt-2 border-t border-gray-100">
+                    <SaleTermsConditionsControl
+                      checked={fiscalForm.show_terms_conditions}
+                      onCheckedChange={(checked) =>
+                        setFiscalForm((prev) => ({ ...prev, show_terms_conditions: checked }))
+                      }
+                      termsText={companyConfig?.terms_and_conditions ?? ''}
+                      onTermsSaved={(terms) =>
+                        setCompanyConfig((c) => (c ? { ...c, terms_and_conditions: terms } : c))
+                      }
+                      disabled={saving}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {isQuotation && (
+              <div className="md:col-span-3 min-w-0 border border-gray-200 rounded-xl p-4 bg-white">
+                <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3">
+                  Opciones del documento
+                </p>
+                <SaleTermsConditionsControl
+                  checked={fiscalForm.show_terms_conditions}
+                  onCheckedChange={(checked) =>
+                    setFiscalForm((prev) => ({ ...prev, show_terms_conditions: checked }))
+                  }
+                  termsText={companyConfig?.terms_and_conditions ?? ''}
+                  onTermsSaved={(terms) =>
+                    setCompanyConfig((c) => (c ? { ...c, terms_and_conditions: terms } : c))
+                  }
+                  disabled={saving}
+                />
               </div>
             )}
 
@@ -1894,7 +1989,14 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
       </div>
 
       <Modal open={showProductPicker} onClose={() => setShowProductPicker(false)} contentClassName="max-w-2xl">
-        <ProductPickerModal variant="sale" currency={form.currency} onAdd={addProductToItems} onClose={() => setShowProductPicker(false)} />
+        <ProductPickerModal
+          variant="sale"
+          currency={form.currency}
+          onAdd={addProductToItems}
+          onClose={() => setShowProductPicker(false)}
+          addedProductIds={cartProductIds}
+          lastAddedProductId={pickerLastAddedProductId}
+        />
       </Modal>
 
       <ProductConfigureModal
@@ -1940,6 +2042,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
           setPreviewPrintData(null)
         }}
         printData={previewPrintData}
+        mode={mode}
       />
 
       <ReceiptPrintModal
@@ -1949,11 +2052,20 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
           setPrintData(null)
           const id = lastSale?.id
           setLastSale(null)
+          if (isQuotation) {
+            navigate('/quotations')
+            return
+          }
           navigate(isNotaVenta ? '/sales' : '/billing', { state: id ? { created: id } : undefined })
         }}
         printData={printData}
+        saleId={!isQuotation ? lastSale?.id : undefined}
+        quotationId={isQuotation ? lastSale?.id : undefined}
+        defaultEmail={selectedContact?.email ?? printData?.client?.email ?? ''}
         saleNumber={lastSale?.number}
         total={lastSale?.total}
+        autoShowTicketOnWeb
+        documentKind={isQuotation ? 'quotation' : 'sale'}
       />
 
       <BarcodeScannerModal
@@ -2064,13 +2176,12 @@ function ManualItemModal({
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Precio unitario</label>
-            <input
-              type="number"
-              min={0}
-              step={0.01}
+            <MoneyAmountInput
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
               value={draft.unit_price}
-              onChange={e => setField('unit_price', Math.max(0, Number(e.target.value) || 0))}
+              onChange={(v) => setField('unit_price', Math.max(0, v))}
+              clearOnFocus
+              emptyWhenZero
             />
           </div>
         </div>

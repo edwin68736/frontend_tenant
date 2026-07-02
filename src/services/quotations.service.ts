@@ -18,6 +18,7 @@ export interface Quotation {
   currency: string
   exchange_rate?: number | null
   notes: string
+  show_terms_conditions?: boolean
   status: 'draft' | 'converted' | string
   converted_sale_id?: number | null
   converted_at?: string | null
@@ -70,6 +71,7 @@ export interface CreateQuotationInput {
   currency?: string
   exchange_rate?: number | null
   notes?: string
+  show_terms_conditions?: boolean
   items: QuotationItemInput[]
 }
 
@@ -91,10 +93,20 @@ export const quotationsService = {
     api.get<QuotationDetail>(`/api/quotations/${id}`).then((r) => r.data),
 
   create: (body: CreateQuotationInput) =>
-    api.post<{ quotation: Quotation }>('/api/quotations', body).then((r) => r.data),
+    api
+      .post<{ quotation: Quotation; print_data?: import('@/types/printData').PrintData }>(
+        '/api/quotations',
+        body,
+      )
+      .then((r) => r.data),
 
   update: (id: number, body: CreateQuotationInput) =>
-    api.patch<{ quotation: Quotation }>(`/api/quotations/${id}`, body).then((r) => r.data),
+    api
+      .patch<{ quotation: Quotation; print_data?: import('@/types/printData').PrintData }>(
+        `/api/quotations/${id}`,
+        body,
+      )
+      .then((r) => r.data),
 
   delete: (id: number) =>
     api.delete<{ success: boolean }>(`/api/quotations/${id}`).then((r) => r.data),

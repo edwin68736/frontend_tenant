@@ -9,13 +9,16 @@ export const SERIES_FORM_COPY = {
   seriesLabel: 'Serie',
   correlativeLabel: 'Correlativo actual',
   activeLabel: 'Serie activa',
-  noSunatBanner: 'Sin facturación electrónica: solo puede crear series de nota de venta (documento interno).',
+  noSunatBanner:
+    'Sin facturación electrónica: puede crear series de nota de venta, cotización e inventario (no se envían a SUNAT).',
   lockedFallback:
     'Esta serie ya está en uso. Solo puede cambiar el estado activo; serie, tipo y correlativo están bloqueados.',
   ncSeriesHint:
     'Nota de crédito: use FC## para anular facturas (ej. FC01) y BC## para anular boletas (ej. BC01).',
   inventorySeriesHint:
     'Defina una serie de ingreso y otra de egreso por sucursal (ej. ING001 en Principal, ING002 en Sucursal 2). El código no puede repetirse dentro de la misma sucursal.',
+  cotizacionSeriesHint:
+    'Una serie por sucursal (ej. COT001). Las cotizaciones no se envían a SUNAT; solo numeran documentos comerciales internos.',
   prefixHint: 'Prefijo sugerido',
 } as const
 
@@ -86,8 +89,11 @@ export function categoryLabel(categoryLabels: Record<string, string>, category: 
   return categoryLabels[category] ?? category
 }
 
-export function isInternalDocumentOnlySeries(row: Pick<SeriesRow, 'sunat_code'>): boolean {
-  return (row.sunat_code ?? '').trim() === '00'
+/** Series editables sin facturación electrónica (documentos que no se envían a SUNAT). */
+export function isInternalDocumentOnlySeries(row: Pick<SeriesRow, 'sunat_code' | 'category'>): boolean {
+  const code = (row.sunat_code ?? '').trim()
+  const category = (row.category ?? '').trim().toLowerCase()
+  return code === '00' || code === 'QT' || category === 'cotizacion'
 }
 
 export function formatDocumentCode(row: Pick<SeriesRow, 'sunat_code'>): string {

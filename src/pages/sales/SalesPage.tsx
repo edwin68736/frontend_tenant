@@ -387,7 +387,7 @@ function SalesContent() {
           <table className="w-full min-w-[760px] text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                {['Fecha', 'Comprobante', 'Cliente', 'Total', 'PDF', 'Estado', 'Acciones'].map((h) => (
+                {['Fecha', 'Comprobante', 'Cliente', 'Registrado por', 'Total', 'PDF', 'Estado', 'Acciones'].map((h) => (
                   <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
                     {h}
                   </th>
@@ -398,7 +398,7 @@ function SalesContent() {
               {loading ? (
                 Array.from({ length: TABLE_SKELETON_ROWS }).map((_, idx) => (
                   <tr key={`sales-skeleton-${idx}`} className="border-b border-gray-50">
-                    <td colSpan={7} className="px-4 py-3">
+                    <td colSpan={8} className="px-4 py-3">
                       <div className="h-4 w-full max-w-[680px] animate-pulse rounded bg-gray-100" />
                     </td>
                   </tr>
@@ -417,6 +417,7 @@ function SalesContent() {
                     </p>
                   </td>
                   <td className="px-4 py-3 text-gray-600">{s.contact_name ?? '—'}</td>
+                  <td className="px-4 py-3 text-gray-600 text-xs">{s.user_name ?? '—'}</td>
                   <td className="px-4 py-3 font-semibold text-gray-800">S/ {Number(s.total).toFixed(2)}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1">

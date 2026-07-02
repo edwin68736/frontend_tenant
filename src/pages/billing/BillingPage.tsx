@@ -693,13 +693,13 @@ function BillingContent() {
               <tr>
                 {viewMode === 'credit_notes' ? (
                   <>
-                    {['Fecha','Nota de crédito','Doc. afectado','Cliente','Total','Estado SUNAT','PDF','XML','CDR','Detalle'].map(h => (
+                    {['Fecha','Nota de crédito','Doc. afectado','Cliente','Registrado por','Total','Estado SUNAT','PDF','XML','CDR','Detalle'].map(h => (
                       <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">{h}</th>
                     ))}
                   </>
                 ) : (
                   <>
-                    {['Fecha','Comprobante','Cliente','Total','Estado SUNAT','CPE','PDF','XML','CDR','Acciones'].map(h => (
+                    {['Fecha','Comprobante','Cliente','Registrado por','Total','Estado SUNAT','CPE','PDF','XML','CDR','Acciones'].map(h => (
                       <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">{h}</th>
                     ))}
                   </>
@@ -710,7 +710,7 @@ function BillingContent() {
             {loading ? (
               Array.from({ length: TABLE_SKELETON_ROWS }).map((_, idx) => (
                 <tr key={`billing-skeleton-${idx}`} className="border-b border-gray-50">
-                  <td colSpan={viewMode === 'credit_notes' ? 10 : 10} className="px-4 py-3">
+                  <td colSpan={11} className="px-4 py-3">
                     <div className="h-4 w-full max-w-[780px] animate-pulse rounded bg-gray-100" />
                   </td>
                 </tr>
@@ -745,6 +745,7 @@ function BillingContent() {
                   </td>
                 )}
                 <td className="px-4 py-3 text-gray-600 text-sm">{s.contact_name ?? 'Sin cliente'}</td>
+                <td className="px-4 py-3 text-gray-600 text-xs">{s.user_name ?? '—'}</td>
                 <td className="px-4 py-3 font-semibold text-gray-800">S/ {Number(s.total).toFixed(2)}</td>
                 <td className="px-4 py-3">
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${billingStatusColor(s.billing_status)}`}>

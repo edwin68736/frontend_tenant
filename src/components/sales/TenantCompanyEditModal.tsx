@@ -22,6 +22,7 @@ export function TenantCompanyEditModal({
     phone: '',
     address: '',
     email: '',
+    additional_notes: '',
   })
   const [saving, setSaving] = useState(false)
 
@@ -32,6 +33,7 @@ export function TenantCompanyEditModal({
       phone: company.phone?.trim() ?? '',
       address: company.address?.trim() ?? '',
       email: company.email?.trim() ?? '',
+      additional_notes: company.additional_notes?.trim() ?? '',
     })
   }, [open, company])
 
@@ -47,12 +49,14 @@ export function TenantCompanyEditModal({
         phone: draft.phone.trim(),
         address: draft.address.trim(),
         email: draft.email.trim(),
+        additional_notes: draft.additional_notes.trim(),
       })
       onSaved({
         trade_name: draft.trade_name.trim(),
         phone: draft.phone.trim(),
         address: draft.address.trim(),
         email: draft.email.trim(),
+        additional_notes: draft.additional_notes.trim(),
       })
       toast.success('Datos de la empresa actualizados')
       onClose()
@@ -129,6 +133,20 @@ export function TenantCompanyEditModal({
             placeholder="correo@empresa.com"
             disabled={saving}
           />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Información adicional</label>
+          <textarea
+            rows={4}
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-y min-h-[96px]"
+            value={draft.additional_notes}
+            onChange={(e) => setField('additional_notes', e.target.value)}
+            placeholder="Horarios, leyendas en tickets, datos bancarios, políticas, etc."
+            disabled={saving}
+          />
+          <p className="text-[11px] text-gray-400 mt-1">
+            Se imprime en tickets y comprobantes térmicos. No se muestra en el encabezado de esta pantalla.
+          </p>
         </div>
       </div>
 

@@ -107,7 +107,7 @@ function POSContent() {
   const [contactId, setContactId] = useState<number | null>(null)
   const [payments, setPayments] = useState<CheckoutPaymentLine[]>([])
   const [processing, setProcessing] = useState(false)
-  const [successSale, setSuccessSale] = useState<{ series: string; number: string; total: number } | null>(null)
+  const [successSale, setSuccessSale] = useState<{ id: number; series: string; number: string; total: number; clientEmail?: string } | null>(null)
   const [printData, setPrintData] = useState<PrintData | null>(null)
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
   const [cartModalOpen, setCartModalOpen] = useState(false)
@@ -607,7 +607,13 @@ function POSContent() {
           }
         }),
       })
-      setSuccessSale({ series: sale.series, number: sale.number, total: sale.total })
+      setSuccessSale({
+        id: sale.id,
+        series: sale.series,
+        number: sale.number,
+        total: sale.total,
+        clientEmail: contactForCheckout?.email?.trim(),
+      })
       setPrintData(sale.print_data ?? null)
       setReceiptModalOpen(true)
       const docLabel = docTypeShortLabel(sale.doc_type ?? selectedSeries.doc_type, selectedSunatCode)
@@ -1082,6 +1088,8 @@ function POSContent() {
         open={receiptModalOpen && !!successSale}
         onClose={() => { setReceiptModalOpen(false); setSuccessSale(null); setPrintData(null) }}
         printData={printData}
+        saleId={successSale?.id}
+        defaultEmail={successSale?.clientEmail ?? printData?.client?.email ?? ''}
         saleNumber={successSale ? (successSale.number?.includes('-') ? successSale.number : `${successSale.series}-${String(successSale.number).padStart(8, '0')}`) : undefined}
         total={successSale?.total}
         autoShowTicketOnWeb

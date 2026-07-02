@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronRight, Plus, Trash2, X } from 'lucide-react'
 import type { TenantUser } from '@/services/users.service'
+import { SaleTermsConditionsControl } from '@/components/sales/SaleTermsConditionsControl'
 import {
   FISCAL_DRAWER_OVERLAY_Z,
   FISCAL_DRAWER_TAB_Z,
@@ -73,6 +74,8 @@ type Props = {
   contact: RetentionContact | null | undefined
   users: TenantUser[]
   disabled?: boolean
+  termsText?: string
+  onTermsSaved?: (terms: string) => void
 }
 
 const TAB_WIDTH = '2.5rem' // w-10 — texto vertical un poco más legible
@@ -90,6 +93,8 @@ export function SaleAdditionalInfoDrawer({
   contact,
   users,
   disabled = false,
+  termsText = '',
+  onTermsSaved,
 }: Props) {
   const preview = previewIgvRetention(
     value.has_igv_retention,
@@ -239,16 +244,13 @@ export function SaleAdditionalInfoDrawer({
               </p>
             )}
 
-            <label className="flex items-center justify-between gap-3 cursor-pointer select-none">
-              <span className="text-sm text-gray-700">Mostrar términos y condiciones</span>
-              <input
-                type="checkbox"
-                className="rounded border-gray-300 text-[rgb(var(--p600))] focus:ring-[rgb(var(--p600))] h-4 w-4"
-                checked={value.show_terms_conditions}
-                onChange={(e) => patch({ show_terms_conditions: e.target.checked })}
-                disabled={disabled}
-              />
-            </label>
+            <SaleTermsConditionsControl
+              checked={value.show_terms_conditions}
+              onCheckedChange={(checked) => patch({ show_terms_conditions: checked })}
+              termsText={termsText}
+              onTermsSaved={(terms) => onTermsSaved?.(terms)}
+              disabled={disabled}
+            />
 
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Orden de compra</label>

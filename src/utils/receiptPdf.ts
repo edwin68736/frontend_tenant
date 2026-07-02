@@ -1,20 +1,30 @@
-import { jsPDF } from 'jspdf'
+import { jsPDF, GState } from 'jspdf'
 import QRCode from 'qrcode'
 import type { PrintData } from '@/types/printData'
 import { paymentWalletVisible, renderPaymentWalletBlock } from '@/utils/receiptPaymentWallet'
-import { getTipoComprobanteLabel, getMedioPagoLabel } from '@/constants/sunat'
+import { getTipoComprobanteLabel, getMedioPagoLabel, isElectronicSunatCode } from '@/constants/sunat'
 import { buildReceiptTotalLines, formatReceiptTotalAmount, resolvePrintChangeAmount } from '@/utils/receiptTotals'
 import { ticketColumnLayoutMm } from '@/utils/receiptTicketLayout'
 import { getPrintIssuerAddress } from '@/utils/printIssuer'
 import { trimCompanyAdditionalNotes } from '@/utils/receiptCompanyNotes'
+import {
+  normalizeTicketPaperWidth,
+  ticketMarginMm,
+  ticketPageWidthMm,
+  ticketTopPaddingMm,
+} from '@/utils/receiptTicketPaper'
+import { renderTicketPaymentAndSunatQrRow } from '@/utils/receiptTicketFooter'
+import { fitReceiptLogoMm, resolveReceiptLogoForPdf } from '@/utils/receiptLogoPdf'
+import { rasterPxForMm } from '@/utils/receiptPdfRaster'
 
 const FONT_SIZE = 10
 const FONT_SIZE_SM = 8
-const FONT_SIZE_TITLE = 12
+/** Cuerpo ticket: 10pt para impresión nítida desde visor PDF del navegador. */
+const FONT_SIZE_TICKET_BODY = 10
+const FONT_SIZE_TITLE = 13
 const MARGIN = 15
-const TICKET_WIDTH = 80 // mm
 /** Alto de página ticket (mm); rollo largo para ítems con descripción multilínea */
-const TICKET_PAGE_HEIGHT = 480
+const TICKET_PAGE_HEIGHT = 520
 const A4_WIDTH = 210
 const A4_HEIGHT = 297
 
@@ -29,6 +39,14 @@ function formatDocNumber(data: PrintData): string {
 function isNonElectronicDoc(code?: string): boolean {
   const c = String(code ?? '').trim()
   return c === '00' || c === 'QT'
+}
+
+async function qrDataUrlForPrint(sizeMm: number, payload: string): Promise<string> {
+  return QRCode.toDataURL(payload, {
+    width: rasterPxForMm(sizeMm),
+    margin: 0,
+    errorCorrectionLevel: 'M',
+  })
 }
 
 function formatMoney(n: number, currency = 'PEN'): string {
@@ -97,23 +115,53 @@ function renderFiscalFooter(
 
 export type ReceiptPdfOptions = {
   paperWidthMm?: 58 | 80
+  /** Marca de agua diagonal "Previsualizacion" (solo vista previa, no comprobante guardado). */
+  preview?: boolean
+}
+
+function applyPreviewWatermark(doc: jsPDF, pageW: number, contentHeightMm?: number) {
+  const pageCount = doc.getNumberOfPages()
+  const isTicket = pageW <= 80
+  for (let page = 1; page <= pageCount; page += 1) {
+    doc.setPage(page)
+    const pageH = doc.internal.pageSize.getHeight()
+    const centerY =
+      contentHeightMm != null && contentHeightMm > 0
+        ? Math.min(contentHeightMm / 2, pageH / 2)
+        : pageH / 2
+    doc.saveGraphicsState()
+    doc.setGState(new GState({ opacity: 0.22 }))
+    doc.setTextColor(220, 38, 38)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(isTicket ? 18 : 48)
+    doc.text('Previsualizacion', pageW / 2, centerY, {
+      align: 'center',
+      baseline: 'middle',
+      angle: 45,
+    })
+    doc.restoreGraphicsState()
+    doc.setTextColor(0, 0, 0)
+    doc.setFont('helvetica', 'normal')
+  }
 }
 
 export async function generateReceiptPdf(
   data: PrintData,
   format: 'a4' | 'ticket' = 'a4',
-  _options?: ReceiptPdfOptions,
+  options?: ReceiptPdfOptions,
 ): Promise<jsPDF> {
   const isTicket = format === 'ticket'
-  const pageW = isTicket ? TICKET_WIDTH : A4_WIDTH
-  const margin = isTicket ? 5 : MARGIN
+  const paperMm = normalizeTicketPaperWidth(options?.paperWidthMm)
+  const pageW = isTicket ? ticketPageWidthMm(paperMm) : A4_WIDTH
+  const margin = isTicket ? ticketMarginMm(paperMm) : MARGIN
   const doc = new jsPDF({
-    orientation: isTicket ? 'portrait' : 'portrait',
+    orientation: 'portrait',
     unit: 'mm',
-    format: isTicket ? [TICKET_WIDTH, TICKET_PAGE_HEIGHT] : 'a4',
+    format: isTicket ? [pageW, TICKET_PAGE_HEIGHT] : 'a4',
+    compress: false,
   })
 
-  let y = margin
+  let y = margin + (isTicket ? ticketTopPaddingMm(paperMm) : 0)
   const lineH = 5
   const colW = (pageW - 2 * margin) / 2
 
@@ -138,10 +186,15 @@ export async function generateReceiptPdf(
   if (isTicket) {
     // === FORMATO TICKET (80mm) ===
     const innerW = pageW - 2 * margin
-    const ticketLineH = 4.2
-    /** Mismo tono legible que cabecera (Helvetica 8pt); Courier pequeño se ve opaco al imprimir. */
-    const ticketDetailFontPt = FONT_SIZE_SM
-    const lay = ticketColumnLayoutMm({ pageW, margin })
+    const ticketLineH = 4.5
+    /** Helvetica 10pt + negro puro: mejor nitidez al imprimir ticket desde PDF. */
+    const ticketDetailFontPt = FONT_SIZE_TICKET_BODY
+    const lay = ticketColumnLayoutMm({
+      pageW,
+      margin,
+      gapMm: paperMm === 58 ? 0.35 : 0.5,
+      wMoneyMm: paperMm === 58 ? 14 : 15,
+    })
 
     const setTicketDetailFont = (bold = false) => {
       doc.setTextColor(0, 0, 0)
@@ -149,7 +202,7 @@ export async function generateReceiptPdf(
       doc.setFontSize(ticketDetailFontPt)
     }
 
-    const addTicketWrapped = (text: string, size = FONT_SIZE_SM) => {
+    const addTicketWrapped = (text: string, size = FONT_SIZE_TICKET_BODY) => {
       doc.setTextColor(0, 0, 0)
       doc.setFont('helvetica', 'normal')
       doc.setFontSize(size)
@@ -180,15 +233,18 @@ export async function generateReceiptPdf(
       }
     }
 
-    // Logo (más visible que en layout solo texto)
+    // Logo (alta resolución para impresión)
     addSpace(3)
     if (data.company.logo_url) {
       try {
-        const logoW = Math.min(32, innerW)
-        const logoH = 11
-        const fmt = /image\/jpe?g/i.test(data.company.logo_url) ? 'JPEG' : 'PNG'
-        doc.addImage(data.company.logo_url, fmt, (pageW - logoW) / 2, y, logoW, logoH)
-        y += logoH + 5
+        const logo = await resolveReceiptLogoForPdf(data.company.logo_url)
+        if (logo) {
+          const maxW = Math.min(paperMm === 58 ? 28 : 32, innerW)
+          const maxH = paperMm === 58 ? 10 : 12
+          const { w, h } = fitReceiptLogoMm(logo.naturalW, logo.naturalH, maxW, maxH)
+          doc.addImage(logo.dataUrl, logo.format, (pageW - w) / 2, y, w, h, undefined, 'NONE')
+          y += h + 5
+        }
       } catch {
         // continuar sin logo
       }
@@ -199,7 +255,7 @@ export async function generateReceiptPdf(
     if (data.company.trade_name) {
       addTicketWrappedCenter(data.company.trade_name, FONT_SIZE)
     }
-    addTicketLineCenter(`RUC ${data.company.ruc}`, FONT_SIZE_SM)
+    addTicketLineCenter(`RUC ${data.company.ruc}`, FONT_SIZE_TICKET_BODY)
     const issuerAddressTicket = getPrintIssuerAddress(data)
     if (issuerAddressTicket) {
       doc.setFontSize(FONT_SIZE_SM)
@@ -260,9 +316,10 @@ export async function generateReceiptPdf(
 
     const emitTicketDashRow = () => {
       setTicketDetailFont(false)
-      const dash = doc.splitTextToSize('-'.repeat(200), lay.innerW)[0] ?? '-'
-      doc.text(dash, margin, y)
-      y += ticketLineH
+      doc.setDrawColor(0, 0, 0)
+      doc.setLineWidth(0.35)
+      doc.line(margin, y, pageW - margin, y)
+      y += ticketLineH * 0.9
     }
 
     const emitTicketHeaderRow = () => {
@@ -341,45 +398,35 @@ export async function generateReceiptPdf(
       addSpace(2)
     }
 
-    // QR + hash + pagos
-    if (data.qr_data) {
-      try {
-        const qrDataUrl = await QRCode.toDataURL(data.qr_data, { width: 40, margin: 1 })
-        const qrSize = 25
-        doc.addImage(qrDataUrl, 'PNG', (pageW - qrSize) / 2, y, qrSize, qrSize)
-        y += qrSize + 5
-      } catch {
-        // ignorar si falla el QR
-      }
-    }
-    if (data.sunat_hash) {
-      addTicketWrapped('CÓDIGO HASH:', FONT_SIZE_SM)
-      addTicketWrapped(data.sunat_hash, FONT_SIZE_SM)
-    }
-    if (data.payments.length > 0) {
-      addTicketWrapped('CONDICIÓN DE PAGO:', FONT_SIZE_SM)
-      for (const p of data.payments) {
-        addTicketWrapped(
-          `${getMedioPagoLabel(p.method) || p.method}: ${formatMoney(p.amount, data.currency)}`,
-          FONT_SIZE_SM,
-        )
-      }
-      const change = resolvePrintChangeAmount(data)
-      if (change > 0.009) {
-        addTicketWrapped(`VUELTO: ${formatMoney(change, data.currency)}`, FONT_SIZE_SM)
-      }
-    }
+    const showSunatQr = isElectronicSunatCode(data.sunat_code) && Boolean(data.qr_data)
+    y = await renderTicketPaymentAndSunatQrRow(doc, data, {
+      showSunatQr,
+      y,
+      pageW,
+      margin,
+      innerW,
+      lineH: ticketLineH,
+    })
     addSpace(4)
-    if (!isNonElectronicDoc(data.sunat_code)) {
-      doc.setFontSize(FONT_SIZE_SM)
-      const footLines = doc.splitTextToSize(
-        'Representación impresa del comprobante electrónico',
-        innerW,
-      )
-      for (const fl of footLines) {
-        doc.text(fl, pageW / 2, y, { align: 'center' })
-        y += ticketLineH
+
+    if (!showSunatQr) {
+      if (!isNonElectronicDoc(data.sunat_code)) {
+        doc.setFontSize(FONT_SIZE_TICKET_BODY)
+        const footLines = doc.splitTextToSize(
+          'Representación impresa del comprobante electrónico',
+          innerW,
+        )
+        for (const fl of footLines) {
+          doc.text(fl, pageW / 2, y, { align: 'center' })
+          y += ticketLineH
+        }
+      } else if (data.sunat_code === 'QT') {
+        addTicketWrapped('Documento comercial — no válido como comprobante de pago SUNAT', FONT_SIZE_TICKET_BODY)
       }
+    }
+
+    if (options?.preview) {
+      applyPreviewWatermark(doc, pageW, y + margin)
     }
     return doc
   }
@@ -392,8 +439,11 @@ export async function generateReceiptPdf(
   const logoSize = 25
   if (data.company.logo_url) {
     try {
-      // jsPDF v3 soporta data URLs; asumimos que logo_url es data URL o URL absoluta ya cargable por el navegador.
-      doc.addImage(data.company.logo_url, 'PNG', margin, startY, logoSize, logoSize)
+      const logo = await resolveReceiptLogoForPdf(data.company.logo_url)
+      if (logo) {
+        const { w, h } = fitReceiptLogoMm(logo.naturalW, logo.naturalH, logoSize, logoSize)
+        doc.addImage(logo.dataUrl, logo.format, margin, startY, w, h, undefined, 'NONE')
+      }
     } catch {
       // si falla el logo, seguimos sin interrumpir
     }
@@ -612,9 +662,9 @@ export async function generateReceiptPdf(
   // QR
   if (data.qr_data) {
     try {
-      const qrDataUrl = await QRCode.toDataURL(data.qr_data, { width: 40, margin: 1 })
       const qrSize = 35
-      doc.addImage(qrDataUrl, 'PNG', (pageW - qrSize) / 2, y, qrSize, qrSize)
+      const qrDataUrl = await qrDataUrlForPrint(qrSize, data.qr_data)
+      doc.addImage(qrDataUrl, 'PNG', (pageW - qrSize) / 2, y, qrSize, qrSize, undefined, 'NONE')
       y += qrSize + 5
     } catch {
       // ignorar si falla el QR
@@ -635,6 +685,10 @@ export async function generateReceiptPdf(
       size: FONT_SIZE_SM,
       align: 'center',
     })
+  }
+
+  if (options?.preview) {
+    applyPreviewWatermark(doc, pageW, Math.min(y + margin, A4_HEIGHT))
   }
 
   return doc
@@ -672,5 +726,65 @@ export async function openReceiptPdfInNewTab(
   const blob = await printDataToPdfBlob(data, format, options)
   const url = URL.createObjectURL(blob)
   window.open(url, '_blank', 'noopener,noreferrer')
-  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}
+
+/** Abre el diálogo de impresión del navegador (mejor nitidez que imprimir desde iframe embebido). */
+export async function printReceiptPdf(
+  data: PrintData,
+  format: 'a4' | 'ticket' = 'a4',
+  options?: ReceiptPdfOptions,
+): Promise<void> {
+  const blob = await printDataToPdfBlob(data, format, options)
+  const url = URL.createObjectURL(blob)
+
+  await new Promise<void>((resolve, reject) => {
+    const iframe = document.createElement('iframe')
+    iframe.setAttribute('aria-hidden', 'true')
+    iframe.style.position = 'fixed'
+    iframe.style.right = '0'
+    iframe.style.bottom = '0'
+    iframe.style.width = '0'
+    iframe.style.height = '0'
+    iframe.style.border = '0'
+    iframe.src = url
+
+    const cleanup = () => {
+      window.setTimeout(() => {
+        iframe.remove()
+        URL.revokeObjectURL(url)
+      }, 2_000)
+    }
+
+    iframe.onload = () => {
+      try {
+        const win = iframe.contentWindow
+        if (!win) {
+          reject(new Error('No se pudo abrir el visor de impresión'))
+          cleanup()
+          return
+        }
+        win.focus()
+        win.addEventListener('afterprint', () => {
+          cleanup()
+          resolve()
+        }, { once: true })
+        win.print()
+        window.setTimeout(() => {
+          cleanup()
+          resolve()
+        }, 120_000)
+      } catch (e) {
+        cleanup()
+        reject(e)
+      }
+    }
+
+    iframe.onerror = () => {
+      cleanup()
+      reject(new Error('No se pudo cargar el PDF para imprimir'))
+    }
+
+    document.body.appendChild(iframe)
+  })
 }

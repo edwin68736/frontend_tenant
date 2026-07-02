@@ -14,8 +14,18 @@ export function ticketPageWidthMm(mm: TicketPaperWidthMm): number {
   return mm
 }
 
+/**
+ * Márgenes laterales del PDF ticket (mm).
+ * ESC/POS usa casi todo el ancho del rollo; el visor PDF suele dejar ~1 mm extra al imprimir,
+ * por eso el PDF lleva márgenes mínimos.
+ */
 export function ticketMarginMm(mm: TicketPaperWidthMm): number {
-  return mm === 58 ? 2.5 : 3
+  return mm === 58 ? 0.6 : 0.8
+}
+
+/** Espacio superior mínimo en PDF ticket (mm). */
+export function ticketTopPaddingMm(_mm: TicketPaperWidthMm): number {
+  return 1
 }
 
 export function ticketMonoFontPt(mm: TicketPaperWidthMm): number {

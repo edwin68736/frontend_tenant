@@ -4,9 +4,10 @@ import type { PrintData } from '@/types/printData'
 import { formatMoney, formatMoneyTicket } from '@/utils/format'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
 import { resolvePrintChangeAmount } from '@/utils/receiptTotals'
+import { rasterPxForMm } from '@/utils/receiptPdfRaster'
 
-/** Mismo cuerpo que detalle/fecha en ticket PDF (receiptPdf FONT_SIZE_SM). */
-const FONT_SIZE_TICKET_BODY = 8
+/** Mismo cuerpo que detalle/fecha en ticket PDF. */
+const FONT_SIZE_TICKET_BODY = 10
 
 export type PaymentConditionLineOpts = {
   /** Ancho de columna ESC/POS: mantiene método + monto en la misma línea. */
@@ -128,10 +129,11 @@ export async function renderTicketPaymentAndSunatQrRow(
       const qrCap = pageW <= 62 ? 38 : 46
       const qrSize = Math.min(rightW - 0.5, qrCap)
       const qrDataUrl = await QRCode.toDataURL(data.qr_data, {
-        width: Math.round(qrSize * 4),
-        margin: 1,
+        width: rasterPxForMm(qrSize),
+        margin: 0,
+        errorCorrectionLevel: 'M',
       })
-      doc.addImage(qrDataUrl, 'PNG', rightX + (rightW - qrSize) / 2, rowY, qrSize, qrSize)
+      doc.addImage(qrDataUrl, 'PNG', rightX + (rightW - qrSize) / 2, rowY, qrSize, qrSize, undefined, 'NONE')
       blockH = Math.max(blockH, qrSize)
     } catch {
       /* sin QR */

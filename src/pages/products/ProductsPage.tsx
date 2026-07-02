@@ -34,6 +34,12 @@ function generateRandomProductCode(length = 6): string {
   return s
 }
 
+function validateProductImageFile(file: File): string | null {
+  if (!file.type.startsWith('image/')) return 'Selecciona una imagen (JPG, PNG o WebP)'
+  if (file.size > 5 * 1024 * 1024) return 'La imagen no debe superar 5 MB'
+  return null
+}
+
 /** Solo los tipos gravados (10, 11-17) aplican IGV; Exonerado/Inafecto/Exportación no. */
 function isGravadoIgv(code: string): boolean {
   const c = String(code || '').trim()
@@ -95,7 +101,7 @@ const PRODUCT_FORM_GRID = 'grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4'
 const PRODUCT_FORM_INPUT =
   'w-full min-w-0 border border-gray-200 rounded-xl px-3 py-2.5 sm:py-2 text-base sm:text-sm outline-none focus:ring-2 focus:ring-[rgb(var(--p200))] focus:border-[rgb(var(--p400))]'
 const PRODUCT_FORM_MODAL_CLASS =
-  'w-full max-w-none sm:max-w-2xl lg:max-w-3xl max-h-[min(92dvh,880px)]'
+  'w-full max-w-none sm:max-w-2xl lg:max-w-3xl max-h-[min(92dvh,880px)] !overflow-hidden flex flex-col gap-0 !p-0'
 
 const PREPARATION_AREAS = [
   { value: '', label: 'Sin área' },
@@ -140,7 +146,12 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const [newCatName, setNewCatName] = useState('')
   const [addingCat, setAddingCat] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
+  const [pendingImageFile, setPendingImageFile] = useState<File | null>(null)
+  const [pendingImagePreview, setPendingImagePreview] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const listImageInputRef = useRef<HTMLInputElement>(null)
+  const listImageTargetIdRef = useRef<number | null>(null)
+  const [listUploadingImageId, setListUploadingImageId] = useState<number | null>(null)
   const catInputRef = useRef<HTMLInputElement>(null)
 
   // Modal grupos de modificadores
@@ -175,11 +186,20 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
 
   const codeBarcodeScan = useBarcodeFieldScanner({ onScan: handleProductCodeScan })
 
+  const clearPendingImage = useCallback(() => {
+    setPendingImagePreview(prev => {
+      if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev)
+      return null
+    })
+    setPendingImageFile(null)
+  }, [])
+
   const closeProductModal = () => {
     setShow(false)
     setPresentations([])
     setShowPresentationsModal(false)
     codeBarcodeScan.deactivateScanner()
+    clearPendingImage()
   }
 
   const resetModifierGroupForm = () => {
@@ -231,6 +251,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   }, [listSearchQuery, catFilter, includeInactive, page, perPage, pageMode])
 
   const openNew = () => {
+    clearPendingImage()
     setEditing(null)
     setForm({ ...emptyForm(pageMode), code: generateRandomProductCode() })
     setPresentations([])
@@ -239,6 +260,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   }
 
   const openEdit = async (p: Product) => {
+    clearPendingImage()
     setEditing(p)
     setForm({
       code: p.code,
@@ -293,27 +315,50 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     } catch { toast.error('Error creando categoría') }
   }
 
-  const handleUploadImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const formImagePreview =
+    pendingImagePreview ?? ((form.image_url ?? '') ? getProductImageUrl(form.image_url) : null)
+
+  const handleFormImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file || !editing) return
-    if (!file.type.startsWith('image/')) {
-      toast.error('Selecciona una imagen (JPG, PNG o WebP)')
-      return
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('La imagen no debe superar 5 MB')
-      return
-    }
-    setUploadingImage(true)
     e.target.value = ''
+    if (!file) return
+    const validationError = validateProductImageFile(file)
+    if (validationError) {
+      toast.error(validationError)
+      return
+    }
+    setPendingImagePreview(prev => {
+      if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev)
+      return URL.createObjectURL(file)
+    })
+    setPendingImageFile(file)
+  }
+
+  const openListImagePicker = (productId: number) => {
+    listImageTargetIdRef.current = productId
+    listImageInputRef.current?.click()
+  }
+
+  const handleListImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    const productId = listImageTargetIdRef.current
+    e.target.value = ''
+    listImageTargetIdRef.current = null
+    if (!file || productId == null) return
+    const validationError = validateProductImageFile(file)
+    if (validationError) {
+      toast.error(validationError)
+      return
+    }
+    setListUploadingImageId(productId)
     try {
-      const imageUrl = await productsService.uploadImage(editing.id, file)
-      setF('image_url', imageUrl)
-      toast.success('Imagen subida')
+      const imageUrl = await productsService.uploadImage(productId, file)
+      setProducts(prev => prev.map(p => (p.id === productId ? { ...p, image_url: imageUrl } : p)))
+      toast.success('Imagen actualizada')
     } catch (err: any) {
       toast.error(err.response?.data?.error ?? 'Error subiendo imagen')
     } finally {
-      setUploadingImage(false)
+      setListUploadingImageId(null)
     }
   }
 
@@ -363,8 +408,26 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     }
     setSaving(true)
     try {
-      if (editing) await productsService.update(editing.id, payload)
-      else await productsService.create(payload)
+      let productId = editing?.id
+      if (editing) {
+        await productsService.update(editing.id, payload)
+      } else {
+        const created = await productsService.create(payload)
+        productId = created.id
+      }
+      if (pendingImageFile && productId) {
+        setUploadingImage(true)
+        try {
+          await productsService.uploadImage(productId, pendingImageFile)
+        } catch (err: any) {
+          toast.error(err.response?.data?.error ?? 'Producto guardado, pero falló la imagen')
+          closeProductModal()
+          load()
+          return
+        } finally {
+          setUploadingImage(false)
+        }
+      }
       toast.success(editing ? 'Producto actualizado' : 'Producto creado')
       closeProductModal()
       load()
@@ -585,20 +648,56 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 <td className="px-4 py-3 font-mono text-xs text-gray-500">{p.code || '-'}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
-                    <div className="w-10 h-10 rounded-xl bg-[rgb(var(--p50))] flex items-center justify-center overflow-hidden flex-shrink-0">
-                      {p.image_url ? (
-                        <img
-                          src={getProductImageUrl(p.image_url)}
-                          alt={p.name}
-                          className="w-full h-full object-cover"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <span className="text-xs font-bold text-[rgb(var(--p400))]">
-                          {p.name?.charAt(0).toUpperCase()}
-                        </span>
-                      )}
-                    </div>
+                    {pageMode === 'product' ? (
+                      <button
+                        type="button"
+                        onClick={() => openListImagePicker(p.id)}
+                        disabled={listUploadingImageId === p.id}
+                        title="Cambiar imagen"
+                        aria-label={`Cambiar imagen de ${p.name}`}
+                        className="group relative w-10 h-10 rounded-xl bg-[rgb(var(--p50))] flex items-center justify-center overflow-hidden flex-shrink-0 border border-transparent hover:border-[rgb(var(--p300))] focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--p400))] disabled:opacity-60"
+                      >
+                        {listUploadingImageId === p.id ? (
+                          <RefreshCw size={14} className="animate-spin text-[rgb(var(--p600))]" aria-hidden />
+                        ) : p.image_url ? (
+                          <>
+                            <img
+                              src={getProductImageUrl(p.image_url)}
+                              alt={p.name}
+                              className="w-full h-full object-cover"
+                              loading="lazy"
+                            />
+                            <span className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Upload size={14} className="text-white" aria-hidden />
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-xs font-bold text-[rgb(var(--p400))]">
+                              {p.name?.charAt(0).toUpperCase()}
+                            </span>
+                            <span className="absolute inset-0 flex items-center justify-center bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Upload size={14} className="text-white" aria-hidden />
+                            </span>
+                          </>
+                        )}
+                      </button>
+                    ) : (
+                      <div className="w-10 h-10 rounded-xl bg-[rgb(var(--p50))] flex items-center justify-center overflow-hidden flex-shrink-0">
+                        {p.image_url ? (
+                          <img
+                            src={getProductImageUrl(p.image_url)}
+                            alt={p.name}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <span className="text-xs font-bold text-[rgb(var(--p400))]">
+                            {p.name?.charAt(0).toUpperCase()}
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <div className="min-w-0">
                       <p className="font-medium text-gray-800 truncate">{p.name}</p>
                       {p.description && (
@@ -701,6 +800,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         closeOnBackdropClick={false}
         contentClassName={PRODUCT_FORM_MODAL_CLASS}
       >
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 md:p-7 space-y-4">
         <h3 className="text-base sm:text-lg font-bold text-gray-800 pr-2">
           {pageMode === 'service'
             ? editing
@@ -710,6 +810,56 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               ? 'Editar producto'
               : 'Nuevo producto'}
         </h3>
+        {pageMode === 'product' && (
+          <div className="min-w-0">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Imagen del producto</label>
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={handleFormImageSelect}
+                disabled={saving || uploadingImage}
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={saving || uploadingImage}
+                title="Subir o cambiar imagen"
+                className="group relative w-20 h-20 rounded-xl overflow-hidden bg-gray-100 border border-gray-200 flex-shrink-0 hover:border-[rgb(var(--p300))] focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--p400))] disabled:opacity-50"
+              >
+                {formImagePreview ? (
+                  <>
+                    <img src={formImagePreview} alt="Vista previa" className="w-full h-full object-cover" />
+                    <span className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Upload size={16} className="text-white" aria-hidden />
+                    </span>
+                  </>
+                ) : (
+                  <span className="flex flex-col items-center justify-center h-full text-[rgb(var(--p600))] gap-1">
+                    <Upload size={18} aria-hidden />
+                    <span className="text-[10px] font-medium">Subir</span>
+                  </span>
+                )}
+              </button>
+              <div className="min-w-0">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={saving || uploadingImage}
+                  className="flex items-center gap-1.5 px-3 py-1.5 border border-[rgb(var(--p300))] rounded-xl text-xs font-medium text-[rgb(var(--p700))] hover:bg-[rgb(var(--p50))] disabled:opacity-50"
+                >
+                  <Upload size={12} /> {formImagePreview ? 'Cambiar imagen' : 'Subir imagen'}
+                </button>
+                <p className="text-[11px] text-gray-400 mt-1">
+                  JPG, PNG o WebP · máx. 5 MB
+                  {!editing && pendingImageFile ? ' · Se subirá al guardar' : ''}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
         <div className={PRODUCT_FORM_GRID}>
           <div className="min-w-0 sm:col-span-2 lg:col-span-1">
             <label className="block text-xs font-medium text-gray-600 mb-1">
@@ -930,46 +1080,6 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 <label className="block text-xs font-medium text-gray-600 mb-1">Descripción</label>
                 <textarea className={`${PRODUCT_FORM_INPUT} resize-none min-h-[5rem]`} rows={2} value={form.description ?? ''} onChange={e => setF('description', e.target.value)} placeholder="Opcional" />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Imagen del producto</label>
-                {editing ? (
-                  <>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        className="hidden"
-                        onChange={handleUploadImage}
-                        disabled={uploadingImage}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={uploadingImage}
-                        className="flex items-center gap-1.5 px-3 py-1.5 border border-[rgb(var(--p300))] rounded-xl text-xs font-medium text-[rgb(var(--p700))] hover:bg-[rgb(var(--p50))] disabled:opacity-50"
-                      >
-                        {uploadingImage ? (
-                          <span className="animate-pulse">Subiendo...</span>
-                        ) : (
-                          <><Upload size={12} /> Subir imagen</>
-                        )}
-                      </button>
-                      <span className="text-[11px] text-gray-400">JPG, PNG o WebP · máx. 5 MB</span>
-                    </div>
-                    {(form.image_url ?? '') && (
-                      <div className="mt-2 flex items-center gap-2">
-                        <div className="w-14 h-14 rounded-xl overflow-hidden bg-gray-100 border border-gray-200 flex-shrink-0">
-                          <img src={getProductImageUrl(form.image_url)} alt="Vista previa" className="w-full h-full object-cover" />
-                        </div>
-                        <span className="text-xs text-gray-500">Imagen actual</span>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-xs text-gray-500">Guarda el producto y luego edítalo para subir una imagen.</p>
-                )}
-              </div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={form.manage_series ?? false} onChange={e => setF('manage_series', e.target.checked)} className="rounded" />
                 <span className="text-sm text-gray-700">Maneja series/lotes</span>
@@ -1044,9 +1154,12 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           </div>
         )}
 
-        <div className="sticky bottom-0 z-10 -mx-4 sm:-mx-6 md:-mx-7 px-4 sm:px-6 md:px-7 pt-3 pb-2 sm:pb-0 bg-white border-t border-gray-100 mt-1 flex flex-col-reverse sm:flex-row gap-2">
-          <button type="button" onClick={closeProductModal} className="touch-target sm:min-h-0 flex-1 py-2.5 sm:py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 font-medium">Cancelar</button>
-          <button type="button" onClick={handleSave} disabled={saving} className="touch-target sm:min-h-0 flex-1 py-2.5 sm:py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50">{saving ? 'Guardando...' : 'Guardar'}</button>
+        </div>
+        <div className="shrink-0 border-t border-gray-100 px-4 sm:px-6 md:px-7 py-3 bg-white flex flex-col-reverse sm:flex-row gap-2">
+          <button type="button" onClick={closeProductModal} disabled={saving || uploadingImage} className="touch-target sm:min-h-0 flex-1 py-2.5 sm:py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 font-medium disabled:opacity-50">Cancelar</button>
+          <button type="button" onClick={handleSave} disabled={saving || uploadingImage} className="touch-target sm:min-h-0 flex-1 py-2.5 sm:py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50">
+            {saving || uploadingImage ? 'Guardando...' : 'Guardar'}
+          </button>
         </div>
       </Modal>
 
@@ -1319,6 +1432,16 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         subtitle="Apunta al código del producto"
         footerHint="El código reemplazará el valor del campo al detectarlo"
       />
+
+      {pageMode === 'product' && (
+        <input
+          ref={listImageInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={handleListImageUpload}
+        />
+      )}
     </div>
   )
 }

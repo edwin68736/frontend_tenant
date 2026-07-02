@@ -62,6 +62,7 @@ export function ErpCompanySettings() {
         ...form,
         ubigeo: ubigeo.distritoId || form.ubigeo,
         additional_notes: form.additional_notes ?? '',
+        terms_and_conditions: form.terms_and_conditions ?? '',
       })
       toast.success('Datos de empresa guardados')
     } catch (e: unknown) {
@@ -173,10 +174,23 @@ export function ErpCompanySettings() {
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-y min-h-[96px]"
               value={form.additional_notes ?? ''}
               onChange={(e) => set('additional_notes', e.target.value)}
-              placeholder="Horarios, leyendas en tickets, datos bancarios, políticas, etc."
+              placeholder="Horarios, leyendas en tickets, datos bancarios, etc."
             />
             <p className="text-[11px] text-gray-400 mt-1">
               Texto global que se imprime en tickets y comprobantes térmicos (debajo del contacto de la empresa).
+            </p>
+          </div>
+          <div className="md:col-span-2 xl:col-span-3">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Términos y condiciones</label>
+            <textarea
+              rows={4}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-y min-h-[96px]"
+              value={form.terms_and_conditions ?? ''}
+              onChange={(e) => set('terms_and_conditions', e.target.value)}
+              placeholder="Plazo de pago, garantías, política de cambios, condiciones comerciales…"
+            />
+            <p className="text-[11px] text-gray-400 mt-1">
+              Texto global que puede incluirse en comprobantes, notas de venta y cotizaciones al activar la opción en cada documento.
             </p>
           </div>
         </div>

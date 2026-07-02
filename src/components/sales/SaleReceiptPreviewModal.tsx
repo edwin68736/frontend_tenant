@@ -5,7 +5,10 @@ import { toast } from 'sonner'
 import type { PrintData } from '@/types/printData'
 import { Modal } from '@/components/ui/Modal'
 import { pdfEmbedSrc } from '@/utils/pdfEmbedSrc'
-import { printDataToPdfBlob } from '@/utils/receiptPdf'
+import { printDataToPdfBlob, type ReceiptPdfOptions } from '@/utils/receiptPdf'
+import { getConfiguredPrinter } from '@/services/printers.service'
+
+type PreviewMode = 'nota-venta' | 'comprobante' | 'quotation'
 
 type PdfFormat = 'ticket' | 'a4'
 
@@ -18,14 +21,46 @@ interface SaleReceiptPreviewModalProps {
   open: boolean
   onClose: () => void
   printData: PrintData | null
+  mode?: PreviewMode
 }
 
-export function SaleReceiptPreviewModal({ open, onClose, printData }: SaleReceiptPreviewModalProps) {
+function previewCopy(mode: PreviewMode | undefined) {
+  if (mode === 'quotation') {
+    return {
+      title: 'Previsualización de la cotización',
+      subtitle: 'Vista previa antes de guardar la cotización',
+    }
+  }
+  if (mode === 'nota-venta') {
+    return {
+      title: 'Previsualización de la nota de venta',
+      subtitle: 'Mismo formato que el comprobante impreso al registrar',
+    }
+  }
+  return {
+    title: 'Previsualización del comprobante',
+    subtitle: 'Mismo formato que el comprobante impreso al registrar',
+  }
+}
+
+export function SaleReceiptPreviewModal({
+  open,
+  onClose,
+  printData,
+  mode = 'comprobante',
+}: SaleReceiptPreviewModalProps) {
+  const copy = previewCopy(mode)
   const [pdfFormat, setPdfFormat] = useState<PdfFormat>('ticket')
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [pdfLoading, setPdfLoading] = useState(false)
   const pdfUrlRef = useRef<string | null>(null)
   const loadedFormatRef = useRef<PdfFormat | null>(null)
+
+  const ticketPdfOptions = useCallback((): ReceiptPdfOptions => {
+    const printerCfg = getConfiguredPrinter('documentos')
+    const mm = printerCfg?.paperWidthMm === 58 ? 58 : 80
+    return { paperWidthMm: mm, preview: true }
+  }, [])
 
   const revokePdfUrl = useCallback(() => {
     if (pdfUrlRef.current) {
@@ -46,7 +81,8 @@ export function SaleReceiptPreviewModal({ open, onClose, printData }: SaleReceip
       setPdfLoading(true)
       revokePdfUrl()
       try {
-        const blob = await printDataToPdfBlob(printData, format)
+        const pdfOpts = format === 'ticket' ? ticketPdfOptions() : { preview: true as const }
+        const blob = await printDataToPdfBlob(printData, format, pdfOpts)
         const url = URL.createObjectURL(blob)
         pdfUrlRef.current = url
         loadedFormatRef.current = format
@@ -59,7 +95,7 @@ export function SaleReceiptPreviewModal({ open, onClose, printData }: SaleReceip
         setPdfLoading(false)
       }
     },
-    [printData, revokePdfUrl],
+    [printData, revokePdfUrl, ticketPdfOptions],
   )
 
   useEffect(() => {
@@ -80,8 +116,8 @@ export function SaleReceiptPreviewModal({ open, onClose, printData }: SaleReceip
     <Modal open={open} onClose={handleClose} contentClassName="max-w-4xl" stacked>
       <div className="flex items-center justify-between gap-3 border-b border-gray-100 pb-3">
         <div>
-          <h3 className="font-bold text-gray-800">Previsualización del comprobante</h3>
-          <p className="text-xs text-gray-500">Vista previa antes de registrar la venta</p>
+          <h3 className="font-bold text-gray-800">{copy.title}</h3>
+          <p className="text-xs text-gray-500">{copy.subtitle}</p>
         </div>
         <button
           type="button"
@@ -138,6 +174,10 @@ export function SaleReceiptPreviewModal({ open, onClose, printData }: SaleReceip
           </div>
         )}
       </div>
+
+      <p className="text-[11px] text-center text-red-600/80">
+        Documento de previsualización con marca de agua — no válido como comprobante emitido.
+      </p>
     </Modal>
   )
 }

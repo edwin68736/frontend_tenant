@@ -103,14 +103,7 @@ const NAV_GROUPS: NavGroup[] = [
         exact: true,
       },
       {
-        id: 'ventas-nota-venta',
-        to: '/sales/nota-venta',
-        label: 'Registrar nota de venta',
-        icon: <Receipt size={14} />,
-        module: 'sales',
-        permission: 'sales.view',
-      },
-      { id: 'ventas-facturas', to: '/billing', label: 'Consulta de comprobantes', icon: <FileText size={14} />, module: 'billing', permission: 'billing.send', exact: true },
+        id: 'ventas-facturas', to: '/billing', label: 'Consulta de comprobantes', icon: <FileText size={14} />, module: 'billing', permission: 'billing.send', exact: true },
       { id: 'ventas-pos', to: '/sales/pos', label: 'Punto de venta', icon: <ShoppingCart size={14} />, module: 'sales', permission: 'sales.pos' },
       {
         id: 'ventas-lista',

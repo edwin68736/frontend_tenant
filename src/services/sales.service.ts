@@ -12,6 +12,7 @@ export interface Sale {
   issue_date: string
   contact_id: number | null
   contact_name?: string
+  user_name?: string
   subtotal: number
   tax_amount: number
   total: number
@@ -110,6 +111,7 @@ export interface SaleDetail {
 export interface PaymentInput {
   method: string
   amount: number
+  reference?: string
 }
 
 export interface SaleFiscalReferenceInput {
@@ -333,4 +335,12 @@ export const salesService = {
 
   addPayments: (id: number, data: AddPaymentsInput): Promise<{ success?: boolean; print_data?: import('@/types/printData').PrintData }> =>
     api.post(`/api/sales/${id}/payments`, data).then(r => r.data as { success?: boolean; print_data?: import('@/types/printData').PrintData }),
+
+  sendReceiptEmail: (saleId: number, email: string, pdfBase64: string) =>
+    api
+      .post<{ success: boolean }>(`/api/sales/${saleId}/email-receipt`, {
+        email,
+        pdf_base64: pdfBase64,
+      })
+      .then(r => r.data),
 }

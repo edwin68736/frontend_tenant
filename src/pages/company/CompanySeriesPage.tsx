@@ -82,7 +82,7 @@ export default function CompanySeriesPage() {
 
   const openEdit = (s: SeriesRow) => {
     if (!sunatEnabled && !isInternalDocumentOnlySeries(s)) {
-      toast.error('Solo puede editar series de nota de venta sin facturación electrónica')
+      toast.error('Solo puede editar series internas (nota de venta, cotización o inventario) sin facturación electrónica')
       return
     }
     setEditing(s)
@@ -397,6 +397,11 @@ export default function CompanySeriesPage() {
           {selectedDocType?.category === 'almacen' && (
             <p className="text-xs text-sky-800 bg-sky-50 border border-sky-100 rounded-xl px-3 py-2">
               {SERIES_FORM_COPY.inventorySeriesHint}
+            </p>
+          )}
+          {selectedDocType?.category === 'cotizacion' && (
+            <p className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">
+              {SERIES_FORM_COPY.cotizacionSeriesHint}
             </p>
           )}
           <div className="grid grid-cols-2 gap-3">

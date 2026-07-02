@@ -5,6 +5,7 @@ import { companyService, type SunatConfig } from '@/services/company.service'
 import { catalogsService, type DetraccionPaymentMethod } from '@/services/catalogs.service'
 import { useAuth } from '@/contexts/AuthContext'
 import SunatRequiredMessage from '@/components/ui/SunatRequiredMessage'
+import { IGV_RATE_OPTIONS, normalizeIgvRateForSelect, type IgvRateOption } from '@/constants/tax'
 
 export default function CompanySunatPage() {
   const { hasModule } = useAuth()
@@ -24,7 +25,7 @@ export default function CompanySunatPage() {
       .then(([sunat, cfg, methods]) => {
         setSunatEnabled(sunat.sunat_enabled ?? false)
         setForm({
-          tax_rate: sunat.tax_rate ?? 18,
+          tax_rate: normalizeIgvRateForSelect(sunat.tax_rate),
           igv_regime: sunat.igv_regime ?? '',
           tax_benefit_zone: sunat.tax_benefit_zone ?? false,
         })
@@ -86,10 +87,16 @@ export default function CompanySunatPage() {
         <h3 className="text-sm font-semibold text-gray-700 border-b border-gray-100 pb-2">Impuestos</h3>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Tasa IGV (%)</label>
-            <input type="number" min={0} max={30}
+            <label className="block text-xs font-medium text-gray-600 mb-1">Tasa IGV</label>
+            <select
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-              value={form.tax_rate ?? 18} onChange={e => setF('tax_rate', Number(e.target.value))} />
+              value={normalizeIgvRateForSelect(form.tax_rate)}
+              onChange={e => setF('tax_rate', Number(e.target.value) as IgvRateOption)}
+            >
+              {IGV_RATE_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Régimen IGV</label>

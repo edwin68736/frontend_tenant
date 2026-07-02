@@ -8,6 +8,7 @@ import type { SaleFiscalFormState } from '@/components/sales/SaleAdditionalInfoD
 import { formatModifierLines, parseStoredModifiers } from '@/utils/productModifiers'
 import { calcPaymentChange } from '@/utils/money'
 import { resolvePublicAssetUrl } from '@/config/apiBaseUrl'
+import { amountInWords } from '@/utils/amountInWords'
 
 const AFFECT_LABELS: Record<string, string> = {
   '10': 'Gravado',
@@ -75,7 +76,7 @@ export type BuildSalePreviewPrintDataInput = {
   companyDraft?: SalePreviewCompanyDraft
   branchName: string
   branchAddress?: string
-  payments: Array<{ method: string; amount: string | number }>
+  payments: Array<{ method: string; amount: string | number; reference?: string }>
   fiscalForm: SaleFiscalFormState
   isNotaVenta: boolean
   isDetraccion: boolean
@@ -112,6 +113,48 @@ function previewDocumentNumber(series: SalePreviewSeries | null): string {
   if (!series?.series) return 'PREVIEW-00000001'
   const next = Math.max(1, (series.current_number ?? series.correlative ?? 0) + 1)
   return `${series.series}-${String(next).padStart(8, '0')}`
+}
+
+/** Pipe SUNAT para QR (igual que backend); hash "0" porque aún no hay comprobante emitido. */
+export function buildPreviewQrData(params: {
+  sunatCode: string
+  series: string
+  documentNumber: string
+  taxAmount: number
+  total: number
+  issueDate: string
+  ruc: string
+  client: { doc_type: string; doc_number: string } | null
+}): string {
+  const code = params.sunatCode.trim()
+  if (code === '00' || code === 'QT') return ''
+
+  let clienteTipo = '0'
+  let clienteNumero = '99999999'
+  if (params.client) {
+    clienteTipo = String(params.client.doc_type ?? '0').trim() || '0'
+    clienteNumero = String(params.client.doc_number ?? '99999999').trim() || '99999999'
+  }
+
+  const ruc = params.ruc.trim() || '0'
+  let numero = params.documentNumber
+  const dash = params.documentNumber.lastIndexOf('-')
+  if (dash >= 0 && dash + 1 < params.documentNumber.length) {
+    numero = params.documentNumber.slice(dash + 1)
+  }
+
+  return [
+    ruc,
+    code,
+    params.series.trim(),
+    numero,
+    params.taxAmount.toFixed(2),
+    params.total.toFixed(2),
+    params.issueDate,
+    clienteTipo,
+    clienteNumero,
+    '0',
+  ].join('|')
 }
 
 function itemDescriptionForPrint(it: SalePreviewFormItem): string {
@@ -172,6 +215,8 @@ function buildFiscalBlock(input: BuildSalePreviewPrintDataInput): PrintFiscalCon
 
   if (fiscalForm.show_terms_conditions) {
     fiscal.show_terms_conditions = true
+    const terms = input.companyConfig?.terms_and_conditions?.trim()
+    if (terms) fiscal.terms_text = terms
   }
 
   if (
@@ -263,7 +308,11 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
 
   const directPayments: PrintPayment[] = payments
     .filter((p) => Number(p.amount) > 0)
-    .map((p) => ({ method: p.method, amount: Number(p.amount) }))
+    .map((p) => ({
+      method: p.method,
+      amount: Number(p.amount),
+      reference: p.reference?.trim() || undefined,
+    }))
 
   const printPayments = [...directPayments]
   if (!isNotaVenta && isDetraccion && detractionPreview.applicable) {
@@ -289,17 +338,34 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
   const walletPhone = companyConfig?.wallet_phone?.trim()
   const walletQr = companyConfig?.wallet_qr_url?.trim()
 
+  const seriesCode = selectedSeries?.series ?? 'PREVIEW'
+  const documentNumber = previewDocumentNumber(selectedSeries)
+  const issueDateReceipt = isoDateToReceiptDate(form.issue_date)
+  const qr_data = buildPreviewQrData({
+    sunatCode: sunatCode,
+    series: seriesCode,
+    documentNumber,
+    taxAmount: taxGlobal,
+    total: totalGlobal,
+    issueDate: issueDateReceipt,
+    ruc: companyConfig?.ruc ?? '',
+    client: selectedContact
+      ? { doc_type: selectedContact.doc_type, doc_number: selectedContact.doc_number }
+      : null,
+  })
+
   return {
     doc_type: selectedSeries?.doc_type ?? (mode === 'quotation' ? 'COTIZACION' : 'BOLETA'),
     sunat_code: sunatCode,
-    series: selectedSeries?.series ?? 'PREVIEW',
-    number: previewDocumentNumber(selectedSeries),
-    issue_date: isoDateToReceiptDate(form.issue_date),
+    series: seriesCode,
+    number: documentNumber,
+    issue_date: issueDateReceipt,
     issue_time: peruIssueTime(),
     currency: form.currency,
     exchange_rate: form.currency === 'USD' ? form.exchange_rate ?? null : null,
     operation_type_code: form.operation_type_code,
-    qr_data: '',
+    qr_data,
+    legend_text: amountInWords(totalGlobal, form.currency),
     valid_until: mode === 'quotation' ? isoDateToReceiptDate(form.due_date) : undefined,
     notes:
       mode === 'quotation' || mode === 'nota-venta'

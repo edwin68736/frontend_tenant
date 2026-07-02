@@ -15,6 +15,7 @@ export interface CompanyConfig {
   color_theme: string
   logo_url: string
   additional_notes?: string
+  terms_and_conditions?: string
   wallet_provider?: string
   wallet_phone?: string
   wallet_qr_url?: string

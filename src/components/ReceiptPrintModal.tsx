@@ -1,15 +1,16 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Download, FileText, Loader2, MessageCircle, Printer, Receipt, X } from 'lucide-react'
+import { ArrowLeft, Download, FileText, Loader2, Mail, MessageCircle, Printer, Receipt, X } from 'lucide-react'
 import { clsx } from 'clsx'
 import { toast } from 'sonner'
 import type { PrintData } from '@/types/printData'
 import { PortalModal } from '@/components/ui/PortalModal'
+import { ReceiptEmailModal } from '@/components/ReceiptEmailModal'
 import { formatMoney } from '@/utils/format'
 import { resolvePrintChangeAmount, receiptDirectPaidAmount } from '@/utils/receiptTotals'
 import { buildReceiptTotalLines } from '@/utils/receiptTotals'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
 import { pdfEmbedSrc } from '@/utils/pdfEmbedSrc'
-import { downloadReceiptPdf, printDataToPdfBlob, type ReceiptPdfOptions } from '@/utils/receiptPdf'
+import { downloadReceiptPdf, printDataToPdfBlob, printReceiptPdf, type ReceiptPdfOptions } from '@/utils/receiptPdf'
 import { shareReceiptPdf } from '@/utils/receiptShare'
 import {
   getConfiguredPrinter,
@@ -34,25 +35,38 @@ interface ReceiptPrintModalProps {
   open: boolean
   onClose: () => void
   printData: PrintData | null
+  /** ID de venta para envío por correo (comprobante / nota / POS). */
+  saleId?: number
+  /** ID de cotización cuando documentKind es quotation. */
+  quotationId?: number
+  /** Correo precargado del cliente. */
+  defaultEmail?: string
   saleNumber?: string
   total?: number
   /** POS en navegador: abrir directamente el comprobante en formato ticket (sin impresión nativa). */
   autoShowTicketOnWeb?: boolean
+  /** Etiqueta del documento generado (venta vs cotización). */
+  documentKind?: 'sale' | 'quotation'
 }
 
 export function ReceiptPrintModal({
   open,
   onClose,
   printData,
+  saleId,
+  quotationId,
+  defaultEmail = '',
   saleNumber,
   total,
   autoShowTicketOnWeb = false,
+  documentKind = 'sale',
 }: ReceiptPrintModalProps) {
   const [panelView, setPanelView] = useState<PanelView>('details')
   const [pdfFormat, setPdfFormat] = useState<PdfFormat>('ticket')
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [pdfLoading, setPdfLoading] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
+  const [emailModalOpen, setEmailModalOpen] = useState(false)
   const pdfUrlRef = useRef<string | null>(null)
   const loadedFormatRef = useRef<PdfFormat | null>(null)
   const autoPrintedRef = useRef(false)
@@ -61,6 +75,11 @@ export function ReceiptPrintModal({
   const printerCfg = getConfiguredPrinter('documentos')
   const hasDirectPrinter = isNativePrintAvailable() && Boolean(printerCfg)
 
+  const heading =
+    documentKind === 'quotation'
+      ? { title: 'Cotización registrada', subtitle: 'Documento generado correctamente', footer: 'Cotización registrada' }
+      : { title: 'Recibo de venta', subtitle: 'Comprobante generado correctamente', footer: 'Venta registrada' }
+
   const ticketPdfOptions = useCallback((): ReceiptPdfOptions => {
     const mm = printerCfg?.paperWidthMm === 58 ? 58 : 80
     return { paperWidthMm: mm }
@@ -68,6 +87,11 @@ export function ReceiptPrintModal({
 
   const displayNumber = saleNumber || printData?.number || '—'
   const displayTotal = total ?? printData?.total ?? 0
+  const emailDocumentId = documentKind === 'quotation' ? quotationId : saleId
+  const resolvedDefaultEmail =
+    defaultEmail.trim() ||
+    printData?.client?.email?.trim() ||
+    ''
 
   const paidTotal = useMemo(() => {
     if (!printData) return displayTotal
@@ -143,6 +167,7 @@ export function ReceiptPrintModal({
       setPanelView('details')
       setPdfFormat('ticket')
       setBusy(null)
+      setEmailModalOpen(false)
       return
     }
     revokePdfUrl()
@@ -220,6 +245,20 @@ export function ReceiptPrintModal({
     }
   }
 
+  const handleBrowserPrint = async () => {
+    if (!printData) return
+    setBusy('browser-print')
+    try {
+      const pdfOpts = pdfFormat === 'ticket' ? ticketPdfOptions() : undefined
+      await printReceiptPdf(printData, pdfFormat, pdfOpts)
+    } catch (e) {
+      console.error(e)
+      toast.error('No se pudo abrir la impresión del PDF')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   if (!open) return null
 
   const client = printData?.client
@@ -248,8 +287,8 @@ export function ReceiptPrintModal({
               <Receipt className="h-5 w-5 text-green-600 md:h-6 md:w-6" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-stone-800 md:text-lg">Recibo de venta</h2>
-              <p className="text-xs text-stone-500 md:text-sm">Comprobante generado correctamente</p>
+              <h2 className="text-base font-bold text-stone-800 md:text-lg">{heading.title}</h2>
+              <p className="text-xs text-stone-500 md:text-sm">{heading.subtitle}</p>
             </div>
           </div>
 
@@ -338,6 +377,22 @@ export function ReceiptPrintModal({
                   <button
                     type="button"
                     disabled={!!busy || !printData}
+                    onClick={() => void handleBrowserPrint()}
+                    title="Imprimir PDF (visor del navegador)"
+                    aria-label="Imprimir PDF"
+                    className={clsx(ACTION_ICON_BTN, 'bg-slate-700 hover:bg-slate-800')}
+                  >
+                    {busy === 'browser-print' ? (
+                      <Loader2 className={clsx(ACTION_ICON, 'animate-spin')} />
+                    ) : (
+                      <Printer className={ACTION_ICON} strokeWidth={2.25} />
+                    )}
+                    <span className={ACTION_LABEL}>Imprimir</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!!busy || !printData}
                     onClick={() => void handleShareWhatsApp()}
                     title="Enviar por WhatsApp"
                     aria-label="Enviar por WhatsApp"
@@ -349,6 +404,18 @@ export function ReceiptPrintModal({
                       <MessageCircle className={ACTION_ICON} strokeWidth={2.25} />
                     )}
                     <span className={ACTION_LABEL}>Whatsapp</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!!busy || !printData || !emailDocumentId}
+                    onClick={() => setEmailModalOpen(true)}
+                    title="Enviar por correo"
+                    aria-label="Enviar por correo"
+                    className={clsx(ACTION_ICON_BTN, 'bg-orange-500 hover:bg-orange-600')}
+                  >
+                    <Mail className={ACTION_ICON} strokeWidth={2.25} />
+                    <span className={ACTION_LABEL}>Correo</span>
                   </button>
 
                   <button
@@ -531,7 +598,7 @@ export function ReceiptPrintModal({
 
         <div className="flex shrink-0 items-center justify-between gap-3 border-t border-stone-200 bg-stone-50/80 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:px-6">
           <p className="hidden text-xs text-green-700 sm:block">
-            <span className="font-medium">✓</span> Venta registrada · {displayNumber}
+            <span className="font-medium">✓</span> {heading.footer} · {displayNumber}
           </p>
           <button
             type="button"
@@ -542,6 +609,18 @@ export function ReceiptPrintModal({
           </button>
         </div>
       </div>
+
+      {printData && emailDocumentId ? (
+        <ReceiptEmailModal
+          open={emailModalOpen}
+          onClose={() => setEmailModalOpen(false)}
+          documentKind={documentKind}
+          documentId={emailDocumentId}
+          printData={printData}
+          defaultEmail={resolvedDefaultEmail}
+          ticketPdfOptions={ticketPdfOptions()}
+        />
+      ) : null}
     </PortalModal>
   )
 }

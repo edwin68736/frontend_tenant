@@ -1,6 +1,6 @@
 import { type ReactNode, useEffect, useCallback, useState, useRef } from 'react'
 import { createPortal } from 'react-dom'
-
+import { PORTAL_MODAL_STACK_Z, PORTAL_MODAL_Z } from '@/utils/uiLayers'
 interface ModalProps {
   open: boolean
   onClose?: () => void
@@ -58,6 +58,18 @@ export function Modal({ open, onClose, children, contentClassName, closeOnBackdr
     handleClose()
   }, [closeOnBackdropClick, handleClose])
 
+  useEffect(() => {
+    if (!open || !onClose) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        handleClose()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [open, onClose, handleClose])
+
   if (typeof document === 'undefined') return null
 
   // Evitar aria-hidden mientras el foco sigue dentro (provoca aviso de accesibilidad).
@@ -70,7 +82,7 @@ export function Modal({ open, onClose, children, contentClassName, closeOnBackdr
   return createPortal(
     <div
       ref={overlayRef}
-      className={`fixed inset-0 ${stacked ? 'z-[110]' : 'z-[100]'} flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm`}
+      className={`fixed inset-0 ${stacked ? PORTAL_MODAL_STACK_Z : PORTAL_MODAL_Z} flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm`}
       style={{ display: open ? undefined : 'none', pointerEvents: open ? undefined : 'none' }}
       onClick={handleBackdropClick}
       role="dialog"
