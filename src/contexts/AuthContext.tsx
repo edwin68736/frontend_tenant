@@ -7,6 +7,7 @@ import {
   readMasterSsoTokenFromUrl,
 } from '@/lib/masterSso'
 import { toast } from 'sonner'
+import { isNativeShell } from '@/lib/platform/detect'
 
 interface AuthState {
   user: AuthUser | null
@@ -145,7 +146,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('allowed_branches')
     setState({ user: null, token: null, modules: [], permissions: [], tenantStatus: '', isImpersonated: false, isAuthenticated: false, isLoading: false })
     toast.info('Sesión cerrada')
-    window.location.href = '/login'
+    if (isNativeShell()) {
+      window.location.hash = '#/login'
+    } else {
+      window.location.href = '/login'
+    }
   }
 
   const updateSessionUser = (user: AuthUser) => {

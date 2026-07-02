@@ -1,13 +1,14 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { useTenantBinding } from '@/contexts/TenantBindingContext'
 import { toast } from 'sonner'
 import { Eye, EyeOff, Loader2, Building2 } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { isNativeShell } from '@/lib/platform/detect'
+import { replaceRoute } from '@/lib/platform/shellNavigation'
 import { getTenantSlug } from '@/config/apiBaseUrl'
 
 function isSlugFromSubdomain(): boolean {
@@ -33,14 +34,22 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>
 
 export default function LoginPage() {
-  const { login, isAuthenticated } = useAuth()
+  const { login, isAuthenticated, isLoading } = useAuth()
   const { stored: boundTenant } = useTenantBinding()
   const navigate = useNavigate()
   const [showPass, setShowPass] = useState(false)
 
-  useEffect(() => {
-    if (isAuthenticated) navigate('/home', { replace: true })
-  }, [isAuthenticated, navigate])
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-100">
+        <div className="h-10 w-10 animate-spin rounded-full border-4 border-green-600 border-t-transparent" />
+      </div>
+    )
+  }
+
+  if (isAuthenticated) {
+    return <Navigate to="/home" replace />
+  }
 
   const {
     register,
@@ -69,6 +78,7 @@ export default function LoginPage() {
 
     try {
       await login({ email: data.email, password: data.password })
+      replaceRoute('/home', navigate)
     } catch (err: unknown) {
       const apiErr = err as { response?: { data?: { error?: string } } }
       const msg = apiErr?.response?.data?.error ?? 'Error al iniciar sesión'
