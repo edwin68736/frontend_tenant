@@ -1253,12 +1253,6 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
           </div>
         </div>
       )}
-      {!isQuotation && cashSession && (
-        <div className="rounded-xl border border-emerald-100 bg-emerald-50/80 px-4 py-2 text-xs text-emerald-800 flex items-center gap-2">
-          <Wallet size={14} className="shrink-0" />
-          Caja abierta — las ventas se vincularán a esta sesión.
-        </div>
-      )}
       {linkQuotationId && !isQuotation && (
         <div className="rounded-xl border border-[rgb(var(--p200))] bg-[rgb(var(--p50))] px-4 py-3 text-sm text-[rgb(var(--p800))]">
           Cotización #{linkQuotationId} precargada — puede agregar o quitar productos antes de registrar la venta.
@@ -1830,30 +1824,6 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
 
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mt-4">
             {!isQuotation && (
-              <div className="md:col-span-5">
-                <SalePaymentConditionSection
-                  conditionCode={paymentConditionCode}
-                  onConditionChange={handlePaymentConditionChange}
-                  creditMode={creditMode}
-                  onCreditModeChange={setCreditMode}
-                  installmentCount={installmentCount}
-                  onInstallmentCountChange={setInstallmentCount}
-                  installments={creditInstallments}
-                  onInstallmentsChange={rows => {
-                    setCreditInstallments(rows)
-                    if (creditMode === 'single' && rows[0]?.due_date) {
-                      setCreditFirstDueDate(rows[0].due_date)
-                    }
-                  }}
-                  creditAmount={creditAmount}
-                  firstDueDate={creditFirstDueDate}
-                  onFirstDueDateChange={setCreditFirstDueDate}
-                  moneySym={moneySym}
-                  fmt={fmt}
-                />
-              </div>
-            )}
-            {!isQuotation && (
               <div className="md:col-span-3 min-w-0 border border-gray-200 rounded-xl p-4 space-y-3 bg-white">
                 <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
                   {isDetraccion && detractionPreview.applicable
@@ -2160,6 +2130,31 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                 )}
               </div>
             </div>
+
+            {!isQuotation && (
+              <div className="md:col-span-5">
+                <SalePaymentConditionSection
+                  conditionCode={paymentConditionCode}
+                  onConditionChange={handlePaymentConditionChange}
+                  creditMode={creditMode}
+                  onCreditModeChange={setCreditMode}
+                  installmentCount={installmentCount}
+                  onInstallmentCountChange={setInstallmentCount}
+                  installments={creditInstallments}
+                  onInstallmentsChange={rows => {
+                    setCreditInstallments(rows)
+                    if (creditMode === 'single' && rows[0]?.due_date) {
+                      setCreditFirstDueDate(rows[0].due_date)
+                    }
+                  }}
+                  creditAmount={creditAmount}
+                  firstDueDate={creditFirstDueDate}
+                  onFirstDueDateChange={setCreditFirstDueDate}
+                  moneySym={moneySym}
+                  fmt={fmt}
+                />
+              </div>
+            )}
           </div>
         </section>
 
