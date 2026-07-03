@@ -86,6 +86,8 @@ export type BuildSalePreviewPrintDataInput = {
   detractionBnAccount: string
   retentionPreview: RetentionPreview
   sellerName?: string
+  paymentConditionCode?: 'cash' | 'credit'
+  creditInstallments?: Array<{ due_date: string; amount: number | string }>
 }
 
 function isoDateToReceiptDate(iso: string): string {
@@ -405,7 +407,17 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
     payments: printPayments,
     change_amount: changeAmount > 0.009 ? changeAmount : undefined,
     seller_name: sellerName,
-    payment_condition: 'Contado',
+    payment_condition: input.paymentConditionCode === 'credit' ? 'Crédito' : 'Contado',
+    credit_installments:
+      input.paymentConditionCode === 'credit' && input.creditInstallments?.length
+        ? input.creditInstallments.map((row, idx) => ({
+            installment_no: idx + 1,
+            due_date: isoDateToReceiptDate(row.due_date),
+            amount: Number(row.amount) || 0,
+            currency: form.currency,
+            status: 'pending',
+          }))
+        : undefined,
     fiscal,
     payment_wallet:
       walletProvider && walletPhone && walletQr

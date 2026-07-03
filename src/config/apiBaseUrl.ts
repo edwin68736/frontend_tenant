@@ -162,6 +162,14 @@ export function resolvePublicAssetUrl(url: string | null | undefined): string {
   return `${base.replace(/\/$/, '')}${url.startsWith('/') ? url : '/' + url}`
 }
 
+/** URL lista para <img src> (data URL, ruta pública o URL absoluta). */
+export function resolveCompanyLogoDisplayUrl(url: string | null | undefined): string {
+  const raw = url?.trim()
+  if (!raw) return ''
+  if (raw.startsWith('data:')) return raw
+  return resolvePublicAssetUrl(raw)
+}
+
 /** Slug del tenant: binding en nativo; subdominio o env en web. */
 export function getTenantSlug(): string {
   if (isNativeShell()) {

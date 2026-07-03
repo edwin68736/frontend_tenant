@@ -171,6 +171,10 @@ export interface CreateSaleInput {
   cash_session_id?: number | null
   issue_date?: string
   due_date?: string
+  /** cash (contado) | credit (crédito). Por defecto contado. */
+  payment_condition_code?: 'cash' | 'credit'
+  /** Cuotas al registrar venta a crédito. */
+  credit_installments?: { due_date: string; amount: number }[]
   payment_method?: string
   payments?: PaymentInput[]
   notes?: string

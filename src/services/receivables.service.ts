@@ -1,5 +1,17 @@
 import api from './api'
 
+export interface ReceivableInstallment {
+  id: number
+  installment_no: number
+  due_date: string
+  amount: number
+  paid_amount: number
+  due_amount: number
+  currency: string
+  status: string
+  is_overdue: boolean
+}
+
 export interface ReceivableRow {
   sale_id: number
   sale_number: string
@@ -11,6 +23,7 @@ export interface ReceivableRow {
   contact_doc_number: string
   total: number
   status: string
+  payment_condition_code?: string
   has_detraccion: boolean
   direct_target: number
   direct_paid: number
@@ -20,6 +33,9 @@ export interface ReceivableRow {
   bn_confirmation_status?: string
   bn_confirmation_reference?: string
   is_overdue: boolean
+  installments?: ReceivableInstallment[]
+  installments_pending?: number
+  next_installment_due?: string | null
 }
 
 export interface ReceivablesSummary {
@@ -84,10 +100,15 @@ export const receivablesService = {
     return data.data
   },
 
-  collect: async (saleId: number, payments: CollectPaymentLine[], cashSessionId?: number): Promise<void> => {
+  collect: async (
+    saleId: number,
+    payments: CollectPaymentLine[],
+    opts?: { cashSessionId?: number; preferInstallmentId?: number },
+  ): Promise<void> => {
     await api.post(`/api/receivables/${saleId}/collect`, {
       payments,
-      ...(cashSessionId ? { cash_session_id: cashSessionId } : {}),
+      ...(opts?.cashSessionId ? { cash_session_id: opts.cashSessionId } : {}),
+      ...(opts?.preferInstallmentId ? { prefer_installment_id: opts.preferInstallmentId } : {}),
     })
   },
 

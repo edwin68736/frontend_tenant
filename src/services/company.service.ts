@@ -16,6 +16,8 @@ export interface CompanyConfig {
   logo_url: string
   additional_notes?: string
   terms_and_conditions?: string
+  /** Preferencia global: mostrar términos en ventas/cotizaciones nuevas. */
+  show_terms_conditions?: boolean
   wallet_provider?: string
   wallet_phone?: string
   wallet_qr_url?: string

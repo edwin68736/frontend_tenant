@@ -133,6 +133,7 @@ function AppRoutes() {
         <Route path="sales/register" element={<Lazy><SalesRegisterLegacyRedirect /></Lazy>} />
         <Route path="sales/nota-venta" element={<Lazy><NotaVentaRegisterPage /></Lazy>} />
         <Route path="sales/pos" element={<Lazy><POSPage /></Lazy>} />
+        <Route path="sales/receivables" element={<Lazy><ReceivablesPage /></Lazy>} />
         <Route path="quotations" element={<Lazy><QuotationsPage /></Lazy>} />
         <Route path="quotations/new" element={<Lazy><QuotationRegisterPage /></Lazy>} />
         <Route path="quotations/:id/edit" element={<Lazy><QuotationRegisterPage /></Lazy>} />
@@ -157,7 +158,7 @@ function AppRoutes() {
         <Route path="inventory/import-adjustment" element={<Lazy><InventoryImportAdjustmentPage /></Lazy>} />
         <Route path="cashbank/cash" element={<Lazy><CashPage /></Lazy>} />
         <Route path="cashbank/reports" element={<Lazy><CashReportsPage /></Lazy>} />
-        <Route path="cashbank/receivables" element={<Lazy><ReceivablesPage /></Lazy>} />
+        <Route path="cashbank/receivables" element={<Navigate to="/sales/receivables" replace />} />
         <Route path="cashbank/bank" element={<Lazy><BankPage /></Lazy>} />
         <Route path="cashbank/payment-methods" element={<Lazy><PaymentMethodsPage /></Lazy>} />
         <Route path="billing" element={<Lazy><BillingPage /></Lazy>} />

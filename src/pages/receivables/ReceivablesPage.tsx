@@ -15,7 +15,7 @@ import { CollectPaymentModal } from '@/components/receivables/CollectPaymentModa
 
 export default function ReceivablesPage() {
   return (
-    <RequireModule moduleKey="cashbank">
+    <RequireModule moduleKey="sales">
       <ReceivablesContent />
     </RequireModule>
   )
@@ -89,7 +89,9 @@ function ReceivablesContent() {
             <Wallet size={22} className="text-emerald-600" />
             Cuentas por cobrar
           </h1>
-          <p className="text-sm text-gray-500">Saldo directo y detracción SPOT pendiente de confirmación BN</p>
+          <p className="text-sm text-gray-500">
+            Cobros de ventas a crédito (cuotas), saldo pendiente y detracción SPOT
+          </p>
         </div>
         <div className="flex gap-2">
           <select
@@ -146,9 +148,10 @@ function ReceivablesContent() {
                   <th className="px-4 py-3">Comprobante</th>
                   <th className="px-4 py-3">Cliente</th>
                   <th className="px-4 py-3">Vencimiento</th>
+                  <th className="px-4 py-3">Cuotas</th>
                   <th className="px-4 py-3 text-right">Neto / Total</th>
                   <th className="px-4 py-3 text-right">Cobrado</th>
-                  <th className="px-4 py-3 text-right">Saldo directo</th>
+                  <th className="px-4 py-3 text-right">Saldo</th>
                   <th className="px-4 py-3 text-right">SPOT BN</th>
                   <th className="px-4 py-3">Acciones</th>
                 </tr>
@@ -167,6 +170,20 @@ function ReceivablesContent() {
                         <span className="ml-1 text-red-600 inline-flex items-center gap-0.5">
                           <AlertCircle size={12} /> Vencido
                         </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-600">
+                      {(row.installments?.length ?? 0) > 0 ? (
+                        <span>
+                          {row.installments_pending ?? 0} pend. / {row.installments!.length}
+                          {row.status === 'credit' ? (
+                            <span className="block text-[10px] text-amber-700">A crédito</span>
+                          ) : null}
+                        </span>
+                      ) : row.status === 'credit' || row.payment_condition_code === 'credit' ? (
+                        <span className="text-amber-700">Crédito</span>
+                      ) : (
+                        '—'
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">

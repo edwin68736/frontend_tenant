@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Save, Building2, ImagePlus, X } from 'lucide-react'
 import { companyService, type CompanyConfig } from '@/services/company.service'
-import { resolvePublicAssetUrl } from '@/config/apiBaseUrl'
+import { resolveCompanyLogoDisplayUrl } from '@/config/apiBaseUrl'
 import { UbigeoSelects } from '@/components/UbigeoSelects'
 import { ubigeoToIds } from '@/services/ubigeo.service'
 
@@ -26,11 +26,7 @@ export function ErpCompanySettings() {
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const logoPreviewSrc = form.logo_url?.trim()
-    ? form.logo_url.startsWith('data:')
-      ? form.logo_url
-      : resolvePublicAssetUrl(form.logo_url)
-    : ''
+  const logoPreviewSrc = resolveCompanyLogoDisplayUrl(form.logo_url)
 
   useEffect(() => {
     companyService
@@ -58,7 +54,7 @@ export function ErpCompanySettings() {
       .uploadLogo(file)
       .then(res => {
         const logo_url = res.logo_url ?? res.data?.logo_url ?? ''
-        setForm(f => ({ ...f, logo_url }))
+        setForm(f => ({ ...(res.data ?? f), logo_url }))
         toast.success('Logo guardado')
       })
       .catch((err: { response?: { data?: { error?: string } } }) => {
@@ -95,6 +91,7 @@ export function ErpCompanySettings() {
         ubigeo: ubigeo.distritoId || form.ubigeo,
         additional_notes: form.additional_notes ?? '',
         terms_and_conditions: form.terms_and_conditions ?? '',
+        show_terms_conditions: Boolean(form.show_terms_conditions),
       })
       toast.success('Datos de empresa guardados')
     } catch (e: unknown) {
@@ -221,8 +218,20 @@ export function ErpCompanySettings() {
               onChange={(e) => set('terms_and_conditions', e.target.value)}
               placeholder="Plazo de pago, garantías, política de cambios, condiciones comerciales…"
             />
+            <label className="mt-3 flex items-center justify-between gap-3">
+              <span className="text-sm text-gray-700">Mostrar en ventas por defecto</span>
+              <input
+                type="checkbox"
+                className="rounded border-gray-300 text-[rgb(var(--p600))] focus:ring-[rgb(var(--p600))] h-4 w-4"
+                checked={Boolean(form.show_terms_conditions)}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, show_terms_conditions: e.target.checked }))
+                }
+              />
+            </label>
             <p className="text-[11px] text-gray-400 mt-1">
-              Texto global que puede incluirse en comprobantes, notas de venta y cotizaciones al activar la opción en cada documento.
+              Texto global. Si activa «Mostrar en ventas por defecto», se incluye en comprobantes, notas de venta y
+              cotizaciones nuevas hasta que lo desactive.
             </p>
           </div>
         </div>
@@ -239,6 +248,7 @@ export function ErpCompanySettings() {
           {form.logo_url ? (
             <div className="relative">
               <img
+                key={form.logo_url ?? 'no-logo'}
                 src={logoPreviewSrc}
                 alt="Logo"
                 className="h-24 w-auto max-w-[200px] object-contain border border-gray-200 rounded-xl bg-gray-50 p-2"

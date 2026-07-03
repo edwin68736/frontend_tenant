@@ -25,7 +25,12 @@ export function SaleTermsConditionsControl({
     <>
       <div className={`flex items-center justify-between gap-3 ${className}`}>
         <div className="flex items-center gap-1 min-w-0">
-          <span className="text-sm text-gray-700">Mostrar términos y condiciones</span>
+          <div className="min-w-0">
+            <span className="text-sm text-gray-700">Mostrar términos y condiciones</span>
+            <p className="text-[11px] text-gray-400 leading-snug">
+              Preferencia de la empresa: aplica a ventas futuras hasta desactivarla.
+            </p>
+          </div>
           <button
             type="button"
             onClick={() => setEditOpen(true)}

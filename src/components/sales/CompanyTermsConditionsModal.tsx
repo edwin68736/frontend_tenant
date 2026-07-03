@@ -42,7 +42,8 @@ export function CompanyTermsConditionsModal({ open, onClose, value, onSaved }: P
     <Modal open={open} onClose={onClose} contentClassName="max-w-lg w-full mx-2 sm:mx-0">
       <h3 className="font-bold text-gray-800">Términos y condiciones</h3>
       <p className="text-xs text-gray-500 mt-1">
-        Texto global de la empresa. Se imprime en el comprobante cuando activa la opción en cada venta o cotización.
+        Texto global de la empresa. Se imprime en comprobantes, notas de venta y cotizaciones mientras la opción
+        «Mostrar términos y condiciones» esté activa (preferencia de la empresa).
       </p>
       <textarea
         rows={8}

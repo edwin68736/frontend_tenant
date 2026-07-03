@@ -28,6 +28,7 @@ export interface PrintData {
   change_amount?: number
   seller_name?: string
   payment_condition?: string
+  credit_installments?: PrintCreditInstallment[]
   bank_accounts?: PrintBankAccount[]
   payment_wallet?: PrintPaymentWallet
   /** Información adicional fiscal (retención operativa, O/C, guías). */
@@ -124,6 +125,14 @@ export interface PrintAffectTotal {
   subtotal: number
   tax_amount: number
   total: number
+}
+
+export interface PrintCreditInstallment {
+  installment_no: number
+  due_date: string
+  amount: number
+  currency?: string
+  status?: string
 }
 
 export interface PrintPayment {

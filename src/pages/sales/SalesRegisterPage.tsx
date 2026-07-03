@@ -7,7 +7,7 @@ import { contactsService, type Contact } from '@/services/contacts.service'
 import { productsService, type Product } from '@/services/products.service'
 import { companyService, type CompanyConfig } from '@/services/company.service'
 import { BRAND_APP_LOGO } from '@/config/branding'
-import { resolvePublicAssetUrl } from '@/config/apiBaseUrl'
+import { resolveCompanyLogoDisplayUrl } from '@/config/apiBaseUrl'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
 import RequireModule from '@/components/ui/RequireModule'
@@ -17,6 +17,7 @@ import { ReceiptPrintModal } from '@/components/ui/ReceiptPrintModal'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
 import { ProductPickerModal } from '@/components/sales/ProductPickerModal'
 import { PaymentMethodSelect } from '@/components/sales/PaymentMethodSelect'
+import { SalePaymentConditionSection } from '@/components/sales/SalePaymentConditionSection'
 import { ProductConfigureModal, productNeedsSaleConfiguration } from '@/components/pos/ProductConfigureModal'
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { TenantCompanyEditModal } from '@/components/sales/TenantCompanyEditModal'
@@ -64,6 +65,14 @@ import {
   validateSalePreviewInput,
   type SalePreviewSeries,
 } from '@/utils/salePreviewPrintData'
+import {
+  type CreditInstallmentDraft,
+  type CreditInstallmentMode,
+  type PaymentConditionCode,
+  roundMoney,
+  splitIntoInstallments,
+  sumInstallmentAmounts,
+} from '@/utils/saleCreditPayment'
 
 /** Tipo de serie de venta (desde API). */
 type SeriesRow = SalePreviewSeries & { id: number; doc_type: string; branch_id?: number }
@@ -230,6 +239,11 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
   const [payments, setPayments] = useState<{ method: string; amount: string; reference: string }[]>([
     { method: 'cash', amount: '0.00', reference: '' },
   ])
+  const [paymentConditionCode, setPaymentConditionCode] = useState<PaymentConditionCode>('cash')
+  const [creditMode, setCreditMode] = useState<CreditInstallmentMode>('single')
+  const [installmentCount, setInstallmentCount] = useState(3)
+  const [creditFirstDueDate, setCreditFirstDueDate] = useState(getTodayPeru())
+  const [creditInstallments, setCreditInstallments] = useState<CreditInstallmentDraft[]>([])
   const [cashSession, setCashSession] = useState<CashSession | null>(null)
   const [printData, setPrintData] = useState<PrintData | null>(null)
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
@@ -322,6 +336,13 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
     ])
       .then(([company, seriesList, sunat, customerList, defaultClient, methods, session, users]) => {
         setCompanyConfig(company ?? null)
+        // Preferencia global de empresa (no solo la venta actual).
+        if (!editingQuotationId) {
+          setFiscalForm((prev) => ({
+            ...prev,
+            show_terms_conditions: Boolean(company?.show_terms_conditions),
+          }))
+        }
         setCashSession(session)
         setTenantUsers(Array.isArray(users) ? users : [])
         setSunatEnabled(sunat?.sunat_enabled ?? true)
@@ -586,10 +607,10 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
     companyService
       .uploadLogo(file)
       .then(res => {
+        const logo_url = res.logo_url ?? res.data?.logo_url ?? ''
         if (res.data) {
-          setCompanyConfig(res.data)
-        } else {
-          const logo_url = res.logo_url ?? ''
+          setCompanyConfig({ ...res.data, logo_url: logo_url || res.data.logo_url })
+        } else if (logo_url) {
           setCompanyConfig(prev => (prev ? { ...prev, logo_url } : prev))
         }
         toast.success('Logo actualizado')
@@ -713,15 +734,47 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
     [paymentsTotalPaid, directPayableTarget],
   )
 
-  // Un solo método de pago directo: el monto sigue al neto cobrable (1001) o al total.
+  const creditAmount = useMemo(
+    () => roundMoney(Math.max(0, directPayableTarget - paymentsTotalPaid)),
+    [directPayableTarget, paymentsTotalPaid],
+  )
+
   useEffect(() => {
+    if (paymentConditionCode !== 'credit') return
+    if (creditAmount <= 0) {
+      setCreditInstallments([])
+      return
+    }
+    if (!creditFirstDueDate?.trim()) return
+    if (creditMode === 'monthly') {
+      setCreditInstallments(splitIntoInstallments(creditAmount, installmentCount, creditFirstDueDate))
+    } else {
+      setCreditInstallments([{ due_date: creditFirstDueDate, amount: creditAmount.toFixed(2) }])
+    }
+  }, [paymentConditionCode, creditMode, installmentCount, creditAmount, creditFirstDueDate])
+
+  const handlePaymentConditionChange = (code: PaymentConditionCode) => {
+    setPaymentConditionCode(code)
+    if (code === 'credit' && payments.length === 1 && paymentsTotalPaid >= directPayableTarget - 0.01) {
+      setPayments(prev => prev.map((p, i) => (i === 0 ? { ...p, amount: '0.00' } : p)))
+    }
+  }
+
+  const documentDueDate =
+    !isQuotation && paymentConditionCode === 'credit' && creditInstallments.length > 0
+      ? creditInstallments[creditInstallments.length - 1].due_date
+      : form.due_date
+
+  // Un solo método de pago directo: el monto sigue al neto cobrable (1001) o al total (contado).
+  useEffect(() => {
+    if (paymentConditionCode !== 'cash') return
     if (payments.length !== 1) return
     const formatted = directPayableTarget.toFixed(2)
     setPayments((prev) => {
       if (prev.length !== 1 || prev[0].amount === formatted) return prev
       return [{ ...prev[0], amount: formatted }]
     })
-  }, [directPayableTarget, payments.length])
+  }, [directPayableTarget, payments.length, paymentConditionCode])
 
   const operationTypeOptions = useMemo(() => {
     if (form.sunat_code === '01') return SALES_OPERATION_TYPE_OPTIONS
@@ -785,6 +838,11 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
     detractionBnAccount,
     retentionPreview,
     sellerName,
+    paymentConditionCode,
+    creditInstallments:
+      paymentConditionCode === 'credit'
+        ? creditInstallments.map(r => ({ due_date: r.due_date, amount: r.amount }))
+        : undefined,
   })
 
   const handleSalePreview = async () => {
@@ -925,17 +983,41 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
         : !isNotaVenta && fiscalForm.has_igv_retention && retentionPreview.applicable
           ? retentionPreview.netCollectible
           : totalGlobal
-    if (validPayments.length === 0) {
-      toast.error('Ingrese al menos un pago directo')
-      return
-    }
-    if (totalPaid < requiredDirect - 0.01) {
-      toast.error(
-        isDetraccion && detractionPreview.applicable
-          ? 'Los pagos directos no cubren el neto cobrable'
-          : 'El total de pagos no cubre el monto de la venta',
-      )
-      return
+
+    if (paymentConditionCode === 'cash') {
+      if (validPayments.length === 0) {
+        toast.error('Ingrese al menos un método de pago')
+        return
+      }
+      if (totalPaid < requiredDirect - 0.01) {
+        toast.error(
+          isDetraccion && detractionPreview.applicable
+            ? 'Los pagos directos no cubren el neto cobrable'
+            : 'El total de pagos no cubre el monto de la venta',
+        )
+        return
+      }
+    } else {
+      const creditBalance = roundMoney(Math.max(0, requiredDirect - totalPaid))
+      if (creditBalance <= 0.009) {
+        toast.error('El saldo a crédito debe ser mayor a cero. Reduzca el anticipo o elija contado.')
+        return
+      }
+      if (creditInstallments.length === 0) {
+        toast.error('Indique la fecha de vencimiento de la(s) cuota(s)')
+        return
+      }
+      for (const row of creditInstallments) {
+        if (!row.due_date?.trim()) {
+          toast.error('Todas las cuotas deben tener fecha de vencimiento')
+          return
+        }
+      }
+      const instSum = sumInstallmentAmounts(creditInstallments)
+      if (Math.abs(instSum - creditBalance) > 0.02) {
+        toast.error('Las cuotas deben igualar el saldo a crédito')
+        return
+      }
     }
     if (isDetraccion) {
       if (!detractionPreview.applicable) {
@@ -976,7 +1058,18 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
         exchange_rate: form.currency === 'USD' ? parsedExchangeRate ?? undefined : undefined,
         cash_session_id: cashSession?.id ?? null,
         issue_date: form.issue_date,
-        due_date: form.due_date,
+        due_date:
+          paymentConditionCode === 'credit' && creditInstallments.length > 0
+            ? creditInstallments[creditInstallments.length - 1].due_date
+            : form.due_date,
+        payment_condition_code: paymentConditionCode,
+        credit_installments:
+          paymentConditionCode === 'credit'
+            ? creditInstallments.map(r => ({
+                due_date: r.due_date,
+                amount: Number(r.amount),
+              }))
+            : undefined,
         payments: validPayments.map((p) => ({
           method: p.method,
           amount: Number(p.amount),
@@ -1078,11 +1171,20 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
 
   const companyDisplayName = (companyConfig?.trade_name || companyConfig?.business_name || '').trim()
   const companyContactLine = [companyConfig?.email?.trim(), companyConfig?.phone?.trim()].filter(Boolean).join(' - ')
-  const companyLogoSrc = companyConfig?.logo_url?.trim()
-    ? (companyConfig.logo_url.startsWith('data:')
-      ? companyConfig.logo_url
-      : resolvePublicAssetUrl(companyConfig.logo_url))
-    : ''
+  const companyLogoSrc = resolveCompanyLogoDisplayUrl(companyConfig?.logo_url)
+
+  /** Preferencia de empresa: aplica a ventas futuras hasta que se desactive. */
+  const handleShowTermsPreferenceChange = (checked: boolean) => {
+    setFiscalForm((prev) => ({ ...prev, show_terms_conditions: checked }))
+    setCompanyConfig((c) => (c ? { ...c, show_terms_conditions: checked } : c))
+    void companyService
+      .updateConfig({ show_terms_conditions: checked })
+      .catch(() => {
+        toast.error('No se pudo guardar la preferencia de términos y condiciones')
+        setFiscalForm((prev) => ({ ...prev, show_terms_conditions: !checked }))
+        setCompanyConfig((c) => (c ? { ...c, show_terms_conditions: !checked } : c))
+      })
+  }
   const headerLogoSrc = companyLogoSrc || BRAND_APP_LOGO
 
   return (
@@ -1109,6 +1211,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
           onTermsSaved={(terms) =>
             setCompanyConfig((c) => (c ? { ...c, terms_and_conditions: terms } : c))
           }
+          onShowTermsChange={handleShowTermsPreferenceChange}
         />
       )}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 space-y-5">
@@ -1130,6 +1233,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
               title="Clic para cambiar el logo de la empresa"
             >
               <img
+                key={companyConfig?.logo_url ?? 'default-logo'}
                 src={headerLogoSrc}
                 alt="Logo empresa"
                 className="h-11 w-auto max-w-[7.5rem] object-contain"
@@ -1182,13 +1286,19 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
               </div>
               <div className="w-[9.5rem]">
                 <label className="block text-xs font-medium text-gray-600 mb-1">
-                  {isQuotation ? 'Vigencia hasta' : 'Fec. Vencimiento'}
+                  {isQuotation ? 'Vigencia hasta' : paymentConditionCode === 'credit' ? 'Vencimiento doc.' : 'Fec. Vencimiento'}
                 </label>
                 <input
                   type="date"
                   className="w-full border border-gray-200 rounded-xl px-2.5 py-2 text-sm"
-                  value={form.due_date}
+                  value={documentDueDate}
                   onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))}
+                  disabled={!isQuotation && paymentConditionCode === 'credit'}
+                  title={
+                    !isQuotation && paymentConditionCode === 'credit'
+                      ? 'Para crédito, configure las fechas en Condición de pago'
+                      : undefined
+                  }
                 />
               </div>
             </div>
@@ -1650,9 +1760,37 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
 
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mt-4">
             {!isQuotation && (
+              <div className="md:col-span-5">
+                <SalePaymentConditionSection
+                  conditionCode={paymentConditionCode}
+                  onConditionChange={handlePaymentConditionChange}
+                  creditMode={creditMode}
+                  onCreditModeChange={setCreditMode}
+                  installmentCount={installmentCount}
+                  onInstallmentCountChange={setInstallmentCount}
+                  installments={creditInstallments}
+                  onInstallmentsChange={rows => {
+                    setCreditInstallments(rows)
+                    if (creditMode === 'single' && rows[0]?.due_date) {
+                      setCreditFirstDueDate(rows[0].due_date)
+                    }
+                  }}
+                  creditAmount={creditAmount}
+                  firstDueDate={creditFirstDueDate}
+                  onFirstDueDateChange={setCreditFirstDueDate}
+                  moneySym={moneySym}
+                  fmt={fmt}
+                />
+              </div>
+            )}
+            {!isQuotation && (
               <div className="md:col-span-3 min-w-0 border border-gray-200 rounded-xl p-4 space-y-3 bg-white">
                 <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                  {isDetraccion && detractionPreview.applicable ? 'Pagos directos' : 'Métodos de pago'}
+                  {isDetraccion && detractionPreview.applicable
+                    ? 'Pagos directos'
+                    : paymentConditionCode === 'credit'
+                      ? 'Anticipo / pagos parciales'
+                      : 'Métodos de pago'}
                 </p>
                 {payments.map((p, idx) => (
                   <div key={idx} className="flex flex-wrap gap-2 items-center">
@@ -1730,9 +1868,16 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                       <span className="text-sm font-bold tabular-nums">{fmt(paymentChange)}</span>
                     </div>
                   )}
-                  {paymentsTotalPaid > 0 && paymentsTotalPaid < directPayableTarget - 0.01 && (
+                  {paymentConditionCode === 'cash' &&
+                    paymentsTotalPaid > 0 &&
+                    paymentsTotalPaid < directPayableTarget - 0.01 && (
                     <p className="text-[11px] text-red-600">
                       Falta {fmt(Math.max(0, directPayableTarget - paymentsTotalPaid))}
+                    </p>
+                  )}
+                  {paymentConditionCode === 'credit' && creditAmount > 0.009 && (
+                    <p className="text-[11px] text-[rgb(var(--p700))]">
+                      Anticipo {fmt(paymentsTotalPaid)} · Saldo a crédito {fmt(creditAmount)}
                     </p>
                   )}
                 </div>
@@ -1753,9 +1898,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                   <div className="pt-2 border-t border-gray-100">
                     <SaleTermsConditionsControl
                       checked={fiscalForm.show_terms_conditions}
-                      onCheckedChange={(checked) =>
-                        setFiscalForm((prev) => ({ ...prev, show_terms_conditions: checked }))
-                      }
+                      onCheckedChange={handleShowTermsPreferenceChange}
                       termsText={companyConfig?.terms_and_conditions ?? ''}
                       onTermsSaved={(terms) =>
                         setCompanyConfig((c) => (c ? { ...c, terms_and_conditions: terms } : c))
@@ -1774,9 +1917,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                 </p>
                 <SaleTermsConditionsControl
                   checked={fiscalForm.show_terms_conditions}
-                  onCheckedChange={(checked) =>
-                    setFiscalForm((prev) => ({ ...prev, show_terms_conditions: checked }))
-                  }
+                  onCheckedChange={handleShowTermsPreferenceChange}
                   termsText={companyConfig?.terms_and_conditions ?? ''}
                   onTermsSaved={(terms) =>
                     setCompanyConfig((c) => (c ? { ...c, terms_and_conditions: terms } : c))

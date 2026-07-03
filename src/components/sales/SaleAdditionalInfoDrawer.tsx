@@ -76,6 +76,8 @@ type Props = {
   disabled?: boolean
   termsText?: string
   onTermsSaved?: (terms: string) => void
+  /** Si se define, persiste la preferencia global (no solo el documento actual). */
+  onShowTermsChange?: (checked: boolean) => void
 }
 
 const TAB_WIDTH = '2.5rem' // w-10 — texto vertical un poco más legible
@@ -95,6 +97,7 @@ export function SaleAdditionalInfoDrawer({
   disabled = false,
   termsText = '',
   onTermsSaved,
+  onShowTermsChange,
 }: Props) {
   const preview = previewIgvRetention(
     value.has_igv_retention,
@@ -246,7 +249,10 @@ export function SaleAdditionalInfoDrawer({
 
             <SaleTermsConditionsControl
               checked={value.show_terms_conditions}
-              onCheckedChange={(checked) => patch({ show_terms_conditions: checked })}
+              onCheckedChange={(checked) => {
+                if (onShowTermsChange) onShowTermsChange(checked)
+                else patch({ show_terms_conditions: checked })
+              }}
               termsText={termsText}
               onTermsSaved={(terms) => onTermsSaved?.(terms)}
               disabled={disabled}
