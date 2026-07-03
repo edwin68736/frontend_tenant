@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Trash2, X, Package, UserPlus, ScanBarcode, Pencil, Loader2 } from 'lucide-react'
+import { Plus, Trash2, X, Package, UserPlus, ScanBarcode, Pencil, Loader2, Wallet } from 'lucide-react'
 import { salesService, type CreateSaleInput } from '@/services/sales.service'
 import { contactsService, type Contact } from '@/services/contacts.service'
 import { productsService, type Product } from '@/services/products.service'
@@ -245,6 +245,8 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
   const [creditFirstDueDate, setCreditFirstDueDate] = useState(getTodayPeru())
   const [creditInstallments, setCreditInstallments] = useState<CreditInstallmentDraft[]>([])
   const [cashSession, setCashSession] = useState<CashSession | null>(null)
+  const [openingCash, setOpeningCash] = useState(false)
+  const [cashOpeningBalance, setCashOpeningBalance] = useState(0)
   const [printData, setPrintData] = useState<PrintData | null>(null)
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
   const [lastSale, setLastSale] = useState<{ id: number; number: string; total: number } | null>(null)
@@ -864,9 +866,34 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
     }
   }
 
+  const handleOpenCashSession = async () => {
+    if (!activeBranchId) {
+      toast.error('No hay sucursal activa')
+      return
+    }
+    setOpeningCash(true)
+    try {
+      const sess = await cashbankService.openSession({
+        branch_id: activeBranchId,
+        opening_balance: cashOpeningBalance,
+      })
+      setCashSession(sess)
+      toast.success('Caja abierta. Ya puede registrar ventas.')
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error
+      toast.error(msg ?? 'No se pudo abrir la caja')
+    } finally {
+      setOpeningCash(false)
+    }
+  }
+
   const handleSave = async () => {
     if (!activeBranchId) {
       toast.error('No hay sucursal activa')
+      return
+    }
+    if (!isQuotation && !cashSession?.id) {
+      toast.error('Debe abrir una sesión de caja antes de registrar ventas')
       return
     }
     if (!form.contact_id) {
@@ -1189,6 +1216,49 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
 
   return (
     <div className="space-y-4 relative">
+      {!isQuotation && !cashSession && !loading && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-start gap-2 min-w-0">
+            <Wallet size={18} className="text-amber-700 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-amber-900">Caja cerrada</p>
+              <p className="text-xs text-amber-800 mt-0.5">
+                Debe abrir su sesión de caja para registrar ventas (incluye administrador).
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <label className="text-xs text-amber-900 flex items-center gap-1.5">
+              Saldo inicial
+              <input
+                type="number"
+                min={0}
+                step={0.01}
+                className="w-24 border border-amber-200 rounded-lg px-2 py-1.5 text-sm bg-white"
+                value={cashOpeningBalance}
+                onChange={(e) => setCashOpeningBalance(Number(e.target.value) || 0)}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void handleOpenCashSession()}
+              disabled={openingCash || !activeBranchId}
+              className="px-4 py-2 bg-amber-700 text-white rounded-xl text-sm font-medium hover:bg-amber-800 disabled:opacity-50"
+            >
+              {openingCash ? 'Abriendo…' : 'Abrir caja'}
+            </button>
+            <Link to="/cashbank/cash" className="text-xs text-amber-800 underline hover:text-amber-950">
+              Ir a Caja
+            </Link>
+          </div>
+        </div>
+      )}
+      {!isQuotation && cashSession && (
+        <div className="rounded-xl border border-emerald-100 bg-emerald-50/80 px-4 py-2 text-xs text-emerald-800 flex items-center gap-2">
+          <Wallet size={14} className="shrink-0" />
+          Caja abierta — las ventas se vincularán a esta sesión.
+        </div>
+      )}
       {linkQuotationId && !isQuotation && (
         <div className="rounded-xl border border-[rgb(var(--p200))] bg-[rgb(var(--p50))] px-4 py-3 text-sm text-[rgb(var(--p800))]">
           Cotización #{linkQuotationId} precargada — puede agregar o quitar productos antes de registrar la venta.
@@ -2113,7 +2183,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
           <button
             type="button"
             onClick={handleSave}
-            disabled={saving || items.length === 0}
+            disabled={saving || items.length === 0 || (!isQuotation && !cashSession)}
             className="inline-flex items-center justify-center px-6 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50 sm:min-w-[9rem]"
           >
             {saving

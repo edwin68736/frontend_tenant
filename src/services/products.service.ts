@@ -108,6 +108,8 @@ export interface BulkImportItemPayload {
   code?: string
   description?: string
   sale_price: number
+  /** Opcional: costo / precio de compra. Si se omite, no se envía (en update se conserva el actual). */
+  purchase_price?: number
   unit?: string
   category_name?: string
   igv_affectation_type?: string

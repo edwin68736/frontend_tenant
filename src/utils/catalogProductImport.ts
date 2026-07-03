@@ -18,7 +18,17 @@ type HucreRowError = {
   field: string
 }
 
-const IGV_CODES = ['10', '20', '30', '40'] as const
+/** Catálogo SUNAT tipo de afectación del IGV (solo estos 4 en importación). */
+export const IGV_AFFECTATION_CODES = ['10', '20', '30', '40'] as const
+export type IgvAffectationCode = (typeof IGV_AFFECTATION_CODES)[number]
+
+export const IGV_AFFECTATION_LABELS: Record<IgvAffectationCode, string> = {
+  '10': 'Gravado',
+  '20': 'Exonerado',
+  '30': 'Inafecto',
+  '40': 'Exportación',
+}
+
 const PREPARATION_AREA_VALUES = ['', 'cocina', 'bar', 'barra', 'postres', 'otro'] as const
 
 export const CATALOG_IMPORT_COLUMNS = [
@@ -26,6 +36,7 @@ export const CATALOG_IMPORT_COLUMNS = [
   'codigo',
   'descripcion',
   'precio_venta',
+  'precio_compra',
   'unidad',
   'categoria',
   'afectacion_igv',
@@ -50,11 +61,22 @@ const HEADER_ALIASES: Record<string, (typeof CATALOG_IMPORT_COLUMNS)[number]> = 
   precio: 'precio_venta',
   price: 'precio_venta',
   sale_price: 'precio_venta',
+  precio_compra: 'precio_compra',
+  costo: 'precio_compra',
+  cost: 'precio_compra',
+  purchase_price: 'precio_compra',
+  costo_compra: 'precio_compra',
+  precio_costo: 'precio_compra',
   unidad: 'unidad',
   unit: 'unidad',
   categoria: 'categoria',
   category: 'categoria',
   afectacion_igv: 'afectacion_igv',
+  tipo_afectacion_igv: 'afectacion_igv',
+  tipo_afectacion: 'afectacion_igv',
+  afectacion: 'afectacion_igv',
+  igv_affectation_type: 'afectacion_igv',
+  igv_affectation: 'afectacion_igv',
   igv: 'afectacion_igv',
   precio_incluye_igv: 'precio_incluye_igv',
   incluye_igv: 'precio_incluye_igv',
@@ -86,11 +108,47 @@ function normalizeOptionalPreparationArea(value: unknown): string {
   return PREPARATION_AREA_VALUES.includes(s as (typeof PREPARATION_AREA_VALUES)[number]) ? s : ''
 }
 
+/**
+ * Normaliza tipo de afectación IGV SUNAT: 10 gravado, 20 exonerado, 30 inafecto, 40 exportación.
+ * Vacío → 10. Acepta número de Excel (10) o texto ("10", "gravado").
+ * Devuelve null si el valor no es uno de los 4 códigos permitidos.
+ */
+export function normalizeIgvAffectationCode(value: unknown): IgvAffectationCode | null {
+  if (value == null || value === '') return '10'
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const code = String(Math.trunc(value))
+    return IGV_AFFECTATION_CODES.includes(code as IgvAffectationCode) ? (code as IgvAffectationCode) : null
+  }
+  const raw = String(value)
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+  if (!raw) return '10'
+  const digits = raw.match(/^(\d{2})(?:\.0+)?(?:\s|$|[^\d])/)
+  if (digits) {
+    const code = digits[1]
+    return IGV_AFFECTATION_CODES.includes(code as IgvAffectationCode) ? (code as IgvAffectationCode) : null
+  }
+  if (raw === '10' || raw.includes('gravado')) return '10'
+  if (raw === '20' || raw.includes('exonerado')) return '20'
+  if (raw === '30' || raw.includes('inafecto')) return '30'
+  if (raw === '40' || raw.includes('exportacion')) return '40'
+  return null
+}
+
 export const CATALOG_PRODUCT_IMPORT_SCHEMA: SchemaDefinition = {
   nombre: { column: 'nombre', type: 'string', required: true, min: 1, max: 255 },
   codigo: { column: 'codigo', type: 'string', max: 64 },
   descripcion: { column: 'descripcion', type: 'string', max: 500 },
   precio_venta: { column: 'precio_venta', type: 'number', required: true, min: 0.01 },
+  /** Opcional: vacío = no se aplica (producto nuevo queda en 0; actualización conserva el costo actual). */
+  precio_compra: {
+    column: 'precio_compra',
+    type: 'string',
+    max: 32,
+    transform: (v) => String(v ?? '').trim(),
+  },
   unidad: {
     column: 'unidad',
     type: 'string',
@@ -101,12 +159,12 @@ export const CATALOG_PRODUCT_IMPORT_SCHEMA: SchemaDefinition = {
     },
   },
   categoria: { column: 'categoria', type: 'string', max: 120 },
+  /** SUNAT: 10 gravado, 20 exonerado, 30 inafecto, 40 exportación. Vacío = 10. */
   afectacion_igv: {
     column: 'afectacion_igv',
     type: 'string',
-    default: '10',
-    transform: (v) => String(v ?? '10').trim(),
-    enum: [...IGV_CODES],
+    max: 40,
+    transform: (v) => String(v ?? '').trim(),
   },
   precio_incluye_igv: {
     column: 'precio_incluye_igv',
@@ -156,6 +214,8 @@ export type ParsedCatalogImportRow = {
   codigo: string
   descripcion: string
   precio_venta: number
+  /** undefined = celda vacía / no enviada */
+  precio_compra?: number
   unidad: string
   categoria: string
   afectacion_igv: string
@@ -223,6 +283,7 @@ export async function downloadCatalogProductTemplate(): Promise<void> {
     '7750123456789',
     'Descripción opcional',
     25.5,
+    15.0,
     'NIU',
     'General',
     '10',
@@ -274,7 +335,7 @@ export async function validateCatalogProductExcel(file: File): Promise<ImportVal
 
   const parsed: ParsedCatalogImportRow[] = []
   const extraErrors: ImportRowIssue[] = (schemaErrors as HucreRowError[])
-    .filter((e) => e.field !== 'area_preparacion')
+    .filter((e) => e.field !== 'area_preparacion' && e.field !== 'precio_compra' && e.field !== 'afectacion_igv')
     .map((e) => ({
     row: e.row,
     column: e.column,
@@ -302,6 +363,33 @@ export async function validateCatalogProductExcel(file: File): Promise<ImportVal
       })
       return
     }
+    const purchaseRaw = String(row.precio_compra ?? '').trim()
+    let precioCompra: number | undefined
+    if (purchaseRaw !== '') {
+      const n = Number(purchaseRaw.replace(',', '.'))
+      if (Number.isNaN(n) || n < 0) {
+        extraErrors.push({
+          row: rowNumber,
+          column: 'precio_compra',
+          field: 'precio_compra',
+          message: 'precio_compra debe ser un número mayor o igual a 0 (o vacío)',
+          value: purchaseRaw,
+        })
+        return
+      }
+      precioCompra = n
+    }
+    const afectacionIgv = normalizeIgvAffectationCode(row.afectacion_igv)
+    if (afectacionIgv == null) {
+      extraErrors.push({
+        row: rowNumber,
+        column: 'afectacion_igv',
+        field: 'afectacion_igv',
+        message: 'Use código SUNAT: 10 (gravado), 20 (exonerado), 30 (inafecto) o 40 (exportación)',
+        value: row.afectacion_igv,
+      })
+      return
+    }
     const esRestaurante = Boolean(row.es_restaurante)
     const tipo = String(row.tipo ?? 'product').trim().toLowerCase() === 'service' ? 'service' : 'product'
     if (tipo === 'service' && esRestaurante) {
@@ -319,9 +407,10 @@ export async function validateCatalogProductExcel(file: File): Promise<ImportVal
       codigo,
       descripcion: String(row.descripcion ?? '').trim(),
       precio_venta: Number(row.precio_venta),
+      precio_compra: precioCompra,
       unidad: normalizeSunatUnit(String(row.unidad ?? ''), tipo),
       categoria: String(row.categoria ?? '').trim(),
-      afectacion_igv: String(row.afectacion_igv ?? '10').trim(),
+      afectacion_igv: afectacionIgv,
       precio_incluye_igv: parseExcelBoolean(row.precio_incluye_igv),
       control_stock: controlStock,
       stock_inicial: stockInicial,
@@ -343,6 +432,7 @@ function rowToBulkPayload(row: ParsedCatalogImportRow): BulkImportItemPayload {
     code: row.codigo || undefined,
     description: row.descripcion || undefined,
     sale_price: row.precio_venta,
+    ...(row.precio_compra != null ? { purchase_price: row.precio_compra } : {}),
     unit: row.unidad,
     category_name: row.categoria || undefined,
     igv_affectation_type: row.afectacion_igv,

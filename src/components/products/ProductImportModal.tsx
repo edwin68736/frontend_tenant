@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
 import {
   AlertCircle,
+  AlertTriangle,
   CheckCircle2,
   Download,
   FileSpreadsheet,
@@ -13,9 +14,10 @@ import {
 import { useBranch } from '@/contexts/BranchContext'
 import {
   downloadCatalogProductTemplate,
+  IGV_AFFECTATION_LABELS,
   importCatalogProducts,
   validateCatalogProductExcel,
-  type ImportRowIssue,
+  type IgvAffectationCode,
   type ImportValidationResult,
   type ParsedCatalogImportRow,
 } from '@/utils/catalogProductImport'
@@ -46,6 +48,7 @@ export function ProductImportModal({ open, onClose, onImported }: Props) {
     stockRegistered: number
     failed: { row: number; name: string; error: string }[]
   } | null>(null)
+  const [helpOpen, setHelpOpen] = useState(false)
 
   const branchOptions = useMemo(() => {
     if (activeBranchId <= 0) return []
@@ -72,6 +75,7 @@ export function ProductImportModal({ open, onClose, onImported }: Props) {
     setValidation(null)
     setImportProgress({ done: 0, total: 0 })
     setImportResult(null)
+    setHelpOpen(false)
     if (fileRef.current) fileRef.current.value = ''
   }
 
@@ -158,35 +162,54 @@ export function ProductImportModal({ open, onClose, onImported }: Props) {
   if (!open || typeof document === 'undefined') return null
 
   return createPortal(
+    <>
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
       role="dialog"
       aria-modal="true"
     >
       <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-gray-200 shrink-0">
+        <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-gray-200 shrink-0 gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <FileSpreadsheet className="w-5 h-5 text-[rgb(var(--p600))] shrink-0" />
             <h3 className="font-bold text-gray-800 truncate">Importar productos (Excel)</h3>
           </div>
-          <button
-            type="button"
-            onClick={handleClose}
-            disabled={isImporting}
-            className="p-2 rounded-lg hover:bg-gray-100 shrink-0 disabled:opacity-40"
-          >
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              disabled={isImporting}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wide border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 disabled:opacity-40"
+            >
+              <AlertTriangle size={14} className="shrink-0" />
+              Importante
+            </button>
+            <button
+              type="button"
+              onClick={handleClose}
+              disabled={isImporting}
+              className="p-2 rounded-lg hover:bg-gray-100 shrink-0 disabled:opacity-40"
+            >
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         <div className="relative p-4 sm:p-5 overflow-y-auto min-h-0 space-y-4">
-          <p className="text-sm text-gray-600">
-            Catálogo general: por defecto <strong>no</strong> son de restaurante. Use{' '}
-            <strong>es_restaurante</strong> (si/no). <strong>area_preparacion</strong> es opcional
-            (solo aplica si marca el producto como restaurante).{' '}
-            <strong>stock_inicial</strong> solo aplica si <strong>control_stock</strong> es{' '}
-            <em>si</em>; el kardex se registra en la sucursal seleccionada.
-          </p>
+          <button
+            type="button"
+            onClick={() => setHelpOpen(true)}
+            disabled={isImporting}
+            className="w-full flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-left hover:bg-amber-100/80 disabled:opacity-40 transition-colors"
+          >
+            <AlertTriangle size={18} className="text-amber-700 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-amber-900">Importante</p>
+              <p className="text-xs text-amber-800 mt-0.5">
+                Antes de importar, revise las reglas de columnas del Excel. Pulse aquí para ver las instrucciones.
+              </p>
+            </div>
+          </button>
 
           <div className="rounded-xl border border-gray-200 bg-gray-50/80 p-3 space-y-2">
             <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -317,7 +340,88 @@ export function ProductImportModal({ open, onClose, onImported }: Props) {
           )}
         </div>
       </div>
-    </div>,
+    </div>
+
+    {helpOpen ? (
+      <div
+        className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="product-import-help-title"
+        onClick={() => setHelpOpen(false)}
+      >
+        <div
+          className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-amber-100 bg-amber-50 shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0" />
+              <h3 id="product-import-help-title" className="font-bold text-amber-950 truncate">
+                Importante — instrucciones de importación
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setHelpOpen(false)}
+              className="p-2 rounded-lg hover:bg-amber-100 shrink-0"
+              aria-label="Cerrar instrucciones"
+            >
+              <X size={20} />
+            </button>
+          </div>
+          <div className="p-4 sm:p-5 overflow-y-auto min-h-0 text-sm text-gray-700 space-y-3">
+            <p>
+              Catálogo general: por defecto los productos <strong>no</strong> son de restaurante.
+            </p>
+            <ul className="list-disc pl-5 space-y-2">
+              <li>
+                <strong>es_restaurante</strong>: use <em>si</em> o <em>no</em>.
+              </li>
+              <li>
+                <strong>area_preparacion</strong>: opcional; solo aplica si marca el producto como
+                restaurante.
+              </li>
+              <li>
+                <strong>precio_compra</strong> (costo): opcional. Si la celda va vacía se acepta igual
+                (producto nuevo en 0; si actualiza por código, conserva el costo actual).
+              </li>
+              <li>
+                <strong>afectacion_igv</strong> (SUNAT, opcional; vacío = 10): solo estos códigos:
+                <ul className="list-disc pl-5 mt-1.5 space-y-0.5 text-gray-600">
+                  <li>
+                    <strong>10</strong> — gravado
+                  </li>
+                  <li>
+                    <strong>20</strong> — exonerado
+                  </li>
+                  <li>
+                    <strong>30</strong> — inafecto
+                  </li>
+                  <li>
+                    <strong>40</strong> — exportación
+                  </li>
+                </ul>
+              </li>
+              <li>
+                <strong>stock_inicial</strong>: solo aplica si <strong>control_stock</strong> es{' '}
+                <em>si</em>; el kardex se registra en la sucursal seleccionada.
+              </li>
+            </ul>
+          </div>
+          <div className="px-4 sm:px-5 py-3 border-t border-gray-100 shrink-0 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setHelpOpen(false)}
+              className="px-4 py-2 rounded-xl text-sm font-medium bg-amber-600 text-white hover:bg-amber-700"
+            >
+              Entendido
+            </button>
+          </div>
+        </div>
+      </div>
+    ) : null}
+    </>,
     document.body,
   )
 }
@@ -363,7 +467,7 @@ function PreviewTable({ rows, total }: { rows: ParsedCatalogImportRow[]; total: 
         <table className="w-full text-xs">
           <thead className="bg-gray-50">
             <tr>
-              {['#', 'Nombre', 'Precio', 'Rest.', 'Control stock', 'Stock'].map((h) => (
+              {['#', 'Nombre', 'P. venta', 'P. compra', 'Afect. IGV', 'Rest.', 'Control stock', 'Stock'].map((h) => (
                 <th key={h} className="text-left px-2 py-2 font-semibold text-gray-600">
                   {h}
                 </th>
@@ -376,6 +480,15 @@ function PreviewTable({ rows, total }: { rows: ParsedCatalogImportRow[]; total: 
                 <td className="px-2 py-1.5">{r.rowNumber}</td>
                 <td className="px-2 py-1.5">{r.nombre}</td>
                 <td className="px-2 py-1.5">{r.precio_venta.toFixed(2)}</td>
+                <td className="px-2 py-1.5">
+                  {r.precio_compra != null ? r.precio_compra.toFixed(2) : '—'}
+                </td>
+                <td className="px-2 py-1.5 whitespace-nowrap">
+                  {r.afectacion_igv}{' '}
+                  <span className="text-gray-400">
+                    ({IGV_AFFECTATION_LABELS[r.afectacion_igv as IgvAffectationCode] ?? r.afectacion_igv})
+                  </span>
+                </td>
                 <td className="px-2 py-1.5">{r.es_restaurante ? 'sí' : 'no'}</td>
                 <td className="px-2 py-1.5">{r.control_stock ? 'sí' : 'no'}</td>
                 <td className="px-2 py-1.5">{r.stock_inicial > 0 ? r.stock_inicial : '—'}</td>
