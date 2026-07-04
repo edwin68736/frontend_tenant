@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf'
 import QRCode from 'qrcode'
-import type { PrintData, PrintBankAccount } from '@/types/printData'
+import type { PrintData } from '@/types/printData'
 import { getTipoComprobanteLabel, getTipoDocIdentidadShortLabel, isElectronicSunatCode } from '@/constants/sunat'
 import { buildReceiptTotalLines } from '@/utils/receiptTotals'
 import { lineGlobalSubtotalDiscount, lineSubtotalDiscount } from '@/utils/receiptDiscount'
@@ -10,6 +10,7 @@ import { fitReceiptLogoMm, resolveReceiptLogoForPdf } from '@/utils/receiptLogoP
 import { rasterPxForMm } from '@/utils/receiptPdfRaster'
 import { paymentWalletVisible, renderPaymentWalletBlock } from '@/utils/receiptPaymentWallet'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
+import { formatBankAccountLine, formatWalletAccountLine } from '@/utils/receiptBankAccounts'
 
 const PAGE_W = 210
 const PAGE_H = 297
@@ -88,12 +89,6 @@ function primaryPaymentLabel(data: PrintData): string {
   }
   const cond = String(data.payment_condition ?? '').trim()
   return cond || 'Contado'
-}
-
-function currencyLabel(code?: string): string {
-  const c = String(code ?? 'PEN').toUpperCase()
-  if (c === 'USD') return 'Dólares'
-  return 'Soles'
 }
 
 function moneySymbol(currency: string): string {
@@ -244,8 +239,8 @@ function drawCustomerBlock(ctx: A4Ctx, data: PrintData) {
     const docLabel = getTipoDocIdentidadShortLabel(data.client.doc_type).toUpperCase()
     drawA4Field(ctx, docLabel, data.client.doc_number || '—', leftX, { valueMaxW: CONTENT_W * 0.45 })
     setFont(doc, FONT, 'normal')
-    doc.text('Fecha Vencimiento:', PAGE_W - MARGIN - 38, ctx.y)
-    doc.text(due, PAGE_W - MARGIN - 38 + 28, ctx.y)
+    // Alinear al borde derecho del contenido (mismo ancho que caja RUC y tabla).
+    doc.text(`Fecha Vencimiento: ${due}`, PAGE_W - MARGIN, ctx.y, { align: 'right' })
     ctx.y += LINE_H
     drawA4Field(ctx, 'DIRECCIÓN', data.client.address?.trim() || '—', leftX)
     ctx.y += LINE_H
@@ -509,125 +504,34 @@ function drawPaymentMethodBox(ctx: A4Ctx, data: PrintData, startY: number): numb
   return boxY + boxH + 5
 }
 
-type BankKind = 'bcp' | 'interbank' | 'yape' | 'plin' | 'other'
-
-function detectBankKind(bankName: string, accountName?: string): BankKind {
-  const t = `${bankName} ${accountName ?? ''}`.toLowerCase()
-  if (t.includes('bcp') || t.includes('credito del peru') || t.includes('crédito del peru')) return 'bcp'
-  if (t.includes('interbank')) return 'interbank'
-  if (t.includes('yape')) return 'yape'
-  if (t.includes('plin')) return 'plin'
-  return 'other'
-}
-
-function drawBankBadge(doc: jsPDF, kind: BankKind, x: number, y: number) {
-  const badgeW = 10
-  const badgeH = 5.5
-  const by = y - 4
-  if (kind === 'bcp') {
-    doc.setFillColor(0, 56, 130)
-    doc.rect(x, by, badgeW, badgeH, 'F')
-    doc.setTextColor(255, 255, 255)
-    setFont(doc, 5.5, 'bold')
-    doc.text('BCP', x + badgeW / 2, by + 3.8, { align: 'center' })
-  } else if (kind === 'interbank') {
-    doc.setFillColor(0, 158, 73)
-    doc.rect(x, by, badgeW, badgeH, 'F')
-    doc.setTextColor(255, 255, 255)
-    setFont(doc, 4.8, 'bold')
-    doc.text('IBK', x + badgeW / 2, by + 3.8, { align: 'center' })
-  } else if (kind === 'yape') {
-    doc.setFillColor(114, 39, 150)
-    doc.rect(x, by, badgeW, badgeH, 'F')
-    doc.setTextColor(255, 255, 255)
-    setFont(doc, 5, 'bold')
-    doc.text('YAPE', x + badgeW / 2, by + 3.8, { align: 'center' })
-  } else if (kind === 'plin') {
-    doc.setFillColor(0, 174, 239)
-    doc.rect(x, by, badgeW, badgeH, 'F')
-    doc.setTextColor(255, 255, 255)
-    setFont(doc, 5, 'bold')
-    doc.text('PLIN', x + badgeW / 2, by + 3.8, { align: 'center' })
-  } else {
-    doc.setFillColor(180, 180, 180)
-    doc.rect(x, by, badgeW, badgeH, 'F')
-    doc.setTextColor(255, 255, 255)
-    setFont(doc, 5, 'bold')
-    doc.text('BAN', x + badgeW / 2, by + 3.8, { align: 'center' })
-  }
-  doc.setTextColor(0, 0, 0)
-}
-
-function parseCciFromAccount(b: PrintBankAccount): string | null {
-  const raw = `${b.name ?? ''} ${b.account_number ?? ''}`
-  const m = raw.match(/CCI[:\s]*(\d[\d\s-]{10,})/i)
-  return m ? m[1].replace(/\s+/g, '') : null
-}
-
-function accountNumberOnly(b: PrintBankAccount): string {
-  const num = String(b.account_number ?? '').trim()
-  const cciMatch = num.match(/^(.*?)(?:\s*[,;]?\s*CCI[:\s]*\d+)/i)
-  if (cciMatch) return cciMatch[1].trim()
-  return num
-}
-
 function drawBankAccounts(ctx: A4Ctx, data: PrintData, startY: number): number {
   const { doc } = ctx
   const banks = data.bank_accounts ?? []
   const wallet = data.payment_wallet
-  if (banks.length === 0 && !wallet?.phone) return startY
+  const lines: string[] = []
+  for (const b of banks) {
+    const line = formatBankAccountLine(b)
+    if (line) lines.push(line)
+  }
+  if (wallet?.provider && wallet.phone && !paymentWalletVisible(data, 'a4')) {
+    const wLine = formatWalletAccountLine(wallet.provider, wallet.phone)
+    if (wLine) lines.push(wLine)
+  }
+  if (lines.length === 0) return startY
 
   let y = startY
   setFont(doc, FONT, 'bold')
   doc.text('CUENTAS BANCARIAS:', MARGIN, y)
-  y += LINE_H + 2
+  y += LINE_H + 1
 
-  const textX = MARGIN + 12
-  const textW = CONTENT_W * 0.62
-
-  for (const b of banks) {
-    const kind = detectBankKind(b.bank_name, b.name)
-    drawBankBadge(doc, kind, MARGIN, y)
-    const bankTitle = (b.bank_name || b.name || 'CUENTA').toUpperCase()
-    const acct = accountNumberOnly(b)
-    setFont(doc, FONT_SM, 'bold')
-    const titlePart = `${bankTitle} `
-    doc.text(titlePart, textX, y, { maxWidth: textW })
-    if (acct) {
-      setFont(doc, FONT_SM, 'normal')
-      const titleW = doc.getTextWidth(titlePart)
-      doc.text(`${currencyLabel(b.currency)} Nº: ${acct}`, textX + titleW, y, { maxWidth: textW - titleW })
-    }
+  setFont(doc, FONT_SM, 'normal')
+  doc.setTextColor(0, 0, 0)
+  for (const line of lines) {
+    doc.text(line, MARGIN, y, { maxWidth: CONTENT_W * 0.72 })
     y += LINE_H
-    const cci = parseCciFromAccount(b)
-    if (cci) {
-      setFont(doc, FONT_SM, 'normal')
-      doc.text(`CCI: ${cci}`, textX, y, { maxWidth: textW })
-      y += LINE_H
-    }
-    y += 1.5
-  }
-
-  if (wallet?.provider && wallet.phone && !paymentWalletVisible(data, 'a4')) {
-    const kind = detectBankKind(wallet.provider)
-    drawBankBadge(doc, kind, MARGIN, y)
-    const label = walletProviderBankLabel(wallet.provider)
-    setFont(doc, FONT_SM, 'bold')
-    const titlePart = `${label} `
-    doc.text(titlePart, textX, y)
-    setFont(doc, FONT_SM, 'normal')
-    doc.text(`Soles Nº: ${wallet.phone}`, textX + doc.getTextWidth(titlePart), y)
-    y += LINE_H + 2
   }
 
   return y + 2
-}
-
-function walletProviderBankLabel(provider: string): string {
-  const p = provider.trim().toLowerCase()
-  if (p === 'yape') return 'YAPE'
-  if (p === 'plin') return 'PLIN'
-  return provider.toUpperCase()
 }
 
 function drawSeller(ctx: A4Ctx, data: PrintData, startY: number): number {
@@ -678,38 +582,49 @@ function drawLegendAndNotes(ctx: A4Ctx, data: PrintData, startY: number, skipLeg
   return y
 }
 
+/** Alto del bloque de pie (GRACIAS → Tukifac → URL → notas), sin margen inferior. */
+function estimateA4FooterContentHeight(data: PrintData): number {
+  let h = LINE_H + 1.2 // GRACIAS
+  h += LINE_H + 0.8 // Tukifac!
+  h += LINE_H + 0.5 // Comprobante emitido a través de…
+  if (isElectronicSunatCode(data.sunat_code)) {
+    h += LINE_H - 0.2 + LINE_H
+  } else if (data.sunat_code === 'QT') {
+    h += LINE_H
+  }
+  if (data.company.website?.trim()) {
+    h += LINE_H * 0.95
+  }
+  return h
+}
+
 async function drawFooter(ctx: A4Ctx, data: PrintData, minY: number) {
   const { doc } = ctx
   const consultBase = data.company.website?.trim()
   const showElectronic = isElectronicSunatCode(data.sunat_code)
   const showQtNote = data.sunat_code === 'QT'
 
-  let y = PAGE_H - FOOTER_BOTTOM_MARGIN
-
-  if (consultBase) {
-    setFont(doc, 6.5, 'normal')
-    const url = consultBase.startsWith('http') ? consultBase.replace(/\/+$/, '') : `https://${consultBase.replace(/\/+$/, '')}`
-    doc.text(`Para consultar el comprobante ingresar a ${url}/buscar`, PAGE_W / 2, y, {
-      align: 'center',
-      maxWidth: CONTENT_W - 10,
-    })
-    y -= LINE_H * 0.95
+  // Pie completo siempre visible (GRACIAS + Tukifac! + URL), sin recortar al borde.
+  const contentH = estimateA4FooterContentHeight(data)
+  const maxStart = PAGE_H - FOOTER_BOTTOM_MARGIN - contentH
+  const afterContent = minY + 6
+  let y: number
+  if (afterContent <= maxStart) {
+    y = maxStart // contenido corto: pie al fondo
+  } else if (afterContent + contentH <= PAGE_H - FOOTER_BOTTOM_MARGIN) {
+    y = afterContent // cabe debajo del QR / términos
+  } else {
+    y = maxStart // priorizar pie entero (URL y marca visibles)
   }
 
-  if (showElectronic) {
-    setFont(doc, FONT_XS)
-    doc.text('Consulte su comprobante en sunat.gob.pe', PAGE_W / 2, y, { align: 'center' })
-    y -= LINE_H - 0.2
-    doc.text('Representación impresa del comprobante electrónico', PAGE_W / 2, y, { align: 'center' })
-    y -= LINE_H
-  } else if (showQtNote) {
-    setFont(doc, FONT_XS)
-    doc.text('Documento comercial — no válido como comprobante de pago SUNAT', PAGE_W / 2, y, {
-      align: 'center',
-      maxWidth: CONTENT_W,
-    })
-    y -= LINE_H
-  }
+  setFont(doc, FONT, 'normal')
+  doc.setTextColor(0, 0, 0)
+  doc.text('GRACIAS POR SU PREFERENCIA', PAGE_W / 2, y, { align: 'center' })
+  y += LINE_H + 1.2
+
+  setFont(doc, FONT_LG, 'bold')
+  doc.text('Tukifac!', PAGE_W / 2, y, { align: 'center' })
+  y += LINE_H + 0.8
 
   const webDisplay = normalizeWebDisplay(data.company.website)
   const prefix = 'Comprobante emitido a través de '
@@ -725,17 +640,36 @@ async function drawFooter(ctx: A4Ctx, data: PrintData, minY: number) {
   doc.setLineWidth(0.15)
   doc.line(urlX, y + 0.6, urlX + doc.getTextWidth(webDisplay), y + 0.6)
   doc.setTextColor(0, 0, 0)
-  y -= LINE_H + 0.8
+  y += LINE_H
 
-  setFont(doc, FONT_LG, 'bold')
-  doc.text('Tukifac!', PAGE_W / 2, y, { align: 'center' })
-  y -= LINE_H + 1.2
+  if (showElectronic) {
+    setFont(doc, FONT_XS)
+    doc.text('Representación impresa del comprobante electrónico', PAGE_W / 2, y, { align: 'center' })
+    y += LINE_H - 0.2
+    doc.text('Consulte su comprobante en sunat.gob.pe', PAGE_W / 2, y, { align: 'center' })
+    y += LINE_H
+  } else if (showQtNote) {
+    setFont(doc, FONT_XS)
+    doc.text('Documento comercial — no válido como comprobante de pago SUNAT', PAGE_W / 2, y, {
+      align: 'center',
+      maxWidth: CONTENT_W,
+    })
+    y += LINE_H
+  }
 
-  setFont(doc, FONT, 'normal')
-  doc.text('GRACIAS POR SU PREFERENCIA', PAGE_W / 2, y, { align: 'center' })
+  if (consultBase) {
+    setFont(doc, 6.5, 'normal')
+    const url = consultBase.startsWith('http')
+      ? consultBase.replace(/\/+$/, '')
+      : `https://${consultBase.replace(/\/+$/, '')}`
+    doc.text(`Para consultar el comprobante ingresar a ${url}/buscar`, PAGE_W / 2, y, {
+      align: 'center',
+      maxWidth: CONTENT_W - 10,
+    })
+    y += LINE_H * 0.95
+  }
 
-  void minY
-  ctx.y = PAGE_H - FOOTER_BOTTOM_MARGIN
+  ctx.y = y
 }
 
 export async function renderReceiptA4(doc: jsPDF, data: PrintData): Promise<void> {

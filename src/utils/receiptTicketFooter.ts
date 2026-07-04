@@ -3,6 +3,7 @@ import QRCode from 'qrcode'
 import type { PrintData } from '@/types/printData'
 import { formatMoney, formatMoneyTicket } from '@/utils/format'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
+import { bankAccountPrintLines } from '@/utils/receiptBankAccounts'
 import { resolvePrintChangeAmount } from '@/utils/receiptTotals'
 import { rasterPxForMm } from '@/utils/receiptPdfRaster'
 
@@ -71,15 +72,9 @@ export function paymentConditionLeftLines(data: PrintData, opts?: PaymentConditi
 }
 
 export function bankAccountTextLines(data: PrintData): string[] {
-  const banks = data.bank_accounts ?? []
-  if (banks.length === 0) return []
-  const lines: string[] = ['INFORMACION BANCARIA']
-  for (const b of banks) {
-    const label = [b.bank_name, b.name].filter(Boolean).join(' - ')
-    if (label) lines.push(label)
-    if (b.account_number) lines.push(`Cta: ${b.account_number} (${b.currency || data.currency})`)
-  }
-  return lines
+  const rows = bankAccountPrintLines(data)
+  if (rows.length === 0) return []
+  return ['INFORMACION BANCARIA', ...rows]
 }
 
 /** Ticket PDF: columna izquierda condición de pago, derecha QR SUNAT. */

@@ -50,7 +50,7 @@ import {
 import type { PrintData } from '@/types/printData'
 import { getTipoComprobanteLabel } from '@/constants/sunat'
 import { SUNAT_MAX_MONTO_CLIENTE_SIN_RUC, SUNAT_RUC_LENGTH } from '@/constants/sunat'
-import { cashbankService, type CashSession, type PaymentMethodRecord } from '@/services/cashbank.service'
+import { cashbankService, type BankAccount, type CashSession, type PaymentMethodRecord } from '@/services/cashbank.service'
 import { calcSaleCheckout } from '@/utils/saleEngine'
 import { calcItem, calcItemWithSubtotalDiscount, getAfectacionGroup, type SunatAfectacionGroup } from '@/utils/taxCalc'
 import { clampIssueDatePeru, getMaxIssueDatePeru, getMinIssueDatePeru, getTodayPeru, isIssueDateAllowed } from '@/utils/datesPeru'
@@ -247,6 +247,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
   const [cashSession, setCashSession] = useState<CashSession | null>(null)
   const [openingCash, setOpeningCash] = useState(false)
   const [cashOpeningBalance, setCashOpeningBalance] = useState(0)
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [printData, setPrintData] = useState<PrintData | null>(null)
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
   const [lastSale, setLastSale] = useState<{ id: number; number: string; total: number } | null>(null)
@@ -335,9 +336,11 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
       cashbankService.listPaymentMethods(),
       cashbankService.getOpenSession(activeBranchId || undefined),
       usersService.listUsers().catch(() => []),
+      cashbankService.listBankAccounts(true).catch(() => [] as BankAccount[]),
     ])
-      .then(([company, seriesList, sunat, customerList, defaultClient, methods, session, users]) => {
+      .then(([company, seriesList, sunat, customerList, defaultClient, methods, session, users, banks]) => {
         setCompanyConfig(company ?? null)
+        setBankAccounts(Array.isArray(banks) ? banks : [])
         // Preferencia global de empresa (no solo la venta actual).
         if (!editingQuotationId) {
           setFiscalForm((prev) => ({
@@ -845,6 +848,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
       paymentConditionCode === 'credit'
         ? creditInstallments.map(r => ({ due_date: r.due_date, amount: r.amount }))
         : undefined,
+    bankAccounts,
   })
 
   const handleSalePreview = async () => {
@@ -2238,7 +2242,9 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
         open={companyEditOpen}
         onClose={() => setCompanyEditOpen(false)}
         company={companyConfig}
-        onSaved={(patch) => setCompanyConfig((prev) => (prev ? { ...prev, ...patch } : prev))}
+        onSaved={(patch) =>
+          setCompanyConfig((prev) => (prev ? { ...prev, ...patch } : ({ ...patch } as CompanyConfig)))
+        }
       />
 
       <SaleReceiptPreviewModal

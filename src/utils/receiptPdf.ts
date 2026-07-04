@@ -13,7 +13,7 @@ import {
   ticketPageWidthMm,
   ticketTopPaddingMm,
 } from '@/utils/receiptTicketPaper'
-import { renderTicketPaymentAndSunatQrRow } from '@/utils/receiptTicketFooter'
+import { bankAccountTextLines, renderTicketPaymentAndSunatQrRow } from '@/utils/receiptTicketFooter'
 import { fitReceiptLogoMm, resolveReceiptLogoForPdf } from '@/utils/receiptLogoPdf'
 import { rasterPxForMm } from '@/utils/receiptPdfRaster'
 import { renderReceiptA4 } from '@/utils/receiptPdfA4'
@@ -392,7 +392,14 @@ export async function generateReceiptPdf(
       addSpace(2)
     }
 
-    renderFiscalFooter(data, addTicketWrapped, addSpace)
+    const bankLines = bankAccountTextLines(data)
+    if (bankLines.length > 0) {
+      addSpace(1)
+      for (const line of bankLines) {
+        addTicketWrapped(line, FONT_SIZE_SM)
+      }
+      addSpace(2)
+    }
 
     if (paymentWalletVisible(data, 'ticket')) {
       y = await renderPaymentWalletBlock(doc, data, 'ticket', y, pageW, margin)
@@ -425,6 +432,9 @@ export async function generateReceiptPdf(
         addTicketWrapped('Documento comercial — no válido como comprobante de pago SUNAT', FONT_SIZE_TICKET_BODY)
       }
     }
+
+    // Términos y condiciones al final del ticket (preview y comprobante emitido).
+    renderFiscalFooter(data, addTicketWrapped, addSpace)
 
     if (options?.preview) {
       applyPreviewWatermark(doc, pageW, y + margin)

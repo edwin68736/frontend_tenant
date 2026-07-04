@@ -1,6 +1,7 @@
 import type { Contact } from '@/services/contacts.service'
 import type { CompanyConfig } from '@/services/company.service'
 import type { PrintData, PrintFiscalContext, PrintItem, PrintPayment } from '@/types/printData'
+import { buildPrintBankAccounts } from '@/utils/receiptBankAccounts'
 import type { DetraccionPreviewResult } from '@/utils/fiscalDetraction'
 import { DETRACCION_PAYMENT_METHOD_CODE } from '@/utils/fiscalDetraction'
 import type { RetentionPreview } from '@/utils/fiscalRetention'
@@ -88,6 +89,15 @@ export type BuildSalePreviewPrintDataInput = {
   sellerName?: string
   paymentConditionCode?: 'cash' | 'credit'
   creditInstallments?: Array<{ due_date: string; amount: number | string }>
+  /** Cuentas bancarias activas del tenant (para filtrar por receipt_bank_account_ids). */
+  bankAccounts?: Array<{
+    id: number
+    name?: string
+    bank_name?: string
+    account_number?: string
+    currency?: string
+    active?: boolean
+  }>
 }
 
 function isoDateToReceiptDate(iso: string): string {
@@ -386,7 +396,7 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
       ruc: companyConfig?.ruc ?? '',
       business_name: companyConfig?.business_name ?? '',
       trade_name: companyTradeName || undefined,
-      address: branchAddr || companyAddress || undefined,
+      address: companyAddress || branchAddr || undefined,
       phone: companyPhone || undefined,
       email: companyEmail || undefined,
       website: companyConfig?.website?.trim() || undefined,
@@ -429,6 +439,13 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
             show_on_ticket: Boolean(companyConfig?.wallet_show_on_ticket),
           }
         : undefined,
+    bank_accounts: (() => {
+      const banks = buildPrintBankAccounts(
+        companyConfig?.receipt_bank_account_ids,
+        input.bankAccounts ?? [],
+      )
+      return banks.length > 0 ? banks : undefined
+    })(),
   }
 }
 

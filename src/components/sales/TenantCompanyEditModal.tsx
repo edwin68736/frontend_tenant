@@ -44,19 +44,20 @@ export function TenantCompanyEditModal({
   const handleSave = async () => {
     setSaving(true)
     try {
-      await companyService.updateConfig({
+      const saved = await companyService.updateConfig({
         trade_name: draft.trade_name.trim(),
         phone: draft.phone.trim(),
         address: draft.address.trim(),
         email: draft.email.trim(),
         additional_notes: draft.additional_notes.trim(),
       })
+      // Reemplazar estado con lo persistido en servidor (no solo el patch local).
       onSaved({
-        trade_name: draft.trade_name.trim(),
-        phone: draft.phone.trim(),
-        address: draft.address.trim(),
-        email: draft.email.trim(),
-        additional_notes: draft.additional_notes.trim(),
+        trade_name: saved.trade_name ?? draft.trade_name.trim(),
+        phone: saved.phone ?? draft.phone.trim(),
+        address: saved.address ?? draft.address.trim(),
+        email: saved.email ?? draft.email.trim(),
+        additional_notes: saved.additional_notes ?? draft.additional_notes.trim(),
       })
       toast.success('Datos de la empresa actualizados')
       onClose()

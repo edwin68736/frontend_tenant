@@ -23,6 +23,8 @@ export interface CompanyConfig {
   wallet_qr_url?: string
   wallet_show_on_a4?: boolean
   wallet_show_on_ticket?: boolean
+  /** JSON string o array de IDs de cuentas visibles en ticket/PDF. */
+  receipt_bank_account_ids?: string | number[]
   detraction_bn_account?: string
   detraction_default_payment_method?: string
 }
@@ -92,13 +94,24 @@ export interface SeriesRow {
 
 export const companyService = {
   getConfig: () => api.get<CompanyConfig>('/api/company/config').then((r) => r.data),
-  updateConfig: (data: Partial<CompanyConfig>) => api.put('/api/company/config', data).then((r) => r.data),
+  updateConfig: (data: Partial<CompanyConfig>) =>
+    api.put('/api/company/config', data).then(async (r) => {
+      const body = r.data as { data?: CompanyConfig } & Partial<CompanyConfig>
+      // Preferir config fresca del servidor (evita UI con datos locales desfasados).
+      if (body?.data && typeof body.data === 'object') return body.data
+      try {
+        return await companyService.getConfig()
+      } catch {
+        return body as CompanyConfig
+      }
+    }),
   updateReceiptWallet: (data: {
     wallet_provider: string
     wallet_phone: string
     wallet_qr_url: string
     wallet_show_on_a4: boolean
     wallet_show_on_ticket: boolean
+    receipt_bank_account_ids?: number[]
   }) => api.put('/api/company/receipt-wallet', data).then((r) => r.data),
 
   /** Sube QR a disco del tenant (VPS: volumen /app/uploads). Devuelve URL /uploads/... */
