@@ -27,6 +27,7 @@ import {
 import SubscriptionHeaderWidget from '@/components/SubscriptionHeaderWidget'
 import HeaderQuickActions from '@/components/HeaderQuickActions'
 import { BranchSwitcherUserMenu } from '@/components/BranchSwitcher'
+import { AppVersionBadge } from '@/components/AppVersionBadge'
 import { canAccessErpSettings } from '@/utils/erpSettingsAccess'
 
 interface Props {
@@ -288,6 +289,9 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
               <Headphones size={16} className="text-gray-500" />
               Soporte
             </a>
+            <div className="mx-1.5 px-3 py-2 border-t border-gray-100">
+              <AppVersionBadge compact />
+            </div>
             <button
               type="button"
               onClick={handleLogout}

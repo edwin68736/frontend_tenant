@@ -3,19 +3,28 @@ import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Settings2, Package, Upload, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Trash2 } from 'lucide-react'
 import { ProductImportModal } from '@/components/products/ProductImportModal'
+import { BulkDeleteProductsPinModal } from '@/components/products/BulkDeleteProductsPinModal'
 import { ProductPresentationsModal } from '@/components/products/ProductPresentationsModal'
 import { ModifierOptionsEditor } from '@/components/modifiers/ModifierOptionsEditor'
-import { productsService, getProductImageUrl, type Product, type Category, type CreateProductInput, type ModifierGroup, type ProductCatalogType, type ProductPresentation } from '@/services/products.service'
+import { productsService, getProductImageUrl, type Product, type Category, type CreateProductInput, type ModifierGroup, type ProductCatalogType, type ProductPresentation, type BulkDeleteProductsResult } from '@/services/products.service'
 import { createEmptyOptionDraft, draftsFromApiOptions, optionDraftsToPayload, validateOptionDrafts, type ModifierOptionDraft } from '@/utils/modifierOptionText'
 import { PRODUCT_UNIT_FORM_OPTIONS, productUnitFormDisplayName, isProductUnitFormCode } from '@/constants/sunatUnits'
 import { inventoryService, type StockByBranch } from '@/services/inventory.service'
 import { companyService } from '@/services/company.service'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { SearchSelect, MIN_OPTIONS_FOR_SEARCH } from '@/components/ui/SearchSelect'
 import { useBarcodeFieldScanner } from '@/hooks/useBarcodeFieldScanner'
 import { BarcodeScannerModal } from '@/components/barcode/BarcodeScannerModal'
+import { useBranch } from '@/contexts/BranchContext'
+import { useAuth } from '@/contexts/AuthContext'
 import { clsx } from 'clsx'
+import {
+  formatExpiryDisplay,
+  getProductExpiryStatus,
+  PRODUCT_EXPIRY_BADGE_CLASS,
+} from '@/utils/productExpiry'
 
 const IGV_TYPES = [
   { code: '10', label: '10 - Gravado IGV' },
@@ -59,6 +68,8 @@ function emptyForm(pageMode: ProductCatalogType): CreateProductInput {
       price_includes_igv: true,
       manage_stock: false,
       min_stock: 0,
+      has_expiry_date: false,
+      expiry_date: null,
       is_restaurant: false,
       category_id: null,
       code: '',
@@ -80,6 +91,8 @@ function emptyForm(pageMode: ProductCatalogType): CreateProductInput {
     price_includes_igv: true,
     manage_stock: false,
     min_stock: 0,
+    has_expiry_date: false,
+    expiry_date: null,
     is_restaurant: false,
     preparation_area: '',
     category_id: null,
@@ -123,6 +136,9 @@ export default function ProductsPage() {
 }
 
 export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) {
+  const { activeBranchId } = useBranch()
+  const { hasPermission } = useAuth()
+  const canDeleteProducts = hasPermission('products.delete')
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [modifierGroups, setModifierGroups] = useState<ModifierGroup[]>([])
@@ -178,6 +194,10 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const [stockByProductId, setStockByProductId] = useState<Record<string, number>>({})
   const [adjustmentProduct, setAdjustmentProduct] = useState<Product | null>(null)
   const [importModalOpen, setImportModalOpen] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
+  const [deletingProduct, setDeletingProduct] = useState(false)
 
   const handleProductCodeScan = useCallback((code: string) => {
     setForm(f => ({ ...f, code: code.trim() }))
@@ -212,8 +232,9 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
 
   const load = () => {
     setLoading(true)
+    const branchId = pageMode === 'product' && activeBranchId > 0 ? activeBranchId : undefined
     return productsService
-      .list(listSearchQuery, catFilter, undefined, !includeInactive, page, perPage, undefined, pageMode)
+      .list(listSearchQuery, catFilter, undefined, !includeInactive, page, perPage, undefined, pageMode, branchId)
       .then(({ data: p, total: t }) => {
         setProducts(p ?? [])
         setTotal(t ?? 0)
@@ -224,7 +245,12 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           productsService.listCategories(),
           productsService.listModifierGroups(),
           productsList.filter(x => x.manage_stock).length > 0
-            ? inventoryService.getStockSummary(productsList.filter(x => x.manage_stock).map(x => x.id)).catch(() => ({}))
+            ? inventoryService
+                .getStockSummary(
+                  productsList.filter(x => x.manage_stock).map(x => x.id),
+                  branchId,
+                )
+                .catch(() => ({}))
             : Promise.resolve({} as Record<string, number>),
         ]) as Promise<[Category[], ModifierGroup[], Record<string, number>]>
       )
@@ -239,7 +265,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
 
   useEffect(() => {
     void load()
-  }, [listSearchQuery, catFilter, includeInactive, page, perPage, pageMode])
+    setSelectedIds(new Set())
+  }, [listSearchQuery, catFilter, includeInactive, page, perPage, pageMode, activeBranchId])
 
   // Refrescar lista y stock al volver a la pestaña (ej. tras hacer transferencias)
   useEffect(() => {
@@ -273,6 +300,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       price_includes_igv: p.price_includes_igv,
       manage_stock: p.manage_stock,
       min_stock: p.min_stock ?? 0,
+      has_expiry_date: p.has_expiry_date ?? false,
+      expiry_date: p.expiry_date ? String(p.expiry_date).slice(0, 10) : null,
       is_restaurant: p.is_restaurant ?? false,
       preparation_area: p.preparation_area ?? '',
       category_id: p.category_id,
@@ -375,6 +404,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       payload.has_modifiers = false
       payload.is_restaurant = false
       payload.min_stock = 0
+      payload.has_expiry_date = false
+      payload.expiry_date = null
       payload.modifier_group_ids = []
     }
     if (!isGravadoIgv(form.igv_affectation_type)) payload.price_includes_igv = false
@@ -385,6 +416,17 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       if (!payload.manage_stock) {
         payload.min_stock = 0
         delete payload.initial_stock
+      }
+      payload.has_expiry_date = Boolean(form.has_expiry_date)
+      if (payload.has_expiry_date) {
+        const raw = (form.expiry_date ?? '').trim()
+        if (!raw) {
+          toast.error('Indique la fecha de vencimiento')
+          return
+        }
+        payload.expiry_date = raw.slice(0, 10)
+      } else {
+        payload.expiry_date = null
       }
       if (payload.has_variants) {
         const pres = presentations.filter((p) => p.name.trim())
@@ -438,6 +480,69 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const handleToggle = async (p: Product) => {
     try { await productsService.toggle(p.id); load() }
     catch { toast.error('Error') }
+  }
+
+  const handleConfirmDeleteProduct = async () => {
+    if (!deleteTarget) return
+    const label = pageMode === 'service' ? 'servicio' : 'producto'
+    setDeletingProduct(true)
+    try {
+      await productsService.delete(deleteTarget.id)
+      toast.success(`${label.charAt(0).toUpperCase()}${label.slice(1)} eliminado`)
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        next.delete(deleteTarget.id)
+        return next
+      })
+      setDeleteTarget(null)
+      load()
+    } catch (e: unknown) {
+      toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error al eliminar')
+    } finally {
+      setDeletingProduct(false)
+    }
+  }
+
+  const selectedCount = selectedIds.size
+  const pageIds = products.map((p) => p.id)
+  const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.has(id))
+  const somePageSelected = pageIds.some((id) => selectedIds.has(id))
+
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAllPage = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (allPageSelected) pageIds.forEach((id) => next.delete(id))
+      else pageIds.forEach((id) => next.add(id))
+      return next
+    })
+  }
+
+  const handleBulkDeleteDone = (result: BulkDeleteProductsResult) => {
+    if (result.deleted.length > 0) {
+      const deletedSet = new Set(result.deleted.map((p) => p.id))
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        deletedSet.forEach((id) => next.delete(id))
+        return next
+      })
+      load()
+    }
+    if (result.deleted.length > 0 && result.blocked.length === 0) {
+      toast.success(`${result.deleted.length} producto(s) eliminado(s)`)
+    } else if (result.deleted.length > 0) {
+      toast.success(`${result.deleted.length} eliminado(s), ${result.blocked.length} bloqueado(s)`)
+    } else if (result.blocked.length > 0) {
+      toast.error('Ningún producto pudo eliminarse')
+    }
   }
 
   const handleSaveModifierGroup = async () => {
@@ -617,6 +722,31 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         </div>
       </div>
 
+      {canDeleteProducts && selectedCount > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 px-1 py-2 rounded-xl border border-red-200 bg-red-50/80">
+          <span className="text-sm font-medium text-red-900">
+            {selectedCount} {pageMode === 'service' ? 'servicio' : 'producto'}{selectedCount === 1 ? '' : 's'} seleccionado{selectedCount === 1 ? '' : 's'}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              className="px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg bg-white text-gray-700 hover:bg-gray-50"
+            >
+              Limpiar
+            </button>
+            <button
+              type="button"
+              onClick={() => setBulkDeleteOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-700"
+            >
+              <Trash2 size={14} />
+              Eliminar seleccionados
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden relative min-h-[200px]">
         {loading && (
           <div
@@ -631,10 +761,24 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           <table className="w-full min-w-[720px] text-xs sm:text-sm">
           <thead className="bg-gray-50 border-b border-gray-100">
             <tr>
+              {canDeleteProducts && (
+                <th className="text-left px-2 py-3 w-9">
+                  <input
+                    type="checkbox"
+                    checked={allPageSelected}
+                    ref={(el) => {
+                      if (el) el.indeterminate = somePageSelected && !allPageSelected
+                    }}
+                    onChange={toggleSelectAllPage}
+                    aria-label="Seleccionar todos en esta página"
+                    className="rounded border-gray-300"
+                  />
+                </th>
+              )}
               {(
                 pageMode === 'service'
                   ? (['Código', 'Servicio', 'Categoría', 'Precio venta', 'IGV', 'Estado', ''] as const)
-                  : (['Código', 'Producto', 'Categoría', 'Precio venta', 'IGV', 'Stock', 'Modif.', 'Estado', ''] as const)
+                  : (['Código', 'Producto', 'Categoría', 'Precio venta', 'IGV', 'Stock', 'Vencimiento', 'Modif.', 'Estado', ''] as const)
               ).map((h) => (
                 <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
                   {h}
@@ -645,6 +789,17 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           <tbody>
             {products.map(p => (
               <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50">
+                {canDeleteProducts && (
+                  <td className="px-2 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(p.id)}
+                      onChange={() => toggleSelect(p.id)}
+                      aria-label={`Seleccionar ${p.name}`}
+                      className="rounded border-gray-300"
+                    />
+                  </td>
+                )}
                 <td className="px-4 py-3 font-mono text-xs text-gray-500">{p.code || '-'}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
@@ -732,6 +887,25 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                       )}
                     </td>
                     <td className="px-4 py-3">
+                      {p.has_expiry_date && p.expiry_date ? (() => {
+                        const dateStr = String(p.expiry_date).slice(0, 10)
+                        const status = getProductExpiryStatus(dateStr)
+                        return (
+                          <span
+                            className={clsx(
+                              'inline-flex flex-col gap-0.5 rounded-lg px-2 py-1 text-xs font-medium',
+                              PRODUCT_EXPIRY_BADGE_CLASS[status],
+                            )}
+                            title={status === 'expired' ? 'Producto vencido' : status === 'critical' ? 'Vence en 7 días o menos' : status === 'warning' ? 'Vence en 30 días o menos' : 'Vigente'}
+                          >
+                            <span>{formatExpiryDisplay(dateStr)}</span>
+                          </span>
+                        )
+                      })() : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
                       {(p as Product).has_modifiers ? (
                         <span className="text-xs bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded">Modificadores</span>
                       ) : (
@@ -748,6 +922,16 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                     </button>
                     <button onClick={() => openEdit(p)} className="p-1.5 text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] rounded-lg" title="Editar"><Pencil size={14} /></button>
                     <button onClick={() => openPanel(p)} className="p-1.5 text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] rounded-lg" title="Administrar"><Settings2 size={14} /></button>
+                    {canDeleteProducts && (
+                      <button
+                        type="button"
+                        onClick={() => setDeleteTarget(p)}
+                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
+                        title="Eliminar"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -1046,6 +1230,33 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 )}
               </div>
             )}
+            <label className="flex items-center gap-2.5 cursor-pointer touch-manipulation min-h-[2.75rem] sm:min-h-0 sm:col-span-2">
+              <input
+                type="checkbox"
+                checked={form.has_expiry_date ?? false}
+                onChange={(e) => {
+                  const on = e.target.checked
+                  setForm(f => ({
+                    ...f,
+                    has_expiry_date: on,
+                    expiry_date: on ? f.expiry_date ?? '' : null,
+                  }))
+                }}
+                className="rounded w-4 h-4 shrink-0"
+              />
+              <span className="text-sm text-gray-700">Tiene fecha de vencimiento</span>
+            </label>
+            {form.has_expiry_date && (
+              <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 min-w-0 sm:col-span-2">
+                <span className="text-xs text-gray-600 shrink-0">Vence:</span>
+                <input
+                  type="date"
+                  className={`${PRODUCT_FORM_INPUT} sm:max-w-xs`}
+                  value={(form.expiry_date ?? '').slice(0, 10)}
+                  onChange={(e) => setF('expiry_date', e.target.value || null)}
+                />
+              </div>
+            )}
             <label className="flex items-center gap-2.5 cursor-pointer touch-manipulation min-h-[2.75rem] sm:min-h-0">
               <input type="checkbox" checked={form.is_restaurant ?? false} onChange={(e) => setF('is_restaurant', e.target.checked)} className="rounded w-4 h-4 shrink-0" />
               <span className="text-sm text-gray-700">Producto de restaurante</span>
@@ -1247,10 +1458,12 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       {adjustmentProduct && (
         <AdjustmentModal
           product={adjustmentProduct}
+          defaultBranchId={activeBranchId}
           onClose={() => setAdjustmentProduct(null)}
           onSaved={() => {
             if (adjustmentProduct?.id) {
-              inventoryService.getStockSummary([adjustmentProduct.id]).then(summary =>
+              const branchId = activeBranchId > 0 ? activeBranchId : undefined
+              inventoryService.getStockSummary([adjustmentProduct.id], branchId).then(summary =>
                 setStockByProductId(prev => ({ ...prev, ...summary }))
               )
             }
@@ -1302,6 +1515,12 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                     <p><span className="text-gray-500">Precio venta:</span> S/ {Number(panelDetail.data.sale_price).toFixed(2)}</p>
                     <p><span className="text-gray-500">Control stock:</span> {panelDetail.data.manage_stock ? 'Sí' : 'No'}</p>
                     {panelDetail.data.manage_stock && <p><span className="text-gray-500">Stock mínimo:</span> {panelDetail.data.min_stock}</p>}
+                    {panelDetail.data.has_expiry_date && panelDetail.data.expiry_date && (
+                      <p>
+                        <span className="text-gray-500">Vencimiento:</span>{' '}
+                        {formatExpiryDisplay(String(panelDetail.data.expiry_date).slice(0, 10))}
+                      </p>
+                    )}
                     <p><span className="text-gray-500">Series/lotes:</span> {panelDetail.data.manage_series ? 'Sí' : 'No'}</p>
                     <p><span className="text-gray-500">Modificadores:</span> {panelDetail.data.has_modifiers ? 'Sí' : 'No'}</p>
                     <button
@@ -1424,6 +1643,38 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         }}
       />
 
+      {canDeleteProducts && (
+        <BulkDeleteProductsPinModal
+          open={bulkDeleteOpen}
+          selectedCount={selectedCount}
+          onClose={() => setBulkDeleteOpen(false)}
+          onConfirm={async (reason, pin) =>
+            productsService.bulkDeleteCatalog([...selectedIds], pin, reason)
+          }
+          onDone={handleBulkDeleteDone}
+        />
+      )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => {
+          if (!deletingProduct) setDeleteTarget(null)
+        }}
+        onConfirm={handleConfirmDeleteProduct}
+        title={pageMode === 'service' ? 'Eliminar servicio' : 'Eliminar producto'}
+        message={
+          deleteTarget ? (
+            <p>
+              ¿Eliminar <strong>{deleteTarget.name}</strong>? Esta acción no se puede deshacer.
+            </p>
+          ) : null
+        }
+        confirmLabel="Eliminar"
+        cancelLabel="Cancelar"
+        variant="danger"
+        loading={deletingProduct}
+      />
+
       <BarcodeScannerModal
         open={codeBarcodeScan.cameraScannerOpen}
         onClose={codeBarcodeScan.closeScanner}
@@ -1446,9 +1697,19 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   )
 }
 
-function AdjustmentModal({ product, onClose, onSaved }: { product: Product; onClose: () => void; onSaved: () => void }) {
+function AdjustmentModal({
+  product,
+  defaultBranchId,
+  onClose,
+  onSaved,
+}: {
+  product: Product
+  defaultBranchId: number
+  onClose: () => void
+  onSaved: () => void
+}) {
   const [branches, setBranches] = useState<{ id: number; name: string }[]>([])
-  const [branchId, setBranchId] = useState<number>(0)
+  const [branchId, setBranchId] = useState<number>(defaultBranchId)
   const [type, setType] = useState<'in' | 'out'>('in')
   const [quantity, setQuantity] = useState(product.manage_series ? 1 : 1)
   const [notes, setNotes] = useState('')
@@ -1461,9 +1722,13 @@ function AdjustmentModal({ product, onClose, onSaved }: { product: Product; onCl
     companyService.listBranches().then(b => {
       const list = (b ?? []) as { id: number; name: string }[]
       setBranches(list)
-      if (list.length > 0 && branchId === 0) setBranchId(list[0].id)
+      if (defaultBranchId > 0) {
+        setBranchId(defaultBranchId)
+      } else if (list.length > 0 && branchId === 0) {
+        setBranchId(list[0].id)
+      }
     })
-  }, [])
+  }, [defaultBranchId])
 
   useEffect(() => {
     if (!branchId || type !== 'out' || !product.manage_series) return

@@ -493,8 +493,10 @@ function POSContent() {
       const sess = await cashbankService.openSession({ branch_id: branchId, opening_balance: openingBalance })
       setSession(sess)
       toast.success('Caja abierta')
-    } catch { toast.error('Error abriendo caja') }
-    finally { setOpeningSession(false) }
+    } catch (e: unknown) {
+      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error
+      toast.error(msg ?? 'Error abriendo caja')
+    } finally { setOpeningSession(false) }
   }
 
   const handleCheckout = async () => {

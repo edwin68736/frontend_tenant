@@ -86,6 +86,12 @@ export interface DashboardAnalytics {
     quantity: number
     min_stock: number
   }>
+  expiring_products: Array<{
+    product_id: number
+    product_name: string
+    expiry_date: string
+    days_until_expiry: number
+  }>
   recent_sales: Array<{
     id: number
     doc_type: string
@@ -140,6 +146,7 @@ const emptyAnalytics = (): DashboardAnalytics => ({
   by_sale_status: [],
   by_product_category: [],
   low_stock_products: [],
+  expiring_products: [],
   recent_sales: [],
 })
 
@@ -176,6 +183,7 @@ export const dashboardService = {
       by_sale_status: d.by_sale_status ?? [],
       by_product_category: d.by_product_category ?? [],
       low_stock_products: d.low_stock_products ?? [],
+      expiring_products: d.expiring_products ?? [],
       recent_sales: d.recent_sales ?? [],
     }
   },

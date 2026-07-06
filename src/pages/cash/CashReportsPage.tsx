@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Filter } from 'lucide-react'
+import { FileDown, Filter } from 'lucide-react'
 import RequireModule from '@/components/ui/RequireModule'
 import {
   cashbankService,
@@ -14,8 +14,36 @@ import { usersService } from '@/services/users.service'
 import type { TenantUser } from '@/services/users.service'
 import { formatPaymentMethodLabel, isDetractionPaymentMethod } from '@/utils/paymentMethodLabel'
 import { DETRACCION_PAYMENT_METHOD_NAME } from '@/utils/fiscalDetraction'
+import { downloadCashSessionReportPdf } from '@/utils/cashSessionReportPdf'
+import { downloadCashMovementsReportPdf } from '@/utils/cashMovementsReportPdf'
 
 type Branch = { id: number; name: string }
+
+function isEfectivo(m: string): boolean {
+  const c = (m?.toLowerCase() ?? '')
+  return c === 'efectivo' || c === 'cash'
+}
+
+function computeMovTotals(movements: MovementReportRow[]) {
+  let ingEfe = 0
+  let egreEfe = 0
+  let ingBan = 0
+  let egreBan = 0
+  movements.forEach(row => {
+    const ef = isEfectivo(row.payment_method)
+    if (row.amount >= 0) {
+      if (ef) ingEfe += row.amount
+      else ingBan += row.amount
+    } else {
+      if (ef) egreEfe += Math.abs(row.amount)
+      else egreBan += Math.abs(row.amount)
+    }
+  })
+  return {
+    efectivo: { ingresos: ingEfe, egresos: egreEfe, saldo: ingEfe - egreEfe },
+    bancos: { ingresos: ingBan, egresos: egreBan, saldo: ingBan - egreBan },
+  }
+}
 
 export default function CashReportsPage() {
   return (
@@ -104,27 +132,84 @@ function CashReportsContent() {
 
   const formatMoney = (n: number) => `S/ ${Number(n).toFixed(2)}`
   const methodLabel = (m: string) => formatPaymentMethodLabel(m)
-  const isEfectivo = (m: string) => (m?.toLowerCase() ?? '') === 'efectivo' || m?.toLowerCase() === 'cash'
   const directIncomeRows = (report?.income_detail ?? []).filter(
     (row) => row.type === 'venta' && !isDetractionPaymentMethod(row.payment_method),
   )
   const spotTotal = report?.detraction?.total_spot ?? report?.totals.total_detraccion_spot ?? 0
   const directSalesTotal = report?.totals.total_sales_direct ?? report?.totals.total_sales ?? 0
   const commercialTotal = report?.totals.total_sales_commercial ?? directSalesTotal + spotTotal
-  const movTotals = (() => {
-    let ingEfe = 0, egreEfe = 0, ingBan = 0, egreBan = 0
-    movements.forEach(row => {
-      const ef = isEfectivo(row.payment_method)
-      if (row.amount >= 0) {
-        if (ef) ingEfe += row.amount
-        else ingBan += row.amount
-      } else {
-        if (ef) egreEfe += Math.abs(row.amount)
-        else egreBan += Math.abs(row.amount)
-      }
-    })
-    return { efectivo: { ingresos: ingEfe, egresos: egreEfe, saldo: ingEfe - egreEfe }, bancos: { ingresos: ingBan, egresos: egreBan, saldo: ingBan - egreBan } }
-  })()
+  const movTotals = computeMovTotals(movements)
+
+  const buildFiltersLabel = () => {
+    const parts: string[] = []
+    if (filters.branch_id) {
+      parts.push(`Sucursal: ${branches.find(b => b.id === filters.branch_id)?.name ?? filters.branch_id}`)
+    }
+    if (filters.user_id) {
+      parts.push(`Usuario: ${users.find(u => u.id === filters.user_id)?.name ?? filters.user_id}`)
+    }
+    if (filters.sessionId || filters.session_id) {
+      parts.push(`Sesión: #${filters.sessionId ?? filters.session_id}`)
+    } else {
+      if (filters.date_from) parts.push(`Desde: ${filters.date_from}`)
+      if (filters.date_to) parts.push(`Hasta: ${filters.date_to}`)
+    }
+    if (filters.type) parts.push(`Tipo: ${filters.type === 'income' ? 'Ingreso' : 'Egreso'}`)
+    return parts.length ? parts.join(' · ') : 'Sin filtros'
+  }
+
+  const buildMovementsParams = (): MovementsReportParams => {
+    const params: MovementsReportParams = { per_page: 0 }
+    if (filters.branch_id) params.branch_id = filters.branch_id
+    if (filters.user_id) params.user_id = filters.user_id
+    if (filters.date_from) params.date_from = filters.date_from
+    if (filters.date_to) params.date_to = filters.date_to
+    if (filters.session_id) params.session_id = filters.session_id
+    if (filters.type) params.type = filters.type
+    return params
+  }
+
+  const exportPdfResumen = async () => {
+    if (!filters.sessionId) {
+      toast.error('Selecciona una sesión de caja para exportar el resumen')
+      return
+    }
+    setLoading(true)
+    try {
+      const r = report ?? (await cashbankService.getSessionReport(filters.sessionId))
+      downloadCashSessionReportPdf(r)
+      toast.success('PDF descargado')
+    } catch {
+      toast.error('No se pudo exportar el PDF')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const exportPdfMovimientos = async () => {
+    setLoading(true)
+    try {
+      const { data: rows, detraction } = await cashbankService.listMovementsReport(buildMovementsParams())
+      const movRows = rows ?? []
+      downloadCashMovementsReportPdf({
+        filtersLabel: buildFiltersLabel(),
+        movTotals: computeMovTotals(movRows),
+        detractionMovements: detraction?.data ?? [],
+        movements: movRows,
+        methodLabel: formatPaymentMethodLabel,
+      })
+      toast.success('PDF descargado')
+    } catch {
+      toast.error('No se pudo exportar el PDF')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const exportPdf = () => {
+    if (tab === 'resumen') void exportPdfResumen()
+    else void exportPdfMovimientos()
+  }
 
   return (
     <div className="space-y-4">
@@ -238,6 +323,15 @@ function CashReportsContent() {
             className="px-4 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50"
           >
             {loading ? '...' : 'Aplicar'}
+          </button>
+          <button
+            type="button"
+            onClick={exportPdf}
+            disabled={loading || (tab === 'resumen' && !filters.sessionId)}
+            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50"
+          >
+            <FileDown size={14} />
+            Exportar PDF
           </button>
         </div>
       </div>

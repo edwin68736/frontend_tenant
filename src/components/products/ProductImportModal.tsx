@@ -21,6 +21,7 @@ import {
   type ImportValidationResult,
   type ParsedCatalogImportRow,
 } from '@/utils/catalogProductImport'
+import { formatExpiryDisplay } from '@/utils/productExpiry'
 
 type Props = {
   open: boolean
@@ -122,7 +123,12 @@ export function ProductImportModal({ open, onClose, onImported }: Props) {
     setStep('importing')
     setImportProgress({ done: 0, total: validation.rows.length })
     try {
-      const result = await importCatalogProducts(validation.rows, selectedBranchId, setImportProgress)
+      const result = await importCatalogProducts(
+        validation.rows,
+        selectedBranchId,
+        setImportProgress,
+        validation.hasExpiryColumn,
+      )
       setImportResult(result)
       setStep('done')
       if (result.created > 0 || result.updated > 0) {
@@ -404,6 +410,11 @@ export function ProductImportModal({ open, onClose, onImported }: Props) {
                 </ul>
               </li>
               <li>
+                <strong>fecha_vencimiento</strong> (opcional): formato <em>YYYY-MM-DD</em> o{' '}
+                <em>DD/MM/YYYY</em>. Si la celda va vacía, el producto quedará sin fecha de vencimiento.
+                Si la columna no está en el Excel, no se modifica el vencimiento de productos existentes.
+              </li>
+              <li>
                 <strong>stock_inicial</strong>: solo aplica si <strong>control_stock</strong> es{' '}
                 <em>si</em>; el kardex se registra en la sucursal seleccionada.
               </li>
@@ -454,20 +465,34 @@ function ValidationSummary({ validation }: { validation: ImportValidationResult 
         </ul>
       )}
       {validation.rows.length > 0 && (
-        <PreviewTable rows={validation.rows.slice(0, 12)} total={validation.rows.length} />
+        <PreviewTable
+          rows={validation.rows.slice(0, 12)}
+          total={validation.rows.length}
+          showExpiry={validation.hasExpiryColumn}
+        />
       )}
     </div>
   )
 }
 
-function PreviewTable({ rows, total }: { rows: ParsedCatalogImportRow[]; total: number }) {
+function PreviewTable({
+  rows,
+  total,
+  showExpiry,
+}: {
+  rows: ParsedCatalogImportRow[]
+  total: number
+  showExpiry: boolean
+}) {
+  const headers = ['#', 'Nombre', 'P. venta', 'P. compra', 'Afect. IGV', 'Rest.', 'Control stock', 'Stock']
+  if (showExpiry) headers.push('Vencimiento')
   return (
     <>
       <div className="overflow-x-auto border border-gray-200 rounded-xl">
         <table className="w-full text-xs">
           <thead className="bg-gray-50">
             <tr>
-              {['#', 'Nombre', 'P. venta', 'P. compra', 'Afect. IGV', 'Rest.', 'Control stock', 'Stock'].map((h) => (
+              {headers.map((h) => (
                 <th key={h} className="text-left px-2 py-2 font-semibold text-gray-600">
                   {h}
                 </th>
@@ -492,6 +517,11 @@ function PreviewTable({ rows, total }: { rows: ParsedCatalogImportRow[]; total: 
                 <td className="px-2 py-1.5">{r.es_restaurante ? 'sí' : 'no'}</td>
                 <td className="px-2 py-1.5">{r.control_stock ? 'sí' : 'no'}</td>
                 <td className="px-2 py-1.5">{r.stock_inicial > 0 ? r.stock_inicial : '—'}</td>
+                {showExpiry && (
+                  <td className="px-2 py-1.5">
+                    {r.fecha_vencimiento ? formatExpiryDisplay(r.fecha_vencimiento) : '—'}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>

@@ -230,13 +230,16 @@ export const inventoryService = {
   reverseTransfer: (id: number) =>
     api.post<{ ok: boolean; message?: string }>(`/api/inventory/transfers/${id}/reverse`).then(r => r.data),
 
-  /** Stock total por producto (suma todas las sucursales). product_ids = [1,2,3] → { "1": 15, "2": 0 } */
-  getStockSummary: (productIds: number[]) =>
+  /** Stock por producto. Con branch_id: solo esa sucursal; sin él: suma todas. product_ids → { "1": 15 } */
+  getStockSummary: (productIds: number[], branch_id?: number) =>
     productIds.length === 0
       ? Promise.resolve({})
       : api
           .get<{ data: Record<string, number> }>('/api/inventory/stock-summary', {
-            params: { product_ids: productIds.join(',') },
+            params: {
+              product_ids: productIds.join(','),
+              ...(branch_id && branch_id > 0 ? { branch_id } : {}),
+            },
           })
           .then(r => r.data.data ?? {}),
 

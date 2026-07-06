@@ -46,6 +46,7 @@ export const CATALOG_IMPORT_COLUMNS = [
   'es_restaurante',
   'area_preparacion',
   'tipo',
+  'fecha_vencimiento',
 ] as const
 
 const HEADER_ALIASES: Record<string, (typeof CATALOG_IMPORT_COLUMNS)[number]> = {
@@ -94,6 +95,12 @@ const HEADER_ALIASES: Record<string, (typeof CATALOG_IMPORT_COLUMNS)[number]> = 
   preparation_area: 'area_preparacion',
   tipo: 'tipo',
   type: 'tipo',
+  fecha_vencimiento: 'fecha_vencimiento',
+  fecha_de_vencimiento: 'fecha_vencimiento',
+  vencimiento: 'fecha_vencimiento',
+  expiry_date: 'fecha_vencimiento',
+  expiry: 'fecha_vencimiento',
+  expiration_date: 'fecha_vencimiento',
 }
 
 function normalizeOptionalPreparationArea(value: unknown): string {
@@ -206,6 +213,13 @@ export const CATALOG_PRODUCT_IMPORT_SCHEMA: SchemaDefinition = {
     },
     enum: ['product', 'service'],
   },
+  /** Opcional: vacío = sin vencimiento. Formato YYYY-MM-DD o DD/MM/YYYY. */
+  fecha_vencimiento: {
+    column: 'fecha_vencimiento',
+    type: 'string',
+    max: 32,
+    transform: (v) => String(v ?? '').trim(),
+  },
 }
 
 export type ParsedCatalogImportRow = {
@@ -225,6 +239,8 @@ export type ParsedCatalogImportRow = {
   es_restaurante: boolean
   area_preparacion: string
   tipo: string
+  /** YYYY-MM-DD cuando la columna está en el Excel y la celda tiene valor; null = sin vencimiento */
+  fecha_vencimiento?: string | null
 }
 
 export type ImportRowIssue = {
@@ -239,6 +255,8 @@ export type ImportValidationResult = {
   rows: ParsedCatalogImportRow[]
   errors: ImportRowIssue[]
   totalRows: number
+  /** true si el Excel incluye la columna fecha_vencimiento */
+  hasExpiryColumn: boolean
 }
 
 function normalizeHeader(raw: string): string {
@@ -262,6 +280,62 @@ function parseExcelBoolean(value: unknown): boolean {
   if (['1', 'si', 'yes', 'true', 'verdadero', 's', 'y'].includes(s)) return true
   if (['0', 'no', 'false', 'falso', 'n'].includes(s)) return false
   return Boolean(value)
+}
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0')
+}
+
+function formatYmdLocal(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+}
+
+function isValidYmd(y: number, m: number, d: number): boolean {
+  const dt = new Date(y, m - 1, d)
+  return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d
+}
+
+function excelSerialToDate(serial: number): Date {
+  const utcDays = Math.floor(serial - 25569)
+  const utcMs = utcDays * 86_400_000
+  const d = new Date(utcMs)
+  return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+}
+
+/** Vacío → null (sin vencimiento). Válido → YYYY-MM-DD. Inválido → null y mensaje de error. */
+export function parseCatalogExpiryDate(value: unknown): { date: string | null; error?: string } {
+  if (value == null || value === '') return { date: null }
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return { date: formatYmdLocal(value) }
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value >= 30_000 && value <= 120_000) {
+      return { date: formatYmdLocal(excelSerialToDate(value)) }
+    }
+    return { date: null, error: 'fecha_vencimiento inválida (use YYYY-MM-DD o DD/MM/YYYY)' }
+  }
+  const raw = String(value).trim()
+  if (!raw || ['-', '—', 'na', 'n/a', 'sin vencimiento', 'none'].includes(raw.toLowerCase())) {
+    return { date: null }
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const [y, m, d] = raw.split('-').map(Number)
+    if (!isValidYmd(y, m, d)) {
+      return { date: null, error: 'fecha_vencimiento inválida (use YYYY-MM-DD)' }
+    }
+    return { date: raw }
+  }
+  const dmy = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/)
+  if (dmy) {
+    const day = Number(dmy[1])
+    const month = Number(dmy[2])
+    const year = Number(dmy[3])
+    if (!isValidYmd(year, month, day)) {
+      return { date: null, error: 'fecha_vencimiento inválida (use DD/MM/YYYY)' }
+    }
+    return { date: `${year}-${pad2(month)}-${pad2(day)}` }
+  }
+  return { date: null, error: 'fecha_vencimiento inválida (use YYYY-MM-DD o DD/MM/YYYY)' }
 }
 
 function downloadXlsx(bytes: Uint8Array, filename: string): void {
@@ -293,6 +367,7 @@ export async function downloadCatalogProductTemplate(): Promise<void> {
     'no',
     '',
     'product',
+    '2026-12-31',
   ]
   const bytes = await writeXlsx({
     sheets: [{ name: 'Productos', rows: [headerRow, exampleRow] }],
@@ -305,12 +380,13 @@ export async function validateCatalogProductExcel(file: File): Promise<ImportVal
   const wb = await readXlsx(new Uint8Array(buf))
   const sheet = wb.sheets[0]
   if (!sheet?.rows?.length) {
-    return { rows: [], errors: [{ row: 0, column: '', field: '', message: 'El archivo está vacío', value: null }], totalRows: 0 }
+    return { rows: [], errors: [{ row: 0, column: '', field: '', message: 'El archivo está vacío', value: null }], totalRows: 0, hasExpiryColumn: false }
   }
 
   const rawRows = sheet.rows as CellValue[][]
   const headerCells = rawRows[0] ?? []
   const normalizedHeaders = headerCells.map((c) => normalizeHeader(String(c ?? '')))
+  const hasExpiryColumn = normalizedHeaders.includes('fecha_vencimiento')
   const missingRequired = ['nombre', 'precio_venta'].filter((col) => !normalizedHeaders.includes(col))
   if (missingRequired.length > 0) {
     return {
@@ -323,6 +399,7 @@ export async function validateCatalogProductExcel(file: File): Promise<ImportVal
         value: normalizedHeaders.join(', '),
       }],
       totalRows: 0,
+      hasExpiryColumn,
     }
   }
 
@@ -335,7 +412,7 @@ export async function validateCatalogProductExcel(file: File): Promise<ImportVal
 
   const parsed: ParsedCatalogImportRow[] = []
   const extraErrors: ImportRowIssue[] = (schemaErrors as HucreRowError[])
-    .filter((e) => e.field !== 'area_preparacion' && e.field !== 'precio_compra' && e.field !== 'afectacion_igv')
+    .filter((e) => e.field !== 'area_preparacion' && e.field !== 'precio_compra' && e.field !== 'afectacion_igv' && e.field !== 'fecha_vencimiento')
     .map((e) => ({
     row: e.row,
     column: e.column,
@@ -401,6 +478,22 @@ export async function validateCatalogProductExcel(file: File): Promise<ImportVal
         value: 'si',
       })
     }
+    let fechaVencimiento: string | null | undefined
+    if (hasExpiryColumn) {
+      const expiryCell = row.fecha_vencimiento
+      const parsedExpiry = parseCatalogExpiryDate(expiryCell)
+      if (parsedExpiry.error) {
+        extraErrors.push({
+          row: rowNumber,
+          column: 'fecha_vencimiento',
+          field: 'fecha_vencimiento',
+          message: parsedExpiry.error,
+          value: expiryCell,
+        })
+        return
+      }
+      fechaVencimiento = parsedExpiry.date
+    }
     parsed.push({
       rowNumber,
       nombre: String(row.nombre ?? '').trim(),
@@ -417,15 +510,16 @@ export async function validateCatalogProductExcel(file: File): Promise<ImportVal
       es_restaurante: esRestaurante,
       area_preparacion: normalizeOptionalPreparationArea(row.area_preparacion),
       tipo,
+      ...(hasExpiryColumn ? { fecha_vencimiento: fechaVencimiento ?? null } : {}),
     })
   })
 
-  return { rows: parsed, errors: extraErrors, totalRows: parsed.length }
+  return { rows: parsed, errors: extraErrors, totalRows: parsed.length, hasExpiryColumn }
 }
 
 const BULK_CHUNK_SIZE = 500
 
-function rowToBulkPayload(row: ParsedCatalogImportRow): BulkImportItemPayload {
+function rowToBulkPayload(row: ParsedCatalogImportRow, hasExpiryColumn: boolean): BulkImportItemPayload {
   return {
     row_number: row.rowNumber,
     name: row.nombre,
@@ -442,6 +536,7 @@ function rowToBulkPayload(row: ParsedCatalogImportRow): BulkImportItemPayload {
     is_restaurant: row.es_restaurante,
     preparation_area: row.es_restaurante && row.area_preparacion ? row.area_preparacion : undefined,
     type: row.tipo,
+    ...(hasExpiryColumn ? { expiry_date: row.fecha_vencimiento ?? '' } : {}),
   }
 }
 
@@ -450,7 +545,8 @@ export type ImportProgress = { done: number; total: number; current?: string }
 export async function importCatalogProducts(
   rows: ParsedCatalogImportRow[],
   branchId: number,
-  onProgress?: (p: ImportProgress) => void
+  onProgress?: (p: ImportProgress) => void,
+  hasExpiryColumn = false,
 ): Promise<{
   created: number
   updated: number
@@ -466,7 +562,7 @@ export async function importCatalogProducts(
     const chunk = rows.slice(offset, offset + BULK_CHUNK_SIZE)
     onProgress?.({ done: offset, total: rows.length, current: chunk[0]?.nombre })
     try {
-      const res = await productsService.bulkImportCatalog(chunk.map(rowToBulkPayload), branchId)
+      const res = await productsService.bulkImportCatalog(chunk.map((r) => rowToBulkPayload(r, hasExpiryColumn)), branchId)
       created += res.created
       updated += res.updated ?? 0
       stockRegistered += res.stock_registered

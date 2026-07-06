@@ -22,6 +22,7 @@ import {
   Users,
   Package,
   AlertTriangle,
+  CalendarClock,
   Building2,
   UserCircle,
   FileCheck,
@@ -48,6 +49,11 @@ import {
 import { dashboardService, type DashboardAnalytics } from '@/services/dashboard.service'
 import { companyService } from '@/services/company.service'
 import { formatDisplayDatePeru, getTodayPeru } from '@/utils/datesPeru'
+import {
+  formatExpiryDisplay,
+  getProductExpiryStatus,
+  PRODUCT_EXPIRY_BADGE_CLASS,
+} from '@/utils/productExpiry'
 
 const ZONE = 'America/Lima'
 
@@ -877,7 +883,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Bottom widgets */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-4">
         <div className="rounded-3xl border border-amber-100 bg-gradient-to-b from-amber-50/80 to-white p-5 shadow-sm">
           <div className="mb-3 flex items-center gap-2">
             <AlertTriangle className="text-amber-600" size={18} />
@@ -894,6 +900,33 @@ export default function DashboardPage() {
             ))}
             {!loading && !(analytics?.low_stock_products ?? []).length && (
               <li className="text-center text-slate-500">Todo en orden</li>
+            )}
+          </ul>
+        </div>
+
+        <div className="rounded-3xl border border-orange-100 bg-gradient-to-b from-orange-50/80 to-white p-5 shadow-sm">
+          <div className="mb-3 flex items-center gap-2">
+            <CalendarClock className="text-orange-600" size={18} />
+            <h2 className="text-sm font-bold text-orange-950">Próximos a vencer</h2>
+          </div>
+          <ul className="space-y-2 text-sm">
+            {(analytics?.expiring_products ?? []).map((p) => {
+              const dateStr = String(p.expiry_date).slice(0, 10)
+              const status = getProductExpiryStatus(dateStr)
+              return (
+                <li
+                  key={p.product_id}
+                  className="flex justify-between gap-2 rounded-xl bg-white/80 px-3 py-2 ring-1 ring-orange-100"
+                >
+                  <span className="truncate font-medium text-slate-800">{p.product_name}</span>
+                  <span className={`shrink-0 rounded-lg px-2 py-0.5 text-xs font-semibold ${PRODUCT_EXPIRY_BADGE_CLASS[status]}`}>
+                    {formatExpiryDisplay(dateStr)}
+                  </span>
+                </li>
+              )
+            })}
+            {!loading && !(analytics?.expiring_products ?? []).length && (
+              <li className="text-center text-slate-500">Sin vencimientos próximos</li>
             )}
           </ul>
         </div>

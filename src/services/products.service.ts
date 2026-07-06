@@ -22,6 +22,10 @@ export interface Product {
   has_variants?: boolean
   has_modifiers?: boolean
   min_stock: number
+  /** Si el producto lleva control de fecha de vencimiento. */
+  has_expiry_date?: boolean
+  /** YYYY-MM-DD cuando has_expiry_date es true. */
+  expiry_date?: string | null
   is_restaurant: boolean
   active: boolean
   category_id: number | null
@@ -73,6 +77,8 @@ export interface CreateProductInput {
   has_variants?: boolean
   has_modifiers?: boolean
   min_stock?: number
+  has_expiry_date?: boolean
+  expiry_date?: string | null
   is_restaurant?: boolean
   preparation_area?: string
   /** Solo en alta: cantidad inicial de inventario (requiere manage_stock). */
@@ -119,6 +125,8 @@ export interface BulkImportItemPayload {
   is_restaurant?: boolean
   preparation_area?: string
   type?: string
+  /** YYYY-MM-DD; cadena vacía = sin vencimiento. Omitir si la columna no está en el Excel (update conserva el actual). */
+  expiry_date?: string
 }
 
 export interface BulkImportResultPayload {
@@ -126,6 +134,22 @@ export interface BulkImportResultPayload {
   updated?: number
   stock_registered: number
   failed: { row: number; name: string; error: string }[]
+}
+
+export interface BulkDeleteProductRef {
+  id: number
+  name: string
+}
+
+export interface BulkDeleteBlockedItem {
+  id: number
+  name: string
+  reasons: string[]
+}
+
+export interface BulkDeleteProductsResult {
+  deleted: BulkDeleteProductRef[]
+  blocked: BulkDeleteBlockedItem[]
 }
 
 export const productsService = {
@@ -139,7 +163,9 @@ export const productsService = {
     per_page?: number,
     manage_stock_only?: boolean,
     /** Filtra por tipo en catálogo (product | service). Sin valor: todos. */
-    catalog_type?: ProductCatalogType
+    catalog_type?: ProductCatalogType,
+    /** Filtra catálogo/stock por sucursal activa. */
+    branch_id?: number
   ) =>
     api
       .get<{ data: Product[]; total?: number }>('/api/products', {
@@ -152,6 +178,7 @@ export const productsService = {
           per_page,
           manage_stock_only,
           type: catalog_type,
+          ...(branch_id && branch_id > 0 ? { branch_id } : {}),
         },
       })
       .then(r => ({
@@ -228,6 +255,15 @@ export const productsService = {
 
   delete: (id: number) =>
     api.delete(`/api/products/${id}`).then(r => r.data),
+
+  bulkDeleteCatalog: (productIds: number[], pin: string, reason: string) =>
+    api
+      .post<BulkDeleteProductsResult>('/api/products/bulk-delete/catalog', {
+        product_ids: productIds,
+        pin,
+        reason,
+      })
+      .then((r) => r.data),
 
   listCategories: () =>
     api.get<{ data: Category[] }>('/api/categories').then(r => r.data.data ?? []),
