@@ -20,8 +20,9 @@ import {
   SUNAT_MAX_MONTO_CLIENTE_SIN_RUC,
   SUNAT_RUC_LENGTH,
 } from '@/constants/sunat'
+import { isBonificacionGravada } from '@/constants/igvAffectation'
 import { calcSaleCheckout } from '@/utils/saleEngine'
-import { calcItem, getAfectacionGroup, type SunatAfectacionGroup } from '@/utils/taxCalc'
+import { getAfectacionGroup, type SunatAfectacionGroup } from '@/utils/taxCalc'
 import { getTodayPeru } from '@/utils/datesPeru'
 import { formatMoney, formatSaleDocumentNumber } from '@/utils/format'
 import { docTypeShortLabel } from '@/utils/paymentMethodVisual'
@@ -43,7 +44,6 @@ import {
   appendCatalogLine,
   applyCatalogLineUnitPrice,
   cartLineKey,
-  cartLineTotal,
   cartLineUnitPrice,
   catalogLineModifiersJson,
   createCatalogCartLine,
@@ -378,16 +378,22 @@ function POSContent() {
   }
 
   const renderCartLines = () =>
-    cart.map((item, i) => (
+    cart.map((item, i) => {
+      const aff = isManualCartLine(item) ? item.igv_affectation_type : (item.product.igv_affectation_type ?? '10')
+      const lineTotals = getCartItemTotals(item, i)
+      const subtotalLabel = isBonificacionGravada(aff)
+        ? `Bonif. ref. ${formatMoney(lineTotals.subtotal)}`
+        : `Subtotal: ${formatMoney(lineTotals.total)}`
+      return (
       <PosCartLineRow
         key={cartLineKey(item)}
         line={item}
-        subtotalLabel={`Subtotal: ${formatMoney(cartLineTotal(item, taxRate, taxConfig))}`}
+        subtotalLabel={subtotalLabel}
         onQtyChange={(d) => setCartQty(i, item.quantity + d)}
         onUnitPriceChange={(v) => setCartUnitPrice(i, v)}
         onRemove={() => removeFromCart(i)}
       />
-    ))
+    )})
 
   const checkoutDiscountAmount = saleCalc.globalDiscountAmount
   const payableTotal = saleCalc.total
@@ -397,18 +403,7 @@ function POSContent() {
     [saleCalc],
   )
 
-  const totalCart = useMemo(
-    () =>
-      roundSunat(
-        cart.reduce((s, i) => {
-          const line = cartToSaleLine(i)
-          return s + calcItem(line.unitPrice, line.quantity, 0, line.igvAffectationType, line.priceIncludesIgv, taxRate, taxConfig).total
-        }, 0),
-      ),
-    [cart, taxRate, taxConfig.igvRegime, taxConfig.taxBenefitZone],
-  )
-
-  const displayCartTotal = checkoutDiscountAmount > 0 || checkoutDiscountValue > 0 ? payableTotal : totalCart
+  const displayCartTotal = payableTotal
 
   const totalsByAfectacion = useMemo(
     () =>

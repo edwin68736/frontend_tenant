@@ -399,6 +399,9 @@ export function ProductImportModal({ open, onClose, onImported }: Props) {
                     <strong>10</strong> — gravado
                   </li>
                   <li>
+                    <strong>15</strong> — gravado bonificaciones
+                  </li>
+                  <li>
                     <strong>20</strong> — exonerado
                   </li>
                   <li>

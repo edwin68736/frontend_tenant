@@ -1,4 +1,5 @@
 import type { Product } from '@/services/products.service'
+import { isBonificacionGravada } from '@/constants/igvAffectation'
 import { calcItem, type TaxConfig } from '@/utils/taxCalc'
 import type { CartModifierEntry } from '@/types/productModifiers'
 import {
@@ -88,26 +89,34 @@ export function cartLineTaxTotals(
   taxConfig: Partial<TaxConfig> | undefined,
 ): { subtotal: number; taxAmount: number; total: number } {
   const unit = cartLineUnitPrice(line)
-  if (line.kind === 'catalog') {
-    return calcItem(
-      unit,
-      line.quantity,
-      0,
-      line.product.igv_affectation_type ?? '10',
-      line.product.price_includes_igv ?? true,
-      taxRate,
-      taxConfig,
-    )
+  const aff =
+    line.kind === 'catalog'
+      ? line.product.igv_affectation_type ?? '10'
+      : line.igv_affectation_type
+  const result =
+    line.kind === 'catalog'
+      ? calcItem(
+          unit,
+          line.quantity,
+          0,
+          aff,
+          line.product.price_includes_igv ?? true,
+          taxRate,
+          taxConfig,
+        )
+      : calcItem(
+          line.unit_price,
+          line.quantity,
+          0,
+          aff,
+          line.price_includes_igv,
+          taxRate,
+          taxConfig,
+        )
+  if (isBonificacionGravada(aff)) {
+    return { subtotal: result.subtotal, taxAmount: result.taxAmount, total: 0 }
   }
-  return calcItem(
-    line.unit_price,
-    line.quantity,
-    0,
-    line.igv_affectation_type,
-    line.price_includes_igv,
-    taxRate,
-    taxConfig,
-  )
+  return result
 }
 
 export function createCatalogCartLine(

@@ -1,6 +1,6 @@
 ﻿import type { PrintData } from '@/types/printData'
 import { getPrintIssuerAddress } from '@/utils/printIssuer'
-import { getTipoComprobanteLabel, isElectronicSunatCode } from '@/constants/sunat'
+import { isElectronicSunatCode } from '@/constants/sunat'
 import { isTauriDesktop } from '@/lib/platform/detect'
 import {
   buildEscPosLogoRaster,
@@ -12,7 +12,17 @@ import { paymentWalletVisible, walletProviderLabel } from '@/utils/receiptPaymen
 import { resolvePublicAssetUrl } from '@/config/apiBaseUrl'
 import { normalizeTextForTicketPrint } from '@/utils/normalizeTextForTicketPrint'
 import { buildReceiptTotalLines, formatReceiptTotalAmount } from '@/utils/receiptTotals'
+import {
+  prepaymentDeductionDescription,
+  receiptDocTypeTitle,
+} from '@/utils/fiscalPrepayment'
+import {
+  receiptItemDisplayDescription,
+  receiptItemDisplayTotal,
+  receiptItemDisplayUnitPrice,
+} from '@/utils/receiptBonificacion'
 import { trimCompanyAdditionalNotes, wrapCompanyAdditionalNotes } from '@/utils/receiptCompanyNotes'
+import { TUKIFAC_APP_NAME } from '@/lib/appVersion'
 import { escposColumnsForPaper } from '@/utils/receiptTicketPaper'
 import {
   getConfiguredComandaDefaultPrinter,
@@ -20,6 +30,7 @@ import {
   isComandaAutoPrintEnabled,
 } from '@/services/printers/comandas'
 import { resolvePrinterConfig } from '@/services/printers/resolve'
+import { getNotaVentaPrintLayout, type NotaVentaPrintLayoutSettings } from '@/services/printers/notaVentaPrintLayout'
 import {
   clampPort,
   DEFAULT_TCP_PORT,
@@ -115,7 +126,7 @@ function buildTestEscPosTicket(kind: PrinterKind, paperWidthMm: PrinterPaperWidt
   const cols = escposColumnsForPaper(paperWidthMm)
   const title =
     kind === 'comandas' ? 'PRUEBA COMANDA' : kind === 'precuenta' ? 'PRUEBA PRECUENTA' : 'PRUEBA DOCUMENTO'
-  const lines = ['Tukichef', '='.repeat(Math.min(cols, 48)), title, '='.repeat(Math.min(cols, 48)), '', '']
+  const lines = [TUKIFAC_APP_NAME, '='.repeat(Math.min(cols, 48)), title, '='.repeat(Math.min(cols, 48)), '', '']
   const out: number[] = [0x1b, 0x40, 0x1b, 0x61, 1]
   for (const line of lines) {
     out.push(...Array.from(new TextEncoder().encode(`${line}\n`)))
@@ -177,7 +188,7 @@ export async function testPrint(input: {
           paperWidthMm: input.paperWidthMm,
         })
       : buildTestEscPosTicket(input.kind, input.paperWidthMm)
-  return sendEscPosPayload(cfg, data, 'Tukichef - Prueba')
+  return sendEscPosPayload(cfg, data, `${TUKIFAC_APP_NAME} - Prueba`)
 }
 
 export async function printRawEscPos(input: {
@@ -492,7 +503,12 @@ function escposPushWrappedCenter(
   if (opts?.bold) out.push(...escposBold(false))
 }
 
-function pushCompanyHeaderEscPos(out: number[], printData: PrintData, cols: number) {
+function pushCompanyHeaderEscPos(
+  out: number[],
+  printData: PrintData,
+  cols: number,
+  nvLayout?: NotaVentaPrintLayoutSettings | null,
+) {
   const tradeName = String(printData.company?.trade_name ?? '').trim()
   const businessName = String(printData.company?.business_name ?? '').trim() || 'Empresa'
   const showBusinessName =
@@ -500,7 +516,7 @@ function pushCompanyHeaderEscPos(out: number[], printData: PrintData, cols: numb
     businessName.localeCompare(tradeName, undefined, { sensitivity: 'accent' }) !== 0
 
   if (tradeName) {
-    escposPushWrappedCenter(out, wrapText(tradeName, cols))
+    escposPushWrappedCenter(out, wrapText(tradeName, cols), { bold: true })
     if (showBusinessName) escposPushWrappedCenter(out, wrapText(businessName, cols))
   } else {
     escposPushWrappedCenter(out, wrapText(businessName, cols), { bold: true })
@@ -510,8 +526,9 @@ function pushCompanyHeaderEscPos(out: number[], printData: PrintData, cols: numb
   if (printData.company?.ruc) metaLines.push(`RUC: ${printData.company.ruc}`)
   const addr = getPrintIssuerAddress(printData)
   if (addr) wrapText(addr, cols).forEach((x) => metaLines.push(x))
-  if (printData.company?.phone) metaLines.push(`Telf: ${printData.company.phone}`)
-  if (printData.company?.email) metaLines.push(`Email: ${printData.company.email}`)
+  const showContact = !nvLayout || nvLayout.showEmailAndPhone
+  if (showContact && printData.company?.phone) metaLines.push(`Telf: ${printData.company.phone}`)
+  if (showContact && printData.company?.email) metaLines.push(`Email: ${printData.company.email}`)
   if (metaLines.length) escposPushLines(out, metaLines, 'center')
 }
 
@@ -524,6 +541,8 @@ export async function buildSaleDocumentEscPos(
   const currency = String(printData.currency ?? 'PEN').toUpperCase()
   const money = (n: number) => moneyEsc(currency, n)
   const showQr = isElectronicSunatCode(printData.sunat_code) && Boolean(printData.qr_data)
+  const nvLayout = getNotaVentaPrintLayout(printData.sunat_code)
+  const showPayAndBank = !nvLayout || nvLayout.showBankAccountsAndPaymentCondition
 
   const additionalNotes = trimCompanyAdditionalNotes(printData.company?.additional_notes)
   const companyAdditionalLines = additionalNotes
@@ -533,7 +552,7 @@ export async function buildSaleDocumentEscPos(
   if (printData.company?.website) companyTailLines.push(`Web: ${printData.company.website}`)
 
   const docHeaderLines: string[] = []
-  wrapText(getTipoComprobanteLabel(printData.sunat_code), cols).forEach((x) =>
+  wrapText(receiptDocTypeTitle(printData.sunat_code, printData.fiscal), cols).forEach((x) =>
     docHeaderLines.push(x),
   )
   docHeaderLines.push(printData.number)
@@ -541,7 +560,8 @@ export async function buildSaleDocumentEscPos(
   const detailLines: string[] = []
   detailLines.push(`Fecha Emision: ${printData.issue_date}`)
   if (printData.issue_time) detailLines.push(`Hora Emision: ${printData.issue_time}`)
-  if (printData.client) {
+  const showClient = !nvLayout || nvLayout.showClientData
+  if (showClient && printData.client) {
     wrapText(`Cliente: ${printData.client.business_name}`, cols).forEach((x) => detailLines.push(x))
     detailLines.push(`Doc: ${printData.client.doc_number}`)
     if (printData.client.address) wrapText(`Dir: ${printData.client.address}`, cols).forEach((x) => detailLines.push(x))
@@ -558,18 +578,45 @@ export async function buildSaleDocumentEscPos(
   if (printData.fiscal?.fiscal_observations) {
     wrapText(`Obs.: ${printData.fiscal.fiscal_observations}`, cols).forEach((x) => detailLines.push(x))
   }
+  if (printData.fiscal?.prepayment_deductions?.length) {
+    for (const p of printData.fiscal.prepayment_deductions) {
+      wrapText(prepaymentDeductionDescription(p.related_doc_type, p.document_number), cols).forEach((x) =>
+        detailLines.push(x),
+      )
+    }
+  }
   detailLines.push('-'.repeat(cols))
   detailLines.push(itemDetailHeaderRow(cols, narrow))
   detailLines.push('-'.repeat(cols))
 
+  if (printData.fiscal?.has_prepayment_emit) {
+    wrapText('*** PAGO ANTICIPADO ***', cols).forEach((x) => detailLines.push(x))
+    detailLines.push('-'.repeat(cols))
+  }
+
   for (const it of printData.items ?? []) {
     const qty = String(it.quantity ?? 0).replace(/\.0+$/, '')
+    let desc = receiptItemDisplayDescription(it)
+    if (printData.fiscal?.has_prepayment_emit) {
+      desc = `${desc} *** Pago Anticipado ***`
+    }
     itemDetailRows(
       cols,
       qty,
-      String(it.description ?? '').trim(),
-      money(it.unit_price ?? 0),
-      money(it.total ?? 0),
+      receiptItemDisplayDescription(it),
+      receiptItemDisplayUnitPrice(it, money),
+      receiptItemDisplayTotal(it, money),
+      narrow,
+    ).forEach((r) => detailLines.push(r))
+  }
+
+  for (const p of printData.fiscal?.prepayment_deductions ?? []) {
+    itemDetailRows(
+      cols,
+      '1',
+      prepaymentDeductionDescription(p.related_doc_type, p.document_number),
+      money(-Math.abs(p.total)),
+      money(-Math.abs(p.total)),
       narrow,
     ).forEach((r) => detailLines.push(r))
   }
@@ -597,13 +644,14 @@ export async function buildSaleDocumentEscPos(
     tailLines.push(`Vendedor: ${printData.seller_name}`)
   }
 
-  const footerLines: string[] = ['Tukichef - Sistema POS']
+  const footerLines: string[] = [`${TUKIFAC_APP_NAME} - Sistema POS`]
 
   const out: number[] = []
   out.push(...escposInit())
 
   const logoUrl = printData.company?.logo_url?.trim()
-  if (logoUrl) {
+  const showLogo = !nvLayout || nvLayout.showLogo
+  if (logoUrl && showLogo) {
     const logoRaster = await buildEscPosLogoRaster(logoUrl, paperWidthMm)
     if (logoRaster?.length) {
       out.push(...escposAlign('center'))
@@ -612,11 +660,13 @@ export async function buildSaleDocumentEscPos(
     }
   }
 
-  pushCompanyHeaderEscPos(out, printData, cols)
+  pushCompanyHeaderEscPos(out, printData, cols, nvLayout)
   if (companyAdditionalLines.length) escposPushLines(out, companyAdditionalLines, 'left')
   if (companyTailLines.length) escposPushLines(out, companyTailLines, 'center')
   escposPushLines(out, ['-'.repeat(cols)], 'center')
-  escposPushLines(out, docHeaderLines, 'center')
+  if (!nvLayout || nvLayout.showDocTypeAndNumber) {
+    escposPushLines(out, docHeaderLines, 'center')
+  }
   escposPushLines(out, ['-'.repeat(cols)], 'left')
   escposPushLines(out, detailLines, 'left')
   escposPushLines(out, ['-'.repeat(cols)], 'left')
@@ -626,9 +676,10 @@ export async function buildSaleDocumentEscPos(
     escposPushLines(out, legendLines, 'left')
   }
   const hasPayBlock =
-    showQr ||
-    Boolean(printData.payment_condition) ||
-    (printData.payments?.length ?? 0) > 0
+    showPayAndBank &&
+    (showQr ||
+      Boolean(printData.payment_condition) ||
+      (printData.payments?.length ?? 0) > 0)
 
   if (hasPayBlock) {
     out.push(...Array.from(textBytes('\n')))
@@ -676,7 +727,7 @@ export async function buildSaleDocumentEscPos(
   }
 
   const bankLines = bankAccountTextLines(printData)
-  if (bankLines.length > 0) {
+  if (showPayAndBank && bankLines.length > 0) {
     out.push(...Array.from(textBytes('\n')))
     escposPushLines(out, ['-'.repeat(cols), ...bankLines], 'left')
   }
@@ -729,7 +780,7 @@ export async function printComandaAuto(
   const cfg = opts?.printerConfig ?? getConfiguredComandaPrinter(opts?.preparationArea)
   if (!cfg) return 'Impresora de comandas no configurada'
   const data = buildComandaEscPos({ ...input, paperWidthMm: cfg.paperWidthMm })
-  return printRawEscPos({ ...cfg, data, docName: 'Tukichef - Comanda' })
+  return printRawEscPos({ ...cfg, data, docName: `${TUKIFAC_APP_NAME} - Comanda` })
 }
 
 export async function printPrecuentaAuto(input: {
@@ -744,12 +795,12 @@ export async function printPrecuentaAuto(input: {
   const cfg = getConfiguredPrinter('precuenta')
   if (!cfg) return 'Impresora de precuenta no configurada'
   const data = buildPrecuentaEscPos({ ...input, paperWidthMm: cfg.paperWidthMm })
-  return printRawEscPos({ ...cfg, data, docName: 'Tukichef - Precuenta' })
+  return printRawEscPos({ ...cfg, data, docName: `${TUKIFAC_APP_NAME} - Precuenta` })
 }
 
 export async function printDocumentAuto(printData: PrintData): Promise<string> {
   const cfg = getConfiguredPrinter('documentos')
   if (!cfg) return 'Impresora de documentos no configurada'
   const data = await buildSaleDocumentEscPos(printData, cfg.paperWidthMm)
-  return printRawEscPos({ ...cfg, data, docName: 'Tukichef - Documento' })
+  return printRawEscPos({ ...cfg, data, docName: `${TUKIFAC_APP_NAME} - Documento` })
 }

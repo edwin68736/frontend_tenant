@@ -14,6 +14,14 @@ import {
   type FiscalGuiaRow,
   type RetentionContact,
 } from '@/utils/fiscalRetention'
+import {
+  PrepaymentEmitSection,
+  type PrepaymentEmitSectionProps,
+} from '@/components/prepayment/PrepaymentEmitSection'
+import {
+  PrepaymentDeductionSection,
+  type PrepaymentDeductionSectionProps,
+} from '@/components/prepayment/PrepaymentDeductionSection'
 
 export type { FiscalGuiaKind, FiscalGuiaRow } from '@/utils/fiscalRetention'
 
@@ -78,6 +86,10 @@ type Props = {
   onTermsSaved?: (terms: string) => void
   /** Si se define, persiste la preferencia global (no solo el documento actual). */
   onShowTermsChange?: (checked: boolean) => void
+  /** Emisión de comprobante de anticipo (equivalente PHP has_prepayment). */
+  prepayment?: Omit<PrepaymentEmitSectionProps, 'enabled'>
+  /** Deducción de anticipos previos (equivalente PHP prepayment_deduction). */
+  prepaymentDeduction?: Omit<PrepaymentDeductionSectionProps, 'enabled'>
 }
 
 const TAB_WIDTH = '2.5rem' // w-10 — texto vertical un poco más legible
@@ -98,6 +110,8 @@ export function SaleAdditionalInfoDrawer({
   termsText = '',
   onTermsSaved,
   onShowTermsChange,
+  prepayment,
+  prepaymentDeduction,
 }: Props) {
   const preview = previewIgvRetention(
     value.has_igv_retention,
@@ -245,6 +259,14 @@ export function SaleAdditionalInfoDrawer({
                   </>
                 )}
               </p>
+            )}
+
+            {prepayment && !prepaymentDeduction?.deduct && (
+              <PrepaymentEmitSection enabled {...prepayment} />
+            )}
+
+            {prepaymentDeduction && !prepayment?.emit && (
+              <PrepaymentDeductionSection enabled {...prepaymentDeduction} />
             )}
 
             <SaleTermsConditionsControl

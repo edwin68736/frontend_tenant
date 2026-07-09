@@ -6,6 +6,7 @@ import type { PrintData } from '@/types/printData'
 import { PortalModal } from '@/components/ui/PortalModal'
 import { ReceiptEmailModal } from '@/components/ReceiptEmailModal'
 import { formatMoney } from '@/utils/format'
+import { receiptItemDisplayDescription, receiptItemDisplayTotal } from '@/utils/receiptBonificacion'
 import { resolvePrintChangeAmount, receiptDirectPaidAmount } from '@/utils/receiptTotals'
 import { buildReceiptTotalLines } from '@/utils/receiptTotals'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
@@ -74,6 +75,8 @@ export function ReceiptPrintModal({
 
   const printerCfg = getConfiguredPrinter('documentos')
   const hasDirectPrinter = isNativePrintAvailable() && Boolean(printerCfg)
+  const isNativeApp = isNativePrintAvailable()
+  const isWebBrowser = !isNativeApp
 
   const heading =
     documentKind === 'quotation'
@@ -356,7 +359,7 @@ export function ReceiptPrintModal({
                     </button>
                   )}
 
-                  {hasDirectPrinter && (
+                  {isNativeApp && (
                     <button
                       type="button"
                       disabled={!!busy || !printData}
@@ -374,21 +377,23 @@ export function ReceiptPrintModal({
                     </button>
                   )}
 
-                  <button
-                    type="button"
-                    disabled={!!busy || !printData}
-                    onClick={() => void handleBrowserPrint()}
-                    title="Imprimir PDF (visor del navegador)"
-                    aria-label="Imprimir PDF"
-                    className={clsx(ACTION_ICON_BTN, 'bg-slate-700 hover:bg-slate-800')}
-                  >
-                    {busy === 'browser-print' ? (
-                      <Loader2 className={clsx(ACTION_ICON, 'animate-spin')} />
-                    ) : (
-                      <Printer className={ACTION_ICON} strokeWidth={2.25} />
-                    )}
-                    <span className={ACTION_LABEL}>Imprimir</span>
-                  </button>
+                  {isWebBrowser && (
+                    <button
+                      type="button"
+                      disabled={!!busy || !printData}
+                      onClick={() => void handleBrowserPrint()}
+                      title="Imprimir PDF (visor del navegador)"
+                      aria-label="Imprimir PDF"
+                      className={clsx(ACTION_ICON_BTN, 'bg-slate-700 hover:bg-slate-800')}
+                    >
+                      {busy === 'browser-print' ? (
+                        <Loader2 className={clsx(ACTION_ICON, 'animate-spin')} />
+                      ) : (
+                        <Printer className={ACTION_ICON} strokeWidth={2.25} />
+                      )}
+                      <span className={ACTION_LABEL}>Imprimir</span>
+                    </button>
+                  )}
 
                   <button
                     type="button"
@@ -537,20 +542,26 @@ export function ReceiptPrintModal({
                         <tr>
                           <th className="px-3 py-2 text-left font-semibold">Producto</th>
                           <th className="w-14 px-2 py-2 text-center font-semibold">Cant.</th>
-                          <th className="w-24 px-3 py-2 text-right font-semibold">Subtotal</th>
+                          <th className="w-20 px-2 py-2 text-right font-semibold">P. unit.</th>
+                          <th className="w-24 px-3 py-2 text-right font-semibold">Importe</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-stone-100">
                         {printData.items.map((item, idx) => (
                           <tr key={idx} className="hover:bg-stone-50/80">
-                            <td className="px-3 py-2 font-medium text-stone-800">{item.description}</td>
+                            <td className="px-3 py-2 font-medium text-stone-800">
+                              {receiptItemDisplayDescription(item)}
+                            </td>
                             <td className="px-2 py-2 text-center">
                               <span className="inline-flex h-7 min-w-[1.75rem] items-center justify-center rounded-md bg-green-100 px-1.5 text-xs font-semibold text-green-800">
                                 {item.quantity}
                               </span>
                             </td>
+                            <td className="px-2 py-2 text-right text-stone-700">
+                              {formatMoney(item.unit_price ?? 0, printData.currency)}
+                            </td>
                             <td className="px-3 py-2 text-right font-semibold text-stone-800">
-                              {formatMoney(item.total, printData.currency)}
+                              {receiptItemDisplayTotal(item, (n) => formatMoney(n, printData.currency))}
                             </td>
                           </tr>
                         ))}

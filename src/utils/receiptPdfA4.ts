@@ -1,8 +1,17 @@
 import { jsPDF } from 'jspdf'
 import QRCode from 'qrcode'
 import type { PrintData } from '@/types/printData'
-import { getTipoComprobanteLabel, getTipoDocIdentidadShortLabel, isElectronicSunatCode } from '@/constants/sunat'
+import { getTipoDocIdentidadShortLabel, isElectronicSunatCode } from '@/constants/sunat'
+import {
+  prepaymentDeductionDescription,
+  receiptDocTypeTitle,
+} from '@/utils/fiscalPrepayment'
 import { buildReceiptTotalLines } from '@/utils/receiptTotals'
+import {
+  receiptItemDisplayDescription,
+  receiptItemDisplayTotal,
+  receiptItemDisplayUnitPrice,
+} from '@/utils/receiptBonificacion'
 import { lineGlobalSubtotalDiscount, lineSubtotalDiscount } from '@/utils/receiptDiscount'
 import { trimCompanyAdditionalNotes } from '@/utils/receiptCompanyNotes'
 import { getPrintIssuerAddress } from '@/utils/printIssuer'
@@ -11,6 +20,10 @@ import { rasterPxForMm } from '@/utils/receiptPdfRaster'
 import { paymentWalletVisible, renderPaymentWalletBlock } from '@/utils/receiptPaymentWallet'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
 import { formatBankAccountLine, formatWalletAccountLine } from '@/utils/receiptBankAccounts'
+import {
+  getNotaVentaPrintLayout,
+  type NotaVentaPrintLayoutSettings,
+} from '@/services/printers/notaVentaPrintLayout'
 
 const PAGE_W = 210
 const PAGE_H = 297
@@ -62,17 +75,8 @@ function formatDisplayDate(dateStr?: string): string {
   return dateStr.trim()
 }
 
-function a4DocTypeTitle(code: string): string {
-  const map: Record<string, string> = {
-    '00': 'NOTA DE VENTA',
-    '01': 'FACTURA ELECTRÓNICA',
-    '03': 'BOLETA DE VENTA ELECTRÓNICA',
-    '07': 'NOTA DE CRÉDITO',
-    '08': 'NOTA DE DÉBITO',
-    QT: 'COTIZACIÓN',
-  }
-  if (map[code]) return map[code]
-  return getTipoComprobanteLabel(code).toUpperCase()
+function a4DocTypeTitle(data: PrintData): string {
+  return receiptDocTypeTitle(data.sunat_code, data.fiscal)
 }
 
 function itemLineDiscount(it: PrintData['items'][0]): number {
@@ -144,17 +148,22 @@ function drawA4Field(
   }
 }
 
-async function drawHeader(ctx: A4Ctx, data: PrintData) {
+async function drawHeader(
+  ctx: A4Ctx,
+  data: PrintData,
+  nvLayout: NotaVentaPrintLayoutSettings | null,
+) {
   const { doc } = ctx
   const top = MARGIN
   const logoMaxW = 36
   const logoMaxH = 22
   const boxW = 62
   const boxX = PAGE_W - MARGIN - boxW
-  const infoX = MARGIN + logoMaxW + 4
+  const showLogo = !nvLayout || nvLayout.showLogo
+  const infoX = MARGIN + (showLogo ? logoMaxW + 4 : 0)
   const infoW = boxX - infoX - 4
 
-  if (data.company.logo_url) {
+  if (showLogo && data.company.logo_url) {
     try {
       const logo = await resolveReceiptLogoForPdf(data.company.logo_url)
       if (logo) {
@@ -186,8 +195,9 @@ async function drawHeader(ctx: A4Ctx, data: PrintData) {
   pushInfoLine(`RUC ${data.company.ruc}`)
   const addr = getPrintIssuerAddress(data)
   if (addr) pushInfoLine(addr)
-  pushInfoLine(`Central telefónica: ${data.company.phone?.trim() || ''}`)
-  pushInfoLine(`Email: ${data.company.email?.trim() || ''}`)
+  const showContact = !nvLayout || nvLayout.showEmailAndPhone
+  if (showContact) pushInfoLine(`Central telefónica: ${data.company.phone?.trim() || ''}`)
+  if (showContact) pushInfoLine(`Email: ${data.company.email?.trim() || ''}`)
 
   const notes = trimCompanyAdditionalNotes(data.company.additional_notes)
   if (notes) {
@@ -200,30 +210,37 @@ async function drawHeader(ctx: A4Ctx, data: PrintData) {
   }
 
   const boxH = 36
-  drawDottedRect(doc, boxX, top, boxW, boxH)
+  const showDocBox = !nvLayout || nvLayout.showDocTypeAndNumber
+  if (showDocBox) {
+    drawDottedRect(doc, boxX, top, boxW, boxH)
 
-  setFont(doc, FONT, 'bold')
-  doc.text('RUC:', boxX + 4, top + 5.5)
-  doc.text(data.company.ruc, boxX + 16, top + 5.5)
+    setFont(doc, FONT, 'bold')
+    doc.text('RUC:', boxX + 4, top + 5.5)
+    doc.text(data.company.ruc, boxX + 16, top + 5.5)
 
-  const barY = top + 9
-  const barH = 9
-  doc.setFillColor(...GRAY)
-  doc.rect(boxX, barY, boxW, barH, 'F')
-  doc.setDrawColor(0, 0, 0)
-  doc.setLineWidth(0.2)
-  doc.line(boxX, barY, boxX + boxW, barY)
-  doc.line(boxX, barY + barH, boxX + boxW, barY + barH)
-  setFont(doc, FONT, 'bold')
-  doc.text(a4DocTypeTitle(data.sunat_code), boxX + boxW / 2, barY + 6, { align: 'center' })
+    const barY = top + 9
+    const barH = 9
+    doc.setFillColor(...GRAY)
+    doc.rect(boxX, barY, boxW, barH, 'F')
+    doc.setDrawColor(0, 0, 0)
+    doc.setLineWidth(0.2)
+    doc.line(boxX, barY, boxX + boxW, barY)
+    doc.line(boxX, barY + barH, boxX + boxW, barY + barH)
+    setFont(doc, FONT, 'bold')
+    doc.text(a4DocTypeTitle(data), boxX + boxW / 2, barY + 6, { align: 'center' })
 
-  setFont(doc, FONT_LG, 'bold')
-  doc.text(formatDocNumber(data), boxX + boxW / 2, top + 30, { align: 'center' })
+    setFont(doc, FONT_LG, 'bold')
+    doc.text(formatDocNumber(data), boxX + boxW / 2, top + 30, { align: 'center' })
+  }
 
-  ctx.y = Math.max(cy, top + boxH) + 8
+  ctx.y = Math.max(cy, showDocBox ? top + boxH : top) + 8
 }
 
-function drawCustomerBlock(ctx: A4Ctx, data: PrintData) {
+function drawCustomerBlock(
+  ctx: A4Ctx,
+  data: PrintData,
+  nvLayout: NotaVentaPrintLayoutSettings | null,
+) {
   const { doc } = ctx
   const leftX = MARGIN
   const due = resolveDueDate(data)
@@ -233,20 +250,23 @@ function drawCustomerBlock(ctx: A4Ctx, data: PrintData) {
   drawA4Field(ctx, 'FECHA DE VENCIMIENTO', due, leftX)
   ctx.y += LINE_H
 
-  if (data.client) {
-    drawA4Field(ctx, 'CLIENTE', data.client.business_name, leftX)
-    ctx.y += LINE_H
-    const docLabel = getTipoDocIdentidadShortLabel(data.client.doc_type).toUpperCase()
-    drawA4Field(ctx, docLabel, data.client.doc_number || '—', leftX, { valueMaxW: CONTENT_W * 0.45 })
-    setFont(doc, FONT, 'normal')
-    // Alinear al borde derecho del contenido (mismo ancho que caja RUC y tabla).
-    doc.text(`Fecha Vencimiento: ${due}`, PAGE_W - MARGIN, ctx.y, { align: 'right' })
-    ctx.y += LINE_H
-    drawA4Field(ctx, 'DIRECCIÓN', data.client.address?.trim() || '—', leftX)
-    ctx.y += LINE_H
-  } else {
-    drawA4Field(ctx, 'CLIENTE', 'CLIENTE VARIOS', leftX)
-    ctx.y += LINE_H
+  const showClient = !nvLayout || nvLayout.showClientData
+  if (showClient) {
+    if (data.client) {
+      drawA4Field(ctx, 'CLIENTE', data.client.business_name, leftX)
+      ctx.y += LINE_H
+      const docLabel = getTipoDocIdentidadShortLabel(data.client.doc_type).toUpperCase()
+      drawA4Field(ctx, docLabel, data.client.doc_number || '—', leftX, { valueMaxW: CONTENT_W * 0.45 })
+      setFont(doc, FONT, 'normal')
+      // Alinear al borde derecho del contenido (mismo ancho que caja RUC y tabla).
+      doc.text(`Fecha Vencimiento: ${due}`, PAGE_W - MARGIN, ctx.y, { align: 'right' })
+      ctx.y += LINE_H
+      drawA4Field(ctx, 'DIRECCIÓN', data.client.address?.trim() || '—', leftX)
+      ctx.y += LINE_H
+    } else {
+      drawA4Field(ctx, 'CLIENTE', 'CLIENTE VARIOS', leftX)
+      ctx.y += LINE_H
+    }
   }
 
   if (data.fiscal?.purchase_order_number) {
@@ -263,6 +283,12 @@ function drawCustomerBlock(ctx: A4Ctx, data: PrintData) {
   if (data.fiscal?.fiscal_observations) {
     drawA4Field(ctx, 'OBS.', data.fiscal.fiscal_observations, leftX)
     ctx.y += LINE_H
+  }
+  if (data.fiscal?.prepayment_deductions?.length) {
+    for (const p of data.fiscal.prepayment_deductions) {
+      drawA4Field(ctx, 'ANTICIPO', p.document_number, leftX)
+      ctx.y += LINE_H
+    }
   }
 
   ctx.y += 4
@@ -325,7 +351,10 @@ function drawItemsTable(ctx: A4Ctx, data: PrintData): number {
   }
 
   const renderItemRow = (it: PrintData['items'][0]) => {
-    const desc = (it.description || '').trim() || '—'
+    let desc = receiptItemDisplayDescription(it)
+    if (data.fiscal?.has_prepayment_emit) {
+      desc = `${desc}\n*** Pago Anticipado ***`
+    }
     const descLines = doc.splitTextToSize(desc, cols[3].w - 3)
     const h = rowH * Math.max(1, descLines.length)
     setFont(doc, FONT_SM, 'normal')
@@ -336,15 +365,38 @@ function drawItemsTable(ctx: A4Ctx, data: PrintData): number {
     for (let i = 0; i < descLines.length; i++) {
       doc.text(descLines[i], colX[3] + 1.5, rowY + rowH - 0.5 + i * rowH, { maxWidth: cols[3].w - 3 })
     }
-    doc.text(formatPlainAmount(it.unit_price), colX[4] + cols[4].w - 1.5, midY, { align: 'right' })
+    const pu = receiptItemDisplayUnitPrice(it, formatPlainAmount)
+    const tot = receiptItemDisplayTotal(it, formatPlainAmount)
+    doc.text(pu, colX[4] + cols[4].w - 1.5, midY, { align: 'right' })
     doc.text(formatPlainAmount(itemLineDiscount(it)), colX[5] + cols[5].w - 1.5, midY, { align: 'right' })
-    doc.text(formatPlainAmount(it.total), colX[6] + cols[6].w - 1.5, midY, { align: 'right' })
+    doc.text(tot, colX[6] + cols[6].w - 1.5, midY, { align: 'right' })
     rowY += h
   }
 
   for (const it of data.items) renderItemRow(it)
 
-  const emptyRows = Math.max(0, minBodyRows - data.items.length)
+  const prepDeductions = data.fiscal?.prepayment_deductions ?? []
+  for (const p of prepDeductions) {
+    const desc = prepaymentDeductionDescription(p.related_doc_type, p.document_number)
+    const descLines = doc.splitTextToSize(desc, cols[3].w - 3)
+    const h = rowH * Math.max(1, descLines.length)
+    setFont(doc, FONT_SM, 'normal')
+    const midY = rowY + rowH - 0.5
+    doc.text('1', colX[0] + cols[0].w / 2, midY, { align: 'center' })
+    doc.text('NIU', colX[1] + cols[1].w / 2, midY, { align: 'center' })
+    doc.text('—', colX[2] + 1.5, midY)
+    for (let i = 0; i < descLines.length; i++) {
+      doc.text(descLines[i], colX[3] + 1.5, rowY + rowH - 0.5 + i * rowH, { maxWidth: cols[3].w - 3 })
+    }
+    const neg = formatPlainAmount(-Math.abs(p.total))
+    doc.text(neg, colX[4] + cols[4].w - 1.5, midY, { align: 'right' })
+    doc.text('0.00', colX[5] + cols[5].w - 1.5, midY, { align: 'right' })
+    doc.text(neg, colX[6] + cols[6].w - 1.5, midY, { align: 'right' })
+    rowY += h
+  }
+
+  const filledRows = data.items.length + prepDeductions.length
+  const emptyRows = Math.max(0, minBodyRows - filledRows)
   rowY += emptyRows * rowH
 
   doc.line(tableX, tableTop + headerH, tableX + CONTENT_W, tableTop + headerH)
@@ -395,6 +447,9 @@ function drawTotalsRight(ctx: A4Ctx, data: PrintData, startY: number): number {
       y += LINE_H
     }
     drawRow(`NETO A COBRAR: ${sym}`, formatPlainAmount(f.detraccion_net_payable ?? data.total), true)
+  }
+  if (f?.has_prepayment_emit) {
+    drawRow('ANTICIPO:', f.prepayment_label ?? 'COMPROBANTE DE ANTICIPO', true)
   }
 
   return y + 2
@@ -674,9 +729,11 @@ async function drawFooter(ctx: A4Ctx, data: PrintData, minY: number) {
 
 export async function renderReceiptA4(doc: jsPDF, data: PrintData): Promise<void> {
   const ctx: A4Ctx = { doc, y: MARGIN }
+  const nvLayout = getNotaVentaPrintLayout(data.sunat_code)
+  const showPayAndBank = !nvLayout || nvLayout.showBankAccountsAndPaymentCondition
 
-  await drawHeader(ctx, data)
-  drawCustomerBlock(ctx, data)
+  await drawHeader(ctx, data, nvLayout)
+  drawCustomerBlock(ctx, data, nvLayout)
   drawItemsTable(ctx, data)
 
   const sectionY = ctx.y
@@ -684,15 +741,19 @@ export async function renderReceiptA4(doc: jsPDF, data: PrintData): Promise<void
   const rightEndY = drawTotalsRight(ctx, data, sectionY)
 
   let leftY: number
-  if (isElectronic) {
-    const legendEndY = drawAmountInWords(ctx, data, sectionY)
-    const blockStartY = Math.max(rightEndY, legendEndY) + 3
-    leftY = await drawElectronicPaymentAndQrRow(ctx, data, blockStartY)
-  } else {
-    leftY = drawPaymentMethodBox(ctx, data, sectionY)
-  }
+  if (showPayAndBank) {
+    if (isElectronic) {
+      const legendEndY = drawAmountInWords(ctx, data, sectionY)
+      const blockStartY = Math.max(rightEndY, legendEndY) + 3
+      leftY = await drawElectronicPaymentAndQrRow(ctx, data, blockStartY)
+    } else {
+      leftY = drawPaymentMethodBox(ctx, data, sectionY)
+    }
 
-  leftY = drawBankAccounts(ctx, data, leftY)
+    leftY = drawBankAccounts(ctx, data, leftY)
+  } else {
+    leftY = sectionY
+  }
   leftY = drawSeller(ctx, data, leftY)
   leftY = drawLegendAndNotes(ctx, data, leftY, isElectronic)
 

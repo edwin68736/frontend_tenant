@@ -26,12 +26,10 @@ import {
   PRODUCT_EXPIRY_BADGE_CLASS,
 } from '@/utils/productExpiry'
 
-const IGV_TYPES = [
-  { code: '10', label: '10 - Gravado IGV' },
-  { code: '20', label: '20 - Exonerado' },
-  { code: '30', label: '30 - Inafecto' },
-  { code: '40', label: '40 - Exportación' },
-]
+import {
+  PRODUCT_IGV_AFFECTATION_OPTIONS,
+  isGravadoIgv,
+} from '@/constants/igvAffectation'
 
 /** Código interno de 6 caracteres (letras A–Z y dígitos); el valor se puede sustituir manualmente. */
 function generateRandomProductCode(length = 6): string {
@@ -47,13 +45,6 @@ function validateProductImageFile(file: File): string | null {
   if (!file.type.startsWith('image/')) return 'Selecciona una imagen (JPG, PNG o WebP)'
   if (file.size > 5 * 1024 * 1024) return 'La imagen no debe superar 5 MB'
   return null
-}
-
-/** Solo los tipos gravados (10, 11-17) aplican IGV; Exonerado/Inafecto/Exportación no. */
-function isGravadoIgv(code: string): boolean {
-  const c = String(code || '').trim()
-  if (c === '20' || c === '21' || c === '30' || c === '31' || c === '32' || c === '33' || c === '34' || c === '35' || c === '36' || c === '40') return false
-  return true
 }
 
 function emptyForm(pageMode: ProductCatalogType): CreateProductInput {
@@ -169,6 +160,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const listImageTargetIdRef = useRef<number | null>(null)
   const [listUploadingImageId, setListUploadingImageId] = useState<number | null>(null)
   const catInputRef = useRef<HTMLInputElement>(null)
+  const loadSeqRef = useRef(0)
 
   // Modal grupos de modificadores
   const [showModifierGroups, setShowModifierGroups] = useState(false)
@@ -231,11 +223,13 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   }
 
   const load = () => {
+    const seq = ++loadSeqRef.current
     setLoading(true)
     const branchId = pageMode === 'product' && activeBranchId > 0 ? activeBranchId : undefined
     return productsService
       .list(listSearchQuery, catFilter, undefined, !includeInactive, page, perPage, undefined, pageMode, branchId)
       .then(({ data: p, total: t }) => {
+        if (seq !== loadSeqRef.current) return [] as Product[]
         setProducts(p ?? [])
         setTotal(t ?? 0)
         return (p ?? []) as Product[]
@@ -255,12 +249,21 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         ]) as Promise<[Category[], ModifierGroup[], Record<string, number>]>
       )
       .then(([categoriesList, modifierGroupsList, summary]) => {
+        if (seq !== loadSeqRef.current) return
         setCategories(categoriesList ?? [])
         setModifierGroups(modifierGroupsList ?? [])
         setStockByProductId(summary ?? {})
       })
-      .catch(() => toast.error('Error'))
-      .finally(() => setLoading(false))
+      .catch((e: unknown) => {
+        if (seq !== loadSeqRef.current) return
+        setProducts([])
+        setTotal(0)
+        setStockByProductId({})
+        toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error al cargar productos')
+      })
+      .finally(() => {
+        if (seq === loadSeqRef.current) setLoading(false)
+      })
   }
 
   useEffect(() => {
@@ -1173,7 +1176,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               setF('igv_affectation_type', v)
               if (!isGravadoIgv(v)) setF('price_includes_igv', false)
             }}>
-              {IGV_TYPES.map(t => <option key={t.code} value={t.code}>{t.label}</option>)}
+              {PRODUCT_IGV_AFFECTATION_OPTIONS.map(t => <option key={t.code} value={t.code}>{t.label}</option>)}
             </select>
           </div>
           {isGravadoIgv(form.igv_affectation_type) && (
@@ -1648,8 +1651,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           open={bulkDeleteOpen}
           selectedCount={selectedCount}
           onClose={() => setBulkDeleteOpen(false)}
-          onConfirm={async (reason, pin) =>
-            productsService.bulkDeleteCatalog([...selectedIds], pin, reason)
+          onConfirm={async (reason) =>
+            productsService.bulkDeleteCatalog([...selectedIds], reason)
           }
           onDone={handleBulkDeleteDone}
         />

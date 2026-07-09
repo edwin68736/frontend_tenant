@@ -47,6 +47,17 @@ import {
   SUNAT_TIPO_OPERACION_DETRACCION,
   SUNAT_TIPO_OPERACION_VENTA_INTERNA,
 } from '@/constants/sunat'
+import {
+  applyPrepaymentDeductionToTotals,
+  inferPrepaymentAffectationGroup,
+  inferPrepaymentRelatedDocType,
+  saleDeductibleBaseForGroup,
+  validatePrepaymentItems,
+  type PrepaymentAffectationGroup,
+  type PrepaymentDeductionRow,
+} from '@/utils/fiscalPrepayment'
+import { usePrepaymentConfig } from '@/hooks/usePrepaymentConfig'
+import { PrepaymentEmitSummary } from '@/components/prepayment/PrepaymentEmitSummary'
 import type { PrintData } from '@/types/printData'
 import { getTipoComprobanteLabel } from '@/constants/sunat'
 import { SUNAT_MAX_MONTO_CLIENTE_SIN_RUC, SUNAT_RUC_LENGTH } from '@/constants/sunat'
@@ -55,6 +66,7 @@ import { calcSaleCheckout } from '@/utils/saleEngine'
 import { calcItem, calcItemWithSubtotalDiscount, getAfectacionGroup, type SunatAfectacionGroup } from '@/utils/taxCalc'
 import { clampIssueDatePeru, getMaxIssueDatePeru, getMinIssueDatePeru, getTodayPeru, isIssueDateAllowed } from '@/utils/datesPeru'
 import { normalizeSunatUnit, sunatUnitSelectOptions } from '@/constants/sunatUnits'
+import { PRODUCT_IGV_AFFECTATION_OPTIONS } from '@/constants/igvAffectation'
 import type { CheckoutDiscountMode } from '@/utils/checkoutDiscount'
 import { roundSunat, calcPaymentChange, sumMoney } from '@/utils/money'
 import { quotationsService } from '@/services/quotations.service'
@@ -98,12 +110,7 @@ export interface SaleFormItem {
 }
 
 const PER_PAGE = 10
-const IGV_AFFECTATION_OPTIONS = [
-  { code: '10', label: 'Gravado' },
-  { code: '20', label: 'Exonerado' },
-  { code: '30', label: 'Inafecto' },
-  { code: '40', label: 'Exportación' },
-]
+const IGV_AFFECTATION_OPTIONS = PRODUCT_IGV_AFFECTATION_OPTIONS
 
 type ManualItemDraft = Omit<SaleFormItem, 'product_id' | 'serials'>
 
@@ -278,6 +285,11 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
   const [tenantUsers, setTenantUsers] = useState<TenantUser[]>([])
   const [detraccionGoods, setDetraccionGoods] = useState<DetraccionGood[]>([])
   const [detraccionGoodCode, setDetraccionGoodCode] = useState('')
+  const [emitPrepayment, setEmitPrepayment] = useState(false)
+  const [deductPrepayment, setDeductPrepayment] = useState(false)
+  const [prepaymentDeductionRows, setPrepaymentDeductionRows] = useState<PrepaymentDeductionRow[]>([])
+  const [prepaymentAffectationGroup, setPrepaymentAffectationGroup] =
+    useState<PrepaymentAffectationGroup>('gravado')
 
   const {
     loading: tcLoading,
@@ -288,6 +300,15 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
   } = useExchangeRate(form.issue_date, { enabled: !isQuotation })
 
   const isDetraccion = form.operation_type_code === SUNAT_TIPO_OPERACION_DETRACCION
+  const isPrepaymentEmit = emitPrepayment
+  const prepaymentDeductionBase = useMemo(
+    () => prepaymentDeductionRows.reduce((s, r) => s + (r.amount > 0 ? r.amount : 0), 0),
+    [prepaymentDeductionRows],
+  )
+  const isPrepaymentDeduct =
+    deductPrepayment && prepaymentDeductionRows.some((r) => r.source_sale_id && r.amount > 0)
+  const prepaymentConfigQuery = usePrepaymentConfig(!isNotaVenta && !isQuotation)
+  const prepaymentConfig = prepaymentConfigQuery.config
 
   const parsedExchangeRate = useMemo(() => {
     const n = parseFloat(form.exchange_rate.replace(',', '.'))
@@ -318,6 +339,20 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
       setDetraccionGoodCode('')
     }
   }, [form.sunat_code, form.operation_type_code])
+
+  useEffect(() => {
+    if (!emitPrepayment) return
+    const inferred = inferPrepaymentAffectationGroup(items)
+    if (inferred) setPrepaymentAffectationGroup(inferred)
+  }, [emitPrepayment, items])
+
+  useEffect(() => {
+    if (isDetraccion) {
+      setEmitPrepayment(false)
+      setDeductPrepayment(false)
+      setPrepaymentDeductionRows([])
+    }
+  }, [isDetraccion])
 
   useEffect(() => {
     if (isDetraccion && form.currency !== 'PEN') {
@@ -681,13 +716,46 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
     { gravado: { subtotal: 0, taxAmount: 0, total: 0 }, exonerado: { subtotal: 0, taxAmount: 0, total: 0 }, inafecto: { subtotal: 0, taxAmount: 0, total: 0 }, exportacion: { subtotal: 0, taxAmount: 0, total: 0 } } as Record<SunatAfectacionGroup, { subtotal: number; taxAmount: number; total: number }>
   )
 
+  const prepaymentAdjustedTotals = useMemo(() => {
+    if (!isPrepaymentDeduct || prepaymentDeductionBase <= 0) return null
+    return applyPrepaymentDeductionToTotals({
+      group: prepaymentAffectationGroup,
+      gravadoSubtotal: totalsByAfectacion.gravado.subtotal,
+      gravadoTax: totalsByAfectacion.gravado.taxAmount,
+      exoneradoSubtotal: totalsByAfectacion.exonerado.subtotal,
+      inafectoSubtotal: totalsByAfectacion.inafecto.subtotal,
+      subtotal: subtotalGlobal,
+      taxAmount: taxGlobal,
+      total: totalGlobal,
+      deductionBase: prepaymentDeductionBase,
+      taxRate,
+    })
+  }, [
+    isPrepaymentDeduct,
+    prepaymentDeductionBase,
+    prepaymentAffectationGroup,
+    totalsByAfectacion,
+    subtotalGlobal,
+    taxGlobal,
+    totalGlobal,
+    taxRate,
+  ])
+
+  const checkoutSubtotal = prepaymentAdjustedTotals?.subtotal ?? subtotalGlobal
+  const checkoutTax = prepaymentAdjustedTotals?.taxAmount ?? taxGlobal
+  const checkoutTotal = prepaymentAdjustedTotals?.total ?? totalGlobal
+  const prepaymentDeductionTotal = prepaymentAdjustedTotals?.deductionTotal ?? 0
+  const prepaymentPayableTotal = Math.max(0, checkoutTotal)
+  const prepaymentCoversAll = isPrepaymentDeduct && prepaymentPayableTotal <= 0.009
+  const saleDeductibleBase = saleDeductibleBaseForGroup(prepaymentAffectationGroup, totalsByAfectacion)
+
   const selectedContact = form.contact_id ? customers.find(c => c.id === form.contact_id!) : null
 
   const retentionPreview = previewIgvRetention(
     fiscalForm.has_igv_retention && !isDetraccion,
     form.sunat_code,
     selectedContact ?? null,
-    totalGlobal,
+    checkoutTotal,
     fiscalForm.igv_retention_manual_override,
     form.currency,
     parsedExchangeRate,
@@ -727,7 +795,9 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
       ? detractionPreview.netPayable
       : !isNotaVenta && fiscalForm.has_igv_retention && retentionPreview.applicable
         ? retentionPreview.netCollectible
-        : totalGlobal
+        : isPrepaymentDeduct
+          ? prepaymentPayableTotal
+          : totalGlobal
 
   const paymentsTotalPaid = useMemo(
     () => sumMoney(...payments.map(p => Number(p.amount) || 0)),
@@ -781,6 +851,11 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
     })
   }, [directPayableTarget, payments.length, paymentConditionCode])
 
+  useEffect(() => {
+    if (!prepaymentCoversAll) return
+    if (paymentConditionCode !== 'cash') setPaymentConditionCode('cash')
+  }, [prepaymentCoversAll, paymentConditionCode])
+
   const operationTypeOptions = useMemo(() => {
     if (form.sunat_code === '01') return SALES_OPERATION_TYPE_OPTIONS
     return SALES_OPERATION_TYPE_OPTIONS.filter((o) => o.code === SUNAT_TIPO_OPERACION_VENTA_INTERNA)
@@ -824,9 +899,9 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
     },
     items,
     saleCalc,
-    subtotalGlobal,
-    taxGlobal,
-    totalGlobal,
+    subtotalGlobal: prepaymentAdjustedTotals?.subtotal ?? subtotalGlobal,
+    taxGlobal: prepaymentAdjustedTotals?.taxAmount ?? taxGlobal,
+    totalGlobal: prepaymentAdjustedTotals?.total ?? totalGlobal,
     lineDiscountTotal,
     checkoutDiscountAmount,
     selectedSeries,
@@ -849,6 +924,23 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
         ? creditInstallments.map(r => ({ due_date: r.due_date, amount: r.amount }))
         : undefined,
     bankAccounts,
+    isPrepaymentEmit,
+    prepaymentConfig,
+    prepaymentAffectationGroup,
+    prepaymentDeduction:
+      isPrepaymentDeduct && prepaymentDeductionTotal > 0
+        ? {
+            total: prepaymentDeductionTotal,
+            rows: prepaymentDeductionRows
+              .filter((r) => r.source_sale_id && r.document_number && r.total > 0)
+              .map((r) => ({
+                document_number: r.document_number,
+                related_doc_type: inferPrepaymentRelatedDocType(r.document_number),
+                amount: r.amount,
+                total: r.total,
+              })),
+          }
+        : undefined,
   })
 
   const handleSalePreview = async () => {
@@ -1013,22 +1105,31 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
         ? detractionPreview.netPayable
         : !isNotaVenta && fiscalForm.has_igv_retention && retentionPreview.applicable
           ? retentionPreview.netCollectible
-          : totalGlobal
+          : isPrepaymentDeduct
+            ? prepaymentPayableTotal
+            : checkoutTotal
+    const noPaymentRequired = requiredDirect <= 0.009
 
     if (paymentConditionCode === 'cash') {
-      if (validPayments.length === 0) {
-        toast.error('Ingrese al menos un método de pago')
-        return
-      }
-      if (totalPaid < requiredDirect - 0.01) {
-        toast.error(
-          isDetraccion && detractionPreview.applicable
-            ? 'Los pagos directos no cubren el neto cobrable'
-            : 'El total de pagos no cubre el monto de la venta',
-        )
-        return
+      if (!noPaymentRequired) {
+        if (validPayments.length === 0) {
+          toast.error('Ingrese al menos un método de pago')
+          return
+        }
+        if (totalPaid < requiredDirect - 0.01) {
+          toast.error(
+            isDetraccion && detractionPreview.applicable
+              ? 'Los pagos directos no cubren el neto cobrable'
+              : 'El total de pagos no cubre el monto de la venta',
+          )
+          return
+        }
       }
     } else {
+      if (noPaymentRequired) {
+        toast.error('El total está cubierto por anticipos. Use condición de pago al contado.')
+        return
+      }
       const creditBalance = roundMoney(Math.max(0, requiredDirect - totalPaid))
       if (creditBalance <= 0.009) {
         toast.error('El saldo a crédito debe ser mayor a cero. Reduzca el anticipo o elija contado.')
@@ -1053,6 +1154,40 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
     if (isDetraccion) {
       if (!detractionPreview.applicable) {
         toast.error(detractionPreview.reason || 'Verifique los datos de detracción')
+        return
+      }
+    }
+    if (isPrepaymentEmit) {
+      const prepErr = validatePrepaymentItems(prepaymentAffectationGroup, items)
+      if (prepErr) {
+        toast.error(prepErr)
+        return
+      }
+      if (isDetraccion) {
+        toast.error('No se puede combinar anticipo con detracción')
+        return
+      }
+    }
+    if (isPrepaymentDeduct) {
+      const prepErr = validatePrepaymentItems(prepaymentAffectationGroup, items)
+      if (prepErr) {
+        toast.error(prepErr)
+        return
+      }
+      if (isDetraccion) {
+        toast.error('No se puede combinar deducción de anticipos con detracción')
+        return
+      }
+      if (!form.contact_id) {
+        toast.error('Seleccione un cliente para deducir anticipos')
+        return
+      }
+      if (prepaymentDeductionTotal > totalGlobal + 0.02) {
+        toast.error('El anticipo deducido no puede superar el total de la venta')
+        return
+      }
+      if (prepaymentDeductionBase > saleDeductibleBase + 0.02) {
+        toast.error('El monto base deducido supera el total de la venta')
         return
       }
     }
@@ -1112,6 +1247,16 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
         detraccion: isDetraccion && detraccionGoodCode
           ? { good_code: detraccionGoodCode }
           : undefined,
+        prepayment: isPrepaymentEmit
+          ? { emit: true, affectation_group: prepaymentAffectationGroup }
+          : isPrepaymentDeduct
+            ? {
+                affectation_group: prepaymentAffectationGroup,
+                deductions: prepaymentDeductionRows
+                  .filter((r) => r.source_sale_id && r.amount > 0)
+                  .map((r) => ({ source_sale_id: r.source_sale_id!, amount: r.amount })),
+              }
+            : undefined,
         global_discount_mode: discountValue > 0 ? discountMode : undefined,
         global_discount_value: discountValue > 0 ? discountValue : undefined,
         items: items.map((it) => ({
@@ -1269,7 +1414,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
           value={fiscalForm}
           onChange={setFiscalForm}
           sunatCode={form.sunat_code}
-          saleTotal={totalGlobal}
+          saleTotal={checkoutTotal}
           currency={form.currency}
           exchangeRate={parsedExchangeRate}
           contact={selectedContact ?? null}
@@ -1280,6 +1425,64 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
             setCompanyConfig((c) => (c ? { ...c, terms_and_conditions: terms } : c))
           }
           onShowTermsChange={handleShowTermsPreferenceChange}
+          prepayment={
+            form.sunat_code === '01' || form.sunat_code === '03'
+              ? {
+                  emit: emitPrepayment,
+                  onEmitChange: (checked) => {
+                    setEmitPrepayment(checked)
+                    if (checked) {
+                      setDeductPrepayment(false)
+                      setPrepaymentDeductionRows([])
+                      setDetraccionGoodCode('')
+                    }
+                  },
+                  affectationGroup: prepaymentAffectationGroup,
+                  onAffectationGroupChange: setPrepaymentAffectationGroup,
+                  config: prepaymentConfig,
+                  configLoading: prepaymentConfigQuery.loading,
+                  configError: prepaymentConfigQuery.error,
+                  items,
+                  sunatCode: form.sunat_code,
+                  total: checkoutTotal,
+                  currency: form.currency,
+                  disabled: saving || isDetraccion || deductPrepayment,
+                  formatMoney: fmt,
+                }
+              : undefined
+          }
+          prepaymentDeduction={
+            form.sunat_code === '01' || form.sunat_code === '03'
+              ? {
+                  deduct: deductPrepayment,
+                  onDeductChange: (checked) => {
+                    setDeductPrepayment(checked)
+                    if (checked) {
+                      setEmitPrepayment(false)
+                      setDetraccionGoodCode('')
+                      const inferred = inferPrepaymentAffectationGroup(items)
+                      if (inferred) setPrepaymentAffectationGroup(inferred)
+                    } else {
+                      setPrepaymentDeductionRows([])
+                    }
+                  },
+                  affectationGroup: prepaymentAffectationGroup,
+                  onAffectationGroupChange: (group) => {
+                    setPrepaymentAffectationGroup(group)
+                    setPrepaymentDeductionRows([])
+                  },
+                  rows: prepaymentDeductionRows,
+                  onRowsChange: setPrepaymentDeductionRows,
+                  config: prepaymentConfig,
+                  contactId: form.contact_id,
+                  items,
+                  saleAfectacionTotals: totalsByAfectacion,
+                  taxRate,
+                  disabled: saving || isDetraccion || emitPrepayment,
+                  formatMoney: fmt,
+                }
+              : undefined
+          }
         />
       )}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 space-y-5">
@@ -1430,6 +1633,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                     currency: code === SUNAT_TIPO_OPERACION_DETRACCION ? 'PEN' : f.currency,
                   }))
                   if (code !== SUNAT_TIPO_OPERACION_DETRACCION) setDetraccionGoodCode('')
+                  if (code === SUNAT_TIPO_OPERACION_DETRACCION) setEmitPrepayment(false)
                 }}
               >
                 {operationTypeOptions.map((op) => (
@@ -1898,6 +2102,11 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                   + Agregar pago
                 </button>
                 <div className="rounded-xl border border-gray-200 bg-gray-50/80 px-3 py-2.5 space-y-1.5">
+                  {prepaymentCoversAll && (
+                    <p className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-100 rounded-lg px-2.5 py-2">
+                      Cubierto por anticipos. No requiere pago adicional del cliente.
+                    </p>
+                  )}
                   <div className="flex justify-between text-xs text-gray-600">
                     <span>Monto a pagar</span>
                     <span className="font-semibold text-gray-800 tabular-nums">{fmt(directPayableTarget)}</span>
@@ -2101,9 +2310,25 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                   </>
                 )}
                 <div className="flex justify-between items-baseline font-bold text-gray-900 text-sm pt-2 mt-1 border-t border-gray-200">
-                  <span className="uppercase text-xs tracking-wide">Total comprobante</span>
-                  <span className="tabular-nums text-base">{fmt(totalGlobal)}</span>
+                  <span className="uppercase text-xs tracking-wide">
+                    {isPrepaymentDeduct && prepaymentDeductionTotal > 0 ? 'Total venta' : 'Total comprobante'}
+                  </span>
+                  <span className="tabular-nums text-base">
+                    {fmt(isPrepaymentDeduct && prepaymentDeductionTotal > 0 ? totalGlobal : checkoutTotal)}
+                  </span>
                 </div>
+                {!isNotaVenta && isPrepaymentDeduct && prepaymentDeductionTotal > 0 && (
+                  <>
+                    <div className="flex justify-between text-sky-800 text-xs">
+                      <span>Anticipos deducidos</span>
+                      <span className="tabular-nums">− {fmt(prepaymentDeductionTotal)}</span>
+                    </div>
+                    <div className="flex justify-between font-semibold text-emerald-800 text-sm">
+                      <span>Total a pagar</span>
+                      <span className="tabular-nums">{fmt(prepaymentPayableTotal)}</span>
+                    </div>
+                  </>
+                )}
                 {!isNotaVenta && fiscalForm.has_igv_retention && !isDetraccion && retentionPreview.applicable && (
                   <>
                     <div className="flex justify-between text-amber-800 text-xs">
@@ -2115,6 +2340,15 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                       <span className="tabular-nums">{fmt(retentionPreview.netCollectible)}</span>
                     </div>
                   </>
+                )}
+                {!isNotaVenta && isPrepaymentEmit && (
+                  <PrepaymentEmitSummary
+                    emit={isPrepaymentEmit}
+                    config={prepaymentConfig}
+                    affectationGroup={prepaymentAffectationGroup}
+                    total={checkoutTotal}
+                    formatMoney={fmt}
+                  />
                 )}
                 {!isNotaVenta && isDetraccion && detractionPreview.applicable && (
                   <>
@@ -2156,6 +2390,8 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                   onFirstDueDateChange={setCreditFirstDueDate}
                   moneySym={moneySym}
                   fmt={fmt}
+                  payableAmount={directPayableTarget}
+                  disableCredit={prepaymentCoversAll}
                 />
               </div>
             )}

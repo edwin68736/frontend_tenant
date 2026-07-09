@@ -5,16 +5,7 @@ import { SearchableSelect } from '@/components/SearchableSelect'
 import { sunatUnitSelectOptions } from '@/constants/sunatUnits'
 import type { ManualCartLine } from '@/utils/posCart'
 
-const IGV_OPTIONS = [
-  { value: '10', label: '10 - Gravado IGV' },
-  { value: '20', label: '20 - Exonerado' },
-  { value: '30', label: '30 - Inafecto' },
-]
-
-function isGravadoIgv(code: string): boolean {
-  const c = String(code || '').trim()
-  return !['20', '21', '30', '31', '32', '33', '34', '35', '36', '40'].includes(c)
-}
+import { POS_MANUAL_IGV_OPTIONS, isGravadoIgv } from '@/constants/igvAffectation'
 
 type Props = {
   open: boolean
@@ -62,7 +53,7 @@ export function ManualProductModal({ open, onClose, onAdd }: Props) {
   }
 
   return (
-    <PortalModal open={open} onClose={onClose} className="max-w-md">
+    <PortalModal open={open} onClose={onClose} className="max-w-md" stacked>
       <div className="bg-white rounded-2xl shadow-xl w-full overflow-hidden">
         <div className="flex items-center justify-between p-4 border-b border-stone-200">
           <h3 className="font-bold text-stone-900">Producto manual</h3>
@@ -128,7 +119,7 @@ export function ManualProductModal({ open, onClose, onAdd }: Props) {
                   if (!isGravadoIgv(vv)) setPriceIncludesIgv(false)
                   else setPriceIncludesIgv(true)
                 }}
-                options={IGV_OPTIONS}
+                options={POS_MANUAL_IGV_OPTIONS}
                 searchable={false}
               />
             </div>

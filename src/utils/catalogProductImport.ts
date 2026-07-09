@@ -18,12 +18,13 @@ type HucreRowError = {
   field: string
 }
 
-/** Catálogo SUNAT tipo de afectación del IGV (solo estos 4 en importación). */
-export const IGV_AFFECTATION_CODES = ['10', '20', '30', '40'] as const
+/** Catálogo SUNAT tipo de afectación del IGV (importación masiva). */
+export const IGV_AFFECTATION_CODES = ['10', '15', '20', '30', '40'] as const
 export type IgvAffectationCode = (typeof IGV_AFFECTATION_CODES)[number]
 
 export const IGV_AFFECTATION_LABELS: Record<IgvAffectationCode, string> = {
   '10': 'Gravado',
+  '15': 'Gravado – Bonificaciones',
   '20': 'Exonerado',
   '30': 'Inafecto',
   '40': 'Exportación',
@@ -116,7 +117,7 @@ function normalizeOptionalPreparationArea(value: unknown): string {
 }
 
 /**
- * Normaliza tipo de afectación IGV SUNAT: 10 gravado, 20 exonerado, 30 inafecto, 40 exportación.
+ * Normaliza tipo de afectación IGV SUNAT: 10 gravado, 15 gravado bonificaciones, 20 exonerado, 30 inafecto, 40 exportación.
  * Vacío → 10. Acepta número de Excel (10) o texto ("10", "gravado").
  * Devuelve null si el valor no es uno de los 4 códigos permitidos.
  */
@@ -137,7 +138,8 @@ export function normalizeIgvAffectationCode(value: unknown): IgvAffectationCode 
     const code = digits[1]
     return IGV_AFFECTATION_CODES.includes(code as IgvAffectationCode) ? (code as IgvAffectationCode) : null
   }
-  if (raw === '10' || raw.includes('gravado')) return '10'
+  if (raw === '10' || (raw.includes('gravado') && !raw.includes('bonific'))) return '10'
+  if (raw === '15' || (raw.includes('bonific') && !raw.includes('inafecto'))) return '15'
   if (raw === '20' || raw.includes('exonerado')) return '20'
   if (raw === '30' || raw.includes('inafecto')) return '30'
   if (raw === '40' || raw.includes('exportacion')) return '40'
@@ -462,7 +464,7 @@ export async function validateCatalogProductExcel(file: File): Promise<ImportVal
         row: rowNumber,
         column: 'afectacion_igv',
         field: 'afectacion_igv',
-        message: 'Use código SUNAT: 10 (gravado), 20 (exonerado), 30 (inafecto) o 40 (exportación)',
+        message: 'Use código SUNAT: 10 (gravado), 15 (gravado bonificaciones), 20 (exonerado), 30 (inafecto) o 40 (exportación)',
         value: row.afectacion_igv,
       })
       return

@@ -16,6 +16,8 @@ type Props = {
   moneySym: string
   fmt: (n: number) => string
   disabled?: boolean
+  payableAmount?: number
+  disableCredit?: boolean
 }
 
 export function SalePaymentConditionSection({
@@ -33,6 +35,8 @@ export function SalePaymentConditionSection({
   moneySym,
   fmt,
   disabled,
+  payableAmount = 0,
+  disableCredit,
 }: Props) {
   const instSum = sumInstallmentAmounts(installments)
   const creditDiff = round2(creditAmount - instSum)
@@ -48,7 +52,7 @@ export function SalePaymentConditionSection({
               conditionCode === code
                 ? 'border-[rgb(var(--p500))] bg-[rgb(var(--p50))] text-[rgb(var(--p800))]'
                 : 'border-gray-200 text-gray-700 hover:bg-gray-50'
-            } ${disabled ? 'opacity-50 pointer-events-none' : ''}`}
+            } ${disabled || (code === 'credit' && disableCredit) ? 'opacity-50 pointer-events-none' : ''}`}
           >
             <input
               type="radio"
@@ -165,6 +169,10 @@ export function SalePaymentConditionSection({
             <p className="text-xs text-green-700">Cuotas cuadran con el saldo a crédito.</p>
           )}
         </div>
+      ) : payableAmount <= 0.009 ? (
+        <p className="text-xs text-emerald-700">
+          Total a pagar {fmt(payableAmount)}. El anticipo cubre la venta; no se requiere cobro adicional.
+        </p>
       ) : (
         <p className="text-xs text-gray-500">Pago al contado: los métodos de pago deben cubrir el total.</p>
       )}

@@ -4,6 +4,7 @@
  */
 
 import { calcCheckoutDiscountAmount, distributeCheckoutDiscountToLines, type CheckoutDiscountMode } from '@/utils/checkoutDiscount'
+import { isBonificacionGravada } from '@/constants/igvAffectation'
 import { calcItem, calcItemWithSubtotalDiscount, subtotalDiscountToLineDiscount, type TaxConfig } from '@/utils/taxCalc'
 import { roundSunat } from '@/utils/money'
 
@@ -74,7 +75,9 @@ export function calcSaleCheckout(input: SaleCheckoutInput): SaleResult {
       ).subtotal,
     )
     afterLineSubs.push(afterLine)
-    subtotalAfterLineSum = roundSunat(subtotalAfterLineSum + afterLine)
+    if (!isBonificacionGravada(aff)) {
+      subtotalAfterLineSum = roundSunat(subtotalAfterLineSum + afterLine)
+    }
     out.lines.push({
       grossSubtotal: grossSub,
       lineDiscountSubtotal: lineDisc,
@@ -92,7 +95,10 @@ export function calcSaleCheckout(input: SaleCheckoutInput): SaleResult {
     input.globalDiscountMode || 'amount',
     input.globalDiscountValue || 0,
   )
-  const globalShares = distributeCheckoutDiscountToLines(afterLineSubs, globalDisc)
+  const chargeableAfterLine = afterLineSubs.map((sub, i) =>
+    isBonificacionGravada(lines[i].igvAffectationType || '10') ? 0 : sub,
+  )
+  const globalShares = distributeCheckoutDiscountToLines(chargeableAfterLine, globalDisc)
 
   lines.forEach((line, i) => {
     const aff = line.igvAffectationType || '10'
@@ -112,7 +118,7 @@ export function calcSaleCheckout(input: SaleCheckoutInput): SaleResult {
       globalDiscountSubtotal: globalShare,
       subtotal: finalLine.subtotal,
       taxAmount: finalLine.taxAmount,
-      total: finalLine.total,
+      total: isBonificacionGravada(aff) ? 0 : finalLine.total,
       storedDiscount: subtotalDiscountToLineDiscount(
         line.unitPrice,
         line.quantity,
@@ -123,9 +129,11 @@ export function calcSaleCheckout(input: SaleCheckoutInput): SaleResult {
         taxConfig,
       ),
     }
-    out.subtotal = roundSunat(out.subtotal + finalLine.subtotal)
-    out.taxAmount = roundSunat(out.taxAmount + finalLine.taxAmount)
-    out.total = roundSunat(out.total + finalLine.total)
+    if (!isBonificacionGravada(aff)) {
+      out.subtotal = roundSunat(out.subtotal + finalLine.subtotal)
+      out.taxAmount = roundSunat(out.taxAmount + finalLine.taxAmount)
+      out.total = roundSunat(out.total + finalLine.total)
+    }
   })
 
   out.globalDiscountAmount = globalDisc

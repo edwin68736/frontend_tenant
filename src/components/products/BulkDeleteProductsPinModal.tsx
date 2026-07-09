@@ -7,8 +7,10 @@ type Props = {
   open: boolean
   selectedCount: number
   onClose: () => void
-  onConfirm: (reason: string, pin: string) => Promise<BulkDeleteProductsResult>
+  onConfirm: (reason: string, pin?: string) => Promise<BulkDeleteProductsResult>
   onDone: (result: BulkDeleteProductsResult) => void
+  /** Solo productos restaurante (carta Tukichef) requieren PIN de operaciones. */
+  requirePin?: boolean
 }
 
 export function BulkDeleteProductsPinModal({
@@ -17,6 +19,7 @@ export function BulkDeleteProductsPinModal({
   onClose,
   onConfirm,
   onDone,
+  requirePin = false,
 }: Props) {
   const [reason, setReason] = useState('')
   const [pin, setPin] = useState('')
@@ -36,7 +39,7 @@ export function BulkDeleteProductsPinModal({
   const handleConfirm = async () => {
     setLoading(true)
     try {
-      const res = await onConfirm(reason, pin)
+      const res = await onConfirm(reason, requirePin ? pin : undefined)
       setResult(res)
       onDone(res)
     } finally {
@@ -129,19 +132,27 @@ export function BulkDeleteProductsPinModal({
               className="w-full border border-gray-200 rounded-xl p-2 text-sm resize-none"
               rows={2}
             />
-            <input
-              type="password"
-              value={pin}
-              onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-              maxLength={6}
-              inputMode="numeric"
-              placeholder="PIN de operaciones *"
-              className="w-full border border-gray-200 rounded-xl p-2 text-sm"
-              autoComplete="off"
-            />
-            <p className="text-xs text-gray-500">
-              Mismo PIN configurado en Ajustes del restaurante (anulación de pedidos y comandas).
-            </p>
+            {requirePin ? (
+              <>
+                <input
+                  type="password"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                  maxLength={6}
+                  inputMode="numeric"
+                  placeholder="PIN de operaciones *"
+                  className="w-full border border-gray-200 rounded-xl p-2 text-sm"
+                  autoComplete="off"
+                />
+                <p className="text-xs text-gray-500">
+                  PIN configurado en Restaurante → Ajustes (anulación de pedidos y comandas en Tukichef).
+                </p>
+              </>
+            ) : (
+              <p className="text-xs text-gray-500">
+                Acción autorizada con su usuario del ERP. Solo se eliminan productos sin historial comercial.
+              </p>
+            )}
             <div className="flex gap-2 pt-1">
               <button
                 type="button"
@@ -153,7 +164,7 @@ export function BulkDeleteProductsPinModal({
               </button>
               <button
                 type="button"
-                disabled={loading || !reason.trim() || !pin.trim()}
+                disabled={loading || !reason.trim() || (requirePin && !pin.trim())}
                 onClick={() => void handleConfirm()}
                 className="flex-1 py-2.5 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700 disabled:opacity-50"
               >

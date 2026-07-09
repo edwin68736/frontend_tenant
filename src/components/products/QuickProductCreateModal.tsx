@@ -6,22 +6,10 @@ import {
   type CreateProductInput,
   type Product,
 } from '@/services/products.service'
+import { PRODUCT_IGV_AFFECTATION_OPTIONS, isGravadoIgv } from '@/constants/igvAffectation'
 import { PRODUCT_UNIT_FORM_OPTIONS } from '@/constants/sunatUnits'
 
-const IGV_TYPES = [
-  { code: '10', label: '10 - Gravado IGV' },
-  { code: '20', label: '20 - Exonerado' },
-  { code: '30', label: '30 - Inafecto' },
-  { code: '40', label: '40 - Exportación' },
-]
-
-function isGravadoIgv(code: string): boolean {
-  const c = String(code || '').trim()
-  if (c === '20' || c === '21' || c === '30' || c === '31' || c === '32' || c === '33' || c === '34' || c === '35' || c === '36' || c === '40') {
-    return false
-  }
-  return true
-}
+const IGV_TYPES = PRODUCT_IGV_AFFECTATION_OPTIONS
 
 type QuickProductForm = {
   name: string

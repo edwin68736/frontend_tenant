@@ -256,11 +256,10 @@ export const productsService = {
   delete: (id: number) =>
     api.delete(`/api/products/${id}`).then(r => r.data),
 
-  bulkDeleteCatalog: (productIds: number[], pin: string, reason: string) =>
+  bulkDeleteCatalog: (productIds: number[], reason: string) =>
     api
       .post<BulkDeleteProductsResult>('/api/products/bulk-delete/catalog', {
         product_ids: productIds,
-        pin,
         reason,
       })
       .then((r) => r.data),

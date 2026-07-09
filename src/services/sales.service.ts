@@ -182,6 +182,11 @@ export interface CreateSaleInput {
   from_quotation_id?: number
   fiscal_context?: SaleFiscalContextInput
   detraccion?: { good_code: string; payment_method_code?: string }
+  prepayment?: {
+    emit?: boolean
+    affectation_group: 'gravado' | 'exonerado' | 'inafecto'
+    deductions?: { source_sale_id: number; amount: number }[]
+  }
   global_discount_mode?: 'percent' | 'amount'
   global_discount_value?: number
   items: {

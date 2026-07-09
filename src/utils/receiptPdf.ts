@@ -1,9 +1,19 @@
 import { jsPDF, GState } from 'jspdf'
 import QRCode from 'qrcode'
 import type { PrintData } from '@/types/printData'
+import { TUKIFAC_APP_NAME } from '@/lib/appVersion'
 import { paymentWalletVisible, renderPaymentWalletBlock } from '@/utils/receiptPaymentWallet'
-import { getTipoComprobanteLabel, isElectronicSunatCode } from '@/constants/sunat'
+import { isElectronicSunatCode } from '@/constants/sunat'
+import {
+  prepaymentDeductionDescription,
+  receiptDocTypeTitle,
+} from '@/utils/fiscalPrepayment'
 import { buildReceiptTotalLines, formatReceiptTotalAmount, resolvePrintChangeAmount } from '@/utils/receiptTotals'
+import {
+  receiptItemDisplayDescription,
+  receiptItemDisplayTotal,
+  receiptItemDisplayUnitPrice,
+} from '@/utils/receiptBonificacion'
 import { ticketColumnLayoutMm } from '@/utils/receiptTicketLayout'
 import { getPrintIssuerAddress } from '@/utils/printIssuer'
 import { trimCompanyAdditionalNotes } from '@/utils/receiptCompanyNotes'
@@ -17,9 +27,12 @@ import { bankAccountTextLines, renderTicketPaymentAndSunatQrRow } from '@/utils/
 import { fitReceiptLogoMm, resolveReceiptLogoForPdf } from '@/utils/receiptLogoPdf'
 import { rasterPxForMm } from '@/utils/receiptPdfRaster'
 import { renderReceiptA4 } from '@/utils/receiptPdfA4'
+import { getNotaVentaPrintLayout } from '@/services/printers/notaVentaPrintLayout'
 
 const FONT_SIZE = 10
 const FONT_SIZE_SM = 8
+/** Nombre comercial en ticket: un poco más grande que razón social. */
+const FONT_SIZE_COMMERCIAL = 12
 /** Cuerpo ticket: 10pt para impresión nítida desde visor PDF del navegador. */
 const FONT_SIZE_TICKET_BODY = 10
 const FONT_SIZE_TITLE = 13
@@ -73,6 +86,11 @@ function renderFiscalHeaderLines(
   if (f.fiscal_observations) {
     emitLine(`Obs.: ${f.fiscal_observations}`, FONT_SIZE_SM)
   }
+  if (f.prepayment_deductions?.length) {
+    for (const p of f.prepayment_deductions) {
+      emitLine(prepaymentDeductionDescription(p.related_doc_type, p.document_number), FONT_SIZE_SM)
+    }
+  }
   if (data.seller_name) {
     emitLine(`Vendedor: ${data.seller_name}`, FONT_SIZE_SM)
   }
@@ -99,6 +117,9 @@ function renderFiscalTotals(
     emitAmountRow('NETO A COBRAR:', formatMoney(f.detraccion_net_payable ?? data.total, data.currency), {
       bold: true,
     })
+  }
+  if (f.has_prepayment_emit) {
+    emitAmountRow('ANTICIPO:', f.prepayment_label ?? 'COMPROBANTE DE ANTICIPO', { bold: true })
   }
 }
 
@@ -153,6 +174,8 @@ export async function generateReceiptPdf(
 ): Promise<jsPDF> {
   const isTicket = format === 'ticket'
   const paperMm = normalizeTicketPaperWidth(options?.paperWidthMm)
+  const nvLayout = getNotaVentaPrintLayout(data.sunat_code)
+  const showPayAndBank = !nvLayout || nvLayout.showBankAccountsAndPaymentCondition
   const pageW = isTicket ? ticketPageWidthMm(paperMm) : A4_WIDTH
   const margin = isTicket ? ticketMarginMm(paperMm) : MARGIN
   const doc = new jsPDF({
@@ -223,9 +246,9 @@ export async function generateReceiptPdf(
     }
 
     /** Texto centrado con salto de línea (razón social larga, etc.) */
-    const addTicketWrappedCenter = (text: string, size: number) => {
+    const addTicketWrappedCenter = (text: string, size: number, bold = false) => {
       doc.setTextColor(0, 0, 0)
-      doc.setFont('helvetica', 'normal')
+      doc.setFont('helvetica', bold ? 'bold' : 'normal')
       doc.setFontSize(size)
       const lines = doc.splitTextToSize(text, innerW)
       for (const line of lines) {
@@ -236,7 +259,8 @@ export async function generateReceiptPdf(
 
     // Logo (alta resolución para impresión)
     addSpace(3)
-    if (data.company.logo_url) {
+    const showLogo = !nvLayout || nvLayout.showLogo
+    if (showLogo && data.company.logo_url) {
       try {
         const logo = await resolveReceiptLogoForPdf(data.company.logo_url)
         if (logo) {
@@ -251,10 +275,17 @@ export async function generateReceiptPdf(
       }
     }
 
-    // Encabezado empresa (nombre largo → varias líneas centradas)
-    addTicketWrappedCenter(data.company.business_name, FONT_SIZE_TITLE)
-    if (data.company.trade_name) {
-      addTicketWrappedCenter(data.company.trade_name, FONT_SIZE)
+    // Encabezado empresa: nombre comercial destacado, razón social debajo
+    const tradeName = String(data.company.trade_name ?? '').trim()
+    const businessName = String(data.company.business_name ?? '').trim()
+    const showBusinessName =
+      Boolean(businessName) &&
+      businessName.localeCompare(tradeName, undefined, { sensitivity: 'accent' }) !== 0
+    if (tradeName) {
+      addTicketWrappedCenter(tradeName, FONT_SIZE_COMMERCIAL, true)
+      if (showBusinessName) addTicketWrappedCenter(businessName, FONT_SIZE)
+    } else if (businessName) {
+      addTicketWrappedCenter(businessName, FONT_SIZE_TITLE)
     }
     addTicketLineCenter(`RUC ${data.company.ruc}`, FONT_SIZE_TICKET_BODY)
     const issuerAddressTicket = getPrintIssuerAddress(data)
@@ -266,8 +297,9 @@ export async function generateReceiptPdf(
         y += ticketLineH
       }
     }
-    if (data.company.phone) addTicketWrapped(`Telf: ${data.company.phone}`, FONT_SIZE_SM)
-    if (data.company.email) addTicketWrapped(`Email: ${data.company.email}`, FONT_SIZE_SM)
+    const showContact = !nvLayout || nvLayout.showEmailAndPhone
+    if (showContact && data.company.phone) addTicketWrapped(`Telf: ${data.company.phone}`, FONT_SIZE_SM)
+    if (showContact && data.company.email) addTicketWrapped(`Email: ${data.company.email}`, FONT_SIZE_SM)
     const extraNotes = trimCompanyAdditionalNotes(data.company.additional_notes)
     if (extraNotes) {
       doc.setTextColor(0, 0, 0)
@@ -283,18 +315,21 @@ export async function generateReceiptPdf(
     addSpace(2)
 
     // Título comprobante
-    addTicketLineCenter(`R.U.C. ${data.company.ruc}`, FONT_SIZE_SM)
-    addTicketLineCenter(getTipoComprobanteLabel(data.sunat_code), FONT_SIZE)
-    doc.setFontSize(FONT_SIZE_TITLE)
-    doc.text(formatDocNumber(data), pageW / 2, y, { align: 'center' })
-    y += ticketLineH + 2
-    addSpace(2)
+    if (!nvLayout || nvLayout.showDocTypeAndNumber) {
+      addTicketLineCenter(`R.U.C. ${data.company.ruc}`, FONT_SIZE_SM)
+      addTicketLineCenter(receiptDocTypeTitle(data.sunat_code, data.fiscal), FONT_SIZE)
+      doc.setFontSize(FONT_SIZE_TITLE)
+      doc.text(formatDocNumber(data), pageW / 2, y, { align: 'center' })
+      y += ticketLineH + 2
+      addSpace(2)
+    }
 
     // Datos cabecera
     addTicketWrapped(`Fecha Emisión: ${data.issue_date}`, FONT_SIZE_SM)
     if (data.issue_time) addTicketWrapped(`Hora Emisión: ${data.issue_time}`, FONT_SIZE_SM)
     if (data.valid_until) addTicketWrapped(`Válida hasta: ${data.valid_until}`, FONT_SIZE_SM)
-    if (data.client) {
+    const showClient = !nvLayout || nvLayout.showClientData
+    if (showClient && data.client) {
       addTicketWrapped(
         `Cliente: ${data.client.business_name}`,
         FONT_SIZE_SM,
@@ -349,10 +384,18 @@ export async function generateReceiptPdf(
     emitTicketHeaderRow()
     emitTicketDashRow()
 
+    if (data.fiscal?.has_prepayment_emit) {
+      setTicketDetailFont(true)
+      doc.text('*** PAGO ANTICIPADO ***', margin, y, { maxWidth: lay.xEndTotal - margin })
+      y += ticketLineH
+      emitTicketDashRow()
+    }
+
     for (const it of data.items) {
-      const desc = (it.description || '').trim() || '—'
-      const pu = formatMoney(it.unit_price, data.currency)
-      const tot = formatMoney(it.total, data.currency)
+      const baseDesc = receiptItemDisplayDescription(it)
+      const desc = data.fiscal?.has_prepayment_emit ? `${baseDesc} *** Pago Anticipado ***` : baseDesc
+      const pu = receiptItemDisplayUnitPrice(it, (n) => formatMoney(n, data.currency))
+      const tot = receiptItemDisplayTotal(it, (n) => formatMoney(n, data.currency))
       const descLines = doc.splitTextToSize(desc, lay.wDescFirst)
       const firstDesc = descLines[0] ?? '—'
 
@@ -370,6 +413,28 @@ export async function generateReceiptPdf(
         y += ticketLineH
       }
       y += 0.5
+    }
+
+    for (const p of data.fiscal?.prepayment_deductions ?? []) {
+      setTicketDetailFont(false)
+      const label = prepaymentDeductionDescription(p.related_doc_type, p.document_number)
+      const labelLines = doc.splitTextToSize(label, lay.wDescFirst)
+      doc.text('1', lay.xQty, y, { maxWidth: lay.wQty })
+      doc.text('NIU', lay.xUnit, y, { maxWidth: lay.wUnit })
+      doc.text(labelLines[0] ?? label, lay.xDesc, y, { maxWidth: lay.wDescFirst })
+      doc.text(formatMoney(-Math.abs(p.total), data.currency), lay.xEndPUnit, y, {
+        align: 'right',
+        maxWidth: lay.wMoney,
+      })
+      doc.text(formatMoney(-Math.abs(p.total), data.currency), lay.xEndTotal, y, {
+        align: 'right',
+        maxWidth: lay.wMoney,
+      })
+      y += ticketLineH
+      for (let i = 1; i < labelLines.length; i++) {
+        doc.text(labelLines[i], lay.xDesc, y, { maxWidth: lay.wDescCont })
+        y += ticketLineH
+      }
     }
 
     emitTicketDashRow()
@@ -393,7 +458,7 @@ export async function generateReceiptPdf(
     }
 
     const bankLines = bankAccountTextLines(data)
-    if (bankLines.length > 0) {
+    if (showPayAndBank && bankLines.length > 0) {
       addSpace(1)
       for (const line of bankLines) {
         addTicketWrapped(line, FONT_SIZE_SM)
@@ -407,15 +472,17 @@ export async function generateReceiptPdf(
     }
 
     const showSunatQr = isElectronicSunatCode(data.sunat_code) && Boolean(data.qr_data)
-    y = await renderTicketPaymentAndSunatQrRow(doc, data, {
-      showSunatQr,
-      y,
-      pageW,
-      margin,
-      innerW,
-      lineH: ticketLineH,
-    })
-    addSpace(4)
+    if (showPayAndBank || showSunatQr) {
+      y = await renderTicketPaymentAndSunatQrRow(doc, data, {
+        showSunatQr,
+        y,
+        pageW,
+        margin,
+        innerW,
+        lineH: ticketLineH,
+      })
+      addSpace(4)
+    }
 
     if (!showSunatQr) {
       if (!isNonElectronicDoc(data.sunat_code)) {
@@ -435,6 +502,9 @@ export async function generateReceiptPdf(
 
     // Términos y condiciones al final del ticket (preview y comprobante emitido).
     renderFiscalFooter(data, addTicketWrapped, addSpace)
+
+    addSpace(2)
+    addTicketLineCenter(`${TUKIFAC_APP_NAME} - Sistema POS`, FONT_SIZE_SM)
 
     if (options?.preview) {
       applyPreviewWatermark(doc, pageW, y + margin)

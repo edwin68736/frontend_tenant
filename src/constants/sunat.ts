@@ -21,6 +21,7 @@ export const SUNAT_TIPO_COMPROBANTE: Record<string, string> = {
 /** Catálogo 51 — Tipo de operación (tipoOperacion en payload). */
 export const SUNAT_TIPO_OPERACION: Record<string, string> = {
   '0101': 'Venta interna',
+  '0104': 'Venta interna – Anticipos',
   '0200': 'Exportación de bienes',
   '0201': 'Exportación de servicios',
   '0401': 'Ventas no domiciliados',
@@ -30,6 +31,9 @@ export const SUNAT_TIPO_OPERACION: Record<string, string> = {
 
 /** Código por defecto para venta interna (Factura y Boleta). */
 export const SUNAT_TIPO_OPERACION_VENTA_INTERNA = '0101'
+
+/** Operación de emisión de comprobante por anticipo (cat. 51). */
+export const SUNAT_TIPO_OPERACION_ANTICIPOS = '0104'
 
 /** Operación sujeta a detracción (solo factura 01). */
 export const SUNAT_TIPO_OPERACION_DETRACCION = '1001'

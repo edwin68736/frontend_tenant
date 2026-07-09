@@ -165,7 +165,7 @@ mod commands {
         let mut out: Vec<u8> = Vec::new();
 
         out.extend_from_slice(&[0x1B, 0x40]);
-        out.extend_from_slice(b"Tukichef\n");
+        out.extend_from_slice(b"Tukifac\n");
         out.extend_from_slice(b"==============================\n");
 
         let title = match kind {
@@ -312,7 +312,7 @@ mod commands {
                 return Err("printer_name vacío (modo Windows)".to_string());
             }
             println!("[printers_test_print] bytes={}", bytes.len());
-            write_raw_to_printer(&printer_name, "Tukichef - Test", &bytes)?;
+            write_raw_to_printer(&printer_name, "Tukifac - Test", &bytes)?;
             println!("[printers_test_print] OK");
             return Ok("Enviado a la impresora Windows (RAW)".to_string());
         }
@@ -329,7 +329,7 @@ mod commands {
         let columns = if paper_width_mm <= 58 { 32 } else { 48 };
         let mut out: Vec<u8> = Vec::new();
         out.extend_from_slice(&[0x1B, 0x40]);
-        out.extend_from_slice(b"Tukichef\n");
+        out.extend_from_slice(b"Tukifac\n");
         out.extend_from_slice(b"==============================\n");
         let title = match kind {
             "comandas" => "PRUEBA COMANDA",
@@ -400,7 +400,7 @@ mod commands {
                 "[printers_print_raw] tcp {host}:{port} bytes={}",
                 decoded.len()
             );
-            let _title = doc_name.unwrap_or_else(|| "Tukichef - Print".to_string());
+            let _title = doc_name.unwrap_or_else(|| "Tukifac - Print".to_string());
             write_raw_to_tcp(host, port, &decoded)?;
             println!("[printers_print_raw] OK TCP");
             return Ok(format!("Enviado por TCP a {host}:{port} (RAW)"));
@@ -412,7 +412,7 @@ mod commands {
                 return Err("printer_name vacío (modo Windows)".to_string());
             }
             println!("[printers_print_raw] bytes={}", decoded.len());
-            let title = doc_name.unwrap_or_else(|| "Tukichef - Print".to_string());
+            let title = doc_name.unwrap_or_else(|| "Tukifac - Print".to_string());
             write_raw_to_printer(&printer_name, &title, &decoded)?;
             println!("[printers_print_raw] OK");
             return Ok("Enviado a la impresora Windows (RAW)".to_string());

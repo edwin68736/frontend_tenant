@@ -1,3 +1,4 @@
+import { sumAffectationByGroup } from '@/constants/igvAffectation'
 import type { PrintData } from '@/types/printData'
 import { calcPaymentChange, roundDisplay, roundSunat, sumMoney } from '@/utils/money'
 import { receiptTotalDiscount, lineSubtotalDiscount, lineGlobalSubtotalDiscount } from '@/utils/receiptDiscount'
@@ -68,10 +69,20 @@ export function resolvePrintChangeAmount(data: PrintData): number {
  */
 export function buildReceiptTotalLines(data: PrintData): ReceiptTotalLine[] {
   const aff = data.totals_by_affectation || {}
-  const gravado = aff['10']
-  const exonerado = aff['20']
-  const inafecto = aff['30']
-  const exportacion = aff['40']
+  const bonif = aff['15']
+  const gravadoAll = sumAffectationByGroup(aff, 'gravado')
+  const gravado =
+    bonif && gravadoAll
+      ? {
+          ...gravadoAll,
+          subtotal: roundSunat(Math.max(0, (gravadoAll.subtotal ?? 0) - (bonif.subtotal ?? 0))),
+          tax_amount: roundSunat(Math.max(0, (gravadoAll.tax_amount ?? 0) - (bonif.tax_amount ?? 0))),
+          total: roundSunat(Math.max(0, (gravadoAll.total ?? 0) - (bonif.total ?? 0))),
+        }
+      : gravadoAll
+  const exonerado = sumAffectationByGroup(aff, 'exonerado')
+  const inafecto = sumAffectationByGroup(aff, 'inafecto')
+  const exportacion = sumAffectationByGroup(aff, 'exportacion')
   const lineDiscount = receiptLineDiscountTotal(data)
   const globalDiscount = receiptGlobalDiscount(data)
   const hasDiscount = lineDiscount > 0.000001 || globalDiscount > 0.000001 || receiptTotalDiscount(data) > 0.000001
@@ -92,6 +103,9 @@ export function buildReceiptTotalLines(data: PrintData): ReceiptTotalLine[] {
   }
   if (exportacion && (exportacion.subtotal ?? 0) > 0.000001) {
     affectationRows.push({ label: 'Op. Exportación:', amount: exportacion.subtotal })
+  }
+  if (bonif && (bonif.subtotal ?? 0) > 0.000001) {
+    affectationRows.push({ label: 'Bonif. (ref.):', amount: bonif.subtotal })
   }
 
   if (hasDiscount) {
@@ -114,6 +128,12 @@ export function buildReceiptTotalLines(data: PrintData): ReceiptTotalLine[] {
   }
 
   if (tax > 0.000001) lines.push({ label: 'IGV:', amount: tax })
+
+  const prepDed = data.fiscal?.prepayment_deduction_total ?? 0
+  if (data.fiscal?.has_prepayment_deduction && prepDed > 0.000001) {
+    lines.push({ label: 'ANTICIPO:', amount: prepDed, negative: true })
+  }
+
   lines.push({ label: 'TOTAL A PAGAR:', amount: total, bold: true })
   return lines
 }

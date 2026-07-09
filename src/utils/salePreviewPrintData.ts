@@ -11,12 +11,7 @@ import { calcPaymentChange } from '@/utils/money'
 import { resolvePublicAssetUrl } from '@/config/apiBaseUrl'
 import { amountInWords } from '@/utils/amountInWords'
 
-const AFFECT_LABELS: Record<string, string> = {
-  '10': 'Gravado',
-  '20': 'Exonerado',
-  '30': 'Inafecto',
-  '40': 'Exportación',
-}
+import { igvAffectationLabel } from '@/constants/igvAffectation'
 
 export type SalePreviewFormItem = {
   code: string
@@ -89,6 +84,17 @@ export type BuildSalePreviewPrintDataInput = {
   sellerName?: string
   paymentConditionCode?: 'cash' | 'credit'
   creditInstallments?: Array<{ due_date: string; amount: number | string }>
+  isPrepaymentEmit?: boolean
+  prepaymentConfig?: {
+    emit_operation_type: string
+    pdf_label: string
+    affectation_groups: Array<{ value: string; label: string }>
+  }
+  prepaymentAffectationGroup?: string
+  prepaymentDeduction?: {
+    total: number
+    rows: Array<{ document_number: string; related_doc_type: string; amount: number; total: number }>
+  }
   /** Cuentas bancarias activas del tenant (para filtrar por receipt_bank_account_ids). */
   bankAccounts?: Array<{
     id: number
@@ -231,9 +237,29 @@ function buildFiscalBlock(input: BuildSalePreviewPrintDataInput): PrintFiscalCon
     if (terms) fiscal.terms_text = terms
   }
 
+  if (input.isPrepaymentEmit && input.prepaymentConfig) {
+    fiscal.has_prepayment_emit = true
+    fiscal.prepayment_label = input.prepaymentConfig.pdf_label
+    fiscal.prepayment_affectation_group = input.prepaymentAffectationGroup
+    fiscal.prepayment_related_doc_type = input.form.sunat_code === '01' ? '02' : '03'
+  }
+
+  if (input.prepaymentDeduction && input.prepaymentDeduction.rows.length > 0) {
+    fiscal.has_prepayment_deduction = true
+    fiscal.prepayment_deduction_total = input.prepaymentDeduction.total
+    fiscal.prepayment_deductions = input.prepaymentDeduction.rows.map((r) => ({
+      document_number: r.document_number,
+      related_doc_type: r.related_doc_type,
+      amount: r.amount,
+      total: r.total,
+    }))
+  }
+
   if (
     !fiscal.has_detraccion &&
     !fiscal.has_igv_retention &&
+    !fiscal.has_prepayment_emit &&
+    !fiscal.has_prepayment_deduction &&
     !fiscal.purchase_order_number &&
     !fiscal.fiscal_observations &&
     !fiscal.guias?.length &&
@@ -296,6 +322,7 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
       subtotal: line?.subtotal ?? 0,
       tax_amount: line?.taxAmount ?? 0,
       total: line?.total ?? 0,
+      igv_affectation_type: it.igv_affectation_type || '10',
       modifiers_json: it.modifiers_json,
     }
   })
@@ -307,7 +334,7 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
     if (!totalsByAffectation[code]) {
       totalsByAffectation[code] = {
         code,
-        description: AFFECT_LABELS[code] ?? code,
+        description: igvAffectationLabel(code),
         subtotal: 0,
         tax_amount: 0,
         total: 0,
@@ -375,7 +402,9 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
     issue_time: peruIssueTime(),
     currency: form.currency,
     exchange_rate: form.currency === 'USD' ? form.exchange_rate ?? null : null,
-    operation_type_code: form.operation_type_code,
+    operation_type_code: input.isPrepaymentEmit && input.prepaymentConfig
+      ? input.prepaymentConfig.emit_operation_type
+      : form.operation_type_code,
     qr_data,
     legend_text: amountInWords(totalGlobal, form.currency),
     valid_until: mode === 'quotation' ? isoDateToReceiptDate(form.due_date) : undefined,

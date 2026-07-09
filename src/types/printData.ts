@@ -57,6 +57,20 @@ export interface PrintFiscalContext {
   detraccion_bank_account?: string
   detraccion_payment_method_code?: string
   detraccion_net_payable?: number
+  has_prepayment_emit?: boolean
+  prepayment_label?: string
+  prepayment_affectation_group?: string
+  prepayment_related_doc_type?: string
+  has_prepayment_deduction?: boolean
+  prepayment_deduction_total?: number
+  prepayment_deductions?: PrintPrepaymentDeduction[]
+}
+
+export interface PrintPrepaymentDeduction {
+  document_number: string
+  related_doc_type: string
+  amount: number
+  total: number
 }
 
 export interface PrintGuiaRef {
@@ -116,6 +130,7 @@ export interface PrintItem {
   subtotal: number
   tax_amount: number
   total: number
+  igv_affectation_type?: string
   modifiers_json?: string
 }
 

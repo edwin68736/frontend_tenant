@@ -89,6 +89,20 @@ export function calcItem(
   return { subtotal, taxAmount, total: subtotal + taxAmount }
 }
 
+/** Importe cobrable al cliente (bonificación gravada 15 → 0). */
+export function calcItemPayableTotal(
+  unitPrice: number,
+  quantity: number,
+  discount: number,
+  igvAffectationType: string,
+  priceIncludesIgv: boolean,
+  taxRatePercent: number,
+  taxConfig?: Partial<TaxConfig>,
+): number {
+  if (String(igvAffectationType || '').trim() === '15') return 0
+  return calcItem(unitPrice, quantity, discount, igvAffectationType, priceIncludesIgv, taxRatePercent, taxConfig).total
+}
+
 /**
  * Aplica descuento sobre la base imponible (subtotal) y recalcula IGV y total.
  */
