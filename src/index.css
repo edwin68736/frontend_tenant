@@ -49,6 +49,21 @@ html.platform-capacitor {
   --app-header-offset: var(--safe-top);
 }
 
+/**
+ * Sonner: toasts fijos al viewport (no al body con padding lateral en Capacitor).
+ * Refuerza offset/margin en Android/iOS aunque el WebView use overlay en la status bar.
+ */
+html.platform-capacitor [data-sonner-toaster] {
+  --offset-top: max(0.75rem, var(--safe-top));
+  --offset-right: max(0.75rem, var(--safe-right));
+  --offset-bottom: max(0.75rem, var(--safe-bottom));
+  --offset-left: max(0.75rem, var(--safe-left));
+  --mobile-offset-top: max(0.75rem, var(--safe-top));
+  --mobile-offset-right: max(0.75rem, var(--safe-right));
+  --mobile-offset-bottom: max(0.75rem, var(--safe-bottom));
+  --mobile-offset-left: max(0.75rem, var(--safe-left));
+}
+
 @layer utilities {
   .pt-safe {
     padding-top: var(--safe-top);

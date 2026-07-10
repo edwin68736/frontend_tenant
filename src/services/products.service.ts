@@ -44,7 +44,23 @@ export interface ProductReportRow extends Product {
 export interface Category {
   id: number
   name: string
-  parent_id: number | null
+  description?: string
+  sort_order?: number
+  parent_id?: number | null
+  product_count?: number
+  active?: boolean
+}
+
+export interface CreateCategoryInput {
+  name: string
+  description?: string
+  sort_order?: number
+}
+
+export interface UpdateCategoryInput {
+  name: string
+  description?: string
+  sort_order?: number
 }
 
 export interface ModifierGroup {
@@ -264,11 +280,35 @@ export const productsService = {
       })
       .then((r) => r.data),
 
-  listCategories: () =>
-    api.get<{ data: Category[] }>('/api/categories').then(r => r.data.data ?? []),
+  listCategories: (opts?: { withCounts?: boolean }) =>
+    api
+      .get<{ data: Category[] }>('/api/categories', {
+        params: opts?.withCounts ? { with_counts: 'true' } : undefined,
+      })
+      .then((r) => r.data.data ?? []),
 
-  createCategory: (name: string, parent_id?: number) =>
-    api.post<{ data: Category }>('/api/categories', { name, parent_id }).then(r => r.data.data),
+  createCategory: (nameOrInput: string | CreateCategoryInput) => {
+    const body: CreateCategoryInput =
+      typeof nameOrInput === 'string' ? { name: nameOrInput } : nameOrInput
+    return api
+      .post<{ data: Category }>('/api/categories', {
+        name: body.name,
+        description: body.description ?? '',
+        ...(body.sort_order != null ? { sort_order: body.sort_order } : {}),
+      })
+      .then((r) => r.data.data)
+  },
+
+  updateCategory: (id: number, input: UpdateCategoryInput) =>
+    api
+      .put<{ data: Category }>(`/api/categories/${id}`, {
+        name: input.name,
+        description: input.description ?? '',
+        sort_order: input.sort_order ?? 0,
+      })
+      .then((r) => r.data.data),
+
+  deleteCategory: (id: number) => api.delete(`/api/categories/${id}`).then((r) => r.data),
 
   listModifierGroups: () =>
     api.get<{ data: ModifierGroup[] }>('/api/modifier-groups').then(r => r.data.data ?? []),

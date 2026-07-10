@@ -3,6 +3,10 @@ import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import type { PrintData } from '@/types/printData'
 import { generateReceiptPdf } from '@/utils/receiptPdf'
 import { normalizePhoneForWhatsApp } from '@/utils/membershipReminders'
+import { shareBlobFile } from '@/utils/receiptShare'
+import { downloadBlob } from '@/utils/downloadBlob'
+import { openExternalUrl } from '@/utils/supportWhatsApp'
+import { isTauriDesktop } from '@/lib/platform/detect'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker
 
@@ -54,7 +58,6 @@ export async function shareReceiptPngViaWhatsApp(opts: ShareReceiptWhatsAppOpts)
   const blob = await generateReceiptPngBlob(opts.printData, format)
   const suffix = format === 'ticket' ? '-ticket' : ''
   const fname = `comprobante-${opts.printData.series}-${String(opts.printData.number).replace(/\s/g, '')}${suffix}.png`
-  const file = new File([blob], fname, { type: 'image/png' })
   const msg =
     opts.message ??
     `Comprobante ${opts.printData.series}-${String(opts.printData.number).padStart(8, '0')}`
@@ -62,8 +65,17 @@ export async function shareReceiptPngViaWhatsApp(opts: ShareReceiptWhatsAppOpts)
   const waNum = normalizePhoneForWhatsApp(opts.phone ?? '')
   const waBase = waNum ? `https://wa.me/${waNum}` : 'https://wa.me/'
 
-  if (typeof navigator !== 'undefined' && navigator.share && navigator.canShare?.({ files: [file] })) {
-    await navigator.share({ files: [file], text: msg, title: 'Comprobante' })
+  const shared = await shareBlobFile(blob, fname, {
+    title: 'Comprobante',
+    text: msg,
+    mimeType: 'image/png',
+  })
+  if (shared) return
+
+  if (isTauriDesktop()) {
+    await downloadBlob(blob, fname)
+    const hint = encodeURIComponent(`${msg}\n\nAdjunte la imagen guardada en este chat de WhatsApp.`)
+    await openExternalUrl(`${waBase}?text=${hint}`)
     return
   }
 
@@ -82,11 +94,7 @@ export async function shareReceiptPngViaWhatsApp(opts: ShareReceiptWhatsAppOpts)
 
   const url = URL.createObjectURL(blob)
   try {
-    const a = document.createElement('a')
-    a.href = url
-    a.download = fname
-    a.rel = 'noopener'
-    a.click()
+    await downloadBlob(blob, fname)
   } finally {
     setTimeout(() => URL.revokeObjectURL(url), 2500)
   }

@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf'
 import type { MovementReportRow } from '@/services/cashbank.service'
 import { DETRACCION_PAYMENT_METHOD_NAME } from '@/utils/fiscalDetraction'
+import { downloadJsPdf } from '@/utils/downloadBlob'
 
 const PAGE_W = 210
 const MARGIN = 12
@@ -151,7 +152,7 @@ export type CashMovementsPdfInput = {
   companyName?: string
 }
 
-export function downloadCashMovementsReportPdf(input: CashMovementsPdfInput): void {
+export async function downloadCashMovementsReportPdf(input: CashMovementsPdfInput): Promise<void> {
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' })
   const pageW = 297
   const y = { v: MARGIN }
@@ -236,5 +237,5 @@ export function downloadCashMovementsReportPdf(input: CashMovementsPdfInput): vo
   }
 
   const datePart = new Date().toISOString().slice(0, 10)
-  doc.save(`reporte-movimientos-caja_${datePart}.pdf`)
+  await downloadJsPdf(doc, `reporte-movimientos-caja_${datePart}.pdf`)
 }

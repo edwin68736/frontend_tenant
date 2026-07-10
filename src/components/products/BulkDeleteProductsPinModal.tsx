@@ -69,7 +69,7 @@ export function BulkDeleteProductsPinModal({
             )}
             {!result && (
               <p className="text-xs text-gray-500 mt-1">
-                Solo se eliminarán productos sin historial (ventas, compras, inventario, etc.).
+                Solo se eliminarán productos sin ventas ni compras registradas.
               </p>
             )}
           </div>

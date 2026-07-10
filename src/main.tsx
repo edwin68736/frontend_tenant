@@ -1,7 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { Toaster } from 'sonner'
 import App from './App'
+import { AppToaster } from '@/components/AppToaster'
 import { AuthProvider } from './contexts/AuthContext'
 import { BranchProvider } from './contexts/BranchContext'
 import { BranchCheckoutSeriesProvider } from './contexts/BranchCheckoutSeriesContext'
@@ -21,7 +21,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <BranchCheckoutSeriesProvider>
               <ThemeProvider>
                 <App />
-                <Toaster position="top-right" richColors closeButton />
+                <AppToaster />
               </ThemeProvider>
             </BranchCheckoutSeriesProvider>
           </BranchProvider>

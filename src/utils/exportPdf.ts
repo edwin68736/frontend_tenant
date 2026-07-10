@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf'
+import { downloadJsPdf } from '@/utils/downloadBlob'
 
 const FONT_SIZE = 9
 const FONT_SIZE_HEADER = 10
@@ -14,12 +15,12 @@ export interface ExportColumn<T = Record<string, unknown>> {
   format?: (val: unknown, row: T) => string | number
 }
 
-export function exportTableToPdf<T extends object>(
+export async function exportTableToPdf<T extends object>(
   title: string,
   columns: ExportColumn<T>[],
   data: T[],
   filename?: string
-): void {
+): Promise<void> {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
   const pageWidth = A4_HEIGHT
   const pageHeight = A4_WIDTH
@@ -32,7 +33,7 @@ export function exportTableToPdf<T extends object>(
   if (data.length === 0) {
     doc.setFontSize(FONT_SIZE)
     doc.text('Sin datos para mostrar.', MARGIN, y)
-    doc.save(filename ?? `${title.replace(/\s+/g, '-')}.pdf`)
+    await downloadJsPdf(doc, filename ?? `${title.replace(/\s+/g, '-')}.pdf`)
     return
   }
 
@@ -76,5 +77,5 @@ export function exportTableToPdf<T extends object>(
     y += ROW_HEIGHT
   })
 
-  doc.save(filename ?? `${title.replace(/\s+/g, '-')}.pdf`)
+  await downloadJsPdf(doc, filename ?? `${title.replace(/\s+/g, '-')}.pdf`)
 }

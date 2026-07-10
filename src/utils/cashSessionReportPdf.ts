@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf'
 import type { CashSessionReport, IncomeDetailRow } from '@/services/cashbank.service'
 import { formatPaymentMethodLabel, isDetractionPaymentMethod } from '@/utils/paymentMethodLabel'
 import { DETRACCION_PAYMENT_METHOD_NAME } from '@/utils/fiscalDetraction'
+import { downloadJsPdf } from '@/utils/downloadBlob'
 
 const PAGE_W = 210
 const MARGIN = 12
@@ -485,7 +486,7 @@ export function buildCashSessionReportPdfFilename(report: CashSessionReport): st
   return `reporte-caja-resumen_${nombreCaja}_${y}-${mo}-${da}_${h}-${mi}-${se}.pdf`
 }
 
-export function downloadCashSessionReportPdf(report: CashSessionReport, opts?: { companyName?: string }): void {
+export async function downloadCashSessionReportPdf(report: CashSessionReport, opts?: { companyName?: string }): Promise<void> {
   const doc = generateCashSessionReportPdf(report, opts)
-  doc.save(buildCashSessionReportPdfFilename(report))
+  await downloadJsPdf(doc, buildCashSessionReportPdfFilename(report))
 }

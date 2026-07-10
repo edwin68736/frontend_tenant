@@ -2,6 +2,7 @@ import { jsPDF, GState } from 'jspdf'
 import QRCode from 'qrcode'
 import type { PrintData } from '@/types/printData'
 import { TUKIFAC_APP_NAME } from '@/lib/appVersion'
+import { downloadBlob } from '@/utils/downloadBlob'
 import { paymentWalletVisible, renderPaymentWalletBlock } from '@/utils/receiptPaymentWallet'
 import { isElectronicSunatCode } from '@/constants/sunat'
 import {
@@ -542,8 +543,8 @@ export async function downloadReceiptPdf(
   format: 'a4' | 'ticket' = 'a4',
   options?: ReceiptPdfOptions,
 ): Promise<void> {
-  const doc = await generateReceiptPdf(data, format, options)
-  doc.save(receiptPdfFileName(data, format))
+  const blob = await printDataToPdfBlob(data, format, options)
+  await downloadBlob(blob, receiptPdfFileName(data, format))
 }
 
 export async function openReceiptPdfInNewTab(
