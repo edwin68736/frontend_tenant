@@ -225,9 +225,10 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const load = () => {
     const seq = ++loadSeqRef.current
     setLoading(true)
-    const branchId = pageMode === 'product' && activeBranchId > 0 ? activeBranchId : undefined
+    /** Stock por sucursal se carga aparte; el catálogo lista todos los productos del tenant. */
+    const stockBranchId = pageMode === 'product' && activeBranchId > 0 ? activeBranchId : undefined
     return productsService
-      .list(listSearchQuery, catFilter, undefined, !includeInactive, page, perPage, undefined, pageMode, branchId)
+      .list(listSearchQuery, catFilter, undefined, !includeInactive, page, perPage, undefined, pageMode)
       .then(({ data: p, total: t }) => {
         if (seq !== loadSeqRef.current) return [] as Product[]
         setProducts(p ?? [])
@@ -242,7 +243,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
             ? inventoryService
                 .getStockSummary(
                   productsList.filter(x => x.manage_stock).map(x => x.id),
-                  branchId,
+                  stockBranchId,
                 )
                 .catch(() => ({}))
             : Promise.resolve({} as Record<string, number>),
