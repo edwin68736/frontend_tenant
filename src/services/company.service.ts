@@ -1,4 +1,12 @@
 import api from './api'
+import {
+  clearCompanyLogoCache,
+  ensureCompanyLogoDataUrl,
+  getCompanyConfigCache,
+  getCompanyLogoDataUrlSync,
+  setCompanyConfigCache,
+  setCompanyLogoFromFile,
+} from '@/lib/companyConfig/store'
 
 export interface CompanyConfig {
   id?: number
@@ -13,6 +21,8 @@ export interface CompanyConfig {
   currency: string
   tax_rate: number
   color_theme: string
+  /** general | nrus — régimen tributario del contribuyente. */
+  taxpayer_regime?: string
   logo_url: string
   additional_notes?: string
   terms_and_conditions?: string
@@ -29,6 +39,17 @@ export interface CompanyConfig {
   detraction_default_payment_method?: string
 }
 
+/** Capacidades resueltas por el backend según el régimen tributario del tenant. */
+export interface TenantCapabilities {
+  allowed_sale_doc_codes?: string[]
+  can_emit_factura?: boolean
+  can_emit_boleta?: boolean
+  can_emit_nota_credito?: boolean
+  can_emit_nota_debito?: boolean
+  show_igv_breakdown?: boolean
+  default_operation_type?: string
+}
+
 export interface SunatConfig {
   sunat_enabled: boolean
   sunat_env_mode?: string
@@ -36,6 +57,18 @@ export interface SunatConfig {
   tax_rate: number
   igv_regime: string
   tax_benefit_zone: boolean
+  /** general | nrus — régimen tributario del contribuyente. */
+  taxpayer_regime?: string
+  capabilities?: TenantCapabilities
+}
+
+/**
+ * ¿El tenant puede emitir Factura (01)? Los frontends consumen esta capacidad
+ * resuelta por el backend; NO reimplementan reglas del régimen. Default true
+ * (retro-compatible: tenants/respuestas sin capabilities se comportan como antes).
+ */
+export function tenantCanEmitFactura(sunat?: SunatConfig | null): boolean {
+  return sunat?.capabilities?.can_emit_factura !== false
 }
 
 export interface InvoicingSettings {
@@ -92,18 +125,55 @@ export interface SeriesRow {
   usage_reason?: string
 }
 
+let configInFlight: Promise<CompanyConfig> | null = null
+
 export const companyService = {
-  getConfig: () => api.get<CompanyConfig>('/api/company/config').then((r) => r.data),
+  /**
+   * Config del tenant. Se cachea al primer fetch (login) y se sirve desde caché;
+   * solo consulta al backend si no hay caché o si `force` es true. Las ediciones
+   * (updateConfig / uploadLogo / deleteLogo) refrescan el caché.
+   */
+  getConfig: (opts?: { force?: boolean }): Promise<CompanyConfig> => {
+    if (!opts?.force) {
+      const cached = getCompanyConfigCache()
+      if (cached) {
+        // Reintenta el logo si el caché de config existe pero el data URL no
+        // (p. ej. tras recargar la app o si el primer intento falló).
+        if (!getCompanyLogoDataUrlSync(cached.logo_url)) void ensureCompanyLogoDataUrl(cached.logo_url)
+        return Promise.resolve(cached)
+      }
+      if (configInFlight) return configInFlight
+    }
+    const req = api
+      .get<CompanyConfig>('/api/company/config')
+      .then((r) => {
+        setCompanyConfigCache(r.data)
+        void ensureCompanyLogoDataUrl(r.data.logo_url)
+        return r.data
+      })
+      .finally(() => {
+        configInFlight = null
+      })
+    configInFlight = req
+    return req
+  },
   updateConfig: (data: Partial<CompanyConfig>) =>
     api.put('/api/company/config', data).then(async (r) => {
       const body = r.data as { data?: CompanyConfig } & Partial<CompanyConfig>
       // Preferir config fresca del servidor (evita UI con datos locales desfasados).
-      if (body?.data && typeof body.data === 'object') return body.data
-      try {
-        return await companyService.getConfig()
-      } catch {
-        return body as CompanyConfig
+      let fresh: CompanyConfig
+      if (body?.data && typeof body.data === 'object') {
+        fresh = body.data
+      } else {
+        try {
+          fresh = await companyService.getConfig({ force: true })
+        } catch {
+          fresh = body as CompanyConfig
+        }
       }
+      setCompanyConfigCache(fresh)
+      void ensureCompanyLogoDataUrl(fresh.logo_url)
+      return fresh
     }),
   updateReceiptWallet: (data: {
     wallet_provider: string
@@ -133,11 +203,21 @@ export const companyService = {
       .post<{ success: boolean; logo_url: string; data: CompanyConfig }>('/api/company/logo', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      .then((r) => r.data)
+      .then((r) => {
+        if (r.data?.data) setCompanyConfigCache(r.data.data)
+        // Usa el File local para el data URL (sin red ni CORS); si falla, se re-descarga.
+        const url = r.data?.logo_url || r.data?.data?.logo_url || ''
+        if (url) void setCompanyLogoFromFile(file, url)
+        return r.data
+      })
   },
 
   deleteLogo: () =>
-    api.delete<{ success: boolean; data: CompanyConfig }>('/api/company/logo').then((r) => r.data),
+    api.delete<{ success: boolean; data: CompanyConfig }>('/api/company/logo').then((r) => {
+      if (r.data?.data) setCompanyConfigCache(r.data.data)
+      clearCompanyLogoCache()
+      return r.data
+    }),
   getSunat: () => api.get<SunatConfig>('/api/company/sunat').then((r) => r.data),
   getInvoicing: () => api.get<InvoicingSettings>('/api/company/invoicing').then((r) => r.data),
   updateSunat: (data: Pick<SunatConfig, 'tax_rate' | 'igv_regime' | 'tax_benefit_zone'>) =>

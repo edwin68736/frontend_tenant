@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import { AppToaster } from '@/components/AppToaster'
+import { AppErrorBoundary } from '@/components/AppErrorBoundary'
 import { AuthProvider } from './contexts/AuthContext'
 import { BranchProvider } from './contexts/BranchContext'
 import { BranchCheckoutSeriesProvider } from './contexts/BranchCheckoutSeriesContext'
@@ -13,6 +14,7 @@ import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
+    <AppErrorBoundary>
     <NativeShellProvider>
       <TenantBindingProvider>
       <AuthProvider>
@@ -29,5 +31,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       </AuthProvider>
       </TenantBindingProvider>
     </NativeShellProvider>
+    </AppErrorBoundary>
   </React.StrictMode>,
 )

@@ -26,6 +26,8 @@ type Props = {
   /** Si false, solo notas de venta (series ya filtradas en el padre). */
   sunatEnabled?: boolean
   billingModule?: boolean
+  /** ¿El régimen del tenant permite Factura (01)? (Nuevo RUS = false). */
+  canFactura?: boolean
 }
 
 const LABEL = 'block text-xs font-medium text-stone-600 mb-1'
@@ -51,10 +53,11 @@ export function CheckoutCartBillingFields({
   onPreferVariosContact,
   sunatEnabled = true,
   billingModule = true,
+  canFactura = true,
 }: Props) {
   const checkoutSeries = useMemo(
-    () => filterPosCheckoutSeriesForModal(series, { sunatEnabled, billingModule }),
-    [series, sunatEnabled, billingModule],
+    () => filterPosCheckoutSeriesForModal(series, { sunatEnabled, billingModule, canFactura }),
+    [series, sunatEnabled, billingModule, canFactura],
   )
 
   const selectedSeries = checkoutSeries.find((s) => s.id === seriesId)

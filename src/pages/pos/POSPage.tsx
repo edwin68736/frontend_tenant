@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
-import { Plus, Search, ShoppingCart, Trash2, X, ChevronRight, UserPlus, Package, ScanBarcode } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Trash2, X, ChevronRight, UserPlus, Package, ScanBarcode, LayoutGrid } from 'lucide-react'
 import { clsx } from 'clsx'
 import { productsService, getProductImageUrl, type Product, type Category } from '@/services/products.service'
 import { contactsService, type Contact } from '@/services/contacts.service'
 import { salesService } from '@/services/sales.service'
 import { cashbankService, type CashSession, type PaymentMethodRecord, type BankAccount } from '@/services/cashbank.service'
-import { type SunatConfig } from '@/services/company.service'
+import { tenantCanEmitFactura, type SunatConfig } from '@/services/company.service'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch } from '@/contexts/BranchContext'
 import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
@@ -36,6 +36,8 @@ import { defaultOperationalPaymentCode, filterOperationalPaymentMethods } from '
 import { BILLING_NOT_ENABLED_MESSAGE, isElectronicBillingSunatCode } from '@/utils/posCheckoutSeries'
 import { PosMobileCartDrawer } from '@/components/pos/PosMobileCartDrawer'
 import { ManualProductModal } from '@/components/pos/ManualProductModal'
+import { PosCategoriesModal } from '@/components/pos/PosCategoriesModal'
+import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { isTabletCapacitorDevice } from '@/lib/platform/detect'
 import { PosCartLineRow } from '@/components/pos/PosCartLineRow'
 import { ProductConfigureModal } from '@/components/pos/ProductConfigureModal'
@@ -118,6 +120,7 @@ function POSContent() {
   const [checkoutDiscountMode, setCheckoutDiscountMode] = useState<CheckoutDiscountMode>('percent')
   const [checkoutDiscountValue, setCheckoutDiscountValue] = useState(0)
   const [addClientModal, setAddClientModal] = useState(false)
+  const [categoriesModalOpen, setCategoriesModalOpen] = useState(false)
   const categoriesScrollRef = useRef<HTMLDivElement>(null)
   const cartBtnRef = useRef<HTMLButtonElement>(null)
   const desktopCartRef = useRef<HTMLDivElement>(null)
@@ -203,6 +206,7 @@ function POSContent() {
 
   const billingModule = hasModule('billing')
   const sunatEnabled = billingModule && Boolean(cachedSunat?.sunat_enabled ?? sunat?.sunat_enabled)
+  const canFactura = tenantCanEmitFactura(cachedSunat ?? sunat)
 
   const handleConfigureConfirm = (line: CatalogCartLine) => {
     const source = configureFlySourceRef.current
@@ -255,6 +259,22 @@ function POSContent() {
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onUp)
   }
+
+  // Centra la categoría seleccionada dentro de la barra horizontal (sin afectar el scroll de la página).
+  useEffect(() => {
+    const el = categoriesScrollRef.current
+    if (!el) return
+    if (selectedCat === null) {
+      el.scrollTo({ left: 0, behavior: 'smooth' })
+      return
+    }
+    const btn = el.querySelector<HTMLElement>(`[data-cat-id="${selectedCat}"]`)
+    if (!btn) return
+    const containerRect = el.getBoundingClientRect()
+    const btnRect = btn.getBoundingClientRect()
+    const delta = btnRect.left - containerRect.left - (el.clientWidth - btn.clientWidth) / 2
+    el.scrollTo({ left: el.scrollLeft + delta, behavior: 'smooth' })
+  }, [selectedCat, categories])
 
   const taxConfig = buildTaxConfigFromSunat(cachedSunat ?? sunat ?? undefined)
   const taxRate = taxConfig.taxRate
@@ -551,7 +571,9 @@ function POSContent() {
     }
 
     const validPayments = payments.filter((p) => Number(p.amount) > 0)
-    if (validPayments.length === 0) { toast.error('Ingresa al menos un pago'); return }
+    // Ventas con total 0 (p. ej. solo bonificaciones/gratuitas) no requieren pago.
+    const requiresPayment = roundSunat(payableTotal) > 0.009
+    if (requiresPayment && validPayments.length === 0) { toast.error('Ingresa al menos un pago'); return }
 
     const branchId = activeBranchId || session?.branch_id
     if (!branchId) {
@@ -652,8 +674,8 @@ function POSContent() {
         <p className="text-gray-400 text-sm mt-1 mb-6">Debes abrir la caja para usar el POS</p>
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-600">Balance inicial: S/</span>
-          <input type="number" min={0} step={0.01} className="w-28 border border-gray-200 rounded-xl px-3 py-2 text-sm"
-            value={openingBalance} onChange={e => setOpeningBalance(Number(e.target.value))} />
+          <MoneyAmountInput className="w-28 border border-gray-200 rounded-xl px-3 py-2 text-sm"
+            value={openingBalance} onChange={setOpeningBalance} emptyWhenZero placeholder="0.00" />
           <button onClick={handleOpenSession} disabled={openingSession}
             className="px-5 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50">
             {openingSession ? 'Abriendo...' : 'Abrir caja'}
@@ -738,6 +760,7 @@ function POSContent() {
               <button
                 key={c.id}
                 type="button"
+                data-cat-id={c.id}
                 onClick={e => onCategoryClick(e, () => setSelectedCat(c.id))}
                 className={clsx(
                   'shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border whitespace-nowrap',
@@ -750,6 +773,18 @@ function POSContent() {
               </button>
             ))}
           </div>
+          {categories.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setCategoriesModalOpen(true)}
+              title="Ver todas las categorías"
+              aria-label="Ver todas las categorías"
+              className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium border border-primary-600 bg-white text-primary-700 hover:bg-primary-50 transition-colors"
+            >
+              <LayoutGrid size={14} aria-hidden />
+              <span className="hidden sm:inline">Todas</span>
+            </button>
+          )}
         </div>
 
         {/* Panel de productos (mismo diseño que POS restaurante) */}
@@ -1078,6 +1113,7 @@ function POSContent() {
         allowDiscount
         sunatEnabled={sunatEnabled}
         billingModule={billingModule}
+        canFactura={canFactura}
       />
 
       {/* Modal de éxito con opciones de impresión */}
@@ -1106,6 +1142,14 @@ function POSContent() {
         title="Escanear producto"
         subtitle="Apunta al código de barras"
         footerHint="El producto se agregará al carrito al detectar el código"
+      />
+
+      <PosCategoriesModal
+        open={categoriesModalOpen}
+        onClose={() => setCategoriesModalOpen(false)}
+        categories={categories}
+        selectedCat={selectedCat}
+        onSelect={setSelectedCat}
       />
     </div>
   )

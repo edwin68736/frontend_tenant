@@ -167,7 +167,7 @@ export function SaleReceiptPreviewModal({
         ) : (
           <div className="bg-stone-100 p-1">
             <iframe
-              src={pdfEmbedSrc(pdfUrl)}
+              src={pdfEmbedSrc(pdfUrl, pdfFormat === 'a4' ? { fit: 'page' } : undefined)}
               title="Previsualización comprobante"
               className="h-[min(70vh,520px)] min-h-[320px] w-full border-0 bg-white"
             />

@@ -272,14 +272,9 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     setSelectedIds(new Set())
   }, [listSearchQuery, catFilter, includeInactive, page, perPage, pageMode, activeBranchId])
 
-  // Refrescar lista y stock al volver a la pestaña (ej. tras hacer transferencias)
-  useEffect(() => {
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') load()
-    }
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => document.removeEventListener('visibilitychange', onVisibility)
-  }, [listSearchQuery, catFilter, includeInactive, page, perPage, pageMode])
+  // Nota: se removió el refetch automático al volver a la pestaña (visibilitychange).
+  // Provocaba recargas y 3-4 peticiones al backend cada vez que se cambiaba de pestaña.
+  // La lista se refresca al cambiar filtros/página/sucursal y tras crear/editar/eliminar.
 
   const openNew = () => {
     clearPendingImage()

@@ -1,5 +1,6 @@
 import { Plus, Trash2 } from 'lucide-react'
 import type { ProductPresentation } from '@/services/products.service'
+import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 
 type Props = {
   presentations: ProductPresentation[]
@@ -73,16 +74,10 @@ export function ProductPresentationsEditor({ presentations, onChange, embedded }
             </div>
             <div className="w-full sm:w-28 shrink-0">
               <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Precio S/</label>
-              <input
-                type="number"
-                inputMode="decimal"
-                min={0}
-                step={0.5}
-                value={row.sale_price === 0 ? '' : row.sale_price}
-                onChange={(e) => {
-                  const v = e.target.value
-                  setRow(index, { sale_price: v === '' ? 0 : Math.max(0, Number(v) || 0) })
-                }}
+              <MoneyAmountInput
+                value={row.sale_price}
+                onChange={(v) => setRow(index, { sale_price: Math.max(0, v) })}
+                emptyWhenZero
                 placeholder="0.00"
                 className="w-full min-h-[44px] border border-gray-200 rounded-xl px-3 py-2 text-sm tabular-nums"
               />

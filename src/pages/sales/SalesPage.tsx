@@ -8,7 +8,8 @@ import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { formatDisplayDatePeru, getTodayPeru } from '@/utils/datesPeru'
 import { useAuth } from '@/contexts/AuthContext'
-import { companyService } from '@/services/company.service'
+import { companyService, tenantCanEmitFactura } from '@/services/company.service'
+import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
 import { shareReceiptPngViaWhatsApp } from '@/utils/receiptPng'
 import { WhatsAppGlyph } from '@/components/icons/WhatsAppGlyph'
 import { formatSaleDocumentNumber } from '@/utils/format'
@@ -66,6 +67,8 @@ type SeriesRow = {
 function SalesContent() {
   const { hasModule, hasPermission } = useAuth()
   const canEmit = hasModule('billing') && hasPermission('sales.create')
+  const { sunat } = useBranchCheckoutSeries()
+  const canFactura = tenantCanEmitFactura(sunat)
 
   const [sales, setSales] = useState<Sale[]>([])
   const [loading, setLoading] = useState(true)
@@ -653,10 +656,12 @@ function SalesContent() {
                     <input type="radio" name="emit-kind" checked={emitDocKind === '03'} onChange={() => setEmitDocKind('03')} />
                     Boleta (03)
                   </label>
-                  <label className="inline-flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="emit-kind" checked={emitDocKind === '01'} onChange={() => setEmitDocKind('01')} />
-                    Factura (01)
-                  </label>
+                  {canFactura && (
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input type="radio" name="emit-kind" checked={emitDocKind === '01'} onChange={() => setEmitDocKind('01')} />
+                      Factura (01)
+                    </label>
+                  )}
                 </div>
                 {emitDocKind === '01' && (
                   <p className="text-xs text-amber-800 mt-2 bg-amber-50 rounded-lg px-2 py-1.5">

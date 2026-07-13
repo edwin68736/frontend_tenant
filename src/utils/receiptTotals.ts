@@ -108,26 +108,33 @@ export function buildReceiptTotalLines(data: PrintData): ReceiptTotalLine[] {
     affectationRows.push({ label: 'Bonif. (ref.):', amount: bonif.subtotal })
   }
 
-  if (hasDiscount) {
-    lines.push({ label: 'Subtotal:', amount: netSubtotal })
-    if (lineDiscount > 0.000001) {
-      lines.push({ label: 'Desc. por línea:', amount: lineDiscount, negative: true })
-    }
-    if (globalDiscount > 0.000001) {
-      lines.push({ label: 'Desc. global:', amount: globalDiscount, negative: true })
-    }
-    if (lineDiscount <= 0 && globalDiscount <= 0) {
-      const legacy = receiptTotalDiscount(data)
-      if (legacy > 0) lines.push({ label: 'Descuento:', amount: legacy, negative: true })
-    }
-    if (affectationRows.length > 1) lines.push(...affectationRows)
-  } else if (affectationRows.length > 0) {
-    lines.push(...affectationRows)
-  } else if (netSubtotal > 0.000001) {
-    lines.push({ label: 'Subtotal:', amount: netSubtotal })
-  }
+  // Nuevo RUS: la boleta no discrimina valor de venta / IGV en el impreso
+  // (Reglamento CP Art. 8, num. 3). Se omite el desglose y se muestra solo el
+  // total; el XML enviado a SUNAT sí conserva el IGV.
+  const hideBreakdown = data.company?.show_igv_breakdown === false
 
-  if (tax > 0.000001) lines.push({ label: 'IGV:', amount: tax })
+  if (!hideBreakdown) {
+    if (hasDiscount) {
+      lines.push({ label: 'Subtotal:', amount: netSubtotal })
+      if (lineDiscount > 0.000001) {
+        lines.push({ label: 'Desc. por línea:', amount: lineDiscount, negative: true })
+      }
+      if (globalDiscount > 0.000001) {
+        lines.push({ label: 'Desc. global:', amount: globalDiscount, negative: true })
+      }
+      if (lineDiscount <= 0 && globalDiscount <= 0) {
+        const legacy = receiptTotalDiscount(data)
+        if (legacy > 0) lines.push({ label: 'Descuento:', amount: legacy, negative: true })
+      }
+      if (affectationRows.length > 1) lines.push(...affectationRows)
+    } else if (affectationRows.length > 0) {
+      lines.push(...affectationRows)
+    } else if (netSubtotal > 0.000001) {
+      lines.push({ label: 'Subtotal:', amount: netSubtotal })
+    }
+
+    if (tax > 0.000001) lines.push({ label: 'IGV:', amount: tax })
+  }
 
   const prepDed = data.fiscal?.prepayment_deduction_total ?? 0
   if (data.fiscal?.has_prepayment_deduction && prepDed > 0.000001) {

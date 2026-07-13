@@ -1,4 +1,5 @@
 import { getApiBaseUrl } from '@/config/apiBaseUrl'
+import { isNativeShell } from '@/lib/platform/detect'
 import { RECEIPT_LOGO_MIN_PX } from '@/utils/receiptPdfRaster'
 
 export type ReceiptLogoPdfAsset = {
@@ -60,6 +61,61 @@ async function blobToDataUrl(blob: Blob): Promise<string> {
   })
 }
 
+/**
+ * Descarga la imagen como data URL probando estrategias que sortean CORS.
+ * El logo es un asset público (se muestra a clientes), por eso se prioriza
+ * la petición SIN credenciales: así funciona con `Access-Control-Allow-Origin: *`.
+ * Con `credentials: 'include'` el navegador rechaza respuestas con ACAO `*`.
+ */
+async function fetchImageAsDataUrl(url: string): Promise<{ dataUrl: string; type: string } | null> {
+  const attempts: RequestInit[] = [
+    { credentials: 'omit', mode: 'cors' },
+    { credentials: 'include', mode: 'cors' },
+  ]
+  for (const init of attempts) {
+    try {
+      const res = await fetch(url, init)
+      if (!res.ok) continue
+      const blob = await res.blob()
+      if (blob.size === 0) continue
+      if (blob.type && !blob.type.startsWith('image/')) continue
+      const dataUrl = await blobToDataUrl(blob)
+      if (dataUrl.startsWith('data:image/')) return { dataUrl, type: blob.type }
+    } catch {
+      /* siguiente estrategia */
+    }
+  }
+  return null
+}
+
+/**
+ * Candidatos de URL para el logo, en orden de preferencia.
+ * 1) API del tenant (getApiBaseUrl): la app ya hace peticiones ahí, así que su
+ *    CORS ya permite este origen → es la vía más fiable para leer los bytes.
+ * 2) Same-origin del SPA en web (por si el host del tenant sirve /uploads).
+ * 3) La URL absoluta original (servidor central de assets), como último recurso.
+ */
+function logoUrlCandidates(absolute: string): string[] {
+  const out: string[] = []
+  const add = (u?: string) => {
+    const v = u?.trim()
+    if (v && !out.includes(v)) out.push(v)
+  }
+  try {
+    const parsed = new URL(absolute)
+    const pathAndQuery = `${parsed.pathname}${parsed.search}`
+    const apiBase = getApiBaseUrl()
+    if (apiBase) add(`${apiBase.replace(/\/$/, '')}${pathAndQuery}`)
+    if (!isNativeShell() && typeof window !== 'undefined') {
+      add(`${window.location.origin}${pathAndQuery}`)
+    }
+    add(absolute)
+  } catch {
+    add(absolute)
+  }
+  return out
+}
+
 async function naturalSizeFromDataUrl(dataUrl: string): Promise<{ w: number; h: number } | null> {
   try {
     const img = await loadImageElement(dataUrl)
@@ -115,32 +171,39 @@ export async function resolveReceiptLogoForPdf(
   }
 
   const absolute = resolveAssetUrl(url)
+  const candidates = logoUrlCandidates(absolute)
 
-  try {
-    const res = await fetch(absolute, { credentials: 'include' })
-    if (res.ok) {
-      const blob = await res.blob()
-      const dataUrl = await blobToDataUrl(blob)
-      const size = await naturalSizeFromDataUrl(dataUrl)
+  // 1) Descarga por fetch (data URL directo). Prueba same-origin y luego cruzado, sin/con credenciales.
+  for (const candidate of candidates) {
+    const fetched = await fetchImageAsDataUrl(candidate)
+    if (fetched) {
+      const size = await naturalSizeFromDataUrl(fetched.dataUrl)
       if (size) {
         return upscaleLogoForPrint({
-          dataUrl,
-          format: detectImageFormat(dataUrl, blob.type),
+          dataUrl: fetched.dataUrl,
+          format: detectImageFormat(fetched.dataUrl, fetched.type),
           naturalW: size.w,
           naturalH: size.h,
         })
       }
     }
-  } catch {
-    /* fallback canvas */
   }
 
-  try {
-    const img = await loadImageElement(absolute)
-    return upscaleLogoForPrint(imageToDataUrl(img))
-  } catch {
-    return null
+  // 2) Fallback: <img crossOrigin="anonymous"> + canvas (requiere cabeceras CORS en el asset).
+  for (const candidate of candidates) {
+    try {
+      const img = await loadImageElement(candidate)
+      return upscaleLogoForPrint(imageToDataUrl(img))
+    } catch {
+      /* siguiente candidato */
+    }
   }
+
+  console.warn(
+    `[receipt-logo] No se pudo cargar el logo para el PDF desde ${absolute}. ` +
+      'Probable bloqueo CORS del servidor de assets (falta Access-Control-Allow-Origin).',
+  )
+  return null
 }
 
 export function fitReceiptLogoMm(

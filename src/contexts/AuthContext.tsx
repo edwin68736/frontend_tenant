@@ -8,6 +8,7 @@ import {
 } from '@/lib/masterSso'
 import { toast } from 'sonner'
 import { isNativeShell } from '@/lib/platform/detect'
+import { clearCompanyCaches } from '@/lib/companyConfig/store'
 
 interface AuthState {
   user: AuthUser | null
@@ -141,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     authService.logout()
+    clearCompanyCaches()
     localStorage.removeItem('active_branch')
     localStorage.removeItem('can_switch_branch')
     localStorage.removeItem('allowed_branches')

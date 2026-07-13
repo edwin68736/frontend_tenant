@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Building2, ImagePlus, QrCode, Save, X } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Building2, ExternalLink, ImagePlus, Pencil, QrCode, Save, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { resolvePublicAssetUrl } from '@/config/apiBaseUrl'
 import { cashbankService, type BankAccount } from '@/services/cashbank.service'
 import { companyService, type CompanyConfig } from '@/services/company.service'
 import { parseReceiptBankAccountIds } from '@/utils/receiptBankAccounts'
+import { BankAccountEditModal } from '@/components/company/BankAccountEditModal'
 
 const PROVIDERS = [
   { value: '', label: 'Sin QR de pago' },
@@ -20,6 +22,7 @@ export function ReceiptWalletSettings() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploadingQr, setUploadingQr] = useState(false)
+  const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null)
   const qrInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -65,6 +68,20 @@ export function ReceiptWalletSettings() {
   const clearAllBanks = () => {
     setBanksFilterConfigured(true)
     setSelectedBankIds(new Set())
+  }
+
+  const handleAccountSaved = (updated: BankAccount) => {
+    if (updated.active === false) {
+      // Se desactivó: sale de la lista de cuentas para comprobantes.
+      setBankAccounts((prev) => prev.filter((a) => a.id !== updated.id))
+      setSelectedBankIds((prev) => {
+        const next = new Set(prev)
+        next.delete(updated.id)
+        return next
+      })
+      return
+    }
+    setBankAccounts((prev) => prev.map((a) => (a.id === updated.id ? updated : a)))
   }
 
   const handleQrFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -257,7 +274,17 @@ export function ReceiptWalletSettings() {
             <Building2 size={18} />
           </div>
           <div>
-            <h3 className="text-lg font-bold text-gray-800">Cuentas bancarias en comprobantes</h3>
+            <Link
+              to="/cashbank/bank"
+              className="group inline-flex items-center gap-1.5 text-lg font-bold text-gray-800 hover:text-[rgb(var(--p700))]"
+            >
+              Cuentas bancarias en comprobantes
+              <ExternalLink
+                size={15}
+                className="text-gray-400 group-hover:text-[rgb(var(--p600))]"
+                aria-hidden
+              />
+            </Link>
             <p className="text-sm text-gray-500">
               Elija qué cuentas aparecen en ticket y PDF. Las demás no se imprimen.
             </p>
@@ -291,8 +318,11 @@ export function ReceiptWalletSettings() {
                 const label = [acc.bank_name, acc.name].filter(Boolean).join(' — ') || acc.name || 'Cuenta'
                 const checked = selectedBankIds.has(acc.id)
                 return (
-                  <li key={acc.id}>
-                    <label className="flex items-start gap-3 cursor-pointer rounded-xl border border-gray-200 px-3 py-3 hover:bg-gray-50/80">
+                  <li
+                    key={acc.id}
+                    className="flex items-stretch gap-1 rounded-xl border border-gray-200 hover:bg-gray-50/80"
+                  >
+                    <label className="flex min-w-0 flex-1 items-start gap-3 cursor-pointer px-3 py-3">
                       <input
                         type="checkbox"
                         checked={checked}
@@ -308,6 +338,15 @@ export function ReceiptWalletSettings() {
                         ) : null}
                       </span>
                     </label>
+                    <button
+                      type="button"
+                      onClick={() => setEditingAccount(acc)}
+                      className="my-2 mr-2 flex shrink-0 items-center gap-1 self-start rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-white hover:text-[rgb(var(--p700))]"
+                      aria-label={`Editar ${label}`}
+                    >
+                      <Pencil size={13} aria-hidden />
+                      <span className="hidden sm:inline">Editar</span>
+                    </button>
                   </li>
                 )
               })}
@@ -332,6 +371,13 @@ export function ReceiptWalletSettings() {
           {saving ? 'Guardando…' : 'Guardar comprobantes'}
         </button>
       </div>
+
+      <BankAccountEditModal
+        open={editingAccount !== null}
+        account={editingAccount}
+        onClose={() => setEditingAccount(null)}
+        onSaved={handleAccountSaved}
+      />
     </div>
   )
 }

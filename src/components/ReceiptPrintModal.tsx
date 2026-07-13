@@ -48,6 +48,11 @@ interface ReceiptPrintModalProps {
   autoShowTicketOnWeb?: boolean
   /** Etiqueta del documento generado (venta vs cotización). */
   documentKind?: 'sale' | 'quotation'
+  /** Si se pasan, el footer muestra "Ir a la lista" + "Nueva venta" en vez de solo "Cerrar". */
+  onGoToList?: () => void
+  onNewDocument?: () => void
+  goToListLabel?: string
+  newDocumentLabel?: string
 }
 
 export function ReceiptPrintModal({
@@ -61,6 +66,10 @@ export function ReceiptPrintModal({
   total,
   autoShowTicketOnWeb = false,
   documentKind = 'sale',
+  onGoToList,
+  onNewDocument,
+  goToListLabel = 'Ir a la lista',
+  newDocumentLabel = 'Nueva venta',
 }: ReceiptPrintModalProps) {
   const [panelView, setPanelView] = useState<PanelView>('details')
   const [pdfFormat, setPdfFormat] = useState<PdfFormat>('ticket')
@@ -200,6 +209,18 @@ export function ReceiptPrintModal({
     revokePdfUrl()
     onClose()
   }
+
+  const handleGoToList = () => {
+    revokePdfUrl()
+    onGoToList?.()
+  }
+
+  const handleNewDocument = () => {
+    revokePdfUrl()
+    onNewDocument?.()
+  }
+
+  const hasNavChoices = Boolean(onGoToList || onNewDocument)
 
   const handleDirectPrint = async () => {
     if (!printData) return
@@ -505,7 +526,7 @@ export function ReceiptPrintModal({
                   ) : (
                     <div className="bg-stone-100 p-1">
                       <iframe
-                        src={pdfEmbedSrc(pdfUrl)}
+                        src={pdfEmbedSrc(pdfUrl, pdfFormat === 'a4' ? { fit: 'page' } : undefined)}
                         title="Comprobante PDF"
                         className="h-[min(70vh,520px)] min-h-[320px] w-full border-0 bg-white"
                       />
@@ -611,13 +632,36 @@ export function ReceiptPrintModal({
           <p className="hidden text-xs text-green-700 sm:block">
             <span className="font-medium">✓</span> {heading.footer} · {displayNumber}
           </p>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="ml-auto rounded-xl bg-primary-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-primary-700"
-          >
-            Cerrar
-          </button>
+          {hasNavChoices ? (
+            <div className="ml-auto flex items-center gap-2">
+              {onGoToList && (
+                <button
+                  type="button"
+                  onClick={handleGoToList}
+                  className="rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+                >
+                  {goToListLabel}
+                </button>
+              )}
+              {onNewDocument && (
+                <button
+                  type="button"
+                  onClick={handleNewDocument}
+                  className="rounded-xl bg-primary-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-700"
+                >
+                  {newDocumentLabel}
+                </button>
+              )}
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={handleClose}
+              className="ml-auto rounded-xl bg-primary-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-primary-700"
+            >
+              Cerrar
+            </button>
+          )}
         </div>
       </div>
 

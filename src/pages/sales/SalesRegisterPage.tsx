@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Plus, Trash2, X, Package, UserPlus, ScanBarcode, Pencil, Loader2, Wallet } from 'lucide-react'
 import { salesService, type CreateSaleInput } from '@/services/sales.service'
 import { contactsService, type Contact } from '@/services/contacts.service'
 import { productsService, type Product } from '@/services/products.service'
-import { companyService, type CompanyConfig } from '@/services/company.service'
+import { companyService, tenantCanEmitFactura, type CompanyConfig } from '@/services/company.service'
 import { BRAND_APP_LOGO } from '@/config/branding'
 import { resolveCompanyLogoDisplayUrl } from '@/config/apiBaseUrl'
 import { useAuth } from '@/contexts/AuthContext'
@@ -138,11 +138,11 @@ function seriesCategoryForMode(mode: SalesRegisterMode): string {
   return mode === 'quotation' ? 'cotizacion' : 'venta'
 }
 
-function codesForMode(mode: SalesRegisterMode, billingOk: boolean): string[] {
+function codesForMode(mode: SalesRegisterMode, billingOk: boolean, canFactura = true): string[] {
   if (mode === 'quotation') return ['QT']
   if (mode === 'nota-venta') return ['00']
   if (!billingOk) return []
-  return ['03', '01']
+  return canFactura ? ['03', '01'] : ['03'] // p. ej. Nuevo RUS: sin factura
 }
 
 function defaultCodeForMode(mode: SalesRegisterMode): string {
@@ -180,21 +180,43 @@ function saleItemFromProduct(p: Product): SaleFormItem {
 }
 
 function saleItemMergeKey(it: SaleFormItem): string {
-  return it.line_key ?? `pid-${it.product_id ?? 'manual'}-${it.code}-${it.unit_price}`
+  // La identidad del producto (ID + código) SIEMPRE forma parte de la clave.
+  // line_key (configureKey) solo distingue configuraciones del MISMO producto
+  // (modificadores/notas/precio/series); por sí solo colisiona entre productos
+  // distintos con el mismo precio, por eso no debe usarse aislado.
+  const productPart = `pid-${it.product_id ?? 'manual'}-${it.code ?? ''}`
+  const variantPart = it.line_key ?? `u-${it.unit_price}`
+  return `${productPart}::${variantPart}`
 }
 
 type SalesRegisterPageProps = { mode?: SalesRegisterMode; quotationId?: number }
 
 export default function SalesRegisterPage({ mode = 'comprobante', quotationId }: SalesRegisterPageProps) {
+  // Cambiar esta key re-monta el formulario desde cero ("Nueva venta" sin recargar la página).
+  const [resetKey, setResetKey] = useState(0)
   return (
     <RequireModule moduleKey="sales">
-      <SalesRegisterContent mode={mode} quotationId={quotationId} />
+      <SalesRegisterContent
+        key={resetKey}
+        mode={mode}
+        quotationId={quotationId}
+        onRequestNewDocument={() => setResetKey((k) => k + 1)}
+      />
     </RequireModule>
   )
 }
 
-function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; quotationId?: number }) {
+function SalesRegisterContent({
+  mode,
+  quotationId,
+  onRequestNewDocument,
+}: {
+  mode: SalesRegisterMode
+  quotationId?: number
+  onRequestNewDocument: () => void
+}) {
   const navigate = useNavigate()
+  const location = useLocation()
   const [searchParams] = useSearchParams()
   const fromQuotationParam = searchParams.get('from_quotation')
   const fromQuotationId =
@@ -242,6 +264,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [sunatEnabled, setSunatEnabled] = useState(true)
+  const [canFactura, setCanFactura] = useState(true)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
   const [payments, setPayments] = useState<{ method: string; amount: string; reference: string }[]>([
     { method: 'cash', amount: '0.00', reference: '' },
@@ -392,7 +415,8 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
         setTaxConfig({ taxRate: sunat?.tax_rate ?? 18, igvRegime: sunat?.igv_regime, taxBenefitZone: sunat?.tax_benefit_zone })
         setCustomers(Array.isArray(customerList) ? customerList : [])
         const billingOk = hasModule('billing') && (sunat?.sunat_enabled ?? true)
-        const modeCodes = codesForMode(mode, billingOk)
+        setCanFactura(tenantCanEmitFactura(sunat))
+        const modeCodes = codesForMode(mode, billingOk, tenantCanEmitFactura(sunat))
         const availableCodes = isQuotation
           ? ventaSeries.map((s) => (s.sunat_code ?? '').trim() || 'QT').filter(Boolean)
           : [
@@ -462,7 +486,8 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
           )
         }
         const billingOk = hasModule('billing') && (sunat?.sunat_enabled ?? true)
-        const modeCodes = codesForMode(mode, billingOk)
+        setCanFactura(tenantCanEmitFactura(sunat))
+        const modeCodes = codesForMode(mode, billingOk, tenantCanEmitFactura(sunat))
         const availableCodes = isQuotation
           ? ventaSeries.map((s) => (s.sunat_code ?? '').trim() || 'QT').filter(Boolean)
           : [
@@ -549,7 +574,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
     : series.filter(
         (s) => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === form.sunat_code,
       )
-  const tipoOptions = codesForMode(mode, billingOk).filter((code) =>
+  const tipoOptions = codesForMode(mode, billingOk, canFactura).filter((code) =>
     series.some((s) => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === code),
   )
 
@@ -601,6 +626,34 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
   const handleSaleConfigureConfirm = (line: CatalogCartLine) => {
     appendSaleItem(catalogLineToSaleItem(line))
     setProductToConfigure(null)
+  }
+
+  /** Cierra el modal de éxito y navega a la lista del documento correspondiente. */
+  const goToDocumentList = () => {
+    setReceiptModalOpen(false)
+    setPrintData(null)
+    const id = lastSale?.id
+    setLastSale(null)
+    if (isQuotation) {
+      navigate('/quotations')
+      return
+    }
+    navigate(isNotaVenta ? '/sales' : '/billing', { state: id ? { created: id } : undefined })
+  }
+
+  /** Cierra el modal y deja un formulario en blanco para registrar otro documento. */
+  const goToNewDocument = () => {
+    setReceiptModalOpen(false)
+    setPrintData(null)
+    setLastSale(null)
+    const target = isQuotation ? '/quotations/new' : isNotaVenta ? '/sales/nota-venta' : '/sales/register'
+    // Si ya estamos en la ruta "nueva" limpia, re-montamos para vaciar el formulario;
+    // si hay query (p. ej. from_quotation) o es edición, navegamos a la ruta limpia.
+    if (location.pathname === target && !location.search) {
+      onRequestNewDocument()
+    } else {
+      navigate(target)
+    }
   }
 
   const barcodeScan = useBarcodeProductScanner({
@@ -1930,7 +1983,7 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
                     ? formatModifierLines(parseStoredModifiers(it.modifiers_json))
                     : []
                   return (
-                    <tr key={it.line_key ?? idx} className="border-b border-gray-50 hover:bg-gray-50/50">
+                    <tr key={`${saleItemMergeKey(it)}-${idx}`} className="border-b border-gray-50 hover:bg-gray-50/50">
                       <td className="px-4 py-2.5">
                         <span className="text-gray-800">{it.description || '—'}</span>
                         {modifierLines.map((mLine) => (
@@ -2495,17 +2548,13 @@ function SalesRegisterContent({ mode, quotationId }: { mode: SalesRegisterMode; 
 
       <ReceiptPrintModal
         open={receiptModalOpen}
-        onClose={() => {
-          setReceiptModalOpen(false)
-          setPrintData(null)
-          const id = lastSale?.id
-          setLastSale(null)
-          if (isQuotation) {
-            navigate('/quotations')
-            return
-          }
-          navigate(isNotaVenta ? '/sales' : '/billing', { state: id ? { created: id } : undefined })
-        }}
+        onClose={goToNewDocument}
+        onNewDocument={goToNewDocument}
+        onGoToList={goToDocumentList}
+        newDocumentLabel={
+          isQuotation ? 'Nueva cotización' : isNotaVenta ? 'Nueva nota de venta' : 'Nuevo comprobante'
+        }
+        goToListLabel="Ir a la lista"
         printData={printData}
         saleId={!isQuotation ? lastSale?.id : undefined}
         quotationId={isQuotation ? lastSale?.id : undefined}

@@ -5,6 +5,7 @@ import { cashbankService, type CashSession, type CashMovement, type OpenCashSess
 import { useBranch } from '@/contexts/BranchContext'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
+import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 
 // Categorías preestablecidas para movimientos de caja
 const INCOME_CATEGORIES = [
@@ -103,10 +104,12 @@ function ArqueoTable({
           {editable && onChange ? (
             <input
               type="number"
+              inputMode="numeric"
               min={0}
               step={1}
               className="w-16 border border-gray-200 rounded px-1.5 py-0.5 text-sm text-right"
-              value={qty}
+              value={qty === 0 ? '' : qty}
+              placeholder="0"
               onChange={e => onChange({ ...arqueo, [d.value]: Math.max(0, Math.floor(Number(e.target.value) || 0)) })}
             />
           ) : (
@@ -462,13 +465,12 @@ function CashContent() {
         <h3 className="font-bold text-gray-800 text-base sm:text-lg">Abrir caja</h3>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Balance inicial (S/)</label>
-          <input
-            type="number"
-            min={0}
-            step={0.01}
+          <MoneyAmountInput
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
             value={openBalance}
-            onChange={e => setOpenBalance(Number(e.target.value))}
+            onChange={setOpenBalance}
+            emptyWhenZero
+            placeholder="0.00"
           />
         </div>
         <div>
@@ -551,13 +553,12 @@ function CashContent() {
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Monto (S/) *</label>
-            <input
-              type="number"
-              min={0}
-              step={0.01}
+            <MoneyAmountInput
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
               value={movForm.amount}
-              onChange={e => setMovForm(f => ({ ...f, amount: Number(e.target.value) }))}
+              onChange={v => setMovForm(f => ({ ...f, amount: v }))}
+              emptyWhenZero
+              placeholder="0.00"
             />
           </div>
           <div className="flex flex-col-reverse sm:flex-row gap-2 pt-1">

@@ -231,6 +231,52 @@ export async function buildEscPosImageRaster(
   }
 }
 
+/**
+ * Texto centrado como raster, para tamaños intermedios que el ESC/POS nativo no
+ * permite (solo múltiplos enteros 1×/2×). Útil para el nombre comercial "un poco
+ * más grande" (p. ej. 1.3× del cuerpo). Devuelve null si no puede rasterizar.
+ */
+export async function buildEscPosCenteredTextRaster(
+  text: string,
+  paperWidthMm: 58 | 80,
+  opts?: { fontScale?: number; bold?: boolean },
+): Promise<Uint8Array | null> {
+  if (typeof document === 'undefined') return null
+  const t = String(text ?? '').trim()
+  if (!t) return null
+  try {
+    const printW = escposPrintWidthPx(paperWidthMm)
+    const { fontSize: bodyFont } = ticketBodyFontPx(paperWidthMm)
+    const fontSize = Math.max(8, Math.round(bodyFont * (opts?.fontScale ?? 1.3)))
+    const lineH = Math.round(fontSize * 1.18)
+    const weight = opts?.bold ? 'bold' : 'normal'
+    const font = `${weight} ${fontSize}px Arial, Helvetica, sans-serif`
+    const pad = 4
+
+    const measureCtx = document.createElement('canvas').getContext('2d')
+    if (!measureCtx) return null
+    measureCtx.font = font
+    const lines = expandWrappedCanvasLines(measureCtx, [t], printW - pad * 2)
+
+    const canvas = document.createElement('canvas')
+    canvas.width = printW // 384/576, múltiplos de 8 (requisito del raster)
+    canvas.height = Math.max(1, lines.length * lineH + pad * 2)
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.fillStyle = '#000000'
+    ctx.textBaseline = 'top'
+    ctx.textAlign = 'center'
+    ctx.font = font
+    lines.forEach((line, i) => ctx.fillText(line, canvas.width / 2, pad + i * lineH))
+
+    return canvasToEscPosRasterPlain(canvas)
+  } catch {
+    return null
+  }
+}
+
 /** Logo recortado y centrado en el ancho del ticket (compatible con ticketeras que ignoran ESC a en raster). */
 export async function buildEscPosLogoRaster(
   logoUrl: string,

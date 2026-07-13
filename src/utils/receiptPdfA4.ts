@@ -54,6 +54,37 @@ function normalizeWebDisplay(raw?: string): string {
 
 const FONT_FAMILY = 'times'
 
+/**
+ * Dibuja una línea de la cabecera de empresa. Si `justify` es true, reparte el
+ * espacio sobrante entre las palabras para alinear a ambos márgenes (justificado).
+ * Solo debe justificarse cada línea salvo la última de un párrafo.
+ */
+function drawCompanyInfoLine(
+  doc: jsPDF,
+  line: string,
+  x: number,
+  y: number,
+  width: number,
+  justify: boolean,
+) {
+  const words = line.split(/\s+/).filter(Boolean)
+  if (!justify || words.length <= 1) {
+    doc.text(line, x, y, { maxWidth: width })
+    return
+  }
+  const wordsW = words.reduce((sum, w) => sum + doc.getTextWidth(w), 0)
+  const gap = (width - wordsW) / (words.length - 1)
+  if (!(gap > 0)) {
+    doc.text(line, x, y, { maxWidth: width })
+    return
+  }
+  let cx = x
+  for (const w of words) {
+    doc.text(w, cx, y)
+    cx += doc.getTextWidth(w) + gap
+  }
+}
+
 function formatDocNumber(data: PrintData): string {
   const n = String(data.number ?? '').trim()
   if (n.includes('-')) return n
@@ -178,18 +209,22 @@ async function drawHeader(
   const companyName = (data.company.business_name || data.company.trade_name || '—').toUpperCase()
   setFont(doc, FONT_TITLE, 'bold')
   let cy = top + 3
-  for (const line of doc.splitTextToSize(companyName, infoW)) {
-    doc.text(line, infoX, cy, { maxWidth: infoW })
-    cy += LINE_H + 0.2
+  {
+    const nameLines: string[] = doc.splitTextToSize(companyName, infoW)
+    nameLines.forEach((line, i) => {
+      drawCompanyInfoLine(doc, line, infoX, cy, infoW, i < nameLines.length - 1)
+      cy += LINE_H + 0.2
+    })
   }
 
   setFont(doc, FONT_SM, 'normal')
   const pushInfoLine = (text: string, uppercase = false) => {
     const raw = uppercase ? text.toUpperCase() : text
-    for (const wl of doc.splitTextToSize(raw, infoW)) {
-      doc.text(wl, infoX, cy, { maxWidth: infoW })
+    const lines: string[] = doc.splitTextToSize(raw, infoW)
+    lines.forEach((wl, i) => {
+      drawCompanyInfoLine(doc, wl, infoX, cy, infoW, i < lines.length - 1)
       cy += LINE_H - 0.15
-    }
+    })
   }
 
   pushInfoLine(`RUC ${data.company.ruc}`)

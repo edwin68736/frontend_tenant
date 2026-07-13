@@ -82,6 +82,8 @@ type Props = {
   sunatEnabled?: boolean
   /** Módulo de facturación activo en el tenant. */
   billingModule?: boolean
+  /** ¿El régimen del tenant permite Factura (01)? (Nuevo RUS = false). */
+  canFactura?: boolean
 }
 
 export function POSCheckoutModal({
@@ -115,6 +117,7 @@ export function POSCheckoutModal({
   allowDiscount = true,
   sunatEnabled = true,
   billingModule = true,
+  canFactura = true,
 }: Props) {
   const [showMoreMethods, setShowMoreMethods] = useState(false)
   const [methodPickerIndex, setMethodPickerIndex] = useState<number | null>(null)
@@ -148,8 +151,8 @@ export function POSCheckoutModal({
   }, [methodOptions, showMoreMethods])
 
   const checkoutSeries = useMemo(
-    () => filterPosCheckoutSeriesForModal(series, { sunatEnabled, billingModule }),
-    [series, sunatEnabled, billingModule],
+    () => filterPosCheckoutSeriesForModal(series, { sunatEnabled, billingModule, canFactura }),
+    [series, sunatEnabled, billingModule, canFactura],
   )
 
   const selectedSeries = useMemo(
@@ -279,6 +282,7 @@ export function POSCheckoutModal({
               onPreferVariosContact={onPreferVariosContact}
               sunatEnabled={sunatEnabled}
               billingModule={billingModule}
+              canFactura={canFactura}
             />
 
             {allowDiscount ? (

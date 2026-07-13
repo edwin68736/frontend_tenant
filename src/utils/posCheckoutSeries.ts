@@ -21,16 +21,18 @@ export function resolveSeriesSunatCode(s: PosSeriesRow): string {
   return (s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)
 }
 
-/** Filtra series según facturación electrónica habilitada. */
+/** Filtra series según facturación electrónica habilitada y régimen (canFactura). */
 export function filterPosCheckoutSeries(
   list: PosSeriesRow[],
   sunatEnabled: boolean,
   billingModule: boolean,
+  canFactura = true,
 ): PosSeriesRow[] {
   return list.filter((s) => {
     if (s.active === false) return false
     const code = resolveSeriesSunatCode(s)
     if (!billingModule || !sunatEnabled) return code === '00'
+    if (code === '01' && !canFactura) return false // p. ej. Nuevo RUS: sin facturas
     return CHECKOUT_SUNAT.has(code)
   })
 }
@@ -39,8 +41,9 @@ export function hasPosCheckoutSeries(
   list: PosSeriesRow[],
   sunatEnabled: boolean,
   billingModule: boolean,
+  canFactura = true,
 ): boolean {
-  return filterPosCheckoutSeries(list, sunatEnabled, billingModule).length > 0
+  return filterPosCheckoutSeries(list, sunatEnabled, billingModule, canFactura).length > 0
 }
 
 /** Series visibles en modal de cobro POS (excluye NC, ND, guías, etc.). */
@@ -54,16 +57,18 @@ export const BILLING_NOT_ENABLED_MESSAGE =
 
 export function filterPosCheckoutSeriesForModal(
   list: PosSeriesRow[],
-  opts?: { sunatEnabled?: boolean; billingModule?: boolean },
+  opts?: { sunatEnabled?: boolean; billingModule?: boolean; canFactura?: boolean },
 ): PosSeriesRow[] {
   const sunatEnabled = opts?.sunatEnabled !== false
   const billingModule = opts?.billingModule !== false
+  const canFactura = opts?.canFactura !== false
   return list.filter((s) => {
     if (s.active === false) return false
     const cat = String((s as { category?: string }).category ?? 'venta').toLowerCase()
     if (cat && cat !== 'venta') return false
     const code = resolveSeriesSunatCode(s)
     if (!billingModule || !sunatEnabled) return code === '00'
+    if (code === '01' && !canFactura) return false // p. ej. Nuevo RUS: sin facturas
     if (code && !CHECKOUT_SUNAT.has(code)) return false
     const d = String(s.doc_type ?? '').toLowerCase()
     if (d.includes('credito') || d.includes('crédito') || d.includes('debito') || d.includes('débito')) {

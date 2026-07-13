@@ -1,6 +1,6 @@
 import { isNativePrintAvailable } from '@/services/printers.service'
 
-export type ErpSettingsMainTab = 'empresa' | 'impresoras'
+export type ErpSettingsMainTab = 'empresa' | 'usuarios' | 'impresoras'
 
 export type ErpCompanySubTab = 'empresa' | 'comprobantes' | 'impuestos' | 'sucursales' | 'series'
 
@@ -17,6 +17,14 @@ export function canConfigureErpDevicePrinters(): boolean {
   return isNativePrintAvailable()
 }
 
+export function canManageErpUsers(hasPermission: (permission: string) => boolean): boolean {
+  return hasPermission('users.view')
+}
+
 export function canAccessErpSettings(hasPermission: (permission: string) => boolean): boolean {
-  return canManageErpCompany(hasPermission) || canConfigureErpDevicePrinters()
+  return (
+    canManageErpCompany(hasPermission) ||
+    canManageErpUsers(hasPermission) ||
+    canConfigureErpDevicePrinters()
+  )
 }

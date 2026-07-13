@@ -9,6 +9,7 @@ import type { SaleFiscalFormState } from '@/components/sales/SaleAdditionalInfoD
 import { formatModifierLines, parseStoredModifiers } from '@/utils/productModifiers'
 import { calcPaymentChange } from '@/utils/money'
 import { resolvePublicAssetUrl } from '@/config/apiBaseUrl'
+import { getCompanyLogoDataUrlSync } from '@/lib/companyConfig/store'
 import { amountInWords } from '@/utils/amountInWords'
 
 import { igvAffectationLabel } from '@/constants/igvAffectation'
@@ -186,6 +187,10 @@ function resolveLogoUrl(logoUrl?: string): string | undefined {
   const raw = logoUrl?.trim()
   if (!raw) return undefined
   if (raw.startsWith('data:')) return raw
+  // Preferir el data URL cacheado (poblado al iniciar sesión): sirve para
+  // impresión directa y para el PDF sin CORS ni consultas al backend.
+  const cached = getCompanyLogoDataUrlSync(raw)
+  if (cached) return cached
   return resolvePublicAssetUrl(raw)
 }
 
@@ -431,6 +436,8 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
       website: companyConfig?.website?.trim() || undefined,
       logo_url: resolveLogoUrl(companyConfig?.logo_url),
       additional_notes: companyConfig?.additional_notes?.trim() || undefined,
+      // Nuevo RUS: no discriminar IGV en el impreso (solo el total). El XML sí lo lleva.
+      show_igv_breakdown: String(companyConfig?.taxpayer_regime ?? '').toLowerCase() !== 'nrus',
     },
     branch: {
       name: branchName || 'Principal',

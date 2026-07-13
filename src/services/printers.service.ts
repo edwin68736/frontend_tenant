@@ -3,6 +3,7 @@ import { getPrintIssuerAddress } from '@/utils/printIssuer'
 import { isElectronicSunatCode } from '@/constants/sunat'
 import { isTauriDesktop } from '@/lib/platform/detect'
 import {
+  buildEscPosCenteredTextRaster,
   buildEscPosLogoRaster,
   buildEscPosPayConditionSunatRowRaster,
   buildEscPosWalletQrRaster,
@@ -503,10 +504,11 @@ function escposPushWrappedCenter(
   if (opts?.bold) out.push(...escposBold(false))
 }
 
-function pushCompanyHeaderEscPos(
+async function pushCompanyHeaderEscPos(
   out: number[],
   printData: PrintData,
   cols: number,
+  paperWidthMm: 58 | 80,
   nvLayout?: NotaVentaPrintLayoutSettings | null,
 ) {
   const tradeName = String(printData.company?.trade_name ?? '').trim()
@@ -515,7 +517,21 @@ function pushCompanyHeaderEscPos(
     Boolean(businessName) &&
     businessName.localeCompare(tradeName, undefined, { sensitivity: 'accent' }) !== 0
 
-  if (tradeName) {
+  // Nombre principal "un poco más grande" (1.3×): tamaño intermedio imposible en
+  // texto ESC/POS (solo 1×/2×), por eso se rasteriza. Si falla, cae a texto 1×.
+  const mainName = tradeName || businessName
+  // 1.1× ≈ solo un poco más grande que el texto nativo del ticket (~1.0× = igual;
+  // subir hacia 1.15 si se quiere más grande, bajar hacia 1.0 si aún se ve grande).
+  const nameRaster = await buildEscPosCenteredTextRaster(mainName, paperWidthMm, {
+    fontScale: 1.1,
+    bold: true,
+  })
+  if (nameRaster?.length) {
+    out.push(...escposAlign('center'))
+    out.push(...Array.from(nameRaster))
+    out.push(...Array.from(textBytes('\n')))
+    if (tradeName && showBusinessName) escposPushWrappedCenter(out, wrapText(businessName, cols))
+  } else if (tradeName) {
     escposPushWrappedCenter(out, wrapText(tradeName, cols), { bold: true })
     if (showBusinessName) escposPushWrappedCenter(out, wrapText(businessName, cols))
   } else {
@@ -660,7 +676,7 @@ export async function buildSaleDocumentEscPos(
     }
   }
 
-  pushCompanyHeaderEscPos(out, printData, cols, nvLayout)
+  await pushCompanyHeaderEscPos(out, printData, cols, paperWidthMm, nvLayout)
   if (companyAdditionalLines.length) escposPushLines(out, companyAdditionalLines, 'left')
   if (companyTailLines.length) escposPushLines(out, companyTailLines, 'center')
   escposPushLines(out, ['-'.repeat(cols)], 'center')

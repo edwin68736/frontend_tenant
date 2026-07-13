@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { companyService, type SunatConfig } from '@/services/company.service'
+import { companyService, tenantCanEmitFactura, type SunatConfig } from '@/services/company.service'
 import {
   filterPosCheckoutSeries,
   hasPosCheckoutSeries,
@@ -76,6 +76,7 @@ export function BranchCheckoutSeriesProvider({ children }: { children: ReactNode
             (raw ?? []) as PosSeriesRow[],
             Boolean(sunat?.sunat_enabled),
             billingModule,
+            tenantCanEmitFactura(sunat),
           )
           cacheRef.current.set(branchId, { series: filtered, ready: true })
         } catch {
@@ -137,6 +138,7 @@ export function BranchCheckoutSeriesProvider({ children }: { children: ReactNode
         checkoutSeries,
         Boolean(sunatConfig?.sunat_enabled),
         billingModule,
+        tenantCanEmitFactura(sunatConfig),
       ),
       sunat: sunatConfig,
       refreshCheckoutSeries,

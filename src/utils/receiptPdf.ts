@@ -33,7 +33,7 @@ import { getNotaVentaPrintLayout } from '@/services/printers/notaVentaPrintLayou
 const FONT_SIZE = 10
 const FONT_SIZE_SM = 8
 /** Nombre comercial en ticket: un poco más grande que razón social. */
-const FONT_SIZE_COMMERCIAL = 12
+const FONT_SIZE_COMMERCIAL = 13
 /** Cuerpo ticket: 10pt para impresión nítida desde visor PDF del navegador. */
 const FONT_SIZE_TICKET_BODY = 10
 const FONT_SIZE_TITLE = 13

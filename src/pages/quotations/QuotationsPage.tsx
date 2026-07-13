@@ -23,7 +23,8 @@ import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
 import { quotationsService, type Quotation, type QuotationConvertTarget } from '@/services/quotations.service'
-import { companyService } from '@/services/company.service'
+import { companyService, tenantCanEmitFactura } from '@/services/company.service'
+import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
 import { contactsService, type Contact } from '@/services/contacts.service'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch } from '@/contexts/BranchContext'
@@ -79,6 +80,8 @@ function QuotationsContent() {
   const { activeBranchId } = useBranch()
   const canCreate = hasPermission('sales.create')
   const canEmit = hasModule('billing') && canCreate
+  const { sunat } = useBranchCheckoutSeries()
+  const canFactura = tenantCanEmitFactura(sunat)
 
   const [rows, setRows] = useState<Quotation[]>([])
   const [loading, setLoading] = useState(true)
@@ -746,7 +749,7 @@ function QuotationsContent() {
                 >
                   <option value="nota_venta">Nota de venta (00)</option>
                   {canEmit && <option value="03">Boleta (03)</option>}
-                  {canEmit && <option value="01">Factura (01)</option>}
+                  {canEmit && canFactura && <option value="01">Factura (01)</option>}
                 </select>
               </div>
               <div>

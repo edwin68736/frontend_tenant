@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Search, X } from 'lucide-react'
-import { productsService, type Product } from '@/services/products.service'
+import { productsService, getProductImageUrl, type Product } from '@/services/products.service'
 import { formatSaleMoney } from '@/utils/formatMoney'
 import {
   productConfigurationBadge,
@@ -121,6 +121,7 @@ export function ProductPickerModal({
           <table className="w-full text-sm">
             <thead className="bg-gray-50 sticky top-0">
               <tr>
+                <th className="w-14 px-3 py-2.5" />
                 <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">Código</th>
                 <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">Producto</th>
                 <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">{priceLabel}</th>
@@ -133,6 +134,21 @@ export function ProductPickerModal({
                 const needsConfig = productNeedsSaleConfiguration(p)
                 return (
                 <tr key={p.id} className={`border-b border-gray-50 transition-colors ${rowHighlightClass(p.id)}`}>
+                  <td className="px-3 py-2">
+                    {p.image_url ? (
+                      <img
+                        src={getProductImageUrl(p.image_url)}
+                        alt={p.name}
+                        loading="lazy"
+                        decoding="async"
+                        className="h-9 w-9 rounded-lg object-cover border border-gray-200 bg-white"
+                      />
+                    ) : (
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[rgb(var(--p50))] text-sm font-bold text-[rgb(var(--p400))] border border-[rgb(var(--p100))]">
+                        {p.name.charAt(0).toUpperCase() || '?'}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5 font-mono text-gray-600">{p.code || '-'}</td>
                   <td className="px-4 py-2.5">
                     <span className="font-medium text-gray-800">{p.name}</span>

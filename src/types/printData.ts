@@ -104,6 +104,12 @@ export interface PrintCompany {
   website?: string
   logo_url?: string
   additional_notes?: string
+  /**
+   * Discriminar IGV/valor de venta en la representación impresa. Default true.
+   * En Nuevo RUS es false: la boleta muestra solo el importe total (el XML sí
+   * lleva el IGV; ocultarlo en el impreso cumple el Reglamento de CP, Art. 8).
+   */
+  show_igv_breakdown?: boolean
 }
 
 export interface PrintBankAccount {
