@@ -7,6 +7,7 @@ import {
   setCompanyConfigCache,
   setCompanyLogoFromFile,
 } from '@/lib/companyConfig/store'
+import { clearEscPosImageRasterCache } from '@/utils/escposRasterImage'
 
 export interface CompanyConfig {
   id?: number
@@ -173,6 +174,7 @@ export const companyService = {
       }
       setCompanyConfigCache(fresh)
       void ensureCompanyLogoDataUrl(fresh.logo_url)
+      clearEscPosImageRasterCache() // el logo pudo cambiar (URL estable): invalidar raster cacheado
       return fresh
     }),
   updateReceiptWallet: (data: {
@@ -182,7 +184,10 @@ export const companyService = {
     wallet_show_on_a4: boolean
     wallet_show_on_ticket: boolean
     receipt_bank_account_ids?: number[]
-  }) => api.put('/api/company/receipt-wallet', data).then((r) => r.data),
+  }) => api.put('/api/company/receipt-wallet', data).then((r) => {
+    clearEscPosImageRasterCache() // el QR de wallet pudo cambiar
+    return r.data
+  }),
 
   /** Sube QR a disco del tenant (VPS: volumen /app/uploads). Devuelve URL /uploads/... */
   uploadReceiptWalletQr: (file: File) => {
@@ -208,6 +213,7 @@ export const companyService = {
         // Usa el File local para el data URL (sin red ni CORS); si falla, se re-descarga.
         const url = r.data?.logo_url || r.data?.data?.logo_url || ''
         if (url) void setCompanyLogoFromFile(file, url)
+        clearEscPosImageRasterCache() // logo nuevo en URL estable: invalidar raster cacheado
         return r.data
       })
   },
@@ -216,6 +222,7 @@ export const companyService = {
     api.delete<{ success: boolean; data: CompanyConfig }>('/api/company/logo').then((r) => {
       if (r.data?.data) setCompanyConfigCache(r.data.data)
       clearCompanyLogoCache()
+      clearEscPosImageRasterCache()
       return r.data
     }),
   getSunat: () => api.get<SunatConfig>('/api/company/sunat').then((r) => r.data),

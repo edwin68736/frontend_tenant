@@ -1,7 +1,7 @@
-﻿import { useMemo } from 'react'
+﻿import { useEffect, useMemo } from 'react'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import type { PosSeriesRow } from '@/utils/posCheckoutSeries'
-import { filterPosCheckoutSeriesForModal } from '@/utils/posCheckoutSeries'
+import { filterPosCheckoutSeriesForModal, resolveSeriesSunatCode } from '@/utils/posCheckoutSeries'
 import { docTypeShortLabel, normalizeDocTypeKey } from '@/utils/paymentMethodVisual'
 import {
   contactOptionLabel,
@@ -35,10 +35,12 @@ const SELECT_TRIGGER =
   'w-full border border-stone-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2 min-h-[44px]'
 
 /** Orden fijo en modal POS: nota de venta → boleta → factura. */
-const POS_DOC_TYPE_BTN_ORDER: Record<string, number> = {
-  notadeventa: 0,
-  boleta: 1,
-  factura: 2,
+// Orden por código SUNAT (no por el texto del doc_type, que puede variar):
+// 00 = Nota de venta, 03 = Boleta, 01 = Factura.
+const POS_DOC_TYPE_CODE_ORDER: Record<string, number> = {
+  '00': 0,
+  '03': 1,
+  '01': 2,
 }
 
 export function CheckoutCartBillingFields({
@@ -73,25 +75,42 @@ export function CheckoutCartBillingFields({
 
   const docTypeGroups = useMemo(() => {
     const seen = new Set<string>()
-    const groups: { key: string; label: string }[] = []
+    const groups: { key: string; label: string; order: number }[] = []
     for (const s of checkoutSeries) {
       const key = normalizeDocTypeKey(s.doc_type)
       if (seen.has(key)) continue
       seen.add(key)
+      // Orden por código SUNAT (robusto ante variaciones del texto de doc_type):
+      // Nota de venta (00) primero, luego Boleta (03), luego Factura (01).
+      const code = resolveSeriesSunatCode(s)
       groups.push({
         key,
         label: docTypeShortLabel(s.doc_type, s.sunat_code),
+        order: POS_DOC_TYPE_CODE_ORDER[code] ?? 99,
       })
     }
-    return groups.sort(
-      (a, b) =>
-        (POS_DOC_TYPE_BTN_ORDER[a.key] ?? 99) - (POS_DOC_TYPE_BTN_ORDER[b.key] ?? 99),
-    )
+    return groups.sort((a, b) => a.order - b.order)
   }, [checkoutSeries])
 
   const selectedDocKey = normalizeDocTypeKey(docType)
   const seriesForDocType = checkoutSeries.filter((s) => normalizeDocTypeKey(s.doc_type) === selectedDocKey)
   const showSeriesPicker = seriesForDocType.length > 1
+
+  // Autocorrección del tipo por defecto: si el tipo/serie seleccionado NO está entre los
+  // disponibles del modal (p. ej. quedó en Factura y el tenant es Nuevo RUS, o el formato del
+  // doc_type no coincide), seleccionar Nota de venta ('00') o el primer tipo disponible.
+  // Evita el estado "ningún tipo de comprobante seleccionado".
+  useEffect(() => {
+    if (checkoutSeries.length === 0) return
+    const groupExists = checkoutSeries.some((s) => normalizeDocTypeKey(s.doc_type) === selectedDocKey)
+    const seriesValid = checkoutSeries.some((s) => s.id === seriesId)
+    if (groupExists && seriesValid) return
+    const preferred =
+      checkoutSeries.find((s) => resolveSeriesSunatCode(s) === '00') ?? checkoutSeries[0]
+    if (preferred) {
+      onSeriesChange(preferred.id, String(preferred.doc_type || '').trim() || 'NOTA DE VENTA')
+    }
+  }, [checkoutSeries, selectedDocKey, seriesId, onSeriesChange])
 
   const selectDocType = (key: string) => {
     const first = checkoutSeries.find((s) => normalizeDocTypeKey(s.doc_type) === key)

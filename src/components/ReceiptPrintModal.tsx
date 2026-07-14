@@ -19,6 +19,8 @@ import {
   isNativePrintAvailable,
   printDocumentAuto,
 } from '@/services/printers.service'
+import { isCapacitorAndroid } from '@/lib/platform/detect'
+import { ReceiptPaperPreview } from '@/components/ReceiptPaperPreview'
 
 type PanelView = 'details' | 'receipt'
 type PdfFormat = 'ticket' | 'a4'
@@ -44,8 +46,12 @@ interface ReceiptPrintModalProps {
   defaultEmail?: string
   saleNumber?: string
   total?: number
-  /** POS en navegador: abrir directamente el comprobante en formato ticket (sin impresión nativa). */
-  autoShowTicketOnWeb?: boolean
+  /**
+   * Abrir el modal directamente en la vista del comprobante (ticket) en vez del resumen.
+   * En Windows/navegador muestra el PDF incrustado; en Android muestra una emulación HTML
+   * con estilo de papel (el WebView de Android no incrusta PDF).
+   */
+  openInReceiptView?: boolean
   /** Etiqueta del documento generado (venta vs cotización). */
   documentKind?: 'sale' | 'quotation'
   /** Si se pasan, el footer muestra "Ir a la lista" + "Nueva venta" en vez de solo "Cerrar". */
@@ -64,7 +70,7 @@ export function ReceiptPrintModal({
   defaultEmail = '',
   saleNumber,
   total,
-  autoShowTicketOnWeb = false,
+  openInReceiptView = false,
   documentKind = 'sale',
   onGoToList,
   onNewDocument,
@@ -86,6 +92,8 @@ export function ReceiptPrintModal({
   const hasDirectPrinter = isNativePrintAvailable() && Boolean(printerCfg)
   const isNativeApp = isNativePrintAvailable()
   const isWebBrowser = !isNativeApp
+  // Android no puede incrustar el PDF en el WebView → se emula el comprobante en HTML.
+  const isAndroid = isCapacitorAndroid()
 
   const heading =
     documentKind === 'quotation'
@@ -156,8 +164,13 @@ export function ReceiptPrintModal({
   const showReceipt = useCallback(async () => {
     if (!printData) return
     setPanelView('receipt')
+    // En Android se renderiza la emulación HTML; no se genera/incrusta PDF.
+    if (isAndroid) {
+      setPdfFormat('ticket')
+      return
+    }
     await loadPdf('ticket')
-  }, [printData, loadPdf])
+  }, [printData, loadPdf, isAndroid])
 
   const showDetails = useCallback(() => {
     setPanelView('details')
@@ -165,10 +178,14 @@ export function ReceiptPrintModal({
 
   const switchPdfFormat = useCallback(
     (format: PdfFormat) => {
+      if (isAndroid) {
+        setPdfFormat(format)
+        return
+      }
       if (format === pdfFormat && pdfUrl) return
       void loadPdf(format)
     },
-    [loadPdf, pdfFormat, pdfUrl],
+    [isAndroid, loadPdf, pdfFormat, pdfUrl],
   )
 
   useEffect(() => {
@@ -184,16 +201,16 @@ export function ReceiptPrintModal({
     }
     revokePdfUrl()
     setPdfFormat('ticket')
-    const showTicketOnWeb =
-      autoShowTicketOnWeb && !isNativePrintAvailable() && Boolean(printData)
-    if (showTicketOnWeb) {
+    const shouldShowReceipt = openInReceiptView && Boolean(printData)
+    if (shouldShowReceipt) {
       autoShowReceiptRef.current = true
       setPanelView('receipt')
-      void loadPdf('ticket')
+      // Windows/navegador: PDF incrustado. Android: emulación HTML (no genera PDF).
+      if (!isAndroid) void loadPdf('ticket')
     } else {
       setPanelView('details')
     }
-  }, [open, revokePdfUrl, autoShowTicketOnWeb, printData, loadPdf])
+  }, [open, revokePdfUrl, openInReceiptView, printData, loadPdf, isAndroid])
 
   useEffect(() => {
     if (!open || !printData || autoPrintedRef.current) return
@@ -519,7 +536,15 @@ export function ReceiptPrintModal({
                       </button>
                     </div>
                   </div>
-                  {pdfLoading || !pdfUrl ? (
+                  {isAndroid ? (
+                    printData ? (
+                      <ReceiptPaperPreview printData={printData} format={pdfFormat} />
+                    ) : (
+                      <div className="flex min-h-[280px] items-center justify-center md:min-h-[360px]">
+                        <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
+                      </div>
+                    )
+                  ) : pdfLoading || !pdfUrl ? (
                     <div className="flex min-h-[280px] items-center justify-center md:min-h-[360px]">
                       <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
                     </div>

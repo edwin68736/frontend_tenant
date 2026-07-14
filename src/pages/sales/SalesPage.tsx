@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Search, Eye, X, Plus, FileText, ExternalLink, RefreshCw, Download, Ticket, FileDown, ChevronDown } from 'lucide-react'
 import { salesService, type Sale, type SaleDetail } from '@/services/sales.service'
+import { PrintDocButton } from '@/components/print/PrintDocButton'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { formatDisplayDatePeru, getTodayPeru } from '@/utils/datesPeru'
@@ -460,6 +461,11 @@ function SalesContent() {
                       >
                         {pdfTicketDownloadBusyId === pdfId ? <RefreshCw size={14} className="animate-spin" /> : <FileDown size={14} />}
                       </button>
+                      <PrintDocButton
+                        loadPrintData={() => salesService.get(pdfId).then((d) => d.print_data)}
+                        webFormat="ticket"
+                        title="Imprimir (ticketera en app / PDF en web)"
+                      />
                     </div>
                   </td>
                   <td className="px-4 py-3 align-top">

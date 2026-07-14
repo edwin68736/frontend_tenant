@@ -1125,7 +1125,7 @@ function POSContent() {
         defaultEmail={successSale?.clientEmail ?? printData?.client?.email ?? ''}
         saleNumber={successSale ? (successSale.number?.includes('-') ? successSale.number : `${successSale.series}-${String(successSale.number).padStart(8, '0')}`) : undefined}
         total={successSale?.total}
-        autoShowTicketOnWeb
+        openInReceiptView
       />
 
       <ManualProductModal

@@ -247,11 +247,12 @@ async function drawHeader(
   const boxH = 36
   const showDocBox = !nvLayout || nvLayout.showDocTypeAndNumber
   if (showDocBox) {
-    drawDottedRect(doc, boxX, top, boxW, boxH)
+    doc.setDrawColor(0, 0, 0)
+    doc.setLineWidth(0.25)
+    doc.rect(boxX, top, boxW, boxH)
 
     setFont(doc, FONT, 'bold')
-    doc.text('RUC:', boxX + 4, top + 5.5)
-    doc.text(data.company.ruc, boxX + 16, top + 5.5)
+    doc.text(`RUC:  ${data.company.ruc}`, boxX + boxW / 2, top + 5.5, { align: 'center' })
 
     const barY = top + 9
     const barH = 9
@@ -281,8 +282,6 @@ function drawCustomerBlock(
   const due = resolveDueDate(data)
 
   drawA4Field(ctx, 'FECHA DE EMISIÓN', formatDisplayDate(data.issue_date), leftX)
-  ctx.y += LINE_H
-  drawA4Field(ctx, 'FECHA DE VENCIMIENTO', due, leftX)
   ctx.y += LINE_H
 
   const showClient = !nvLayout || nvLayout.showClientData
@@ -341,11 +340,11 @@ function drawItemsTable(ctx: A4Ctx, data: PrintData): number {
   const cols: TableCol[] = [
     { label: 'CANT.', w: 11, align: 'center' },
     { label: 'UNIDAD', w: 15, align: 'center' },
-    { label: 'CÓDIGO', w: 19, align: 'left' },
+    { label: 'CÓDIGO', w: 27, align: 'left' },
     { label: 'DESCRIPCIÓN', w: 72, align: 'left' },
     { label: 'P.UNIT', w: 19, align: 'right' },
     { label: 'DTO.', w: 15, align: 'right' },
-    { label: 'TOTAL', w: 29, align: 'right' },
+    { label: 'TOTAL', w: 21, align: 'right' },
   ]
   const colSum = cols.reduce((s, c) => s + c.w, 0)
   if (Math.abs(colSum - CONTENT_W) > 0.5) {
@@ -437,10 +436,6 @@ function drawItemsTable(ctx: A4Ctx, data: PrintData): number {
   doc.line(tableX, tableTop + headerH, tableX + CONTENT_W, tableTop + headerH)
   drawVerticalGrid(tableTop, bodyBottom)
   doc.line(tableX, bodyBottom, tableX + CONTENT_W, bodyBottom)
-
-  doc.setLineDashPattern([1, 1], 0)
-  doc.line(tableX, bodyBottom, tableX + CONTENT_W, bodyBottom)
-  doc.setLineDashPattern([], 0)
 
   ctx.y = bodyBottom + 5
   return bodyBottom
@@ -792,10 +787,20 @@ export async function renderReceiptA4(doc: jsPDF, data: PrintData): Promise<void
   leftY = drawSeller(ctx, data, leftY)
   leftY = drawLegendAndNotes(ctx, data, leftY, isElectronic)
 
-  if (paymentWalletVisible(data, 'a4')) {
-    leftY = await renderPaymentWalletBlock(doc, data, 'a4', leftY, PAGE_W, MARGIN)
-    leftY += 3
-  }
-
   await drawFooter(ctx, data, Math.max(leftY, rightEndY))
+
+  // QR de pago (Yape/Plin) en el pie de página, pegado al lado derecho.
+  // Va aparte del pie centrado (GRACIAS/Tukifac/QR SUNAT) para que no se solapen.
+  if (paymentWalletVisible(data, 'a4')) {
+    const walletBlockH = 42
+    await renderPaymentWalletBlock(
+      doc,
+      data,
+      'a4',
+      PAGE_H - FOOTER_BOTTOM_MARGIN - walletBlockH,
+      PAGE_W,
+      MARGIN,
+      'right',
+    )
+  }
 }

@@ -23,6 +23,7 @@ import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
 import { quotationsService, type Quotation, type QuotationConvertTarget } from '@/services/quotations.service'
+import { PrintDocButton } from '@/components/print/PrintDocButton'
 import { companyService, tenantCanEmitFactura } from '@/services/company.service'
 import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
 import { contactsService, type Contact } from '@/services/contacts.service'
@@ -589,6 +590,11 @@ function QuotationsContent() {
                           >
                             <Mail size={14} />
                           </button>
+                          <PrintDocButton
+                            loadPrintData={() => quotationsService.get(row.id).then((d) => d.print_data)}
+                            webFormat="ticket"
+                            title="Imprimir (ticketera en app / PDF en web)"
+                          />
                         </div>
                       </td>
                       <td className="px-4 py-3">

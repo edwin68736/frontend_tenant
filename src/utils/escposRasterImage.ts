@@ -5,6 +5,17 @@ export function escposPrintWidthPx(paperWidthMm: 58 | 80): number {
   return paperWidthMm === 58 ? 384 : 576
 }
 
+// Caché en memoria del raster de imágenes ESTABLES (logo de empresa, QR de wallet).
+// Evita re-descargar y re-ditherizar la imagen en CADA impresión. Clave por URL + tamaño,
+// así un cambio de URL (logo nuevo) usa otra entrada. El QR SUNAT NO pasa por aquí (cambia
+// por venta), por lo que nunca se cachea contenido dinámico.
+const imageRasterCache = new Map<string, Uint8Array>()
+
+/** Limpia la caché de rasters de imagen (llamar al cambiar el logo o el QR de wallet). */
+export function clearEscPosImageRasterCache(): void {
+  imageRasterCache.clear()
+}
+
 function escposLogoMaxWidthPx(paperWidthMm: 58 | 80): number {
   return paperWidthMm === 58 ? 320 : 420
 }
@@ -163,6 +174,10 @@ export async function buildEscPosImageRaster(
   const src = String(imageUrl ?? '').trim()
   if (!src) return null
 
+  const cacheKey = `${paperWidthMm}|${maxW}x${maxH}|${src}`
+  const cachedRaster = imageRasterCache.get(cacheKey)
+  if (cachedRaster) return cachedRaster
+
   try {
     const img = await loadImageElement(src)
     const printW = escposPrintWidthPx(paperWidthMm)
@@ -225,7 +240,9 @@ export async function buildEscPosImageRaster(
     w = centered.w
     h = centered.h
 
-    return grayscaleToEscPosRaster(gray, w, h)
+    const raster = grayscaleToEscPosRaster(gray, w, h)
+    imageRasterCache.set(cacheKey, raster) // solo se cachea el resultado exitoso
+    return raster
   } catch {
     return null
   }

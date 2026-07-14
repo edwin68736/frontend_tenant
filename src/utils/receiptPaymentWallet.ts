@@ -27,6 +27,7 @@ export async function renderPaymentWalletBlock(
   startY: number,
   pageW: number,
   margin: number,
+  align: 'center' | 'right' = 'center',
 ): Promise<number> {
   const w = data.payment_wallet
   if (!w || !paymentWalletVisible(data, format)) return startY
@@ -36,24 +37,27 @@ export async function renderPaymentWalletBlock(
   const label = walletProviderLabel(w.provider)
   let y = startY
 
-  const drawCenter = (text: string, size: number) => {
+  const textAnchorX = align === 'right' ? pageW - margin : pageW / 2
+  const textAlign: 'center' | 'right' = align === 'right' ? 'right' : 'center'
+  const qrX = align === 'right' ? pageW - margin - qrSize : (pageW - qrSize) / 2
+
+  const drawLine = (text: string, size: number) => {
     doc.setFontSize(size)
     doc.setFont('helvetica', 'normal')
-    doc.text(text, pageW / 2, y, { align: 'center' })
+    doc.text(text, textAnchorX, y, { align: textAlign })
     y += lineH
   }
 
-  drawCenter(`Paga con ${label}`, format === 'a4' ? 9 : 8)
-  drawCenter(w.phone, format === 'a4' ? 8 : 7)
+  drawLine(`Paga con ${label}`, format === 'a4' ? 9 : 8)
+  drawLine(w.phone, format === 'a4' ? 8 : 7)
 
   const qrSrc = w.qr_url.startsWith('data:') ? w.qr_url : resolvePublicAssetUrl(w.qr_url)
   try {
-    doc.addImage(qrSrc, qrImageFormat(w.qr_url), (pageW - qrSize) / 2, y, qrSize, qrSize)
+    doc.addImage(qrSrc, qrImageFormat(w.qr_url), qrX, y, qrSize, qrSize)
     y += qrSize + (format === 'a4' ? 4 : 3)
   } catch {
     /* ignore */
   }
 
-  void margin
   return y
 }

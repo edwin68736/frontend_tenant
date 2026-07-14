@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Send, Eye, RefreshCw, X, FileText, FileCode, Archive, Download, FileSignature, FileBarChart, Ban, Search, Ticket, FileDown, ChevronDown, Truck, Receipt } from 'lucide-react'
+import { Send, Eye, RefreshCw, X, FileText, FileCode, Archive, Download, FileSignature, FileBarChart, Ban, Search, Ticket, FileDown, ChevronDown, Truck, Receipt, MoreVertical } from 'lucide-react'
 import { salesService, type Sale, type SaleDetail } from '@/services/sales.service'
+import { PrintDocButton } from '@/components/print/PrintDocButton'
+import { RowMenu } from '@/components/ui/RowMenu'
 import { billingService, type SunatSummary, type SunatVoided, type VoidedDetailInput, type InvoiceStatusResult } from '@/services/billing.service'
 import { companyService, type SeriesRow } from '@/services/company.service'
 import RequireModule from '@/components/ui/RequireModule'
@@ -736,104 +738,79 @@ function BillingContent() {
                   </td>
                 )}
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      disabled={viewingPdfSaleId === s.id}
-                      onClick={() => void openLocalPdfViewer(s.id, 'a4')}
-                      className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
-                      title="Ver PDF (formato local A4)"
-                    >
-                      {viewingPdfSaleId === s.id ? <RefreshCw size={14} className="animate-spin" /> : <Eye size={14} />}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={downloadingPdfSaleId === s.id}
-                      onClick={() => void downloadLocalPdf(s.id, 'a4')}
-                      className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"
-                      title="Descargar PDF (formato local A4)"
-                    >
-                      {downloadingPdfSaleId === s.id ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={viewingTicketPdfSaleId === s.id}
-                      onClick={() => void openLocalPdfViewer(s.id, 'ticket')}
-                      className="p-1.5 text-orange-700 hover:bg-orange-50 rounded-lg disabled:opacity-40"
-                      title="Ver PDF formato ticket (80 mm, desde datos del comprobante)"
-                    >
-                      {viewingTicketPdfSaleId === s.id ? <RefreshCw size={14} className="animate-spin" /> : <Ticket size={14} />}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={downloadingTicketPdfSaleId === s.id}
-                      onClick={() => void downloadLocalPdf(s.id, 'ticket')}
-                      className="p-1.5 text-orange-700 hover:bg-orange-50 rounded-lg disabled:opacity-40"
-                      title="Descargar PDF formato ticket"
-                    >
-                      {downloadingTicketPdfSaleId === s.id ? <RefreshCw size={14} className="animate-spin" /> : <FileDown size={14} />}
-                    </button>
+                  <div className="flex items-center gap-1.5">
+                    <RowMenu
+                      title="PDF del comprobante"
+                      triggerIcon={<FileText size={14} className="text-red-600" />}
+                      triggerClassName="inline-flex items-center gap-0.5 p-1.5 text-red-600 hover:bg-red-50 rounded-lg ring-1 ring-red-200/80"
+                      items={[
+                        { icon: <Eye size={14} className="text-red-600" />, label: 'Ver PDF A4', onClick: () => void openLocalPdfViewer(s.id, 'a4') },
+                        { icon: <Download size={14} className="text-red-600" />, label: 'Descargar PDF A4', onClick: () => void downloadLocalPdf(s.id, 'a4') },
+                        { icon: <Ticket size={14} className="text-orange-700" />, label: 'Ver PDF ticket', onClick: () => void openLocalPdfViewer(s.id, 'ticket') },
+                        { icon: <FileDown size={14} className="text-orange-700" />, label: 'Descargar PDF ticket', onClick: () => void downloadLocalPdf(s.id, 'ticket') },
+                      ]}
+                    />
+                    <PrintDocButton
+                      loadPrintData={() => salesService.get(s.id).then((d) => d.print_data)}
+                      webFormat="ticket"
+                      title="Imprimir (ticketera en app / PDF en web)"
+                      className="inline-flex items-center justify-center p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                    />
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  {showXmlSigned || showXmlGenerated ? (
-                    <div className="flex items-center gap-1">
-                      {showXmlSigned && (
-                      <button
-                        type="button"
-                        disabled={downloadingDoc?.saleId === s.id && downloadingDoc?.type === 'xml'}
-                        onClick={() => {
+                  <RowMenu
+                    title="XML"
+                    triggerIcon={<FileCode size={14} className="text-amber-600" />}
+                    triggerClassName="inline-flex items-center gap-0.5 p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg ring-1 ring-amber-200/80"
+                    items={[
+                      {
+                        hidden: !showXmlSigned,
+                        icon: <FileCode size={14} className="text-amber-600" />,
+                        label: 'XML firmado (SUNAT)',
+                        disabled: downloadingDoc?.saleId === s.id && downloadingDoc?.type === 'xml',
+                        onClick: () => {
                           setDownloadingDoc({ saleId: s.id, type: 'xml' })
                           billingService.downloadDocument(s.id, 'xml')
                             .catch(e => toast.error(e?.message ?? 'Error al descargar'))
                             .finally(() => setDownloadingDoc(null))
-                        }}
-                        className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg"
-                        title="XML firmado enviado a SUNAT"
-                      >
-                        {(downloadingDoc?.saleId === s.id && downloadingDoc?.type === 'xml') ? <RefreshCw size={14} className="animate-spin" /> : <FileCode size={14} />}
-                      </button>
-                      )}
-                      {showXmlGenerated && (
-                        <button
-                          type="button"
-                          disabled={downloadingDoc?.saleId === s.id && downloadingDoc?.type === 'xml-generated'}
-                          onClick={() => {
-                            setDownloadingDoc({ saleId: s.id, type: 'xml-generated' })
-                            billingService.downloadDocument(s.id, 'xml-generated')
-                              .catch(e => toast.error(e?.message ?? 'Error al descargar'))
-                              .finally(() => setDownloadingDoc(null))
-                          }}
-                          className="p-1.5 text-amber-500 hover:bg-amber-50 rounded-lg"
-                          title="XML generado (vista previa local, sin envío)"
-                        >
-                          {(downloadingDoc?.saleId === s.id && downloadingDoc?.type === 'xml-generated') ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    <span className="text-gray-300 text-xs">—</span>
-                  )}
+                        },
+                      },
+                      {
+                        hidden: !showXmlGenerated,
+                        icon: <Download size={14} className="text-amber-500" />,
+                        label: 'XML generado (local)',
+                        disabled: downloadingDoc?.saleId === s.id && downloadingDoc?.type === 'xml-generated',
+                        onClick: () => {
+                          setDownloadingDoc({ saleId: s.id, type: 'xml-generated' })
+                          billingService.downloadDocument(s.id, 'xml-generated')
+                            .catch(e => toast.error(e?.message ?? 'Error al descargar'))
+                            .finally(() => setDownloadingDoc(null))
+                        },
+                      },
+                    ]}
+                  />
                 </td>
                 <td className="px-4 py-3">
-                  {showCdr ? (
-                    <button
-                      type="button"
-                      disabled={downloadingDoc?.saleId === s.id && downloadingDoc?.type === 'cdr'}
-                      onClick={() => {
-                        setDownloadingDoc({ saleId: s.id, type: 'cdr' })
-                        billingService.downloadDocument(s.id, 'cdr')
-                          .catch(e => toast.error(e?.message ?? 'Error al descargar'))
-                          .finally(() => setDownloadingDoc(null))
-                      }}
-                      className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg"
-                      title="Descargar CDR"
-                    >
-                      {(downloadingDoc?.saleId === s.id && downloadingDoc?.type === 'cdr') ? <RefreshCw size={14} className="animate-spin" /> : <Archive size={14} />}
-                    </button>
-                  ) : (
-                    <span className="text-gray-300 text-xs">—</span>
-                  )}
+                  <RowMenu
+                    title="CDR"
+                    triggerIcon={<Archive size={14} className="text-blue-600" />}
+                    triggerClassName="inline-flex items-center gap-0.5 p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg ring-1 ring-blue-200/80"
+                    items={[
+                      {
+                        hidden: !showCdr,
+                        icon: <Archive size={14} className="text-blue-600" />,
+                        label: 'Descargar CDR',
+                        disabled: downloadingDoc?.saleId === s.id && downloadingDoc?.type === 'cdr',
+                        onClick: () => {
+                          setDownloadingDoc({ saleId: s.id, type: 'cdr' })
+                          billingService.downloadDocument(s.id, 'cdr')
+                            .catch(e => toast.error(e?.message ?? 'Error al descargar'))
+                            .finally(() => setDownloadingDoc(null))
+                        },
+                      },
+                    ]}
+                  />
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-1 flex-wrap items-center">
@@ -869,46 +846,47 @@ function BillingContent() {
                         )}
                       </button>
                     </div>
-                    {viewMode === 'invoices' && s.billing_status === 'pending' && !isSaleCancelled(s) && (
-                      <button onClick={() => handleSend(s.id)} disabled={sending === s.id}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-50">
-                        {sending === s.id ? <RefreshCw size={11} className="animate-spin" /> : <Send size={11} />}
-                        Enviar
-                      </button>
-                    )}
-                    {viewMode === 'invoices' && canVoidWithCreditNote(s) && (
-                      <button onClick={() => openVoidNcModal(s)} disabled={voidNcSubmitting && voidNcTarget?.id === s.id}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-orange-600 text-white rounded-lg text-xs font-medium hover:bg-orange-700 disabled:opacity-50"
-                        title="Anular con nota de crédito (genera la NC y anula la venta)">
-                        {voidNcSubmitting && voidNcTarget?.id === s.id ? <RefreshCw size={11} className="animate-spin" /> : <FileSignature size={11} />}
-                        Anular (NC)
-                      </button>
-                    )}
-                    {viewMode === 'invoices' && bs === 'accepted' && !isSaleCancelled(s) && (
-                      <button
-                        type="button"
-                        onClick={() => openGuiaFromSale(s.id)}
-                        disabled={guiaLoadingSaleId === s.id}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-medium hover:bg-emerald-700 disabled:opacity-50"
-                        title="Generar guía de remisión desde este comprobante"
-                      >
-                        {guiaLoadingSaleId === s.id ? <RefreshCw size={11} className="animate-spin" /> : <Truck size={11} />}
-                        Generar guía
-                      </button>
-                    )}
-                    {s.billing_status === 'error' && !isSaleCancelled(s) && (
-                      <button onClick={() => handleResend(s.id)} disabled={resending === s.id}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium hover:bg-amber-700 disabled:opacity-50"
-                        title="Reenviar el mismo comprobante (solo cuando falló el envío)">
-                        {resending === s.id ? <RefreshCw size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-                        Reenviar
-                      </button>
-                    )}
-                    <button onClick={() => openDetail(s.id)}
-                      className="p-1.5 text-gray-400 hover:text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] rounded-lg"
-                      title={viewMode === 'credit_notes' ? 'Ver detalle' : undefined}>
-                      <Eye size={14} />
-                    </button>
+                    <RowMenu
+                      title="Más acciones"
+                      triggerIcon={<MoreVertical size={16} />}
+                      triggerClassName="inline-flex items-center gap-0.5 p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg ring-1 ring-gray-200 disabled:opacity-40"
+                      items={[
+                        {
+                          hidden: !(viewMode === 'invoices' && s.billing_status === 'pending' && !isSaleCancelled(s)),
+                          icon: <Send size={14} className="text-blue-600" />,
+                          label: 'Enviar a SUNAT',
+                          disabled: sending === s.id,
+                          onClick: () => void handleSend(s.id),
+                        },
+                        {
+                          hidden: !(viewMode === 'invoices' && canVoidWithCreditNote(s)),
+                          icon: <FileSignature size={14} className="text-orange-600" />,
+                          label: 'Anular con nota de crédito',
+                          danger: true,
+                          disabled: voidNcSubmitting && voidNcTarget?.id === s.id,
+                          onClick: () => openVoidNcModal(s),
+                        },
+                        {
+                          hidden: !(viewMode === 'invoices' && bs === 'accepted' && !isSaleCancelled(s)),
+                          icon: <Truck size={14} className="text-emerald-600" />,
+                          label: 'Generar guía de remisión',
+                          disabled: guiaLoadingSaleId === s.id,
+                          onClick: () => void openGuiaFromSale(s.id),
+                        },
+                        {
+                          hidden: !(s.billing_status === 'error' && !isSaleCancelled(s)),
+                          icon: <RefreshCw size={14} className="text-amber-600" />,
+                          label: 'Reenviar a SUNAT',
+                          disabled: resending === s.id,
+                          onClick: () => void handleResend(s.id),
+                        },
+                        {
+                          icon: <Eye size={14} className="text-gray-500" />,
+                          label: 'Ver detalle',
+                          onClick: () => void openDetail(s.id),
+                        },
+                      ]}
+                    />
                   </div>
                 </td>
               </tr>
