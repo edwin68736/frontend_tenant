@@ -23,7 +23,7 @@ export default function SubscriptionHeaderWidget() {
 
   if (loading && !hub) {
     return (
-      <div className="hidden sm:flex items-center px-2 py-0.5 rounded-lg border border-gray-100 bg-gray-50/80 shrink-0">
+      <div className="hidden md:flex items-center px-2 py-0.5 rounded-lg border border-gray-100 bg-gray-50/80 shrink-0">
         <Loader2 size={14} className="animate-spin text-gray-400" />
       </div>
     )
@@ -45,24 +45,12 @@ export default function SubscriptionHeaderWidget() {
     <Link
       to="/subscription"
       title={tooltip}
-      className={`group flex items-center gap-1.5 sm:gap-2 rounded-lg border px-2 py-0.5 sm:px-2.5 sm:py-1 text-left transition-colors min-w-0 max-w-[min(100%,280px)] md:max-w-none shrink-0 ${accent}`}
+      className={`group hidden md:flex items-center gap-2 rounded-lg border px-2.5 py-1 text-left transition-colors min-w-0 max-w-none shrink-0 ${accent}`}
     >
-      {/* Mobile: icono + badge pago */}
-      <span className="flex sm:hidden items-center gap-1">
-        <CreditCard size={16} className={isDark ? 'text-slate-200' : 'text-gray-500'} />
-        <span
-          className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-wide ${paymentToneClass(
-            hub.billing_context?.current_payment_tone ?? 'success',
-          )}`}
-        >
-          <PaymentIcon kind={pay.icon} />
-          {pay.label}
-        </span>
-      </span>
-
-      {/* Tablet+ */}
-      <span className="hidden sm:flex flex-col min-w-0 leading-tight">
-        <span className={`text-[10px] font-bold uppercase tracking-wide truncate max-w-[88px] md:max-w-[120px] ${isDark ? 'text-white' : 'text-gray-900'}`}>
+      {/* En móvil este widget no aparece: el plan se consulta desde el menú de la cuenta
+          (SubscriptionUserMenuItem), donde hay sitio para leerlo entero. */}
+      <span className="flex flex-col min-w-0 leading-tight">
+        <span className={`text-[10px] font-bold uppercase tracking-wide truncate max-w-[120px] ${isDark ? 'text-white' : 'text-gray-900'}`}>
           {sub.plan_name || 'Plan'}
         </span>
         <span

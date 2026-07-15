@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { clsx } from 'clsx'
-import { Check, LayoutGrid, Package, Search, X } from 'lucide-react'
+import { Check, LayoutGrid, Search, X } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import type { Category } from '@/services/products.service'
 
@@ -13,20 +13,24 @@ interface PosCategoriesModalProps {
   onSelect: (id: number | null) => void
 }
 
-/** Paleta suave para el avatar de cada categoría (ciclada por id, look consistente). */
-const AVATAR_STYLES = [
-  'bg-rose-100 text-rose-700',
-  'bg-amber-100 text-amber-700',
-  'bg-emerald-100 text-emerald-700',
-  'bg-sky-100 text-sky-700',
-  'bg-violet-100 text-violet-700',
-  'bg-teal-100 text-teal-700',
-  'bg-orange-100 text-orange-700',
-  'bg-fuchsia-100 text-fuchsia-700',
+/**
+ * Color del nombre de cada categoría (ciclado por id: mismo color siempre para la misma).
+ * Tonos 700: sobre blanco cumplen contraste AA, así que el color identifica sin restar
+ * legibilidad al nombre, que aquí es lo único que se lee.
+ */
+const CATEGORY_STYLES = [
+  'border-rose-300 bg-rose-50 text-rose-700',
+  'border-amber-300 bg-amber-50 text-amber-700',
+  'border-emerald-300 bg-emerald-50 text-emerald-700',
+  'border-sky-300 bg-sky-50 text-sky-700',
+  'border-violet-300 bg-violet-50 text-violet-700',
+  'border-teal-300 bg-teal-50 text-teal-700',
+  'border-orange-300 bg-orange-50 text-orange-700',
+  'border-fuchsia-300 bg-fuchsia-50 text-fuchsia-700',
 ]
 
-function avatarStyle(id: number): string {
-  return AVATAR_STYLES[Math.abs(id) % AVATAR_STYLES.length]
+function categoryStyle(id: number): string {
+  return CATEGORY_STYLES[Math.abs(id) % CATEGORY_STYLES.length]
 }
 
 /** Normaliza para búsqueda: minúsculas y sin tildes. */
@@ -36,13 +40,6 @@ function normalize(text: string): string {
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .trim()
-}
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean)
-  if (parts.length === 0) return '?'
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return (parts[0][0] + parts[1][0]).toUpperCase()
 }
 
 /** Lista completa de categorías en cards, para elegir cuando hay muchas y la barra horizontal no alcanza. */
@@ -73,8 +70,10 @@ export function PosCategoriesModal({
     onClose()
   }
 
+  // Alto fijo + centrado: todas las tarjetas miden igual aunque el nombre ocupe una o dos
+  // líneas, así la cuadrícula no queda irregular.
   const cardBase =
-    'group relative flex flex-col gap-2 rounded-2xl border p-3.5 text-left transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40'
+    'group relative flex h-[4.5rem] items-center justify-center rounded-2xl border px-3 py-2 text-center transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40'
 
   return (
     <Modal open={open} onClose={onClose} contentClassName="max-w-3xl">
@@ -128,23 +127,18 @@ export function PosCategoriesModal({
             onClick={() => pick(null)}
             className={clsx(
               cardBase,
+              'border-primary-300 bg-primary-50 text-primary-700',
               selectedCat === null
-                ? 'border-primary-600 bg-primary-50/70 ring-1 ring-primary-600 shadow-sm'
-                : 'border-stone-200 bg-white hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-md',
+                ? 'ring-2 ring-primary-600 shadow-sm'
+                : 'hover:-translate-y-0.5 hover:shadow-md',
             )}
           >
-            <div className="flex items-center justify-between">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary-100 text-primary-700">
-                <LayoutGrid size={18} aria-hidden />
+            <span className="line-clamp-2 text-sm font-bold leading-snug">Todas</span>
+            {selectedCat === null && (
+              <span className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary-600 text-white shadow-sm">
+                <Check size={12} aria-hidden />
               </span>
-              {selectedCat === null && (
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary-600 text-white shadow-sm">
-                  <Check size={14} aria-hidden />
-                </span>
-              )}
-            </div>
-            <span className="text-sm font-semibold text-stone-800">Todas</span>
-            <span className="text-xs text-stone-400">Ver todos los productos</span>
+            )}
           </button>
         )}
 
@@ -157,36 +151,18 @@ export function PosCategoriesModal({
               onClick={() => pick(c.id)}
               className={clsx(
                 cardBase,
+                // Fondo pastel del color de la categoría: identifica de un vistazo.
+                categoryStyle(c.id),
                 selected
-                  ? 'border-primary-600 bg-primary-50/70 ring-1 ring-primary-600 shadow-sm'
-                  : 'border-stone-200 bg-white hover:-translate-y-0.5 hover:border-primary-300 hover:shadow-md',
+                  ? 'ring-2 ring-primary-600 shadow-sm'
+                  : 'hover:-translate-y-0.5 hover:shadow-md',
               )}
+              title={c.name}
             >
-              <div className="flex items-center justify-between">
-                <span
-                  className={clsx(
-                    'flex h-10 w-10 items-center justify-center rounded-xl text-sm font-bold',
-                    avatarStyle(c.id),
-                  )}
-                >
-                  {initials(c.name)}
-                </span>
-                {selected && (
-                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary-600 text-white shadow-sm">
-                    <Check size={14} aria-hidden />
-                  </span>
-                )}
-              </div>
-              <span className="line-clamp-2 text-sm font-semibold leading-snug text-stone-800">
-                {c.name}
-              </span>
-              {c.description ? (
-                <span className="line-clamp-2 text-xs text-stone-400">{c.description}</span>
-              ) : null}
-              {typeof c.product_count === 'number' && (
-                <span className="mt-auto inline-flex w-fit items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-[11px] font-medium text-stone-500">
-                  <Package size={11} aria-hidden />
-                  {c.product_count} {c.product_count === 1 ? 'producto' : 'productos'}
+              <span className="line-clamp-2 text-sm font-bold leading-snug">{c.name}</span>
+              {selected && (
+                <span className="absolute right-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-primary-600 text-white shadow-sm">
+                  <Check size={12} aria-hidden />
                 </span>
               )}
             </button>

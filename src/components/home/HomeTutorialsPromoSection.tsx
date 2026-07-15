@@ -4,14 +4,12 @@ import {
   ChevronRight,
   MousePointerClick,
   X,
-  Youtube,
 } from 'lucide-react'
 import { PortalModal } from '@/components/ui/PortalModal'
 import {
   HOME_PROMO_SLIDES_DESKTOP,
   HOME_PROMO_SLIDES_MOBILE,
   PROMO_WHATSAPP_URL,
-  YOUTUBE_TUTORIALS_URL,
   type HomePromoSlide,
 } from '@/constants/homePromotions'
 
@@ -141,51 +139,6 @@ function PromoCarouselTrack({
           <img src={slide.image} alt={slide.alt} className="relative z-10 w-full h-full object-cover" />
         </div>
       ))}
-    </div>
-  )
-}
-
-function TutorialsWelcomeCard({ variant }: { variant: 'mobile' | 'desktop' }) {
-  if (variant === 'mobile') {
-    return (
-      <div className="rounded-xl sm:rounded-2xl overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white flex flex-col justify-center p-3 sm:p-4 h-[88px] sm:h-[100px]">
-        <p className="text-[9px] sm:text-[10px] uppercase tracking-wider text-emerald-300/80 font-semibold truncate">
-          Bienvenido
-        </p>
-        <h2 className="text-sm sm:text-base font-extrabold leading-tight truncate">¿Qué vas a hacer hoy?</h2>
-        <a
-          href={YOUTUBE_TUTORIALS_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 sm:gap-2 mt-2 w-fit bg-red-600 hover:bg-red-700 text-white font-semibold py-1.5 sm:py-2 px-2.5 sm:px-3 rounded-full text-[10px] sm:text-xs transition-colors shadow-lg shadow-red-900/20"
-        >
-          <Youtube className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-          <span>Tutoriales</span>
-        </a>
-      </div>
-    )
-  }
-
-  return (
-    <div className="relative overflow-hidden rounded-[20px] shadow-sm bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white flex flex-col justify-center p-8 h-[220px]">
-      <div className="absolute inset-0 opacity-30 mix-blend-screen pointer-events-none">
-        <img src="/home/inicio-hero.webp" alt="" className="w-full h-full object-cover" />
-      </div>
-      <div className="relative z-10">
-        <p className="text-xs uppercase tracking-[0.25em] text-emerald-300/80 mb-3 font-semibold">
-          Bienvenido a Tukifac Pro
-        </p>
-        <h2 className="text-3xl lg:text-4xl font-extrabold leading-tight mb-5">¿Qué vas a hacer hoy?</h2>
-        <a
-          href={YOUTUBE_TUTORIALS_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 px-5 rounded-full transition-colors shadow-lg shadow-red-900/20 group w-fit"
-        >
-          <Youtube className="w-5 h-5 group-hover:scale-110 transition-transform" />
-          <span>Ver tutoriales</span>
-        </a>
-      </div>
     </div>
   )
 }
@@ -336,7 +289,6 @@ export function HomeTutorialsPromoSection() {
     <>
       {/* Móvil / tablet */}
       <div className="flex flex-col gap-2 sm:gap-3 lg:hidden">
-        <TutorialsWelcomeCard variant="mobile" />
         <button
           type="button"
           onClick={() => setShowPromoModal(true)}
@@ -350,10 +302,8 @@ export function HomeTutorialsPromoSection() {
         </button>
       </div>
 
-      {/* Desktop */}
-      <div className="hidden lg:grid grid-cols-2 gap-6">
-        <TutorialsWelcomeCard variant="desktop" />
-
+      {/* Desktop: sin la tarjeta de bienvenida, las promociones ocupan el ancho completo. */}
+      <div className="hidden lg:block">
         <div
           role="button"
           tabIndex={0}

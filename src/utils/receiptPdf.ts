@@ -1,3 +1,5 @@
+import { openPdfViewer } from '@/components/pdf/pdfViewerStore'
+import { getCompanyLogoForPrint } from '@/lib/companyConfig/store'
 import { jsPDF, GState } from 'jspdf'
 import QRCode from 'qrcode'
 import type { PrintData } from '@/types/printData'
@@ -176,7 +178,7 @@ export async function generateReceiptPdf(
   const isTicket = format === 'ticket'
   const paperMm = normalizeTicketPaperWidth(options?.paperWidthMm)
   const nvLayout = getNotaVentaPrintLayout(data.sunat_code)
-  const showPayAndBank = !nvLayout || nvLayout.showBankAccountsAndPaymentCondition
+  const showPaymentCondition = !nvLayout || nvLayout.showPaymentCondition
   const pageW = isTicket ? ticketPageWidthMm(paperMm) : A4_WIDTH
   const margin = isTicket ? ticketMarginMm(paperMm) : MARGIN
   const doc = new jsPDF({
@@ -261,9 +263,11 @@ export async function generateReceiptPdf(
     // Logo (alta resolución para impresión)
     addSpace(3)
     const showLogo = !nvLayout || nvLayout.showLogo
-    if (showLogo && data.company.logo_url) {
+    // El logo sale de la empresa (cargada al iniciar sesión), no del print_data de la venta.
+    const companyLogo = getCompanyLogoForPrint()
+    if (showLogo && companyLogo) {
       try {
-        const logo = await resolveReceiptLogoForPdf(data.company.logo_url)
+        const logo = await resolveReceiptLogoForPdf(companyLogo)
         if (logo) {
           const maxW = Math.min(paperMm === 58 ? 28 : 32, innerW)
           const maxH = paperMm === 58 ? 10 : 12
@@ -458,8 +462,9 @@ export async function generateReceiptPdf(
       addSpace(2)
     }
 
+    // Las cuentas bancarias no dependen de este ajuste: se eligen en Empresa → Comprobantes.
     const bankLines = bankAccountTextLines(data)
-    if (showPayAndBank && bankLines.length > 0) {
+    if (bankLines.length > 0) {
       addSpace(1)
       for (const line of bankLines) {
         addTicketWrapped(line, FONT_SIZE_SM)
@@ -473,7 +478,7 @@ export async function generateReceiptPdf(
     }
 
     const showSunatQr = isElectronicSunatCode(data.sunat_code) && Boolean(data.qr_data)
-    if (showPayAndBank || showSunatQr) {
+    if (showPaymentCondition || showSunatQr) {
       y = await renderTicketPaymentAndSunatQrRow(doc, data, {
         showSunatQr,
         y,
@@ -547,6 +552,13 @@ export async function downloadReceiptPdf(
   await downloadBlob(blob, receiptPdfFileName(data, format))
 }
 
+/**
+ * Muestra el PDF en el visor de la app.
+ *
+ * Antes hacía `window.open(blobUrl)`: en Tauri no abre nada (no hay pestañas) y en el
+ * WebView de Android tampoco; en navegador funcionaba pero sacaba al usuario a otra
+ * pestaña. Ahora se ve en un modal en las tres plataformas.
+ */
 export async function openReceiptPdfInNewTab(
   data: PrintData,
   format: 'a4' | 'ticket' = 'a4',
@@ -554,8 +566,13 @@ export async function openReceiptPdfInNewTab(
 ): Promise<void> {
   const blob = await printDataToPdfBlob(data, format, options)
   const url = URL.createObjectURL(blob)
-  window.open(url, '_blank', 'noopener,noreferrer')
-  setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  const number = String(data.number ?? '').trim()
+  openPdfViewer({
+    url,
+    title: number ? `Comprobante ${number}` : 'Comprobante',
+    fit: format === 'a4' ? 'page' : undefined,
+    onClose: () => URL.revokeObjectURL(url),
+  })
 }
 
 /** Espera a que el usuario cierre el diálogo de impresión del navegador (imprimir o cancelar). */

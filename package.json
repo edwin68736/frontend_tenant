@@ -1,7 +1,7 @@
 {
   "name": "tukifac-tenant-panel",
   "private": true,
-  "version": "1.1.8",
+  "version": "1.1.9",
   "type": "module",
   "scripts": {
     "version:sync": "node scripts/sync-app-version.mjs",

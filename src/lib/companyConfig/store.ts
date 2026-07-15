@@ -126,6 +126,23 @@ export function getCompanyLogoDataUrlSync(logoUrl?: string | null): string | nul
 }
 
 /**
+ * Logo a imprimir en cualquier comprobante. Sale de la config de la empresa cargada al
+ * iniciar sesión, no del print_data de cada venta: el logo es del emisor y no cambia por
+ * venta, así que una venta vieja o un print_data sin logo no deben dejar el ticket sin él.
+ * Devuelve el data URL cacheado (sin CORS) y, si aún no se descargó, la URL remota.
+ */
+export function getCompanyLogoForPrint(): string | null {
+  const cfg = getCompanyConfigCache()
+  // El backend ya lo manda embebido: sin red, sin CORS, funciona en cualquier dispositivo.
+  const embedded = String(cfg?.logo_data_url ?? '').trim()
+  if (embedded.startsWith('data:')) return embedded
+  // Respaldo para backend antiguo o logo demasiado pesado para embeber.
+  const raw = String(cfg?.logo_url ?? '').trim()
+  if (!raw) return null
+  return getCompanyLogoDataUrlSync(raw) ?? raw
+}
+
+/**
  * Asegura que el logo esté cacheado como data URL. Lo descarga una sola vez
  * (probando el API del tenant, same-origin y el servidor central). Idempotente.
  */

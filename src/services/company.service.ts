@@ -25,6 +25,8 @@ export interface CompanyConfig {
   /** general | nrus — régimen tributario del contribuyente. */
   taxpayer_regime?: string
   logo_url: string
+  /** Logo ya embebido por el backend: evita que cada dispositivo descargue /uploads. */
+  logo_data_url?: string
   additional_notes?: string
   terms_and_conditions?: string
   /** Preferencia global: mostrar términos en ventas/cotizaciones nuevas. */
@@ -140,7 +142,8 @@ export const companyService = {
       if (cached) {
         // Reintenta el logo si el caché de config existe pero el data URL no
         // (p. ej. tras recargar la app o si el primer intento falló).
-        if (!getCompanyLogoDataUrlSync(cached.logo_url)) void ensureCompanyLogoDataUrl(cached.logo_url)
+        const cachedLogo = cached.logo_data_url || cached.logo_url
+        if (!getCompanyLogoDataUrlSync(cachedLogo)) void ensureCompanyLogoDataUrl(cachedLogo)
         return Promise.resolve(cached)
       }
       if (configInFlight) return configInFlight
@@ -149,7 +152,8 @@ export const companyService = {
       .get<CompanyConfig>('/api/company/config')
       .then((r) => {
         setCompanyConfigCache(r.data)
-        void ensureCompanyLogoDataUrl(r.data.logo_url)
+        // Si el backend lo mandó embebido, se cachea sin salir a la red; si no, se descarga.
+        void ensureCompanyLogoDataUrl(r.data.logo_data_url || r.data.logo_url)
         return r.data
       })
       .finally(() => {

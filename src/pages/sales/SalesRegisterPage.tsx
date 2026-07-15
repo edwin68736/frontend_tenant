@@ -1144,9 +1144,11 @@ function SalesRegisterContent({
         return
       }
     }
-    if (selectedContact?.doc_type === '0' && (sunatCode === '00' || sunatCode === '03')) {
+    // Solo la boleta (03): es la que se declara. La nota de venta (00) es interna y no
+    // hereda el tope de SUNAT.
+    if (selectedContact?.doc_type === '0' && sunatCode === '03') {
       if (totalGlobal > SUNAT_MAX_MONTO_CLIENTE_SIN_RUC) {
-        toast.error(`Con cliente sin RUC el monto máximo es S/ ${SUNAT_MAX_MONTO_CLIENTE_SIN_RUC}. Total: S/ ${totalGlobal.toFixed(2)}`)
+        toast.error(`Con cliente sin RUC el monto máximo en boleta es S/ ${SUNAT_MAX_MONTO_CLIENTE_SIN_RUC}. Total: S/ ${totalGlobal.toFixed(2)}`)
         return
       }
     }
@@ -1539,9 +1541,11 @@ function SalesRegisterContent({
         />
       )}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 space-y-5">
-        {/* Cabecera: logo + empresa (izq.) y fechas en fila (der.) */}
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between pb-4 border-b border-gray-100">
-          <div className="flex items-start gap-5 min-w-0">
+        {/* Cabecera: logo + empresa (izq.) y fechas en fila (der.).
+            Ojo: aquí `sm` son 390px (ver tailwind.config), así que ponerlas en fila desde sm
+            aplastaba los datos de la empresa en cualquier teléfono. El corte real es md. */}
+        <header className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between pb-4 border-b border-gray-100">
+          <div className="flex items-start gap-3 min-w-0 md:gap-5">
             <input
               ref={logoInputRef}
               type="file"
@@ -1594,9 +1598,10 @@ function SalesRegisterContent({
               </div>
             </div>
           </div>
-          <div className="flex flex-col items-stretch sm:items-end gap-1 shrink-0 sm:ml-4">
+          <div className="flex flex-col items-stretch gap-1 shrink-0 md:items-end md:ml-4">
             <div className="flex flex-row flex-wrap items-end gap-3">
-              <div className="w-[9.5rem]">
+              {/* En móvil las fechas reparten el ancho; desde md vuelven a su ancho fijo. */}
+              <div className="flex-1 min-w-[8.5rem] md:flex-none md:w-[9.5rem]">
                 <label className="block text-xs font-medium text-gray-600 mb-1">Fec. Emisión</label>
                 <input
                   type="date"
@@ -1608,7 +1613,7 @@ function SalesRegisterContent({
                   onChange={(e) => handleIssueDateChange(e.target.value)}
                 />
               </div>
-              <div className="w-[9.5rem]">
+              <div className="flex-1 min-w-[8.5rem] md:flex-none md:w-[9.5rem]">
                 <label className="block text-xs font-medium text-gray-600 mb-1">
                   {isQuotation ? 'Vigencia hasta' : paymentConditionCode === 'credit' ? 'Vencimiento doc.' : 'Fec. Vencimiento'}
                 </label>
@@ -1759,9 +1764,6 @@ function SalesRegisterContent({
                   title="TC SUNAT venta del día de emisión (USD/PEN)"
                 >
                   Tipo de cambio
-                  {form.currency === 'PEN' && (
-                    <span className="font-normal text-gray-400 ml-1">(referencial)</span>
-                  )}
                 </label>
                 <div className="relative">
                   <input

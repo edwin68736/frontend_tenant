@@ -1,3 +1,9 @@
+import { PosProductViewModeToggle } from '@/components/pos/PosProductViewModeToggle'
+import {
+  readPosProductViewMode,
+  savePosProductViewMode,
+  type PosProductViewMode,
+} from '@/utils/posProductViewMode'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
@@ -99,6 +105,12 @@ function POSContent() {
 
   // Carrito
   const [cart, setCart] = useState<PosCartLine[]>([])
+  const [productViewMode, setProductViewMode] = useState<PosProductViewMode>(readPosProductViewMode)
+
+  const changeProductViewMode = useCallback((mode: PosProductViewMode) => {
+    setProductViewMode(mode)
+    savePosProductViewMode(mode)
+  }, [])
   const [manualProductOpen, setManualProductOpen] = useState(false)
 
   // Cobro (modal)
@@ -548,9 +560,11 @@ function POSContent() {
       }
     }
 
-    if (contactForCheckout && isVariosContact(contactForCheckout) && (selectedSunatCode === '00' || selectedSunatCode === '03')) {
+    // Solo la boleta (03): es la que se declara. La nota de venta (00) es interna y no
+    // hereda el tope de SUNAT.
+    if (contactForCheckout && isVariosContact(contactForCheckout) && selectedSunatCode === '03') {
       if (payableTotal > SUNAT_MAX_MONTO_CLIENTE_SIN_RUC) {
-        toast.error(`Con cliente sin RUC el monto máximo permitido por SUNAT es S/ ${SUNAT_MAX_MONTO_CLIENTE_SIN_RUC}`)
+        toast.error(`Con cliente sin RUC el monto máximo permitido por SUNAT en boleta es S/ ${SUNAT_MAX_MONTO_CLIENTE_SIN_RUC}`)
         return
       }
     }
@@ -728,7 +742,11 @@ function POSContent() {
       : null
 
   return (
-    <div className="pos-layout -m-2 flex h-[calc(100dvh-9.5rem)] min-h-[28rem] flex-col overflow-hidden pt-2 sm:pt-3 sm:-m-3 md:-m-4 md:pt-3">
+    /* Altura: llena el <main> del layout, que ya es flex-1 con la altura resuelta. Antes
+       restaba 9.5rem del viewport a ojo (header + barra superior + gutters); como esas
+       alturas cambian por breakpoint, la resta no cuadraba y sobraba hueco abajo.
+       El +N compensa el margen negativo con el que la vista sangra el padding del main. */
+    <div className="pos-layout -m-2 flex h-[calc(100%+1rem)] min-h-[28rem] flex-col overflow-hidden pt-2 sm:-m-3 sm:h-[calc(100%+1.5rem)] sm:pt-3 md:-m-4 md:h-[calc(100%+2rem)] md:pt-3">
       {/* Columna izquierda: catálogo */}
       <div className="flex w-full min-w-0 max-w-full flex-1 flex-col min-h-0 overflow-hidden">
         {/* Filtro categorías */}
@@ -840,6 +858,7 @@ function POSContent() {
               >
                 <ScanBarcode size={18} aria-hidden />
               </button>
+              <PosProductViewModeToggle mode={productViewMode} onChange={changeProductViewMode} />
             </div>
           </div>
 
@@ -849,21 +868,79 @@ function POSContent() {
                 <div className="inline-block w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
               </div>
             ) : (
-              <div className="grid w-full max-w-full grid-cols-3 gap-1.5 sm:grid-cols-4 sm:gap-2 md:grid-cols-5 lg:grid-cols-6 justify-items-stretch">
+              // 3 columnas en móvil: `sm` son 390px (ver tailwind.config), así que subir a 4
+              // ahí dejaba las tarjetas apretadas en cualquier teléfono.
+              <div
+                className={clsx(
+                  'w-full max-w-full',
+                  productViewMode === 'list'
+                    ? 'flex flex-col gap-1.5'
+                    : 'grid grid-cols-3 gap-2 md:grid-cols-5 md:gap-2.5 lg:grid-cols-6 justify-items-stretch',
+                )}
+              >
                 {products.filter(p => p.active).map(p => {
                   const imgUrl = getProductImageUrl(p.image_url)
                   const configBadge = productConfigurationBadge(p)
+                  const priceLabel = `${productNeedsSaleConfiguration(p) ? 'Desde ' : ''}${formatMoney(Number(p.sale_price))}`
+                  const onPick = (e: React.MouseEvent<HTMLButtonElement>) => {
+                    const visual = (e.currentTarget as HTMLElement).querySelector(
+                      '[data-product-visual]',
+                    ) as HTMLElement | null
+                    addToCart(p, visual ?? e.currentTarget)
+                  }
+                  // Misma tarjeta en lenguaje visual (borde, hover, foco); cambia la disposición.
+                  const shell =
+                    'group border border-stone-200 bg-stone-50/50 text-left transition-all duration-200 hover:border-primary-400 hover:shadow-md hover:shadow-primary-100/50 hover:bg-white focus:outline-none focus:ring-2 focus:ring-primary-400/50'
+
+                  if (productViewMode === 'list') {
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={onPick}
+                        className={clsx(shell, 'flex items-center gap-3 rounded-xl p-2 active:scale-[0.99]')}
+                      >
+                        <div
+                          data-product-visual
+                          className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-stone-200/80"
+                        >
+                          {imgUrl ? (
+                            <img
+                              src={imgUrl}
+                              alt={p.name}
+                              className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                              loading="lazy"
+                              decoding="async"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-stone-400">
+                              <Package className="h-5 w-5" aria-hidden />
+                            </div>
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="line-clamp-2 text-xs font-medium leading-tight text-stone-800">
+                            {p.name}
+                          </p>
+                          {configBadge ? (
+                            <p className="mt-0.5 line-clamp-1 text-[9px] leading-tight text-[rgb(var(--p700))]">
+                              {configBadge}
+                            </p>
+                          ) : null}
+                        </div>
+                        <p className="shrink-0 text-xs font-semibold tabular-nums text-primary-600">
+                          {priceLabel}
+                        </p>
+                      </button>
+                    )
+                  }
+
                   return (
                     <button
                       key={p.id}
                       type="button"
-                      onClick={(e) => {
-                        const visual = (e.currentTarget as HTMLElement).querySelector(
-                          '[data-product-visual]',
-                        ) as HTMLElement | null
-                        addToCart(p, visual ?? e.currentTarget)
-                      }}
-                      className="group rounded-xl border border-stone-200 bg-stone-50/50 overflow-hidden text-left transition-all duration-200 hover:border-primary-400 hover:shadow-md hover:shadow-primary-100/50 hover:bg-white focus:outline-none focus:ring-2 focus:ring-primary-400/50 active:scale-[0.98]"
+                      onClick={onPick}
+                      className={clsx(shell, 'rounded-xl overflow-hidden active:scale-[0.98]')}
                     >
                       <div data-product-visual className="aspect-square bg-stone-200/80 relative overflow-hidden">
                         {imgUrl ? (
@@ -890,8 +967,7 @@ function POSContent() {
                           </p>
                         ) : null}
                         <p className="text-primary-600 font-semibold text-xs mt-1 tabular-nums">
-                          {productNeedsSaleConfiguration(p) ? 'Desde ' : ''}
-                          {formatMoney(Number(p.sale_price))}
+                          {priceLabel}
                         </p>
                       </div>
                     </button>

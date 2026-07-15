@@ -1,4 +1,5 @@
 ﻿import type { PrintData } from '@/types/printData'
+import { getCompanyLogoForPrint } from '@/lib/companyConfig/store'
 import { getPrintIssuerAddress } from '@/utils/printIssuer'
 import { isElectronicSunatCode } from '@/constants/sunat'
 import { isTauriDesktop } from '@/lib/platform/detect'
@@ -558,7 +559,7 @@ export async function buildSaleDocumentEscPos(
   const money = (n: number) => moneyEsc(currency, n)
   const showQr = isElectronicSunatCode(printData.sunat_code) && Boolean(printData.qr_data)
   const nvLayout = getNotaVentaPrintLayout(printData.sunat_code)
-  const showPayAndBank = !nvLayout || nvLayout.showBankAccountsAndPaymentCondition
+  const showPaymentCondition = !nvLayout || nvLayout.showPaymentCondition
 
   const additionalNotes = trimCompanyAdditionalNotes(printData.company?.additional_notes)
   const companyAdditionalLines = additionalNotes
@@ -665,7 +666,8 @@ export async function buildSaleDocumentEscPos(
   const out: number[] = []
   out.push(...escposInit())
 
-  const logoUrl = printData.company?.logo_url?.trim()
+  // El logo sale de la empresa (cargada al iniciar sesión), no del print_data de la venta.
+  const logoUrl = getCompanyLogoForPrint()
   const showLogo = !nvLayout || nvLayout.showLogo
   if (logoUrl && showLogo) {
     const logoRaster = await buildEscPosLogoRaster(logoUrl, paperWidthMm)
@@ -692,7 +694,7 @@ export async function buildSaleDocumentEscPos(
     escposPushLines(out, legendLines, 'left')
   }
   const hasPayBlock =
-    showPayAndBank &&
+    showPaymentCondition &&
     (showQr ||
       Boolean(printData.payment_condition) ||
       (printData.payments?.length ?? 0) > 0)
@@ -742,8 +744,9 @@ export async function buildSaleDocumentEscPos(
     }
   }
 
+  // Las cuentas bancarias no dependen de este ajuste: se eligen en Empresa → Comprobantes.
   const bankLines = bankAccountTextLines(printData)
-  if (showPayAndBank && bankLines.length > 0) {
+  if (bankLines.length > 0) {
     out.push(...Array.from(textBytes('\n')))
     escposPushLines(out, ['-'.repeat(cols), ...bankLines], 'left')
   }

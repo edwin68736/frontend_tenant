@@ -1,3 +1,4 @@
+import { getCompanyLogoForPrint } from '@/lib/companyConfig/store'
 import { jsPDF } from 'jspdf'
 import QRCode from 'qrcode'
 import type { PrintData } from '@/types/printData'
@@ -194,9 +195,11 @@ async function drawHeader(
   const infoX = MARGIN + (showLogo ? logoMaxW + 4 : 0)
   const infoW = boxX - infoX - 4
 
-  if (showLogo && data.company.logo_url) {
+  // El logo sale de la empresa (cargada al iniciar sesión), no del print_data de la venta.
+  const companyLogo = getCompanyLogoForPrint()
+  if (showLogo && companyLogo) {
     try {
-      const logo = await resolveReceiptLogoForPdf(data.company.logo_url)
+      const logo = await resolveReceiptLogoForPdf(companyLogo)
       if (logo) {
         const { w, h } = fitReceiptLogoMm(logo.naturalW, logo.naturalH, logoMaxW, logoMaxH)
         doc.addImage(logo.dataUrl, logo.format, MARGIN, top, w, h, undefined, 'NONE')
@@ -760,7 +763,7 @@ async function drawFooter(ctx: A4Ctx, data: PrintData, minY: number) {
 export async function renderReceiptA4(doc: jsPDF, data: PrintData): Promise<void> {
   const ctx: A4Ctx = { doc, y: MARGIN }
   const nvLayout = getNotaVentaPrintLayout(data.sunat_code)
-  const showPayAndBank = !nvLayout || nvLayout.showBankAccountsAndPaymentCondition
+  const showPaymentCondition = !nvLayout || nvLayout.showPaymentCondition
 
   await drawHeader(ctx, data, nvLayout)
   drawCustomerBlock(ctx, data, nvLayout)
@@ -771,7 +774,7 @@ export async function renderReceiptA4(doc: jsPDF, data: PrintData): Promise<void
   const rightEndY = drawTotalsRight(ctx, data, sectionY)
 
   let leftY: number
-  if (showPayAndBank) {
+  if (showPaymentCondition) {
     if (isElectronic) {
       const legendEndY = drawAmountInWords(ctx, data, sectionY)
       const blockStartY = Math.max(rightEndY, legendEndY) + 3
@@ -779,11 +782,11 @@ export async function renderReceiptA4(doc: jsPDF, data: PrintData): Promise<void
     } else {
       leftY = drawPaymentMethodBox(ctx, data, sectionY)
     }
-
-    leftY = drawBankAccounts(ctx, data, leftY)
   } else {
     leftY = sectionY
   }
+  // Las cuentas bancarias no dependen de este ajuste: se eligen en Empresa → Comprobantes.
+  leftY = drawBankAccounts(ctx, data, leftY)
   leftY = drawSeller(ctx, data, leftY)
   leftY = drawLegendAndNotes(ctx, data, leftY, isElectronic)
 

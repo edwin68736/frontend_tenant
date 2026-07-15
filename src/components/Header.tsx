@@ -25,6 +25,7 @@ import {
   openExternalUrl,
 } from '@/utils/supportWhatsApp'
 import SubscriptionHeaderWidget from '@/components/SubscriptionHeaderWidget'
+import SubscriptionUserMenuItem from '@/components/SubscriptionUserMenuItem'
 import HeaderQuickActions from '@/components/HeaderQuickActions'
 import { BranchSwitcherUserMenu } from '@/components/BranchSwitcher'
 import { AppVersionBadge } from '@/components/AppVersionBadge'
@@ -232,7 +233,9 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
         <button
           type="button"
           onClick={() => setUserMenuOpen((o) => !o)}
-          className="flex items-center gap-2 p-1.5 pr-2 rounded-xl hover:bg-primary-50 text-gray-700 ring-1 ring-transparent hover:ring-primary-100 transition-all"
+          aria-label={user?.name ? `Cuenta de ${user.name}` : 'Cuenta'}
+          aria-expanded={userMenuOpen}
+          className="flex items-center gap-1.5 p-1.5 rounded-xl hover:bg-primary-50 text-gray-700 ring-1 ring-transparent hover:ring-primary-100 transition-all md:gap-2 md:pr-2"
         >
           <div
             className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
@@ -240,14 +243,18 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
           >
             {user?.name?.charAt(0).toUpperCase()}
           </div>
-          <span className="text-sm font-medium text-gray-700 hidden sm:block max-w-[120px] truncate">
+          {/* En móvil basta la inicial: `sm` aquí son 390px (ver tailwind.config), que casi
+              todos los teléfonos superan, así que el corte real es md. */}
+          <span className="text-sm font-medium text-gray-700 hidden md:block max-w-[120px] truncate">
             {user?.name}
           </span>
-          <ChevronDown size={16} className="text-gray-500 flex-shrink-0" />
+          <ChevronDown size={16} className="text-gray-500 flex-shrink-0" aria-hidden />
         </button>
         {userMenuOpen && (
           <div className="absolute right-0 top-full mt-1.5 w-56 rounded-2xl border border-gray-100 bg-white shadow-xl ring-1 ring-black/5 py-1.5 z-50">
             <BranchSwitcherUserMenu onClose={() => setUserMenuOpen(false)} />
+            {/* Solo en móvil: en pantallas grandes el plan vive en el header. */}
+            <SubscriptionUserMenuItem onClose={() => setUserMenuOpen(false)} />
             <Link
               to="/profile"
               onClick={() => setUserMenuOpen(false)}

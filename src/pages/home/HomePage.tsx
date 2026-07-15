@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
-import { useEffect, useState, type ElementType } from 'react'
+import { type ElementType } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { dashboardService } from '@/services/dashboard.service'
 import {
   ShoppingCart,
   Receipt,
@@ -9,23 +8,10 @@ import {
   Wallet,
   LayoutDashboard,
   Grid3x3,
-  TrendingUp,
-  CalendarDays,
-  Truck,
-  Package,
   ArrowRight,
 } from 'lucide-react'
-import { HOME_KPI_THEMES, getQuickLinkTheme } from './homeTheme'
+import { getQuickLinkTheme } from './homeTheme'
 import { HomeTutorialsPromoSection } from '@/components/home/HomeTutorialsPromoSection'
-
-function formatMoney(value: number): string {
-  return new Intl.NumberFormat('es-PE', {
-    style: 'currency',
-    currency: 'PEN',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value)
-}
 
 type QuickLink = {
   to: string
@@ -36,20 +22,6 @@ type QuickLink = {
 
 export default function HomePage() {
   const { modules } = useAuth()
-  const [homeStats, setHomeStats] = useState<{
-    sales_today: number
-    sales_month: number
-    purchases_today: number
-    purchases_month: number
-  } | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    dashboardService.getStats().then((data) => {
-      if (!cancelled && data.home) setHomeStats(data.home)
-    })
-    return () => { cancelled = true }
-  }, [])
 
   const hasModule = (key: string) => modules.includes(key)
 
@@ -92,72 +64,11 @@ export default function HomePage() {
     },
   ].filter(Boolean) as QuickLink[]
 
-  const kpis = [
-    {
-      key: 'sales_today',
-      label: 'Ventas hoy',
-      value: homeStats ? formatMoney(homeStats.sales_today) : '—',
-      icon: TrendingUp,
-    },
-    {
-      key: 'sales_month',
-      label: 'Ventas mes',
-      value: homeStats ? formatMoney(homeStats.sales_month) : '—',
-      icon: CalendarDays,
-    },
-    {
-      key: 'purchases_today',
-      label: 'Compras hoy',
-      value: homeStats ? formatMoney(homeStats.purchases_today) : '—',
-      icon: Truck,
-    },
-    {
-      key: 'purchases_month',
-      label: 'Compras mes',
-      value: homeStats ? formatMoney(homeStats.purchases_month) : '—',
-      icon: Package,
-    },
-  ] as const
-
   return (
     <div className="space-y-6 md:space-y-8 -m-1 md:-m-2">
-      {/* Tutoriales YouTube + promociones */}
-      <section aria-label="Tutoriales y promociones">
+      {/* Bienvenida + promociones */}
+      <section aria-label="Promociones">
         <HomeTutorialsPromoSection />
-      </section>
-
-      {/* KPIs */}
-      <section>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-          {kpis.map((kpi) => {
-            const Icon = kpi.icon
-            const theme = HOME_KPI_THEMES[kpi.key]
-            return (
-              <div
-                key={kpi.key}
-                className={`group relative overflow-hidden rounded-2xl border p-4 md:p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${theme.card} ${theme.border} ${theme.shadow}`}
-              >
-                <div
-                  className="pointer-events-none absolute -right-4 -top-4 h-20 w-20 rounded-full bg-white/10 blur-xl"
-                  aria-hidden
-                />
-                <div className="relative flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <p className={`text-xs sm:text-sm font-medium ${theme.label}`}>{kpi.label}</p>
-                    <p className={`mt-2 text-lg sm:text-xl md:text-2xl font-bold truncate ${theme.value}`}>
-                      {kpi.value}
-                    </p>
-                  </div>
-                  <div
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-transform duration-300 group-hover:scale-110 ${theme.iconWrap}`}
-                  >
-                    <Icon size={20} />
-                  </div>
-                </div>
-              </div>
-            )
-          })}
-        </div>
       </section>
 
       {/* Accesos rápidos */}
@@ -167,7 +78,8 @@ export default function HomePage() {
             <h2 className="text-base font-bold text-gray-900">Accesos rápidos</h2>
             <p className="text-xs text-gray-500 mt-0.5">Atajos a las secciones más usadas</p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
+          {/* Mínimo 2 columnas: en móvil una sola dejaba mucho aire a los lados. */}
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
             {quickLinks.map((link) => {
               const Icon = link.icon
               const theme = getQuickLinkTheme(link.to)

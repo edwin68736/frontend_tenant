@@ -47,7 +47,12 @@ export const SALES_OPERATION_TYPE_OPTIONS: { code: string; label: string }[] = [
 /** Orden en POS: 00 (N. Venta), 03 (Boleta), 01 (Factura). */
 export const POS_SUNAT_CODE_ORDER = ['00', '03', '01']
 
-/** Monto máximo en soles para venta con cliente doc. tipo 0 (sin RUC) según SUNAT (boleta/nota de venta). */
+/**
+ * Monto máximo en soles con cliente doc. tipo 0 (sin RUC) según SUNAT.
+ * Aplica SOLO a la boleta (03), que se declara. La nota de venta (00) es un documento
+ * interno que no llega a SUNAT y no hereda este tope (mismo criterio que el backend:
+ * internal/sales/service/sale_service.go).
+ */
 export const SUNAT_MAX_MONTO_CLIENTE_SIN_RUC = 700
 
 /** Longitud del RUC en Perú (dígitos). */
