@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Package, Trash2 } from 'lucide-react'
+import { Package } from 'lucide-react'
 import { roundMoney } from '@/utils/checkoutDiscount'
 import { getProductImageUrl } from '@/services/products.service'
 import type { PosCartLine } from '@/utils/posCart'
@@ -16,7 +16,6 @@ type Props = {
   subtotalLabel: string
   onQtyChange: (delta: number) => void
   onUnitPriceChange: (value: string) => void
-  onRemove?: () => void
 }
 
 function formatUnitPriceInput(n: number): string {
@@ -91,7 +90,6 @@ export function PosCartLineRow({
   subtotalLabel,
   onQtyChange,
   onUnitPriceChange,
-  onRemove,
 }: Props) {
   const manual = isManualCartLine(line)
   const catalog = isCatalogCartLine(line)
@@ -158,16 +156,6 @@ export function PosCartLineRow({
               >
                 <span className="text-sm font-bold leading-none">+</span>
               </button>
-              {onRemove && (
-                <button
-                  type="button"
-                  onClick={onRemove}
-                  className="w-7 h-7 rounded-lg text-red-500 hover:bg-red-50 flex items-center justify-center transition-colors"
-                  aria-label="Eliminar línea"
-                >
-                  <Trash2 size={14} strokeWidth={2.25} aria-hidden />
-                </button>
-              )}
             </div>
           </div>
         </div>

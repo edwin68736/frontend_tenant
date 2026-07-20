@@ -26,7 +26,11 @@ export function receiptItemIsBonificacion(it: Pick<PrintItem, 'igv_affectation_t
 }
 
 export function receiptItemDisplayDescription(it: PrintItem): string {
-  return (it.description || '').trim() || '—'
+  const base = (it.description || '').trim() || '—'
+  // La nota de línea ("segundo uso", "sin caja") va debajo de la descripción. Este helper es
+  // el punto único de todos los renderizadores, así que cubre ticket, A4 e impresión directa.
+  const note = (it.item_note || '').trim()
+  return note ? `${base}\n(${note})` : base
 }
 
 /** Importe de línea (TOTAL / Imp.): legacy `document_items.total` (0 en 11–16). */

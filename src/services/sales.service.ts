@@ -12,6 +12,8 @@ export interface Sale {
   issue_date: string
   contact_id: number | null
   contact_name?: string
+  /** RUC/DNI del cliente; lo resuelve el backend al listar. */
+  contact_doc_number?: string
   user_name?: string
   subtotal: number
   tax_amount: number
@@ -202,6 +204,7 @@ export interface CreateSaleInput {
     igv_affectation_type: string
     price_includes_igv: boolean
     modifiers_json?: string
+    item_note?: string
     serials?: string[]
   }[]
 }
@@ -326,6 +329,14 @@ export const salesService = {
 
   issueElectronicFromNota: (saleId: number, body: { series_id: number; issue_date?: string; contact_id?: number }) =>
     api.post<{ sale: Sale }>(`/api/sales/${saleId}/issue-electronic`, body).then((r) => r.data),
+
+  /**
+   * Anula una nota de venta (SUNAT 00) y repone el stock. El backend rechaza facturas y
+   * boletas —esas se anulan con nota de crédito— y las notas que ya generaron un
+   * comprobante electrónico.
+   */
+  cancelNotaVenta: (saleId: number, reason: string) =>
+    api.post<{ success: boolean }>(`/api/sales/${saleId}/cancel`, { reason }).then((r) => r.data),
 
   create: (data: CreateSaleInput): Promise<{ id: number; doc_type: string; series: string; number: string; total: number; billing_status: string; print_data?: import('@/types/printData').PrintData }> =>
     api.post('/api/sales', data).then(r => {

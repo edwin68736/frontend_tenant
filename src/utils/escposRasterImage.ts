@@ -1,4 +1,5 @@
 ﻿import QRCode from 'qrcode'
+import { scaleLogoDimension } from '@/services/printers/logoPrintSize'
 
 /** Ancho imprimible en puntos (58 mm ≈ 384, 80 mm ≈ 576). */
 export function escposPrintWidthPx(paperWidthMm: 58 | 80): number {
@@ -16,12 +17,15 @@ export function clearEscPosImageRasterCache(): void {
   imageRasterCache.clear()
 }
 
+// Tamaño base = «mediano»; el ajuste local lo escala. El ancho se topa al imprimible del
+// papel (escposPrintWidthPx) para que «grande» nunca corte la imagen.
 function escposLogoMaxWidthPx(paperWidthMm: 58 | 80): number {
-  return paperWidthMm === 58 ? 320 : 420
+  const base = paperWidthMm === 58 ? 320 : 420
+  return Math.min(scaleLogoDimension(base), escposPrintWidthPx(paperWidthMm))
 }
 
 function escposLogoMaxHeightPx(paperWidthMm: 58 | 80): number {
-  return paperWidthMm === 58 ? 96 : 120
+  return scaleLogoDimension(paperWidthMm === 58 ? 96 : 120)
 }
 
 function loadImageElement(src: string): Promise<HTMLImageElement> {

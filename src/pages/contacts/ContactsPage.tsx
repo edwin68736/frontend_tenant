@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Pencil, Trash2, Search, ToggleLeft, ToggleRight, SearchCheck, Eye, Users } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, ToggleLeft, ToggleRight, SearchCheck, Eye, Users, FileSpreadsheet } from 'lucide-react'
 import {
   contactsService,
   type Contact,
@@ -13,6 +13,7 @@ import {
   newContactPersonRow,
 } from '@/components/contacts/ContactFormExtras'
 import { ContactDetailModal, ContactPersonsModal } from '@/components/contacts/ContactViewModals'
+import { ContactImportModal } from '@/components/contacts/ContactImportModal'
 import type { ContactPerson } from '@/services/contacts.service'
 import { consultaService } from '@/services/consulta.service'
 import { companyService } from '@/services/company.service'
@@ -80,6 +81,7 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
   const [consultando, setConsultando] = useState(false)
   const [tenantRuc, setTenantRuc] = useState<string>('')
   const [modalTab, setModalTab] = useState<'general' | 'extra'>('general')
+  const [importOpen, setImportOpen] = useState(false)
   const [contactPersons, setContactPersons] = useState<ContactPersonDraft[]>([])
   const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoPreview, setPhotoPreview] = useState('')
@@ -372,9 +374,18 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
           <h2 className="text-lg font-bold text-gray-800">{pageTitle}</h2>
           <p className="text-sm text-gray-500">{pageSubtitle}</p>
         </div>
-        <button onClick={openNew} className="flex items-center gap-1.5 px-4 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90">
-          <Plus size={15} /> Nuevo {entityLabel}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setImportOpen(true)}
+            className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            <FileSpreadsheet size={15} /> Importar
+          </button>
+          <button onClick={openNew} className="flex items-center gap-1.5 px-4 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90">
+            <Plus size={15} /> Nuevo {entityLabel}
+          </button>
+        </div>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
@@ -664,6 +675,12 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
           </button>
         </div>
       </Modal>
+
+      <ContactImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={() => void load()}
+      />
     </div>
   )
 }

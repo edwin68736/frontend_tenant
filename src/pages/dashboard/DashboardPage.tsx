@@ -48,6 +48,7 @@ import {
 } from 'date-fns'
 import { dashboardService, type DashboardAnalytics } from '@/services/dashboard.service'
 import { companyService } from '@/services/company.service'
+import { useNarrowViewport } from '@/hooks/useMediaQuery'
 import { formatDisplayDatePeru, getTodayPeru } from '@/utils/datesPeru'
 import {
   formatExpiryDisplay,
@@ -233,6 +234,8 @@ function KpiCard({
   tone,
   trend,
   loading,
+  className,
+  compact,
 }: {
   title: string
   value: string
@@ -241,22 +244,45 @@ function KpiCard({
   tone: KpiTone
   trend?: { pct: number; label?: string }
   loading?: boolean
+  /** Utilidades de grilla (p. ej. col-span) desde el contenedor. */
+  className?: string
+  /**
+   * Tarjeta secundaria: en móvil va a media pantalla, así que se oculta el subtítulo y se
+   * achica el icono. Con ambos visibles el texto se partía en 3-4 líneas y tapaba la cifra.
+   */
+  compact?: boolean
 }) {
   const styles = KPI_TONE_STYLES[tone]
 
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl border p-4 shadow-sm transition-all duration-300 hover:shadow-md ${styles.card}`}
+      className={`relative overflow-hidden rounded-2xl border shadow-sm transition-all duration-300 hover:shadow-md ${
+        compact ? 'p-3 md:p-4' : 'p-4'
+      } ${styles.card} ${className ?? ''}`}
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className={`flex items-start justify-between ${compact ? 'gap-2' : 'gap-3'}`}>
         <div className="min-w-0 flex-1">
-          <p className={`text-[11px] font-semibold uppercase tracking-wider ${styles.title}`}>{title}</p>
+          <p
+            className={`text-[11px] font-semibold uppercase tracking-wider ${styles.title} ${
+              compact ? 'leading-tight' : ''
+            }`}
+          >
+            {title}
+          </p>
           {loading ? (
             <div className="mt-2 h-8 w-28 animate-pulse rounded-lg bg-white/60" />
           ) : (
-            <p className={`mt-1 truncate text-xl font-bold tracking-tight sm:text-2xl ${styles.value}`}>{value}</p>
+            <p
+              className={`mt-1 truncate font-bold tracking-tight ${styles.value} ${
+                compact ? 'text-lg md:text-2xl' : 'text-xl sm:text-2xl'
+              }`}
+            >
+              {value}
+            </p>
           )}
-          {subtitle && !loading && <p className="mt-0.5 text-xs text-gray-500">{subtitle}</p>}
+          {subtitle && !loading && (
+            <p className={`mt-0.5 text-xs text-gray-500 ${compact ? 'hidden md:block' : ''}`}>{subtitle}</p>
+          )}
           {trend && !loading && (
             <div
               className={`mt-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -269,7 +295,11 @@ function KpiCard({
             </div>
           )}
         </div>
-        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-sm ring-1 ${styles.icon}`}>
+        <div
+          className={`flex shrink-0 items-center justify-center rounded-xl shadow-sm ring-1 ${styles.icon} ${
+            compact ? 'h-8 w-8 md:h-11 md:w-11 [&>svg]:h-4 [&>svg]:w-4 md:[&>svg]:h-5 md:[&>svg]:w-5' : 'h-11 w-11'
+          }`}
+        >
           {icon}
         </div>
       </div>
@@ -290,6 +320,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [branches, setBranches] = useState<BranchOpt[]>([])
   const [branchId, setBranchId] = useState<number | ''>('')
+  // Recharts no acepta clases responsive: la leyenda se reubica desde JS.
+  const isNarrow = useNarrowViewport()
   const [preset, setPreset] = useState<string>('month')
   const [dateFrom, setDateFrom] = useState(() => getRangePreset('month').from)
   const [dateTo, setDateTo] = useState(() => getRangePreset('month').to)
@@ -390,17 +422,17 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-4 pb-10">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-bold text-gray-800">Dashboard</h2>
-        </div>
+      {/* Siempre en fila: el botón va compacto a la derecha, alineado con el título. */}
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-lg font-bold text-gray-800">Dashboard</h2>
         <button
           type="button"
           onClick={() => void load()}
           disabled={loading}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-50 flex-shrink-0 disabled:opacity-50"
+          title="Actualizar"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-500 hover:text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-50 shrink-0 disabled:opacity-50"
         >
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
           Actualizar
         </button>
       </div>
@@ -434,7 +466,9 @@ export default function DashboardPage() {
             </button>
             </div>
 
-            <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-end lg:justify-end xl:justify-between">
+            {/* grid-cols-2 desde el arranque: Desde y Hasta nunca deben apilarse
+                (en Tukifac `sm` es 390px y en celulares chicos quedaban uno debajo del otro). */}
+            <div className="grid min-w-0 flex-1 grid-cols-2 gap-3 lg:flex lg:flex-wrap lg:items-end lg:justify-end xl:justify-between">
               <label className="flex min-w-0 flex-1 flex-col gap-1 text-[11px] font-medium text-gray-500 lg:min-w-[9rem]">
                 Desde
                 <input
@@ -453,7 +487,7 @@ export default function DashboardPage() {
                   className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm"
                 />
               </label>
-              <label className="flex min-w-0 flex-1 flex-col gap-1 text-[11px] font-medium text-gray-500 lg:min-w-[10rem]">
+              <label className="col-span-2 flex min-w-0 flex-1 flex-col gap-1 text-[11px] font-medium text-gray-500 lg:col-span-1 lg:min-w-[10rem]">
                 Sucursal
                 <select
                   value={branchId === '' ? '' : String(branchId)}
@@ -487,8 +521,11 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI grid */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-4">
+      {/* En móvil: las dos tarjetas de ventas a ancho completo (cifras largas) y las dos
+          pequeñas a 2 columnas. En xl todas vuelven a una fila de 4. */}
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4 2xl:grid-cols-4">
         <KpiCard
+          className="col-span-2 xl:col-span-1"
           title="Ventas del período"
           value={fmtMoney(s?.sales_total ?? 0)}
           subtitle={`${s?.sales_count ?? 0} operaciones · Ticket ${fmtMoney(s?.avg_ticket ?? 0)}`}
@@ -502,6 +539,7 @@ export default function DashboardPage() {
           loading={loading}
         />
         <KpiCard
+          className="col-span-2 xl:col-span-1"
           title="Ventas hoy"
           value={fmtMoney(s?.sales_today ?? 0)}
           subtitle={`${s?.sales_today_count ?? 0} docs. · Mes calendario ${fmtMoney(s?.sales_month_calendar ?? 0)}`}
@@ -515,6 +553,7 @@ export default function DashboardPage() {
           loading={loading}
         />
         <KpiCard
+          compact
           title="Clientes nuevos"
           value={String(s?.new_contacts ?? 0)}
           subtitle="Registrados en el rango"
@@ -523,6 +562,7 @@ export default function DashboardPage() {
           loading={loading}
         />
         <KpiCard
+          compact
           title="Anulaciones"
           value={String(s?.cancelled_sales ?? 0)}
           subtitle="Ventas canceladas en el período"
@@ -561,8 +601,10 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {/* 2x2 en móvil; Caja (período) va después de Sesiones de caja. */}
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <KpiCard
+          compact
           title="Pendientes SUNAT"
           value={String(s?.pending_sunat ?? 0)}
           subtitle="Facturas / boletas por enviar"
@@ -571,6 +613,7 @@ export default function DashboardPage() {
           loading={loading}
         />
         <KpiCard
+          compact
           title="Aceptados SUNAT"
           value={String(s?.accepted_sunat ?? 0)}
           subtitle={`Enviados: ${s?.sent_sunat ?? 0} · Rechazados: ${s?.rejected_sunat ?? 0}`}
@@ -579,14 +622,7 @@ export default function DashboardPage() {
           loading={loading}
         />
         <KpiCard
-          title="Caja (período)"
-          value={fmtMoney(s?.cash_net ?? 0)}
-          subtitle={`Ingresos ${fmtMoney(s?.cash_income ?? 0)} · Egresos ${fmtMoney(s?.cash_expense ?? 0)}`}
-          icon={<Wallet size={20} />}
-          tone="cyan"
-          loading={loading}
-        />
-        <KpiCard
+          compact
           title="Sesiones de caja abiertas"
           value={String(s?.open_cash_sessions ?? 0)}
           subtitle="Estado actual"
@@ -594,11 +630,21 @@ export default function DashboardPage() {
           tone="indigo"
           loading={loading}
         />
+        <KpiCard
+          compact
+          title="Caja (período)"
+          value={fmtMoney(s?.cash_net ?? 0)}
+          subtitle={`Ingresos ${fmtMoney(s?.cash_income ?? 0)} · Egresos ${fmtMoney(s?.cash_expense ?? 0)}`}
+          icon={<Wallet size={20} />}
+          tone="cyan"
+          loading={loading}
+        />
       </div>
 
       {/* Main charts */}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <div className="xl:col-span-2 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm transition hover:shadow-md">
+        {/* p-3 en móvil: con p-5 el padding se comía el ancho útil del gráfico. */}
+        <div className="xl:col-span-2 rounded-3xl border border-slate-100 bg-white p-3 md:p-5 shadow-sm transition hover:shadow-md">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="text-sm font-bold text-slate-800">Evolución diaria</h2>
@@ -615,7 +661,7 @@ export default function DashboardPage() {
               <div className="flex h-full items-center justify-center text-slate-400">Sin datos en el período</div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={ts} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                <ComposedChart data={ts} margin={{ top: 8, right: 0, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="areaSales" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="0%" stopColor="rgb(var(--p500,59 130 246))" stopOpacity={0.35} />
@@ -624,12 +670,21 @@ export default function DashboardPage() {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#94a3b8' }} interval="preserveStartEnd" />
+                  {/* width explícito: el default de recharts es 60px por eje, o sea 120px
+                      perdidos de ancho útil en un gráfico de dos ejes. */}
                   <YAxis
                     yAxisId="left"
+                    width={34}
                     tick={{ fontSize: 10, fill: '#94a3b8' }}
                     tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))}
                   />
-                  <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 10, fill: '#94a3b8' }} allowDecimals={false} />
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    width={28}
+                    tick={{ fontSize: 10, fill: '#94a3b8' }}
+                    allowDecimals={false}
+                  />
                   <Tooltip
                     formatter={(val: number, name: string) =>
                       name === 'Ventas' ? [fmtMoney(val), name] : [val, 'Documentos']
@@ -778,7 +833,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Categories donut full width */}
-      <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+      <div className="rounded-3xl border border-slate-100 bg-white p-3 md:p-5 shadow-sm">
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-sm font-bold text-slate-800">Ventas por categoría de producto</h2>
@@ -786,7 +841,9 @@ export default function DashboardPage() {
           </div>
           <Percent size={16} className="text-slate-400" />
         </div>
-        <div className="h-[280px]">
+        {/* En móvil la leyenda pasa abajo: en vertical a la derecha se comía casi la mitad
+            del ancho y dejaba la dona pequeña y descentrada. */}
+        <div className="h-[340px] md:h-[280px]">
           {loading ? (
             <div className="flex h-full items-center justify-center text-slate-400">Cargando…</div>
           ) : pieCategory.length === 0 ? (
@@ -794,13 +851,27 @@ export default function DashboardPage() {
           ) : (
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={pieCategory} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={56} outerRadius={96} paddingAngle={1}>
+                <Pie
+                  data={pieCategory}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy={isNarrow ? '38%' : '50%'}
+                  innerRadius={isNarrow ? 50 : 56}
+                  outerRadius={isNarrow ? 86 : 96}
+                  paddingAngle={1}
+                >
                   {pieCategory.map((_, i) => (
                     <Cell key={i} fill={pieCategory[i].fill} stroke="#fff" strokeWidth={1} />
                   ))}
                 </Pie>
                 <Tooltip formatter={(v: number) => fmtMoney(v)} />
-                <Legend layout="vertical" align="right" verticalAlign="middle" wrapperStyle={{ fontSize: 11 }} />
+                <Legend
+                  layout={isNarrow ? 'horizontal' : 'vertical'}
+                  align={isNarrow ? 'center' : 'right'}
+                  verticalAlign={isNarrow ? 'bottom' : 'middle'}
+                  wrapperStyle={{ fontSize: 11 }}
+                />
               </PieChart>
             </ResponsiveContainer>
           )}

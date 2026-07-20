@@ -47,7 +47,18 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+/**
+ * Una sesión caída hace fallar a la vez todas las peticiones de arranque (capabilities,
+ * context, notification-counts, subscription…). Sin este guard, cada 401 reasignaba
+ * window.location y lanzaba su propio toast: media docena de navegaciones pisándose que
+ * podían dejar la app en blanco sin llegar al login.
+ */
+let redirecting = false
+
 function redirectToLogin(message?: string) {
+  if (redirecting) return
+  redirecting = true
+
   localStorage.removeItem('token')
   localStorage.removeItem('user')
   localStorage.removeItem('active_branch')
@@ -57,6 +68,8 @@ function redirectToLogin(message?: string) {
   })
   if (isNativeShell()) {
     window.location.hash = '#/login'
+    // El hash no recarga la app: hay que soltar el guard para futuras sesiones.
+    redirecting = false
   } else {
     window.location.href = '/login'
   }

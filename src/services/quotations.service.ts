@@ -41,6 +41,7 @@ export interface QuotationItem {
   tax_amount: number
   total: number
   modifiers_json?: string
+  item_note?: string
 }
 
 export interface QuotationDetail {
@@ -60,6 +61,7 @@ export interface QuotationItemInput {
   igv_affectation_type: string
   price_includes_igv: boolean
   modifiers_json?: string
+  item_note?: string
 }
 
 export interface CreateQuotationInput {

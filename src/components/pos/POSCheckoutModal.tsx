@@ -67,6 +67,7 @@ type Props = {
   onContactChange: (id: number | null) => void
   onAddContact?: () => void
   onPreferVariosContact?: () => void
+  onRequireRucContact?: () => void
   paymentMethods: PaymentMethodRecord[]
   payments: CheckoutPaymentLine[]
   onPaymentsChange: (payments: CheckoutPaymentLine[]) => void
@@ -106,6 +107,7 @@ export function POSCheckoutModal({
   onContactChange,
   onAddContact,
   onPreferVariosContact,
+  onRequireRucContact,
   paymentMethods,
   payments,
   onPaymentsChange,
@@ -280,13 +282,16 @@ export function POSCheckoutModal({
               onContactChange={onContactChange}
               onAddContact={onAddContact}
               onPreferVariosContact={onPreferVariosContact}
+              onRequireRucContact={onRequireRucContact}
               sunatEnabled={sunatEnabled}
               billingModule={billingModule}
               canFactura={canFactura}
             />
 
+            {/* Siempre 2 columnas: en Tukifac `sm` es 390px, así que `sm:grid-cols-2`
+                dejaba Serie y Descuento apilados en celulares pequeños. */}
             {allowDiscount ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={LABEL}>Serie</label>
                   <div

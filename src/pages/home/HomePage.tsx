@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import {
   ShoppingCart,
   Receipt,
+  FileText,
   Tag,
   Wallet,
   LayoutDashboard,
@@ -12,6 +13,9 @@ import {
 } from 'lucide-react'
 import { getQuickLinkTheme } from './homeTheme'
 import { HomeTutorialsPromoSection } from '@/components/home/HomeTutorialsPromoSection'
+import { HomeKpiCards } from '@/components/home/HomeKpiCards'
+import { isCapacitorAndroid } from '@/lib/platform/detect'
+import { useDesktopViewport } from '@/hooks/useMediaQuery'
 
 type QuickLink = {
   to: string
@@ -20,8 +24,15 @@ type QuickLink = {
   description: string
 }
 
+
 export default function HomePage() {
   const { modules } = useAuth()
+
+  // El hook va primero y sin condiciones: dentro de un `||` el short-circuit podría saltárselo.
+  const isDesktop = useDesktopViewport()
+  // El home compacto (solo promociones + accesos rápidos) aplica en Android y también en
+  // web con pantalla angosta: en móvil los totales empujan los accesos rápidos fuera de vista.
+  const compactHome = isCapacitorAndroid() || !isDesktop
 
   const hasModule = (key: string) => modules.includes(key)
 
@@ -37,6 +48,12 @@ export default function HomePage() {
       icon: Receipt,
       label: 'Notas de venta',
       description: 'Notas de venta internas (SUNAT 00), sin envío obligatorio',
+    },
+    hasModule('sales') && {
+      to: '/quotations/new',
+      icon: FileText,
+      label: 'Nueva cotización',
+      description: 'Cotiza precios antes de emitir el comprobante',
     },
     hasModule('products') && {
       to: '/products',
@@ -68,8 +85,14 @@ export default function HomePage() {
     <div className="space-y-6 md:space-y-8 -m-1 md:-m-2">
       {/* Bienvenida + promociones */}
       <section aria-label="Promociones">
-        <HomeTutorialsPromoSection />
+        <HomeTutorialsPromoSection withWelcomeCard={!compactHome} />
       </section>
+
+      {!compactHome && (
+        <section aria-label="Resumen de ventas y compras">
+          <HomeKpiCards />
+        </section>
+      )}
 
       {/* Accesos rápidos */}
       {quickLinks.length > 0 && (

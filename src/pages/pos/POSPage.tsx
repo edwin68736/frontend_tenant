@@ -338,11 +338,6 @@ function POSContent() {
     )
   }
 
-  const removeFromCart = (index: number) => {
-    playCartRemoveSound()
-    setCart(c => c.filter((_, k) => k !== index))
-  }
-
   const emptyCart = () => {
     if (cart.length === 0) return
     cancelFlyAnimations()
@@ -423,7 +418,7 @@ function POSContent() {
         subtotalLabel={subtotalLabel}
         onQtyChange={(d) => setCartQty(i, item.quantity + d)}
         onUnitPriceChange={(v) => setCartUnitPrice(i, v)}
-        onRemove={() => removeFromCart(i)}
+
       />
     )})
 
@@ -460,11 +455,14 @@ function POSContent() {
   )
 
   const defaultContactId = useMemo(() => pickVariosContactId(contacts), [contacts])
-  const effectiveContactId = contactId ?? defaultContactId
   const selectedSeries = useMemo(
     () => checkoutSeries.find((s) => s.id === seriesId) ?? null,
     [checkoutSeries, seriesId],
   )
+  // En factura NO se cae a Clientes Varios: debe elegirse un cliente con RUC explícitamente.
+  // Ese fallback silencioso era lo que dejaba la factura con el cliente del comprobante previo.
+  const effectiveContactId =
+    contactId ?? (isFacturaDocType(docType, selectedSeries?.sunat_code) ? null : defaultContactId)
   const selectedContact = useMemo(
     () => contacts.find((c) => c.id === effectiveContactId) ?? null,
     [contacts, effectiveContactId],
@@ -482,8 +480,9 @@ function POSContent() {
       setSeriesId(def.id)
       setDocType(String(def.doc_type || '').trim() || 'NOTA DE VENTA')
     }
-    const variosId = pickVariosContactId(contacts)
-    if (variosId) setContactId(variosId)
+    // Siempre se reasigna, aunque no haya Varios (null): de lo contrario el cliente del
+    // comprobante anterior sobrevive al cierre del modal y reaparece en la venta siguiente.
+    setContactId(pickVariosContactId(contacts))
   }, [checkoutSeries, contacts])
 
   const openCheckout = () => {
@@ -1178,9 +1177,10 @@ function POSContent() {
         onContactChange={setContactId}
         onAddContact={openAddClientModal}
         onPreferVariosContact={() => {
-          const variosId = pickVariosContactId(contacts)
-          if (variosId) setContactId(variosId)
+          // setContactId siempre, aunque no exista Varios: si no, arrastra el cliente anterior.
+          setContactId(pickVariosContactId(contacts))
         }}
+        onRequireRucContact={() => setContactId(null)}
         paymentMethods={checkoutPaymentMethods}
         payments={payments}
         onPaymentsChange={setPayments}

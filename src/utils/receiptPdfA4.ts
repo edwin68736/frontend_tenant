@@ -1,3 +1,4 @@
+import { scaleLogoDimension } from '@/services/printers/logoPrintSize'
 import { getCompanyLogoForPrint } from '@/lib/companyConfig/store'
 import { jsPDF } from 'jspdf'
 import QRCode from 'qrcode'
@@ -187,8 +188,9 @@ async function drawHeader(
 ) {
   const { doc } = ctx
   const top = MARGIN
-  const logoMaxW = 36
-  const logoMaxH = 22
+  // Tamaño base = «mediano»; el ajuste local lo escala a pequeño o grande.
+  const logoMaxW = scaleLogoDimension(36)
+  const logoMaxH = scaleLogoDimension(22)
   const boxW = 62
   const boxX = PAGE_W - MARGIN - boxW
   const showLogo = !nvLayout || nvLayout.showLogo
@@ -196,13 +198,17 @@ async function drawHeader(
   const infoW = boxX - infoX - 4
 
   // El logo sale de la empresa (cargada al iniciar sesión), no del print_data de la venta.
+  // Se resuelve aquí pero se dibuja al final del bloque: para centrarlo verticalmente hay
+  // que conocer primero el alto real de la cabecera (datos de empresa vs. recuadro).
   const companyLogo = getCompanyLogoForPrint()
+  let pendingLogo: { logo: Awaited<ReturnType<typeof resolveReceiptLogoForPdf>>; w: number; h: number } | null =
+    null
   if (showLogo && companyLogo) {
     try {
       const logo = await resolveReceiptLogoForPdf(companyLogo)
       if (logo) {
         const { w, h } = fitReceiptLogoMm(logo.naturalW, logo.naturalH, logoMaxW, logoMaxH)
-        doc.addImage(logo.dataUrl, logo.format, MARGIN, top, w, h, undefined, 'NONE')
+        pendingLogo = { logo, w, h }
       }
     } catch {
       /* sin logo */
@@ -270,6 +276,24 @@ async function drawHeader(
 
     setFont(doc, FONT_LG, 'bold')
     doc.text(formatDocNumber(data), boxX + boxW / 2, top + 30, { align: 'center' })
+  }
+
+  // Logo centrado en su columna: horizontal respecto al ancho reservado y vertical
+  // respecto al alto real de la cabecera (lo más alto entre datos de empresa y recuadro).
+  if (pendingLogo?.logo) {
+    const sectionH = Math.max(cy - top, showDocBox ? boxH : 0)
+    const logoX = MARGIN + Math.max(0, (logoMaxW - pendingLogo.w) / 2)
+    const logoY = top + Math.max(0, (sectionH - pendingLogo.h) / 2)
+    doc.addImage(
+      pendingLogo.logo.dataUrl,
+      pendingLogo.logo.format,
+      logoX,
+      logoY,
+      pendingLogo.w,
+      pendingLogo.h,
+      undefined,
+      'NONE',
+    )
   }
 
   ctx.y = Math.max(cy, showDocBox ? top + boxH : top) + 8

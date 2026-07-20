@@ -44,7 +44,6 @@ export function ProductConfigureModal({ product, branchId, stacked, onClose, onC
   const [presentations, setPresentations] = useState<ProductPresentation[]>([])
   const [allGroups, setAllGroups] = useState<ModifierGroup[]>([])
   const [selected, setSelected] = useState<CartModifierEntry[]>([])
-  const [itemNote, setItemNote] = useState('')
   const [availableSerials, setAvailableSerials] = useState<SerialRow[]>([])
   const [selectedSerial, setSelectedSerial] = useState('')
   const degradedRef = useRef(false)
@@ -65,9 +64,7 @@ export function ProductConfigureModal({ product, branchId, stacked, onClose, onC
       setModifierGroupIds([])
       setPresentations([])
       setAllGroups([])
-      setSelected([])
-      setItemNote('')
-      setAvailableSerials([])
+      setSelected([])      setAvailableSerials([])
       setSelectedSerial('')
       return
     }
@@ -77,9 +74,7 @@ export function ProductConfigureModal({ product, branchId, stacked, onClose, onC
     setModifierGroupIds([])
     setPresentations([])
     setAllGroups([])
-    setSelected([])
-    setItemNote('')
-    setAvailableSerials([])
+    setSelected([])    setAvailableSerials([])
     setSelectedSerial('')
 
     const serialsPromise = product.manage_series
@@ -200,8 +195,7 @@ export function ProductConfigureModal({ product, branchId, stacked, onClose, onC
     degradedRef.current = true
     onConfirmRef.current(
       createCatalogCartLine(product, {
-        quantity: 1,
-        notes: itemNote,
+        quantity: 1,
         modifiers: selected,
         base_price: basePrice,
         serials: product.manage_series && selectedSerial ? [selectedSerial] : undefined,
@@ -376,22 +370,6 @@ export function ProductConfigureModal({ product, branchId, stacked, onClose, onC
                       ))}
                     </select>
                   )}
-                </section>
-              )}
-
-              {showModifierSections && (
-                <section>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                    Nota del ítem (opcional)
-                  </label>
-                  <textarea
-                    value={itemNote}
-                    onChange={(e) => setItemNote(e.target.value)}
-                    placeholder="Ej: entrega en 48 h, incluir manual…"
-                    maxLength={500}
-                    rows={2}
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm min-h-[52px]"
-                  />
                 </section>
               )}
 

@@ -120,12 +120,16 @@ export function ProductPickerModal({
         ) : (
           <table className="w-full text-sm">
             <thead className="bg-gray-50 sticky top-0">
+              {/* Orden: acción primero (es lo que más se usa), luego producto y precio;
+                  código e imagen al final por ser de apoyo. */}
               <tr>
+                <th className="w-[5.5rem] md:w-[7rem] px-2 md:px-4 py-2.5" />
+                <th className="text-left px-2 md:px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">Producto</th>
+                <th className="text-left px-2 md:px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">
+                  {priceLabel}
+                </th>
+                <th className="text-left px-2 md:px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">Código</th>
                 <th className="w-14 px-3 py-2.5" />
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">Código</th>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">Producto</th>
-                <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">{priceLabel}</th>
-                <th className="w-[7rem] px-4 py-2.5" />
               </tr>
             </thead>
             <tbody>
@@ -134,6 +138,31 @@ export function ProductPickerModal({
                 const needsConfig = productNeedsSaleConfiguration(p)
                 return (
                 <tr key={p.id} className={`border-b border-gray-50 transition-colors ${rowHighlightClass(p.id)}`}>
+                  <td className="px-2 md:px-4 py-2.5">
+                    <button
+                      type="button"
+                      onClick={() => onAdd(p)}
+                      className="w-[5.5rem] md:w-[7rem] inline-flex items-center justify-center px-2 md:px-3 py-1.5 rounded-lg bg-[rgb(var(--p600))] text-white text-[11px] md:text-xs font-medium hover:opacity-90"
+                    >
+                      {needsConfig ? 'Configurar' : 'Agregar'}
+                    </button>
+                  </td>
+                  <td className="px-2 md:px-4 py-2.5">
+                    <span className="font-medium text-gray-800">{p.name}</span>
+                    {isLastAdded(p.id) ? (
+                      <span className="ml-1.5 inline-flex align-middle rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-amber-200 text-amber-900">
+                        Último
+                      </span>
+                    ) : null}
+                    {configBadge ? (
+                      <span className="block text-[10px] text-[rgb(var(--p700))] mt-0.5">{configBadge}</span>
+                    ) : null}
+                  </td>
+                  {/* whitespace-nowrap: sin esto "S/ 25.00" se partía en dos líneas. */}
+                  <td className="px-2 md:px-4 py-2.5 text-gray-700 whitespace-nowrap">
+                    {fmtPrice(priceValue(p))}
+                  </td>
+                  <td className="px-2 md:px-4 py-2.5 font-mono text-gray-600">{p.code || '-'}</td>
                   <td className="px-3 py-2">
                     {p.image_url ? (
                       <img
@@ -148,28 +177,6 @@ export function ProductPickerModal({
                         {p.name.charAt(0).toUpperCase() || '?'}
                       </div>
                     )}
-                  </td>
-                  <td className="px-4 py-2.5 font-mono text-gray-600">{p.code || '-'}</td>
-                  <td className="px-4 py-2.5">
-                    <span className="font-medium text-gray-800">{p.name}</span>
-                    {isLastAdded(p.id) ? (
-                      <span className="ml-1.5 inline-flex align-middle rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-amber-200 text-amber-900">
-                        Último
-                      </span>
-                    ) : null}
-                    {configBadge ? (
-                      <span className="block text-[10px] text-[rgb(var(--p700))] mt-0.5">{configBadge}</span>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-2.5 text-gray-700">{fmtPrice(priceValue(p))}</td>
-                  <td className="px-4 py-2.5">
-                    <button
-                      type="button"
-                      onClick={() => onAdd(p)}
-                      className="w-[7rem] inline-flex items-center justify-center px-3 py-1.5 rounded-lg bg-[rgb(var(--p600))] text-white text-xs font-medium hover:opacity-90"
-                    >
-                      {needsConfig ? 'Configurar' : 'Agregar'}
-                    </button>
                   </td>
                 </tr>
               )})}

@@ -6,6 +6,15 @@ import { pdfEmbedSrc } from '@/utils/pdfEmbedSrc'
 import { shareBlobFile } from '@/utils/receiptShare'
 import { downloadBlob } from '@/utils/downloadBlob'
 
+/** Ancho máximo de presentación (px CSS) del PDF rasterizado en Android. */
+const MAX_DISPLAY_WIDTH = 480
+/**
+ * Zoom máximo respecto al tamaño real del PDF. Un ticket de 58/80 mm mide ~164-226 pt de
+ * ancho; sin este tope se estiraba a todo el ancho de la pantalla y se veía "ampliado".
+ * El A4 (595 pt) nunca llega a este límite, así que no cambia.
+ */
+const MAX_ZOOM = 1.5
+
 type Props = {
   url: string
   title?: string
@@ -77,20 +86,32 @@ export function PdfBlobViewer({ url, title = 'Comprobante PDF', className, embed
 
         container.replaceChildren()
 
+        // La pantalla del móvil tiene 2-3 píxeles físicos por píxel CSS. Antes el bitmap se
+        // generaba a tamaño CSS y el navegador lo estiraba, de ahí que el ticket se viera
+        // borroso: se renderiza a dpr para que quede nítido.
+        const dpr = Math.min(window.devicePixelRatio || 1, 3)
+
         for (let pageNum = 1; pageNum <= pdf.numPages; pageNum += 1) {
           const page = await pdf.getPage(pageNum)
           const baseViewport = page.getViewport({ scale: 1 })
-          const maxWidth = Math.min(container.clientWidth || 360, 480)
-          const scale = Math.max(1.2, maxWidth / baseViewport.width)
-          const viewport = page.getViewport({ scale })
+          const displayWidth = Math.min(
+            container.clientWidth || 360,
+            MAX_DISPLAY_WIDTH,
+            baseViewport.width * MAX_ZOOM,
+          )
+          const cssScale = displayWidth / baseViewport.width
+          const viewport = page.getViewport({ scale: cssScale * dpr })
 
           const canvas = document.createElement('canvas')
           const ctx = canvas.getContext('2d')
           if (!ctx) continue
 
+          // Bitmap a resolución física; tamaño de presentación en CSS.
           canvas.width = Math.floor(viewport.width)
           canvas.height = Math.floor(viewport.height)
-          canvas.className = 'mx-auto mb-3 max-w-full h-auto bg-white shadow-sm rounded'
+          canvas.style.width = `${Math.floor(displayWidth)}px`
+          canvas.style.height = 'auto'
+          canvas.className = 'mx-auto mb-3 max-w-full bg-white shadow-sm rounded'
 
           await page.render({ canvasContext: ctx, viewport }).promise
           if (cancelled) return

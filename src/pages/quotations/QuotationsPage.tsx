@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
+import { SearchableSelect } from '@/components/SearchableSelect'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
 import { quotationsService, type Quotation, type QuotationConvertTarget } from '@/services/quotations.service'
 import { PrintDocButton } from '@/components/print/PrintDocButton'
@@ -318,6 +319,18 @@ function QuotationsContent() {
   const convertCustomerOptions = useMemo(
     () => (convertTarget === '01' ? convertCustomersWithRuc : convertCustomers),
     [convertTarget, convertCustomersWithRuc, convertCustomers],
+  )
+
+  /** El documento va en el label para que SearchableSelect permita buscar por RUC/DNI. */
+  const convertContactSelectOptions = useMemo(
+    () =>
+      convertCustomerOptions.map((c) => ({
+        value: c.id,
+        label: `${c.business_name || c.trade_name}${
+          c.doc_number ? ` — ${c.doc_type === '6' ? 'RUC' : 'Doc.'} ${c.doc_number}` : ''
+        }`,
+      })),
+    [convertCustomerOptions],
   )
 
   const selectedConvertContact = useMemo(
@@ -798,21 +811,16 @@ function QuotationsContent() {
                     <UserPlus size={14} /> Nuevo cliente
                   </button>
                 </div>
-                <select
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                <SearchableSelect
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2 min-h-[42px]"
                   value={convertContactId ?? ''}
-                  onChange={(e) => setConvertContactId(e.target.value ? Number(e.target.value) : null)}
-                >
-                  <option value="">
-                    {convertTarget === '01' ? 'Seleccionar cliente con RUC…' : 'Seleccionar cliente…'}
-                  </option>
-                  {convertCustomerOptions.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.business_name || c.trade_name}
-                      {c.doc_number ? ` — ${c.doc_type === '6' ? 'RUC' : 'Doc.'} ${c.doc_number}` : ''}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => setConvertContactId(v == null || String(v) === '' ? null : Number(v))}
+                  options={convertContactSelectOptions}
+                  placeholder={convertTarget === '01' ? 'Seleccionar cliente con RUC…' : 'Seleccionar cliente…'}
+                  searchable
+                  searchPlaceholder="Buscar por nombre o RUC/DNI..."
+                  allowClear
+                />
                 {convertTarget === '01' && convertCustomersWithRuc.length === 0 && (
                   <p className="text-xs text-amber-700 mt-1">
                     No hay clientes con RUC válido. Registre uno con «Nuevo cliente».

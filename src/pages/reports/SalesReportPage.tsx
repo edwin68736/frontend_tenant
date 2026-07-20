@@ -112,6 +112,7 @@ const COLS: ExcelExportColumn<Sale & { doc_display?: string }>[] = [
   { key: 'issue_date', label: 'Fecha', format: formatIssueDate },
   { key: 'doc_display', label: 'Comprobante', format: (_, r) => formatSaleComprobante((r as Sale).doc_type, (r as Sale).series, (r as Sale).number) },
   { key: 'contact_name', label: 'Cliente' },
+  { key: 'contact_doc_number', label: 'N° documento', format: (v: unknown) => String(v ?? '') || '—' },
   { key: 'user_name', label: 'Registrado por' },
   { key: 'subtotal', label: 'Subtotal', format: fmtMoneyCell, excelNumber: true },
   { key: 'tax_amount', label: 'IGV', format: fmtMoneyCell, excelNumber: true },

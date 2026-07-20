@@ -138,6 +138,8 @@ export interface PrintItem {
   total: number
   igv_affectation_type?: string
   modifiers_json?: string
+  /** Nota libre de la línea, guardada en el snapshot del documento. */
+  item_note?: string
 }
 
 export interface PrintAffectTotal {

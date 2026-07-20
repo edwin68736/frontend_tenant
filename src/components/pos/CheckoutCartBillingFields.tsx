@@ -23,6 +23,11 @@ type Props = {
   onAddContact?: () => void
   /** Al elegir boleta / nota de venta, sugerir Clientes Varios. */
   onPreferVariosContact?: () => void
+  /**
+   * Al elegir factura, limpiar el cliente heredado del comprobante anterior. Sin esto, si
+   * el cliente previo tenía RUC pasaba la validación y la factura salía a nombre equivocado.
+   */
+  onRequireRucContact?: () => void
   /** Si false, solo notas de venta (series ya filtradas en el padre). */
   sunatEnabled?: boolean
   billingModule?: boolean
@@ -53,6 +58,7 @@ export function CheckoutCartBillingFields({
   onContactChange,
   onAddContact,
   onPreferVariosContact,
+  onRequireRucContact,
   sunatEnabled = true,
   billingModule = true,
   canFactura = true,
@@ -117,7 +123,9 @@ export function CheckoutCartBillingFields({
     if (!first) return
     const nextDocType = String(first.doc_type || '').trim() || 'NOTA DE VENTA'
     onSeriesChange(first.id, nextDocType)
-    if (!isFacturaDocType(nextDocType, first.sunat_code)) {
+    if (isFacturaDocType(nextDocType, first.sunat_code)) {
+      onRequireRucContact?.()
+    } else {
       onPreferVariosContact?.()
     }
   }

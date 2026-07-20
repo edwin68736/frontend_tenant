@@ -705,11 +705,8 @@ function BillingContent() {
                       </span>
                     )}
                   </p>
-                  {viewMode === 'invoices' && (
-                    <div className="mt-1">
-                      <BillingOperationTypeBadge operationTypeCode={s.operation_type_code} />
-                    </div>
-                  )}
+                  {/* El tipo de operación (0101, 1001…) queda solo en el detalle: en el
+                      listado era ruido, la gran mayoría son venta interna. */}
                 </td>
                 {viewMode === 'credit_notes' && (
                   <td className="px-4 py-3 text-gray-500 text-xs">

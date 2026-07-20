@@ -1,3 +1,4 @@
+import { downloadXlsxBytes } from '@/utils/downloadXlsx'
 import {
   readXlsx,
   validateWithSchema,
@@ -352,18 +353,6 @@ export function parseCatalogExpiryDate(value: unknown): { date: string | null; e
   return { date: null, error: 'fecha_vencimiento inválida (use YYYY-MM-DD o DD/MM/YYYY)' }
 }
 
-function downloadXlsx(bytes: Uint8Array, filename: string): void {
-  const blob = new Blob([new Uint8Array(bytes)], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  link.click()
-  URL.revokeObjectURL(url)
-}
-
 export async function downloadCatalogProductTemplate(): Promise<void> {
   const headerRow: CellValue[] = [...CATALOG_IMPORT_COLUMNS]
   const exampleRow: CellValue[] = [
@@ -386,7 +375,52 @@ export async function downloadCatalogProductTemplate(): Promise<void> {
   const bytes = await writeXlsx({
     sheets: [{ name: 'Productos', rows: [headerRow, exampleRow] }],
   })
-  downloadXlsx(bytes, 'plantilla-productos-catalogo.xlsx')
+  await downloadXlsxBytes(bytes, 'plantilla-productos-catalogo.xlsx')
+}
+
+/** Columnas numéricas del archivo: son las que pueden traer coma decimal. */
+const NUMERIC_IMPORT_COLUMNS = new Set(['precio_venta', 'precio_compra', 'stock_inicial', 'stock_minimo'])
+
+/**
+ * Convierte la coma decimal a punto en las celdas numéricas.
+ *
+ * En un Excel en español el precio suele escribirse «0,50». Si la celda queda como texto,
+ * el parser del esquema trata la coma como separador de miles y «0,50» se importa como 50
+ * (y «0,10» como 10). De ahí que los precios por debajo de 1 salieran mal y pareciera que
+ * solo se podía importar de 1 en adelante.
+ *
+ * Solo actúa sobre texto: los números reales de Excel llegan ya correctos.
+ */
+function normalizeDecimalCommaCells(rows: CellValue[][], headers: string[]): CellValue[][] {
+  const numericIdx = headers
+    .map((h, i) => (NUMERIC_IMPORT_COLUMNS.has(h) ? i : -1))
+    .filter((i) => i >= 0)
+  if (numericIdx.length === 0) return rows
+
+  return rows.map((row, rowIndex) => {
+    if (rowIndex === 0) return row // encabezados
+    const copy = [...row]
+    for (const i of numericIdx) {
+      copy[i] = normalizeDecimalComma(copy[i])
+    }
+    return copy
+  })
+}
+
+function normalizeDecimalComma(value: CellValue): CellValue {
+  if (typeof value !== 'string') return value
+  const raw = value.trim()
+  if (raw === '' || !raw.includes(',')) return value
+  // «1.234,56»: el punto es separador de miles y la coma decimal.
+  if (raw.includes('.')) {
+    return raw.lastIndexOf(',') > raw.lastIndexOf('.')
+      ? raw.replace(/\./g, '').replace(',', '.')
+      : raw.replace(/,/g, '')
+  }
+  // Una sola coma y sin punto: decimal en formato español («0,50»).
+  if (raw.indexOf(',') === raw.lastIndexOf(',')) return raw.replace(',', '.')
+  // Varias comas: separador de miles («1,234,567»).
+  return raw.replace(/,/g, '')
 }
 
 export async function validateCatalogProductExcel(file: File): Promise<ImportValidationResult> {
@@ -417,7 +451,10 @@ export async function validateCatalogProductExcel(file: File): Promise<ImportVal
     }
   }
 
-  const rowsForSchema: CellValue[][] = [normalizedHeaders, ...rawRows.slice(1)]
+  const rowsForSchema: CellValue[][] = normalizeDecimalCommaCells(
+    [normalizedHeaders, ...rawRows.slice(1)],
+    normalizedHeaders,
+  )
   const { data, errors: schemaErrors } = validateWithSchema<Record<string, unknown>>(
     rowsForSchema,
     CATALOG_PRODUCT_IMPORT_SCHEMA,

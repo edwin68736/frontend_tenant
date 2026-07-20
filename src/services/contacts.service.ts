@@ -55,7 +55,19 @@ export interface CreateContactInput {
   es_buen_contribuyente?: boolean
 }
 
+export type ContactBulkImportResult = {
+  created: number
+  updated: number
+  failed: { row: number; name: string; error: string }[]
+}
+
 export const contactsService = {
+  /** Alta masiva desde Excel. Si el documento ya existe, actualiza en vez de duplicar. */
+  bulkImport: (items: unknown[]) =>
+    api
+      .post<{ success: boolean; data: ContactBulkImportResult }>('/api/contacts/bulk-import', { items })
+      .then((r) => r.data.data),
+
   list: (q = '', type = '', status: 'active' | 'inactive' | 'all' = 'active') =>
     api.get<{ data?: Contact[] }>('/api/contacts', {
       params: { q, type: type || undefined, status: status === 'active' ? undefined : status },

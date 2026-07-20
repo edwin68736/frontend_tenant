@@ -15,6 +15,10 @@ import { ProductPickerModal } from '@/components/sales/ProductPickerModal'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
 import { QuickProductCreateModal } from '@/components/products/QuickProductCreateModal'
 import { getTodayPeru } from '@/utils/datesPeru'
+import { companyService, type SunatConfig } from '@/services/company.service'
+import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
+import { buildTaxConfigFromSunat } from '@/constants/tax'
+import { calcItem } from '@/utils/taxCalc'
 
 const DOC_TYPES = ['FACTURA', 'BOLETA', 'NOTA DE CRÉDITO', 'TICKET']
 
@@ -23,7 +27,7 @@ const PRESENTATIONS_WARNING =
 
 function buildPurchaseLine(
   p: Product,
-  opts?: { isNewlyCreated?: boolean; hasPresentations?: boolean },
+  opts?: { isNewlyCreated?: boolean; hasPresentations?: boolean; priceIncludesIgv?: boolean },
 ): PurchaseItem {
   return {
     product_id: p.id,
@@ -33,7 +37,8 @@ function buildPurchaseLine(
     quantity: p.manage_series ? 0 : 1,
     unit_cost: p.purchase_price ?? 0,
     igv_affectation_type: p.igv_affectation_type ?? '10',
-    price_includes_igv: p.price_includes_igv ?? false,
+    // El criterio es de la compra completa, no del catálogo: manda el check del formulario.
+    price_includes_igv: opts?.priceIncludesIgv ?? false,
     manage_series: p.manage_series ?? false,
     serials: [],
     current_sale_price: p.sale_price ?? 0,
@@ -68,6 +73,26 @@ function PurchaseRegisterContent() {
   const [addSupplierOpen, setAddSupplierOpen] = useState(false)
   const [seriesModalItemIdx, setSeriesModalItemIdx] = useState<number | null>(null)
   const [seriesModalText, setSeriesModalText] = useState('')
+  /**
+   * Criterio global: el costo unitario tecleado ya incluye IGV. Arranca en false, que es
+   * el comportamiento histórico (el IGV se suma encima del costo).
+   */
+  const [priceIncludesIgv, setPriceIncludesIgv] = useState(false)
+
+  // Tasa real del tenant (18% o 10.5% Ley 31659) para que el total en pantalla
+  // coincida con el que calcula el backend.
+  const { sunat: cachedSunat } = useBranchCheckoutSeries()
+  const [sunat, setSunat] = useState<SunatConfig | null>(null)
+  useEffect(() => {
+    if (cachedSunat) {
+      setSunat(cachedSunat)
+      return
+    }
+    companyService.getSunat().then(setSunat).catch(() => {
+      // sin config SUNAT se usa el fallback de buildTaxConfigFromSunat (18%)
+    })
+  }, [cachedSunat])
+  const taxConfig = buildTaxConfigFromSunat(cachedSunat ?? sunat ?? undefined)
 
   useEffect(() => {
     setLoadingSuppliers(true)
@@ -89,7 +114,11 @@ function PurchaseRegisterContent() {
         // continuar sin advertencia de presentaciones
       }
     }
-    const line = buildPurchaseLine(p, { isNewlyCreated: opts?.isNewlyCreated, hasPresentations })
+    const line = buildPurchaseLine(p, {
+      isNewlyCreated: opts?.isNewlyCreated,
+      hasPresentations,
+      priceIncludesIgv,
+    })
     setItems(i => {
       const existing = i.find(it => it.product_id === p.id)
       if (existing) {
@@ -148,11 +177,41 @@ function PurchaseRegisterContent() {
 
   const removeItem = (idx: number) => setItems(i => i.filter((_, k) => k !== idx))
 
-  const subtotal = items.reduce((s, i) => s + i.quantity * i.unit_cost, 0)
-  const igv = items
-    .filter(i => i.igv_affectation_type === '10')
-    .reduce((s, i) => s + i.quantity * i.unit_cost * 0.18, 0)
-  const total = subtotal + igv
+  // Mismo motor que el backend (pkg/tax.CalcItem): respeta la afectación SUNAT, la tasa
+  // del tenant y si el costo ya trae IGV. Antes usaba 0.18 fijo e ignoraba ambas cosas,
+  // por lo que el total mostrado no coincidía con el que se guardaba.
+  const totals = items.reduce(
+    (acc, it) => {
+      const r = calcItem(
+        it.unit_cost,
+        it.quantity,
+        0,
+        it.igv_affectation_type ?? '10',
+        it.price_includes_igv ?? false,
+        taxConfig.taxRate,
+        taxConfig,
+      )
+      return {
+        subtotal: acc.subtotal + r.subtotal,
+        igv: acc.igv + r.taxAmount,
+        total: acc.total + r.total,
+      }
+    },
+    { subtotal: 0, igv: 0, total: 0 },
+  )
+  const { subtotal, igv, total } = totals
+
+  /** Importe de la línea tal como se cobra (el que ve el usuario en la fila). */
+  const lineTotal = (it: PurchaseItem) =>
+    calcItem(
+      it.unit_cost,
+      it.quantity,
+      0,
+      it.igv_affectation_type ?? '10',
+      it.price_includes_igv ?? false,
+      taxConfig.taxRate,
+      taxConfig,
+    ).total
 
   const handleSave = async () => {
     if (!form.contact_id || items.length === 0) {
@@ -196,7 +255,13 @@ function PurchaseRegisterContent() {
           new_sale_price: update_sale_price ? (new_sale_price ?? 0) : 0,
         }),
       )
-      await purchasesService.create({ ...form, series, number, items: payloadItems } as CreatePurchaseInput)
+      await purchasesService.create({
+        ...form,
+        series,
+        number,
+        price_includes_igv: priceIncludesIgv,
+        items: payloadItems,
+      } as CreatePurchaseInput)
       toast.success('Compra registrada')
       navigate('/purchases', { state: { created: true } })
     } catch (e: unknown) {
@@ -314,6 +379,40 @@ function PurchaseRegisterContent() {
               <option value="tarjeta">Tarjeta</option>
             </select>
             <p className="text-xs text-gray-400 mt-0.5">El monto se descontará de la cuenta asociada.</p>
+          </div>
+
+          <div className="sm:col-span-2 lg:col-span-3">
+            <label
+              className={`flex items-start gap-2.5 rounded-xl border p-3 ${
+                items.length > 0
+                  ? 'border-gray-100 bg-gray-50 cursor-not-allowed'
+                  : 'border-gray-200 bg-white cursor-pointer hover:border-[rgb(var(--p300))]'
+              }`}
+            >
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 shrink-0 accent-[rgb(var(--p600))]"
+                checked={priceIncludesIgv}
+                disabled={items.length > 0}
+                onChange={e => setPriceIncludesIgv(e.target.checked)}
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-gray-800">
+                  El costo unitario ya incluye IGV
+                </span>
+                <span className="block text-xs text-gray-500 mt-0.5">
+                  {priceIncludesIgv
+                    ? `Se desagregará el IGV del costo que ingrese (ej. ${(118).toFixed(2)} → valor ${(100).toFixed(2)} + IGV ${(18).toFixed(2)}).`
+                    : `Se agregará el IGV sobre el costo que ingrese (ej. ${(100).toFixed(2)} → valor ${(100).toFixed(2)} + IGV ${(18).toFixed(2)}).`}
+                  {' '}No aplica a ítems exonerados o inafectos.
+                </span>
+                {items.length > 0 && (
+                  <span className="block text-xs text-amber-700 mt-1">
+                    No se puede cambiar con productos ya agregados. Vacíe el detalle para modificarlo.
+                  </span>
+                )}
+              </span>
+            </label>
           </div>
         </section>
 
@@ -468,7 +567,7 @@ function PurchaseRegisterContent() {
                       </td>
                     )}
                     <td className="px-3 py-2.5 text-right font-medium text-gray-700 tabular-nums">
-                      S/ {(it.quantity * it.unit_cost).toFixed(2)}
+                      S/ {lineTotal(it).toFixed(2)}
                     </td>
                     <td className="px-2 py-2.5">
                       <button

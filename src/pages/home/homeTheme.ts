@@ -76,6 +76,16 @@ export const HOME_QUICK_LINK_THEMES: Record<string, HomeQuickLinkTheme> = {
     accent: 'text-blue-600',
     linkHover: 'group-hover:text-blue-800',
   },
+  '/quotations/new': {
+    topBar: 'from-teal-500 to-cyan-500',
+    iconBg: 'bg-gradient-to-br from-teal-100 to-cyan-100',
+    iconText: 'text-teal-700',
+    iconHoverBg: 'group-hover:from-teal-600 group-hover:to-cyan-600',
+    borderHover: 'hover:border-teal-200',
+    shadowHover: 'hover:shadow-teal-100/60',
+    accent: 'text-teal-600',
+    linkHover: 'group-hover:text-teal-800',
+  },
   '/products': {
     topBar: 'from-violet-500 to-purple-500',
     iconBg: 'bg-gradient-to-br from-violet-100 to-purple-100',

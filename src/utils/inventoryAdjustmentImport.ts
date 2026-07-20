@@ -1,3 +1,4 @@
+import { downloadXlsxBytes } from '@/utils/downloadXlsx'
 import {
   readXlsx,
   writeXlsx,
@@ -43,25 +44,13 @@ function parseNumber(value: unknown): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-function downloadXlsx(bytes: Uint8Array, filename: string): void {
-  const blob = new Blob([new Uint8Array(bytes)], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  link.click()
-  URL.revokeObjectURL(url)
-}
-
 export async function downloadAdjustmentImportTemplate(): Promise<void> {
   const headerRow: CellValue[] = ['Código de barras', 'Stock contado']
   const exampleRow: CellValue[] = ['7750123456789', 20]
   const bytes = await writeXlsx({
     sheets: [{ name: 'Conteo', rows: [headerRow, exampleRow] }],
   })
-  downloadXlsx(bytes, 'plantilla-conteo-fisico.xlsx')
+  await downloadXlsxBytes(bytes, 'plantilla-conteo-fisico.xlsx')
 }
 
 export interface ImportErrorExportRow {
@@ -77,7 +66,7 @@ export async function exportImportErrorsExcel(rows: ImportErrorExportRow[]): Pro
   const bytes = await writeXlsx({
     sheets: [{ name: 'Errores', rows: [headerRow, ...dataRows] }],
   })
-  downloadXlsx(bytes, 'errores-conteo-fisico.xlsx')
+  await downloadXlsxBytes(bytes, 'errores-conteo-fisico.xlsx')
 }
 
 export async function parseAdjustmentImportExcel(file: File): Promise<{

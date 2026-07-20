@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { FileDown, Filter } from 'lucide-react'
+import { FileDown, FileSpreadsheet, Filter } from 'lucide-react'
 import RequireModule from '@/components/ui/RequireModule'
 import {
   cashbankService,
@@ -16,6 +16,10 @@ import { formatPaymentMethodLabel, isDetractionPaymentMethod } from '@/utils/pay
 import { DETRACCION_PAYMENT_METHOD_NAME } from '@/utils/fiscalDetraction'
 import { downloadCashSessionReportPdf } from '@/utils/cashSessionReportPdf'
 import { downloadCashMovementsReportPdf } from '@/utils/cashMovementsReportPdf'
+import {
+  downloadCashMovementsReportExcel,
+  downloadCashSessionReportExcel,
+} from '@/utils/cashReportExcel'
 
 type Branch = { id: number; name: string }
 
@@ -186,6 +190,41 @@ function CashReportsContent() {
     }
   }
 
+  const exportExcelResumen = async () => {
+    if (!filters.sessionId) {
+      toast.error('Selecciona una sesión de caja para exportar el resumen')
+      return
+    }
+    setLoading(true)
+    try {
+      const r = report ?? (await cashbankService.getSessionReport(filters.sessionId))
+      await downloadCashSessionReportExcel(r, formatPaymentMethodLabel)
+      toast.success('Excel descargado')
+    } catch {
+      toast.error('No se pudo exportar el Excel')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const exportExcelMovimientos = async () => {
+    setLoading(true)
+    try {
+      const { data: rows, detraction } = await cashbankService.listMovementsReport(buildMovementsParams())
+      await downloadCashMovementsReportExcel({
+        filtersLabel: buildFiltersLabel(),
+        movements: rows ?? [],
+        detractionMovements: detraction?.data ?? [],
+        methodLabel: formatPaymentMethodLabel,
+      })
+      toast.success('Excel descargado')
+    } catch {
+      toast.error('No se pudo exportar el Excel')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const exportPdfMovimientos = async () => {
     setLoading(true)
     try {
@@ -209,6 +248,11 @@ function CashReportsContent() {
   const exportPdf = () => {
     if (tab === 'resumen') void exportPdfResumen()
     else void exportPdfMovimientos()
+  }
+
+  const exportExcel = () => {
+    if (tab === 'resumen') void exportExcelResumen()
+    else void exportExcelMovimientos()
   }
 
   return (
@@ -332,6 +376,15 @@ function CashReportsContent() {
           >
             <FileDown size={14} />
             Exportar PDF
+          </button>
+          <button
+            type="button"
+            onClick={exportExcel}
+            disabled={loading || (tab === 'resumen' && !filters.sessionId)}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50"
+          >
+            <FileSpreadsheet size={14} />
+            Exportar Excel
           </button>
         </div>
       </div>

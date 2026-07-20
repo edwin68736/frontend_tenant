@@ -1,3 +1,4 @@
+import { downloadXlsxBytes } from '@/utils/downloadXlsx'
 import { writeXlsx, type CellValue } from 'hucre'
 
 export interface ExportColumn<T = Record<string, unknown>> {
@@ -6,18 +7,6 @@ export interface ExportColumn<T = Record<string, unknown>> {
   format?: (val: unknown, row: T) => string | number
   /** Si true, Excel recibe el valor numérico en bruto (útil para columnas monetarias). */
   excelNumber?: boolean
-}
-
-function downloadXlsx(bytes: Uint8Array, filename: string): void {
-  const blob = new Blob([new Uint8Array(bytes)], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  link.click()
-  URL.revokeObjectURL(url)
 }
 
 export async function exportTableToExcel<T extends object>(
@@ -42,5 +31,5 @@ export async function exportTableToExcel<T extends object>(
   const bytes = await writeXlsx({
     sheets: [{ name: sheetName.slice(0, 31), rows }],
   })
-  downloadXlsx(bytes, filename ?? `${sheetName.replace(/\s+/g, '-')}.xlsx`)
+  await downloadXlsxBytes(bytes, filename ?? `${sheetName.replace(/\s+/g, '-')}.xlsx`)
 }

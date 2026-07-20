@@ -9,7 +9,7 @@ import type { SaleFiscalFormState } from '@/components/sales/SaleAdditionalInfoD
 import { formatModifierLines, parseStoredModifiers } from '@/utils/productModifiers'
 import { calcPaymentChange } from '@/utils/money'
 import { resolvePublicAssetUrl } from '@/config/apiBaseUrl'
-import { getCompanyLogoDataUrlSync } from '@/lib/companyConfig/store'
+import { getCompanyLogoDataUrlSync, getCompanyLogoForPrint } from '@/lib/companyConfig/store'
 import { amountInWords } from '@/utils/amountInWords'
 
 import { igvAffectationLabel } from '@/constants/igvAffectation'
@@ -22,6 +22,7 @@ export type SalePreviewFormItem = {
   unit_price: number
   igv_affectation_type: string
   modifiers_json?: string
+  item_note?: string
 }
 
 export type SalePreviewSeries = {
@@ -176,6 +177,8 @@ export function buildPreviewQrData(params: {
   ].join('|')
 }
 
+// La nota NO se incrusta aquí a propósito: la agrega receiptItemDisplayDescription, que es
+// el punto único de impresión. Si se hiciera en ambos sitios saldría duplicada en el preview.
 function itemDescriptionForPrint(it: SalePreviewFormItem): string {
   const base = it.description.trim()
   const mods = formatModifierLines(parseStoredModifiers(it.modifiers_json))
@@ -329,6 +332,7 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
       total: line?.total ?? 0,
       igv_affectation_type: it.igv_affectation_type || '10',
       modifiers_json: it.modifiers_json,
+      item_note: it.item_note,
     }
   })
 
@@ -434,7 +438,9 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
       phone: companyPhone || undefined,
       email: companyEmail || undefined,
       website: companyConfig?.website?.trim() || undefined,
-      logo_url: resolveLogoUrl(companyConfig?.logo_url),
+      // getCompanyLogoForPrint es la fuente canónica: incluye el logo_data_url que embebe el
+      // backend. Mirar solo companyConfig.logo_url dejaba la previsualización sin logo.
+      logo_url: getCompanyLogoForPrint() ?? resolveLogoUrl(companyConfig?.logo_url),
       additional_notes: companyConfig?.additional_notes?.trim() || undefined,
       // Nuevo RUS: no discriminar IGV en el impreso (solo el total). El XML sí lo lleva.
       show_igv_breakdown: String(companyConfig?.taxpayer_regime ?? '').toLowerCase() !== 'nrus',

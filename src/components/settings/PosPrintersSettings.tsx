@@ -15,6 +15,7 @@ import {
 import { isCapacitorAndroid, isTauriDesktop } from '@/lib/platform/detect'
 import { PrinterKindCard } from './printers/PrinterKindCard'
 import { NotaVentaPrintSettings } from './printers/NotaVentaPrintSettings'
+import { LogoPrintSizeSettings } from './printers/LogoPrintSizeSettings'
 
 /** Configuración de impresora térmica para comprobantes POS (solo slot documentos). */
 export function PosPrintersSettings() {
@@ -127,6 +128,7 @@ export function PosPrintersSettings() {
         testing={testing}
       />
 
+      <LogoPrintSizeSettings />
       <NotaVentaPrintSettings />
     </div>
   )

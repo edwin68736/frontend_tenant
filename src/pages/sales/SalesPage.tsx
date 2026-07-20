@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Search, Eye, X, Plus, FileText, ExternalLink, RefreshCw, Download, Ticket, FileDown, ChevronDown } from 'lucide-react'
+import { Search, Eye, X, Plus, FileText, ExternalLink, RefreshCw, Download, Ticket, FileDown, ChevronDown, Ban } from 'lucide-react'
 import { salesService, type Sale, type SaleDetail } from '@/services/sales.service'
 import { PrintDocButton } from '@/components/print/PrintDocButton'
 import RequireModule from '@/components/ui/RequireModule'
@@ -68,6 +68,9 @@ type SeriesRow = {
 function SalesContent() {
   const { hasModule, hasPermission } = useAuth()
   const canEmit = hasModule('billing') && hasPermission('sales.create')
+  // El backend solo exige el módulo, pero anular repone stock y revierte caja: se pide un
+  // permiso explícito para no dejarlo al alcance de cualquiera con acceso a ventas.
+  const canCancel = hasModule('sales') && hasPermission('sales.cancel')
   const { sunat } = useBranchCheckoutSeries()
   const canFactura = tenantCanEmitFactura(sunat)
 
@@ -82,6 +85,10 @@ function SalesContent() {
   const [detailLoading, setDetailLoading] = useState(false)
 
   const [emitOpen, setEmitOpen] = useState(false)
+  // Anulación de nota de venta: exige motivo, igual que la baja SUNAT de un electrónico.
+  const [cancelTarget, setCancelTarget] = useState<Sale | null>(null)
+  const [cancelReason, setCancelReason] = useState('')
+  const [cancelling, setCancelling] = useState(false)
   const [emitRow, setEmitRow] = useState<Sale | null>(null)
   const [emitDetail, setEmitDetail] = useState<SaleDetail | null>(null)
   const [emitLoading, setEmitLoading] = useState(false)
@@ -143,9 +150,37 @@ function SalesContent() {
     }
   }
 
+  const submitCancel = async () => {
+    if (!cancelTarget) return
+    const reason = cancelReason.trim()
+    if (!reason) {
+      toast.error('Indique el motivo de anulación')
+      return
+    }
+    setCancelling(true)
+    try {
+      await salesService.cancelNotaVenta(cancelTarget.id, reason)
+      toast.success('Nota de venta anulada. Se repuso el stock y se revirtió la caja.')
+      setCancelTarget(null)
+      setCancelReason('')
+      load()
+    } catch (e) {
+      toast.error(
+        (e as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+          'No se pudo anular la nota de venta',
+      )
+    } finally {
+      setCancelling(false)
+    }
+  }
+
   const openEmit = async (row: Sale) => {
     if (!canEmit) {
       toast.error('No tiene permiso o falta el módulo de facturación')
+      return
+    }
+    if (row.status === 'cancelled') {
+      toast.error('La nota de venta está anulada: no se puede emitir factura ni boleta')
       return
     }
     if (row.electronic_issue_sale_id) {
@@ -411,6 +446,9 @@ function SalesContent() {
                 const nvKey = nvStatusKey(s)
                 const issuedDoc = formatElectronicIssueDocument(s)
                 const pdfId = pdfTargetSaleId(s)
+                // Anulada: solo consulta. No se emite comprobante electrónico (el backend ya
+                // lo rechaza) ni se envía al cliente un documento que dejó de ser válido.
+                const isCancelled = s.status === 'cancelled'
                 return (
                 <tr key={s.id} className="border-b border-gray-50 hover:bg-gray-50">
                   <td className="px-4 py-3 text-gray-500 text-xs">{formatDisplayDatePeru(s.issue_date)}</td>
@@ -486,7 +524,7 @@ function SalesContent() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap items-center justify-end gap-1">
-                      <div className="relative shrink-0">
+                      <div className={`relative shrink-0 ${isCancelled ? 'hidden' : ''}`}>
                         <button
                           type="button"
                           data-wa-trigger={s.id}
@@ -526,7 +564,7 @@ function SalesContent() {
                       >
                         <Eye size={14} />
                       </button>
-                      {canEmit && !s.electronic_issue_sale_id && (
+                      {canEmit && !isCancelled && !s.electronic_issue_sale_id && (
                         <button
                           type="button"
                           onClick={() => void openEmit(s)}
@@ -534,6 +572,22 @@ function SalesContent() {
                           title="Emitir factura o boleta"
                         >
                           <FileText size={14} /> Emitir
+                        </button>
+                      )}
+                      {/* Mismas reglas que el backend: solo notas de venta no anuladas y
+                          que aún no hayan generado un comprobante electrónico. */}
+                      {canCancel && s.status !== 'cancelled' && !s.electronic_issue_sale_id && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCancelTarget(s)
+                            setCancelReason('')
+                          }}
+                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                          title="Anular nota de venta"
+                          aria-label="Anular nota de venta"
+                        >
+                          <Ban size={14} />
                         </button>
                       )}
                     </div>
@@ -818,6 +872,54 @@ function SalesContent() {
         )}
       </Modal>
 
+      <Modal
+        open={!!cancelTarget}
+        onClose={() => {
+          if (!cancelling) setCancelTarget(null)
+        }}
+      >
+        <h3 className="mb-1 font-bold text-gray-800">Anular nota de venta</h3>
+        {cancelTarget && (
+          <p className="mb-3 text-sm text-gray-600">
+            Comprobante{' '}
+            <span className="font-mono font-semibold text-gray-800">
+              {formatSaleDocumentNumber(cancelTarget.series, cancelTarget.number)}
+            </span>
+          </p>
+        )}
+        <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Se repondrá el stock de los productos y se revertirá el movimiento de caja. Esta
+          acción no se puede deshacer.
+        </p>
+        <label className="mb-1 block text-xs font-medium text-gray-600">Motivo de anulación *</label>
+        <textarea
+          value={cancelReason}
+          onChange={(e) => setCancelReason(e.target.value)}
+          rows={3}
+          placeholder="Ej. Error en el monto, el cliente desistió de la compra…"
+          className="mb-4 w-full resize-none rounded-xl border border-gray-200 px-3 py-2 text-sm"
+          disabled={cancelling}
+        />
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setCancelTarget(null)}
+            disabled={cancelling}
+            className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => void submitCancel()}
+            disabled={cancelling || !cancelReason.trim()}
+            className="flex-1 rounded-xl bg-red-600 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+          >
+            {cancelling ? 'Anulando…' : 'Anular nota de venta'}
+          </button>
+        </div>
+      </Modal>
+
       <Modal open={detailLoading || !!detail} onClose={() => setDetail(null)}>
         <div className="flex items-center justify-between border-b border-gray-100 pb-3">
           <h3 className="font-bold text-gray-800">Detalle de nota de venta</h3>
@@ -861,6 +963,10 @@ function SalesContent() {
                       Facturación
                     </Link>
                     .
+                  </p>
+                ) : detail.sale.status === 'cancelled' ? (
+                  <p className="text-xs text-gray-700 bg-gray-100 rounded-lg px-2 py-1.5 mt-0.5">
+                    Nota de venta anulada: no se puede emitir factura ni boleta a partir de ella.
                   </p>
                 ) : (
                   <p className="text-xs text-amber-900 bg-amber-50 rounded-lg px-2 py-1.5 mt-0.5">
@@ -913,7 +1019,7 @@ function SalesContent() {
                 }
                 currency={detail.sale.currency}
               />
-              {canEmit && !detail.sale.electronic_issue_sale_id && (
+              {canEmit && detail.sale.status !== 'cancelled' && !detail.sale.electronic_issue_sale_id && (
                 <button
                   type="button"
                   onClick={() => {

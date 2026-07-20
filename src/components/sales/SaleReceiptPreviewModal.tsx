@@ -4,7 +4,7 @@ import { FileText, Loader2, Receipt, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { PrintData } from '@/types/printData'
 import { Modal } from '@/components/ui/Modal'
-import { pdfEmbedSrc } from '@/utils/pdfEmbedSrc'
+import { PdfBlobViewer } from '@/components/PdfBlobViewer'
 import { printDataToPdfBlob, type ReceiptPdfOptions } from '@/utils/receiptPdf'
 import { getConfiguredPrinter } from '@/services/printers.service'
 
@@ -165,13 +165,13 @@ export function SaleReceiptPreviewModal({
             <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
           </div>
         ) : (
-          <div className="bg-stone-100 p-1">
-            <iframe
-              src={pdfEmbedSrc(pdfUrl, pdfFormat === 'a4' ? { fit: 'page' } : undefined)}
-              title="Previsualización comprobante"
-              className="h-[min(70vh,520px)] min-h-[320px] w-full border-0 bg-white"
-            />
-          </div>
+          // PdfBlobViewer en vez de un <iframe> suelto: el WebView de Android no pinta
+          // blob: PDF en iframe (salía en blanco) y el visor lo rasteriza con pdf.js.
+          <PdfBlobViewer
+            url={pdfUrl}
+            title="Previsualización comprobante"
+            embedOptions={pdfFormat === 'a4' ? { fit: 'page' } : undefined}
+          />
         )}
       </div>
 

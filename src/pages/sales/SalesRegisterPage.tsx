@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Trash2, X, Package, UserPlus, ScanBarcode, Pencil, Loader2, Wallet } from 'lucide-react'
+import { Plus, Trash2, X, Package, UserPlus, ScanBarcode, Pencil, Loader2, Wallet, StickyNote } from 'lucide-react'
 import { salesService, type CreateSaleInput } from '@/services/sales.service'
 import { contactsService, type Contact } from '@/services/contacts.service'
 import { productsService, type Product } from '@/services/products.service'
@@ -111,6 +111,8 @@ export interface SaleFormItem {
 
 const PER_PAGE = 10
 const IGV_AFFECTATION_OPTIONS = PRODUCT_IGV_AFFECTATION_OPTIONS
+/** Igual que la columna item_note del backend (varchar 255). */
+const ITEM_NOTE_MAX_LENGTH = 255
 
 type ManualItemDraft = Omit<SaleFormItem, 'product_id' | 'serials'>
 
@@ -282,6 +284,9 @@ function SalesRegisterContent({
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
   const [lastSale, setLastSale] = useState<{ id: number; number: string; total: number } | null>(null)
   const [addClientOpen, setAddClientOpen] = useState(false)
+  /** Índice de la línea cuya nota se está editando; null = modal cerrado. */
+  const [itemNoteIdx, setItemNoteIdx] = useState<number | null>(null)
+  const [itemNoteDraft, setItemNoteDraft] = useState('')
   const [companyConfig, setCompanyConfig] = useState<CompanyConfig | null>(null)
   const logoInputRef = useRef<HTMLInputElement>(null)
   const [uploadingLogo, setUploadingLogo] = useState(false)
@@ -723,6 +728,26 @@ function SalesRegisterContent({
 
   const removeItem = (idx: number) => setItems(prev => prev.filter((_, i) => i !== idx))
 
+  const openItemNoteModal = (idx: number) => {
+    setItemNoteDraft(items[idx]?.item_note ?? '')
+    setItemNoteIdx(idx)
+  }
+
+  const closeItemNoteModal = () => {
+    setItemNoteIdx(null)
+    setItemNoteDraft('')
+  }
+
+  /** La nota viaja en el snapshot del documento; nunca toca el producto del catálogo. */
+  const saveItemNote = () => {
+    if (itemNoteIdx == null) return
+    const note = itemNoteDraft.trim().slice(0, ITEM_NOTE_MAX_LENGTH)
+    setItems(prev =>
+      prev.map((it, i) => (i !== itemNoteIdx ? it : { ...it, item_note: note || undefined })),
+    )
+    closeItemNoteModal()
+  }
+
   const saleCalc = useMemo(
     () =>
       calcSaleCheckout({
@@ -803,6 +828,59 @@ function SalesRegisterContent({
   const saleDeductibleBase = saleDeductibleBaseForGroup(prepaymentAffectationGroup, totalsByAfectacion)
 
   const selectedContact = form.contact_id ? customers.find(c => c.id === form.contact_id!) : null
+
+  /**
+   * El documento va dentro del label a propósito: SearchableSelect filtra por label,
+   * así que esto es lo que habilita buscar al cliente tecleando su RUC o DNI.
+   */
+  const customerOptions = useMemo(
+    () =>
+      customers.map(c => {
+        const doc = formatTipoDocIdentidadDisplay(c.doc_type, c.doc_number)
+        const isDefault = c.doc_type === '0' && c.doc_number === '99999999'
+        return {
+          value: c.id,
+          label: `${c.business_name}${isDefault ? ' (por defecto)' : ''}${doc ? ` — ${doc}` : ''}`,
+        }
+      }),
+    [customers],
+  )
+
+  /**
+   * Campo de cliente. Se monta en dos sitios distintos según el ancho (en móvil justo debajo
+   * de Serie, en escritorio junto a Moneda), por eso está extraído: solo uno queda visible.
+   * Debe declararse después de `customerOptions`, que consume al construirse.
+   */
+  const clientField = (
+    <>
+      <label className="block text-xs font-medium text-gray-600 mb-1">Cliente *</label>
+      <div className="flex gap-2 items-stretch">
+        <div className="flex-1 min-w-0">
+          <SearchableSelect
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2 min-h-[42px]"
+            value={form.contact_id ?? ''}
+            onChange={v =>
+              setForm(f => ({ ...f, contact_id: v == null || String(v) === '' ? null : Number(v) }))
+            }
+            options={customerOptions}
+            placeholder="Seleccionar cliente..."
+            searchable
+            searchPlaceholder="Buscar por nombre o RUC/DNI..."
+            allowClear
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => setAddClientOpen(true)}
+          className="shrink-0 inline-flex items-center justify-center rounded-xl border border-gray-200 px-3 py-2 text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] min-h-[42px]"
+          title="Nuevo cliente"
+          aria-label="Nuevo cliente"
+        >
+          <UserPlus size={18} />
+        </button>
+      </div>
+    </>
+  )
 
   const retentionPreview = previewIgvRetention(
     fiscalForm.has_igv_retention && !isDetraccion,
@@ -1097,6 +1175,7 @@ function SalesRegisterContent({
             igv_affectation_type: it.igv_affectation_type,
             price_includes_igv: it.price_includes_igv,
             modifiers_json: it.modifiers_json ?? '',
+            item_note: it.item_note?.trim() || undefined,
             serials: it.serials ?? [],
           })),
         }
@@ -1326,6 +1405,7 @@ function SalesRegisterContent({
           igv_affectation_type: it.igv_affectation_type,
           price_includes_igv: it.price_includes_igv,
           modifiers_json: it.modifiers_json ?? '',
+          item_note: it.item_note?.trim() || undefined,
           serials: it.serials ?? [],
         })),
       }
@@ -1637,8 +1717,10 @@ function SalesRegisterContent({
           </div>
         </header>
 
-        {/* Documento y condiciones comerciales */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
+        {/* Documento y condiciones comerciales.
+            grid-cols-2 desde el arranque: con `grid-cols-1` los campos quedaban apilados
+            en celulares pequeños (en Tukifac `sm` es 390px). */}
+        <div className="grid grid-cols-2 lg:grid-cols-12 gap-3">
           <div className="lg:col-span-4">
             <label className="block text-xs font-medium text-gray-600 mb-1">Tipo comprobante</label>
             {isNotaVenta ? (
@@ -1676,6 +1758,9 @@ function SalesRegisterContent({
               ))}
             </select>
           </div>
+          {/* En móvil el cliente va aquí, entre Serie y Tipo operación. En pantalla grande
+              se oculta y manda la instancia de la grilla siguiente (junto a Moneda). */}
+          <div className="col-span-2 lg:hidden">{clientField}</div>
           {!isNotaVenta && !isQuotation && (
             <div className="lg:col-span-6">
               <label className="block text-xs font-medium text-gray-600 mb-1">Tipo operación</label>
@@ -1704,45 +1789,17 @@ function SalesRegisterContent({
           )}
         </div>
 
-        {/* Cliente, moneda y tipo de cambio */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
+        {/* Cliente (solo pantalla grande), moneda y tipo de cambio.
+            En cotización esta grilla solo lleva el cliente, así que en móvil no se muestra. */}
+        <div
+          className={`${isQuotation ? 'hidden lg:grid' : 'grid'} grid-cols-2 lg:grid-cols-12 gap-3`}
+        >
           <div
-            className={
-              isQuotation
-                ? 'sm:col-span-2 lg:col-span-8'
-                : isNotaVenta
-                  ? 'sm:col-span-2 lg:col-span-5'
-                  : 'sm:col-span-2 lg:col-span-7'
-            }
+            className={`hidden lg:block ${
+              isQuotation ? 'lg:col-span-8' : isNotaVenta ? 'lg:col-span-5' : 'lg:col-span-7'
+            }`}
           >
-            <label className="block text-xs font-medium text-gray-600 mb-1">Cliente *</label>
-            <div className="flex gap-2 items-stretch">
-              <select
-                className="flex-1 min-w-0 border border-gray-200 rounded-xl px-3 py-2 text-sm"
-                value={form.contact_id ?? ''}
-                onChange={e => setForm(f => ({ ...f, contact_id: e.target.value ? Number(e.target.value) : null }))}
-              >
-                <option value="">Seleccionar cliente...</option>
-                {customers.map(c => (
-                  <option key={c.id} value={c.id}>
-                    {c.business_name}
-                    {c.doc_type === '0' && c.doc_number === '99999999' ? ' (por defecto)' : ''}
-                    {formatTipoDocIdentidadDisplay(c.doc_type, c.doc_number)
-                      ? ` — ${formatTipoDocIdentidadDisplay(c.doc_type, c.doc_number)}`
-                      : ''}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => setAddClientOpen(true)}
-                className="shrink-0 inline-flex items-center justify-center rounded-xl border border-gray-200 px-3 py-2 text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] min-h-[42px]"
-                title="Nuevo cliente"
-                aria-label="Nuevo cliente"
-              >
-                <UserPlus size={18} />
-              </button>
-            </div>
+            {clientField}
           </div>
           {!isQuotation && (
             <>
@@ -1966,8 +2023,8 @@ function SalesRegisterContent({
             <table className="w-full text-sm min-w-[720px] table-fixed">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[32%]">Descripción</th>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[12%]">Código</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[30%]">Descripción</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[14%]">Código</th>
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[7%]">Unid.</th>
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[9%]">Cant.</th>
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[11%]">P. unit.</th>
@@ -1988,6 +2045,19 @@ function SalesRegisterContent({
                     <tr key={`${saleItemMergeKey(it)}-${idx}`} className="border-b border-gray-50 hover:bg-gray-50/50">
                       <td className="px-4 py-2.5">
                         <span className="text-gray-800">{it.description || '—'}</span>
+                        <button
+                          type="button"
+                          onClick={() => openItemNoteModal(idx)}
+                          className={`ml-1.5 inline-flex h-6 w-6 items-center justify-center rounded-md align-middle border transition-colors ${
+                            it.item_note
+                              ? 'border-sky-300 bg-sky-500 text-white hover:bg-sky-600'
+                              : 'border-sky-200 bg-sky-50 text-sky-600 hover:bg-sky-100'
+                          }`}
+                          title={it.item_note ? `Nota: ${it.item_note}` : 'Agregar nota a esta línea'}
+                          aria-label={it.item_note ? 'Editar nota de la línea' : 'Agregar nota a la línea'}
+                        >
+                          <StickyNote size={13} />
+                        </button>
                         {modifierLines.map((mLine) => (
                           <span key={mLine} className="block text-[11px] text-[rgb(var(--p700))] mt-0.5">
                             {mLine}
@@ -2002,11 +2072,18 @@ function SalesRegisterContent({
                           </span>
                         ) : null}
                       </td>
-                      <td className="px-4 py-2.5">
-                        <span className="font-mono text-gray-600">{it.code || '—'}</span>
+                      {/* Los códigos internos son cadenas largas sin espacios: en una tabla
+                          table-fixed se desbordaban encima de la columna Unid. */}
+                      <td className="px-4 py-2.5 overflow-hidden">
+                        <span
+                          className="font-mono text-gray-600 block truncate"
+                          title={it.code || undefined}
+                        >
+                          {it.code || '—'}
+                        </span>
                       </td>
                       <td className="px-4 py-2.5">
-                        <span className="text-gray-700">{it.unit}</span>
+                        <span className="text-gray-700 block truncate">{it.unit}</span>
                       </td>
                       <td className="px-4 py-2.5">
                         <input
@@ -2507,6 +2584,70 @@ function SalesRegisterContent({
         onClose={() => setProductToConfigure(null)}
         onConfirm={handleSaleConfigureConfirm}
       />
+
+      <Modal open={itemNoteIdx != null} onClose={closeItemNoteModal} contentClassName="max-w-md">
+        <div className="space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="font-bold text-gray-800 text-lg">Nota del producto</h3>
+              <p className="text-xs text-gray-500 mt-0.5 truncate">
+                {itemNoteIdx != null ? items[itemNoteIdx]?.description : ''}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={closeItemNoteModal}
+              className="p-1.5 hover:bg-gray-100 rounded-lg shrink-0"
+              aria-label="Cerrar"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div>
+            <textarea
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none"
+              rows={3}
+              maxLength={ITEM_NOTE_MAX_LENGTH}
+              placeholder='Ej. "segundo uso", "sin caja", "color negro"'
+              value={itemNoteDraft}
+              onChange={(e) => setItemNoteDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  saveItemNote()
+                }
+              }}
+              autoFocus
+            />
+            <div className="flex items-center justify-between gap-2 mt-1">
+              <p className="text-[11px] text-gray-500">
+                Se guarda solo en este documento. No modifica el producto del catálogo.
+              </p>
+              <span className="text-[11px] text-gray-400 shrink-0 tabular-nums">
+                {itemNoteDraft.length}/{ITEM_NOTE_MAX_LENGTH}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={closeItemNoteModal}
+              className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={saveItemNote}
+              className="flex-1 py-2.5 rounded-xl bg-[rgb(var(--p600))] text-white text-sm font-medium hover:opacity-90"
+            >
+              Guardar nota
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal open={showManualItemModal} onClose={() => setShowManualItemModal(false)} contentClassName="max-w-lg">
         <ManualItemModal

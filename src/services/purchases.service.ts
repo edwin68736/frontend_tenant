@@ -61,6 +61,8 @@ export interface CreatePurchaseInput {
   currency: string
   payment_method?: string
   notes?: string
+  /** Criterio global: el costo unitario tecleado ya incluye IGV (se desagrega en el backend). */
+  price_includes_igv?: boolean
   items: PurchaseItem[]
 }
 

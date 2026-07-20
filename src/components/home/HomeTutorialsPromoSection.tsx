@@ -6,6 +6,7 @@ import {
   X,
 } from 'lucide-react'
 import { PortalModal } from '@/components/ui/PortalModal'
+import { HomeWelcomeCard } from '@/components/home/HomeWelcomeCard'
 import {
   HOME_PROMO_SLIDES_DESKTOP,
   HOME_PROMO_SLIDES_MOBILE,
@@ -257,7 +258,12 @@ function PromotionsModal({
   )
 }
 
-export function HomeTutorialsPromoSection() {
+export function HomeTutorialsPromoSection({
+  /** En escritorio/web el hero de tutoriales va a la izquierda y el carrusel a la derecha. */
+  withWelcomeCard = false,
+}: {
+  withWelcomeCard?: boolean
+} = {}) {
   const slides = useMobileTabletSlides()
   const [showPromoModal, setShowPromoModal] = useState(false)
   const [currentSlide, setCurrentSlide] = useState(0)
@@ -302,8 +308,9 @@ export function HomeTutorialsPromoSection() {
         </button>
       </div>
 
-      {/* Desktop: sin la tarjeta de bienvenida, las promociones ocupan el ancho completo. */}
-      <div className="hidden lg:block">
+      {/* Desktop: con tarjeta de bienvenida va a 2 columnas; sin ella, ancho completo. */}
+      <div className={withWelcomeCard ? 'hidden lg:grid lg:grid-cols-2 lg:gap-4' : 'hidden lg:block'}>
+        {withWelcomeCard && <HomeWelcomeCard />}
         <div
           role="button"
           tabIndex={0}
