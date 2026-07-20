@@ -171,6 +171,15 @@ const NAV_GROUPS: NavGroup[] = [
         exact: true,
       },
       {
+        id: 'prod-combos',
+        to: '/products/combos',
+        label: 'Combos y promociones',
+        icon: <Layers size={14} />,
+        module: 'products',
+        permission: 'products.view',
+        exact: true,
+      },
+      {
         id: 'prod-servicios',
         to: '/products/services',
         label: 'Servicios',

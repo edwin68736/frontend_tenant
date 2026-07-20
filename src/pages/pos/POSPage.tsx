@@ -47,12 +47,14 @@ import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { isTabletCapacitorDevice } from '@/lib/platform/detect'
 import { PosCartLineRow } from '@/components/pos/PosCartLineRow'
 import { ProductConfigureModal } from '@/components/pos/ProductConfigureModal'
+import { ComboConfigureModal } from '@/components/pos/ComboConfigureModal'
 import { roundMoney } from '@/utils/checkoutDiscount'
 import {
   appendCatalogLine,
   applyCatalogLineUnitPrice,
   cartLineKey,
   cartLineUnitPrice,
+  catalogLineComboJson,
   catalogLineModifiersJson,
   createCatalogCartLine,
   isCatalogCartLine,
@@ -126,6 +128,7 @@ function POSContent() {
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
   const [cartModalOpen, setCartModalOpen] = useState(false)
   const [productToConfigure, setProductToConfigure] = useState<Product | null>(null)
+  const [comboToConfigure, setComboToConfigure] = useState<Product | null>(null)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
   const checkoutPaymentMethods = useMemo(() => filterOperationalPaymentMethods(paymentMethods), [paymentMethods])
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
@@ -293,6 +296,12 @@ function POSContent() {
 
   const addToCart = useCallback(
     (product: Product, sourceEl?: HTMLElement) => {
+      if (product.has_combo) {
+        configureFlySourceRef.current = sourceEl
+        cancelFlyAnimations()
+        setComboToConfigure(product)
+        return
+      }
       if (productNeedsSaleConfiguration(product)) {
         configureFlySourceRef.current = sourceEl
         cancelFlyAnimations()
@@ -635,6 +644,8 @@ function POSContent() {
             igv_affectation_type: i.product.igv_affectation_type ?? '10',
             price_includes_igv: i.product.price_includes_igv ?? true,
             modifiers_json: catalogLineModifiersJson(i),
+            // Vacío salvo en combos: el backend resuelve componentes, precio y stock.
+            combo_json: catalogLineComboJson(i),
             serials: i.serials ?? [],
           }
         }),
@@ -1141,6 +1152,15 @@ function POSContent() {
         branchId={session?.branch_id ?? activeBranchId}
         onClose={() => setProductToConfigure(null)}
         onConfirm={handleConfigureConfirm}
+      />
+
+      <ComboConfigureModal
+        product={comboToConfigure}
+        onClose={() => setComboToConfigure(null)}
+        onConfirm={(line) => {
+          handleConfigureConfirm(line)
+          setComboToConfigure(null)
+        }}
       />
 
       <QuickContactCreateModal

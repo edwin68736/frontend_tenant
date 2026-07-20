@@ -3,6 +3,42 @@ import { resolvePublicAssetUrl } from '@/config/apiBaseUrl'
 
 export type ProductCatalogType = 'product' | 'service'
 
+/** Cómo elige el cliente dentro de un grupo del combo. */
+export type ComboSelectionType = 'fixed' | 'single' | 'multiple'
+
+export interface ComboGroupItem {
+  id?: number
+  product_id: number
+  default_quantity: number
+  max_quantity: number
+  /** Sobreprecio de una opción premium (p. ej. cambiar la polera básica: +5.00). */
+  extra_price: number
+  is_default?: boolean
+  sort_order?: number
+  /** Datos vivos del componente (solo lectura, los envía el backend). */
+  product_name?: string
+  product_code?: string
+  product_sale_price?: number
+  product_image_url?: string
+}
+
+export interface ComboGroup {
+  id?: number
+  name: string
+  selection_type: ComboSelectionType
+  min_select: number
+  max_select: number
+  allow_quantity?: boolean
+  sort_order?: number
+  items: ComboGroupItem[]
+}
+
+/** Lo que el cliente eligió en un grupo al comprar el combo. */
+export interface ComboSelection {
+  group_id: number
+  items: { product_id: number; quantity: number }[]
+}
+
 export interface Product {
   id: number
   code: string
@@ -21,6 +57,9 @@ export interface Product {
   manage_series?: boolean
   has_variants?: boolean
   has_modifiers?: boolean
+  /** Es un combo/promoción: agrupa otros productos a un precio fijo. */
+  has_combo?: boolean
+  combo_groups?: ComboGroup[]
   min_stock: number
   /** Si el producto lleva control de fecha de vencimiento. */
   has_expiry_date?: boolean
@@ -92,6 +131,8 @@ export interface CreateProductInput {
   manage_series?: boolean
   has_variants?: boolean
   has_modifiers?: boolean
+  /** Grupos del combo. null/ausente = no tocar; [] = deja de ser combo. */
+  combo_groups?: ComboGroup[]
   min_stock?: number
   has_expiry_date?: boolean
   expiry_date?: string | null
@@ -122,6 +163,8 @@ export interface ProductDetailResponse {
   data: Product
   modifier_group_ids: number[]
   presentations?: ProductPresentation[]
+  /** Presente cuando el producto es un combo. */
+  combo_groups?: ComboGroup[]
 }
 
 export interface BulkImportItemPayload {
@@ -181,7 +224,9 @@ export const productsService = {
     /** Filtra por tipo en catálogo (product | service). Sin valor: todos. */
     catalog_type?: ProductCatalogType,
     /** Filtra catálogo/stock por sucursal activa. */
-    branch_id?: number
+    branch_id?: number,
+    /** Oculta los combos. Úselo al elegir componentes: un combo no puede contener otro. */
+    exclude_combos?: boolean
   ) =>
     api
       .get<{ data: Product[]; total?: number }>('/api/products', {
@@ -195,12 +240,24 @@ export const productsService = {
           manage_stock_only,
           type: catalog_type,
           ...(branch_id && branch_id > 0 ? { branch_id } : {}),
+          ...(exclude_combos ? { exclude_combos: true } : {}),
         },
       })
       .then(r => ({
         data: r.data.data ?? [],
         total: r.data.total ?? 0,
       })),
+
+  /**
+   * Solo combos/promociones. El catálogo normal debe pedirse con `excludeCombos` para que
+   * no aparezcan mezclados: un combo no se vende como un producto suelto.
+   */
+  listCombos: (q = '', activeOnly = true) =>
+    api
+      .get<{ data: Product[] }>('/api/products', {
+        params: { q, combos_only: true, active_only: activeOnly },
+      })
+      .then(r => r.data.data ?? []),
 
   /** Búsqueda exacta por código de barras (POS / cámara). Variantes EAN-13 / UPC-A en el servidor. */
   lookupByBarcode: (code: string, branchId?: number | null) =>
@@ -250,6 +307,7 @@ export const productsService = {
       data: r.data.data,
       modifier_group_ids: r.data.modifier_group_ids ?? [],
       presentations: r.data.presentations ?? [],
+      combo_groups: r.data.combo_groups ?? [],
     })),
 
   bulkImportCatalog: (items: BulkImportItemPayload[], branchId?: number) =>

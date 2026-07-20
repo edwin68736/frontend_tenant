@@ -8,6 +8,7 @@ import {
   modifiersToJson,
 } from '@/utils/productModifiers'
 import { roundMoney } from '@/utils/checkoutDiscount'
+import { comboSignature, comboSelectionsToJson, type ComboCartState } from '@/utils/comboCart'
 
 export type CatalogCartLine = {
   kind: 'catalog'
@@ -20,6 +21,11 @@ export type CatalogCartLine = {
   modifiers: CartModifierEntry[]
   configureKey: string
   serials?: string[]
+  /**
+   * Solo si product.has_combo: lo que el cliente eligió en cada grupo. Un combo es un
+   * producto de catálogo con una selección encima, así que reusa esta misma línea.
+   */
+  combo?: ComboCartState
 }
 
 export type ManualCartLine = {
@@ -128,12 +134,14 @@ export function createCatalogCartLine(
     modifiers?: CartModifierEntry[]
     base_price?: number
     serials?: string[]
+    combo?: ComboCartState
   },
 ): CatalogCartLine {
   const base = partial?.base_price ?? (Number(product.sale_price) || 0)
   const modifiers = partial?.modifiers ?? []
   const notes = partial?.notes ?? ''
   const serials = partial?.serials
+  const combo = partial?.combo
   const unit_price = calcUnitPriceWithModifiers(base, modifiers)
   return {
     kind: 'catalog',
@@ -144,9 +152,26 @@ export function createCatalogCartLine(
     base_price: base,
     unit_price,
     modifiers,
-    configureKey: buildCatalogConfigureKey(modifiers, notes, unit_price, serials),
+    // La elección del combo entra en la clave: dos combos con distinta selección no se funden.
+    configureKey: comboConfigureKey(
+      buildCatalogConfigureKey(modifiers, notes, unit_price, serials),
+      combo,
+    ),
     serials,
+    combo,
   }
+}
+
+/** Añade la firma del combo a la clave de fusión del carrito. */
+function comboConfigureKey(base: string, combo?: ComboCartState): string {
+  if (!combo) return base
+  return base + '@c' + comboSignature(combo.components)
+}
+
+/** JSON de la selección para el backend; vacío si la línea no es un combo. */
+export function catalogLineComboJson(line: CatalogCartLine): string {
+  if (!line.combo) return ''
+  return comboSelectionsToJson(line.combo.selections)
 }
 
 export function catalogLinesMatch(a: CatalogCartLine, b: CatalogCartLine): boolean {

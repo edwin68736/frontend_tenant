@@ -420,9 +420,11 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
             <div className="w-7 h-7 border-2 border-gray-300 border-t-[rgb(var(--p600))] rounded-full animate-spin" />
           </div>
         )}
-        <div className="w-full overflow-x-auto">
+        {/* Scroll propio con cabecera fija: el listado no tiene paginación, así que con
+            muchos contactos la tabla crecía sin fin y los encabezados se perdían de vista. */}
+        <div className="w-full overflow-x-auto overflow-y-auto max-h-[calc(100dvh-19rem)] min-h-[220px]">
         <table className="w-full min-w-[640px] text-sm">
-          <thead className="bg-gray-50 border-b border-gray-100">
+          <thead className="bg-gray-50 border-b border-gray-100 sticky top-0 z-10">
             <tr>
               {['Doc.', 'Nombre / Razón Social', 'Teléfono', 'Email', 'Contacto', 'Estado'].map(h => (
                 <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>
@@ -506,6 +508,12 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
             {showInactiveOnly
               ? `No hay ${contactType === 'supplier' ? 'proveedores' : 'clientes'} inactivos`
               : `No se encontraron ${contactType === 'supplier' ? 'proveedores' : 'clientes'}`}
+          </div>
+        )}
+        {!loading && contacts.length > 0 && (
+          <div className="border-t border-gray-100 px-4 py-2 text-xs text-gray-500">
+            {contacts.length} {contactType === 'supplier' ? 'proveedores' : 'clientes'}
+            {' '}· use el buscador para filtrar
           </div>
         )}
       </div>

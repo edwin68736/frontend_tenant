@@ -99,8 +99,6 @@ export function CheckoutCartBillingFields({
   }, [checkoutSeries])
 
   const selectedDocKey = normalizeDocTypeKey(docType)
-  const seriesForDocType = checkoutSeries.filter((s) => normalizeDocTypeKey(s.doc_type) === selectedDocKey)
-  const showSeriesPicker = seriesForDocType.length > 1
 
   // Autocorrección del tipo por defecto: si el tipo/serie seleccionado NO está entre los
   // disponibles del modal (p. ej. quedó en Factura y el tenant es Nuevo RUS, o el formato del
@@ -193,26 +191,8 @@ export function CheckoutCartBillingFields({
         </div>
       )}
 
-      {showSeriesPicker && (
-        <div>
-          <label className={LABEL}>Serie</label>
-          <SearchableSelect
-            value={seriesId || null}
-            onChange={(v) => {
-              const id = Number(v)
-              const s = seriesForDocType.find((x) => x.id === id) ?? checkoutSeries.find((x) => x.id === id)
-              if (s) onSeriesChange(id, String(s.doc_type || '').trim() || 'NOTA DE VENTA')
-            }}
-            options={seriesForDocType.map((s) => ({
-              value: s.id,
-              label: String(s.series ?? '').trim() || `Serie ${s.id}`,
-            }))}
-            placeholder="Serie"
-            searchable={seriesForDocType.length > 8}
-            className={SELECT_TRIGGER}
-          />
-        </div>
-      )}
+      {/* El selector de serie vive en POSCheckoutModal, junto a Descuento: tenerlo aquí
+          además del campo de allá pintaba dos «Serie» en el mismo modal. */}
     </>
   )
 }

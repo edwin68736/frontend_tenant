@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import {
   AlertTriangle,
   Building2,
   ChevronRight,
   Clock,
+  Download,
   CreditCard,
   ExternalLink,
   FileText,
@@ -16,11 +17,13 @@ import {
   RefreshCw,
   Wallet,
 } from 'lucide-react'
+import { Modal } from '@/components/ui/Modal'
 import { useSubscriptionStatus } from '@/contexts/SubscriptionStatusContext'
 import {
   assetUrl,
   subscriptionService,
   type BillingHub,
+  type BillingInvoice,
   type SupportConfig,
 } from '@/services/subscription.service'
 import PlanDetailFrame from './PlanDetailFrame'
@@ -34,6 +37,14 @@ import {
 
 const inputClass =
   'w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white'
+
+/** Estado de cada período, en lenguaje del cliente (no el del backend). */
+const INVOICE_STATUS_UI: Record<string, { label: string; className: string }> = {
+  pending: { label: 'Por pagar', className: 'bg-amber-100 text-amber-800' },
+  overdue: { label: 'Vencido', className: 'bg-red-100 text-red-700' },
+  paid: { label: 'Pagado', className: 'bg-emerald-100 text-emerald-700' },
+  rejected: { label: 'Anulado', className: 'bg-gray-100 text-gray-600' },
+}
 
 function Section({
   id,
@@ -108,10 +119,8 @@ export default function SubscriptionPage() {
   const [pkgReference, setPkgReference] = useState('')
   const [pkgSubmitting, setPkgSubmitting] = useState(false)
 
-  const payableInvoices = useMemo(
-    () => (hub?.invoices ?? []).filter(i => i.status === 'pending' || i.status === 'overdue'),
-    [hub],
-  )
+  /** Deuda que se está pagando; null = formulario cerrado. */
+  const [payInvoice, setPayInvoice] = useState<BillingInvoice | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -141,12 +150,16 @@ export default function SubscriptionPage() {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  const onInvoiceChange = (id: string) => {
-    setBillingCycleId(id)
-    const inv = payableInvoices.find(i => String(i.id) === id)
-    if (inv && hub?.subscription) {
+  /** Abre el formulario ya apuntado a la deuda elegida en la fila. */
+  const openPayModal = (inv: BillingInvoice) => {
+    setBillingCycleId(String(inv.id))
+    if (hub?.subscription) {
       setAmount(String(billingCyclePaymentTotal(inv, hub.subscription)))
     }
+    setReceipt(null)
+    setReference('')
+    setPaymentDate(new Date().toISOString().slice(0, 10))
+    setPayInvoice(inv)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -174,6 +187,7 @@ export default function SubscriptionPage() {
       toast.success(res.message ?? 'Pago enviado')
       setReceipt(null)
       setReference('')
+      setPayInvoice(null)
       if (res.hub) {
         setHub(res.hub)
         setGlobalHub(res.hub)
@@ -201,7 +215,7 @@ export default function SubscriptionPage() {
 
   const quickLinks = [
     { id: 'historial-pagos', label: 'Historial de pagos', icon: CreditCard },
-    { id: 'gestionar-pago', label: 'Comprobantes enviados', icon: FileUp },
+    { id: 'gestionar-pago', label: 'Mis pagos y deudas', icon: FileUp },
     { id: 'metodos-pago', label: 'Métodos de pago', icon: Wallet },
     { id: 'historial-suscripcion', label: 'Historial de suscripción', icon: History },
   ]
@@ -351,87 +365,66 @@ export default function SubscriptionPage() {
             </Section>
           )}
 
-          <Section id="gestionar-pago" title="Gestionar pago" icon={FileUp}>
-            {sub.can_submit_payment ? (
-              payableInvoices.length === 0 ? (
-                <p className="text-sm text-gray-500">No hay períodos pendientes de pago en este momento.</p>
-              ) : (
-                <form onSubmit={handleSubmit} className="space-y-4 max-w-xl">
-                  <div>
-                    <label className="text-xs text-gray-600">Período</label>
-                    <select className={inputClass} value={billingCycleId} onChange={e => onInvoiceChange(e.target.value)} required>
-                      {payableInvoices.map(inv => (
-                        <option key={inv.id} value={inv.id}>
-                          {formatDate(inv.period_end)} — {formatMoney(billingCyclePaymentTotal(inv, sub))}
-                          {sub.is_suspended || sub.tenant_status === 'suspended' ? ' (incl. reconexión)' : ''}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="grid sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs text-gray-600">Método</label>
-                      <select className={inputClass} value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} required>
-                        {cfg.methods.map(m => (
-                          <option key={m.key} value={m.key}>
-                            {m.label}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-600">Monto (S/)</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        className={inputClass}
-                        value={amount}
-                        onChange={e => setAmount(e.target.value)}
-                        required
-                      />
-                    </div>
-                  </div>
-                  <div className="grid sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs text-gray-600">Fecha de pago</label>
-                      <input
-                        type="date"
-                        className={inputClass}
-                        value={paymentDate}
-                        onChange={e => setPaymentDate(e.target.value)}
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-600">Referencia / Nº operación</label>
-                      <input className={inputClass} value={reference} onChange={e => setReference(e.target.value)} placeholder="Opcional" />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-600">Comprobante (imagen o PDF)</label>
-                    <input
-                      type="file"
-                      accept=".jpg,.jpeg,.png,.pdf,.webp"
-                      className="text-sm mt-1 block w-full"
-                      onChange={e => setReceipt(e.target.files?.[0] ?? null)}
-                      required
-                    />
-                  </div>
-                  <p className="text-xs text-gray-500">
-                    Si tu cuenta está suspendida, tras enviar podrás tener hasta 12 h de acceso provisional (1 vez por ciclo).
-                  </p>
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="px-5 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-semibold disabled:opacity-60 flex items-center gap-2"
-                  >
-                    {submitting ? <Loader2 size={16} className="animate-spin" /> : <FileUp size={16} />}
-                    Enviar comprobante
-                  </button>
-                </form>
-              )
+          <Section id="gestionar-pago" title="Mis pagos y deudas" icon={FileUp}>
+            {hub.invoices.length === 0 ? (
+              <p className="text-sm text-gray-500">Aún no hay períodos registrados.</p>
             ) : (
-              <p className="text-sm text-red-700">{sub.support_message ?? 'No puede enviar nuevos comprobantes.'}</p>
+              <div className="overflow-x-auto -mx-1">
+                <table className="w-full text-sm min-w-[520px]">
+                  <thead>
+                    <tr className="text-left text-gray-500 border-b">
+                      <th className="pb-2 pr-3">Período</th>
+                      <th className="pb-2 pr-3">Vence</th>
+                      <th className="pb-2 pr-3">Monto</th>
+                      <th className="pb-2 pr-3">Estado</th>
+                      <th className="pb-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {hub.invoices.map(inv => {
+                      const payable = inv.status === 'pending' || inv.status === 'overdue'
+                      const ui = INVOICE_STATUS_UI[inv.status] ?? {
+                        label: inv.status,
+                        className: 'bg-gray-100 text-gray-600',
+                      }
+                      return (
+                        <tr key={inv.id} className="border-b border-gray-50">
+                          <td className="py-2.5 pr-3 whitespace-nowrap">
+                            {formatDate(inv.period_start)} → {formatDate(inv.period_end)}
+                          </td>
+                          <td className="py-2.5 pr-3 whitespace-nowrap">{formatDate(inv.due_date)}</td>
+                          <td className="py-2.5 pr-3 font-semibold text-gray-900 tabular-nums">
+                            {formatMoney(billingCyclePaymentTotal(inv, sub))}
+                          </td>
+                          <td className="py-2.5 pr-3">
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${ui.className}`}
+                            >
+                              {ui.label}
+                            </span>
+                          </td>
+                          <td className="py-2.5 text-right">
+                            {payable && sub.can_submit_payment && (
+                              <button
+                                type="button"
+                                onClick={() => openPayModal(inv)}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700"
+                              >
+                                <FileUp size={13} /> Pagar
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {!sub.can_submit_payment && (
+              <p className="text-sm text-red-700 mt-3">
+                {sub.support_message ?? 'No puede enviar nuevos comprobantes.'}
+              </p>
             )}
             {portalAlt && (
               <a
@@ -456,7 +449,8 @@ export default function SubscriptionPage() {
                       <th className="pb-2 pr-3">Fecha</th>
                       <th className="pb-2 pr-3">Monto</th>
                       <th className="pb-2 pr-3">Método</th>
-                      <th className="pb-2">Estado</th>
+                      <th className="pb-2 pr-3">Estado</th>
+                      <th className="pb-2">Comprobante</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -465,9 +459,27 @@ export default function SubscriptionPage() {
                         <td className="py-2 pr-3">{formatDate(p.created_at)}</td>
                         <td className="py-2 pr-3">{formatMoney(p.amount)}</td>
                         <td className="py-2 pr-3">{p.payment_method}</td>
-                        <td className="py-2">
+                        <td className="py-2 pr-3">
                           <span className="font-medium">{STATUS_LABELS[p.status] ?? p.status}</span>
                           {p.reject_reason && <p className="text-xs text-red-600 mt-0.5">{p.reject_reason}</p>}
+                        </td>
+                        {/* Boleta/factura que emiten por el pago. Solo aparece cuando la
+                            adjuntan desde el panel central. */}
+                        <td className="py-2">
+                          {p.fiscal_doc_url ? (
+                            <a
+                              href={assetUrl(p.fiscal_doc_url)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-primary-600 hover:underline font-medium"
+                            >
+                              <Download size={14} /> Descargar
+                            </a>
+                          ) : (
+                            <span className="text-xs text-gray-400">
+                              {p.status === 'approved' ? 'Pendiente de emisión' : '—'}
+                            </span>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -577,6 +589,103 @@ export default function SubscriptionPage() {
           </div>
         </aside>
       </div>
+
+      {/* El formulario solo aparece tras elegir la deuda con «Pagar»: antes estaba siempre
+          visible con un select de períodos, que obligaba a entender la lista dos veces. */}
+      <Modal open={Boolean(payInvoice)} onClose={() => setPayInvoice(null)} contentClassName="max-w-lg">
+        <div className="flex items-start justify-between gap-3 border-b border-gray-100 pb-3">
+          <div>
+            <h3 className="font-bold text-gray-800">Pagar período</h3>
+            {payInvoice && (
+              <p className="text-xs text-gray-500 mt-0.5">
+                {formatDate(payInvoice.period_start)} → {formatDate(payInvoice.period_end)} ·{' '}
+                <span className="font-semibold text-gray-700">
+                  {formatMoney(billingCyclePaymentTotal(payInvoice, sub))}
+                </span>
+                {sub.is_suspended || sub.tenant_status === 'suspended' ? ' (incl. reconexión)' : ''}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setPayInvoice(null)}
+            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500"
+            aria-label="Cerrar"
+          >
+            ✕
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4 pt-4">
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-600">Método</label>
+              <select className={inputClass} value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} required>
+                {cfg.methods.map(m => (
+                  <option key={m.key} value={m.key}>{m.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-600">Monto (S/)</label>
+              <input
+                type="number"
+                step="0.01"
+                className={inputClass}
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+                required
+              />
+            </div>
+          </div>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-600">Fecha de pago</label>
+              <input
+                type="date"
+                className={inputClass}
+                value={paymentDate}
+                onChange={e => setPaymentDate(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-600">Referencia / Nº operación</label>
+              <input className={inputClass} value={reference} onChange={e => setReference(e.target.value)} placeholder="Opcional" />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-600">Comprobante (imagen o PDF)</label>
+            <input
+              type="file"
+              accept=".jpg,.jpeg,.png,.pdf,.webp"
+              className="text-sm mt-1 block w-full"
+              onChange={e => setReceipt(e.target.files?.[0] ?? null)}
+              required
+            />
+          </div>
+          <p className="text-xs text-gray-500">
+            Si tu cuenta está suspendida, tras enviar podrás tener hasta 12 h de acceso provisional (1 vez por ciclo).
+          </p>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setPayInvoice(null)}
+              className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-slate-900 text-white text-sm font-semibold disabled:opacity-60 flex items-center justify-center gap-2"
+            >
+              {submitting ? <Loader2 size={16} className="animate-spin" /> : <FileUp size={16} />}
+              Enviar comprobante
+            </button>
+          </div>
+        </form>
+      </Modal>
     </div>
   )
 }

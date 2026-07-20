@@ -19,10 +19,12 @@ import { ProductPickerModal } from '@/components/sales/ProductPickerModal'
 import { PaymentMethodSelect } from '@/components/sales/PaymentMethodSelect'
 import { SalePaymentConditionSection } from '@/components/sales/SalePaymentConditionSection'
 import { ProductConfigureModal, productNeedsSaleConfiguration } from '@/components/pos/ProductConfigureModal'
+import { ComboConfigureModal } from '@/components/pos/ComboConfigureModal'
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { TenantCompanyEditModal } from '@/components/sales/TenantCompanyEditModal'
 import { SaleReceiptPreviewModal } from '@/components/sales/SaleReceiptPreviewModal'
 import {
+  catalogLineComboJson,
   catalogLineModifiersJson,
   createCatalogCartLine,
   type CatalogCartLine,
@@ -106,6 +108,8 @@ export interface SaleFormItem {
   /** Clave de fusión cuando el mismo producto tiene distinta configuración */
   line_key?: string
   modifiers_json?: string
+  /** Selección del combo; vacío en productos normales. */
+  combo_json?: string
   item_note?: string
 }
 
@@ -172,6 +176,7 @@ function catalogLineToSaleItem(line: CatalogCartLine): SaleFormItem {
     igv_affectation_type: p.igv_affectation_type ?? '10',
     price_includes_igv: p.price_includes_igv ?? true,
     modifiers_json: catalogLineModifiersJson(line),
+    combo_json: catalogLineComboJson(line),
     item_note: line.notes?.trim() || undefined,
     serials: line.serials,
   }
@@ -235,6 +240,7 @@ function SalesRegisterContent({
   const [taxConfig, setTaxConfig] = useState<{ taxRate: number; igvRegime?: string; taxBenefitZone?: boolean }>({ taxRate: 18 })
   const [showProductPicker, setShowProductPicker] = useState(false)
   const [productToConfigure, setProductToConfigure] = useState<Product | null>(null)
+  const [comboToConfigure, setComboToConfigure] = useState<Product | null>(null)
   const [showManualItemModal, setShowManualItemModal] = useState(false)
   const [form, setForm] = useState<{
     branch_id: number
@@ -619,6 +625,12 @@ function SalesRegisterContent({
       : null
 
   const addProductToItems = (p: Product) => {
+    // Un combo necesita elegir sus opciones antes de entrar al detalle.
+    if (p.has_combo) {
+      setShowProductPicker(false)
+      setComboToConfigure(p)
+      return
+    }
     if (productNeedsSaleConfiguration(p)) {
       setShowProductPicker(false)
       setProductToConfigure(p)
@@ -1175,6 +1187,7 @@ function SalesRegisterContent({
             igv_affectation_type: it.igv_affectation_type,
             price_includes_igv: it.price_includes_igv,
             modifiers_json: it.modifiers_json ?? '',
+            combo_json: it.combo_json ?? '',
             item_note: it.item_note?.trim() || undefined,
             serials: it.serials ?? [],
           })),
@@ -1405,6 +1418,7 @@ function SalesRegisterContent({
           igv_affectation_type: it.igv_affectation_type,
           price_includes_igv: it.price_includes_igv,
           modifiers_json: it.modifiers_json ?? '',
+          combo_json: it.combo_json ?? '',
           item_note: it.item_note?.trim() || undefined,
           serials: it.serials ?? [],
         })),
@@ -2583,6 +2597,15 @@ function SalesRegisterContent({
         stacked
         onClose={() => setProductToConfigure(null)}
         onConfirm={handleSaleConfigureConfirm}
+      />
+
+      <ComboConfigureModal
+        product={comboToConfigure}
+        onClose={() => setComboToConfigure(null)}
+        onConfirm={(line) => {
+          appendSaleItem(catalogLineToSaleItem(line))
+          setComboToConfigure(null)
+        }}
       />
 
       <Modal open={itemNoteIdx != null} onClose={closeItemNoteModal} contentClassName="max-w-md">

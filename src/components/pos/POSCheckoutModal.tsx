@@ -13,6 +13,8 @@ import { formatAmountDisplay, paidCoversTotal, roundDisplay, roundSunat, sumMone
 import { filterPosCheckoutSeriesForModal } from '@/utils/posCheckoutSeries'
 import { BranchSeriesEmptyState } from '@/components/pos/BranchSeriesEmptyState'
 import { CheckoutCartBillingFields } from '@/components/pos/CheckoutCartBillingFields'
+import { SearchableSelect } from '@/components/SearchableSelect'
+import { normalizeDocTypeKey } from '@/utils/paymentMethodVisual'
 
 export type CheckoutPaymentLine = {
   method: string
@@ -167,6 +169,14 @@ export function POSCheckoutModal({
     return String(selectedSeries.series ?? '').trim() || '—'
   }, [selectedSeries])
 
+  // Series del comprobante elegido. Si hay más de una, este mismo hueco pasa a ser un
+  // selector: antes se pintaba un segundo campo «Serie» más arriba y quedaban dos.
+  const seriesForDocType = useMemo(
+    () => checkoutSeries.filter((s) => normalizeDocTypeKey(s.doc_type) === normalizeDocTypeKey(docType)),
+    [checkoutSeries, docType],
+  )
+  const canPickSeries = seriesForDocType.length > 1
+
   const paymentSlotsCount = payments.length
   const isModeSimple = paymentSlotsCount === 1
   const paid = sumMoney(...payments.map((p) => Number(p.amount) || 0))
@@ -294,12 +304,30 @@ export function POSCheckoutModal({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={LABEL}>Serie</label>
-                  <div
-                    className="flex min-h-[42px] items-center rounded-xl border border-stone-200 bg-stone-50/80 px-3 py-2 text-sm font-mono font-semibold text-stone-800"
-                    title="Serie del comprobante seleccionado"
-                  >
-                    {seriesCodeLabel}
-                  </div>
+                  {canPickSeries ? (
+                    <SearchableSelect
+                      value={seriesId || null}
+                      onChange={(v) => {
+                        const id = Number(v)
+                        const s = seriesForDocType.find((x) => x.id === id)
+                        if (s) onSeriesChange(id, String(s.doc_type || '').trim() || 'NOTA DE VENTA')
+                      }}
+                      options={seriesForDocType.map((s) => ({
+                        value: s.id,
+                        label: String(s.series ?? '').trim() || `Serie ${s.id}`,
+                      }))}
+                      placeholder="Serie"
+                      searchable={seriesForDocType.length > 8}
+                      className="w-full min-h-[42px] rounded-xl border border-stone-200 bg-white px-3 py-2 text-left text-sm font-mono font-semibold text-stone-800 flex items-center justify-between gap-2"
+                    />
+                  ) : (
+                    <div
+                      className="flex min-h-[42px] items-center rounded-xl border border-stone-200 bg-stone-50/80 px-3 py-2 text-sm font-mono font-semibold text-stone-800"
+                      title="Serie del comprobante seleccionado"
+                    >
+                      {seriesCodeLabel}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className={LABEL}>Descuento</label>
@@ -402,6 +430,9 @@ export function POSCheckoutModal({
                       onChange={(amount) => updateLine(0, { amount })}
                       placeholder="Monto"
                       emptyWhenZero
+                      // Igual que en pagos múltiples: al enfocar se limpia para teclear
+                      // directo, y si no se escribe nada se restaura el monto anterior.
+                      clearOnFocus
                     />
                     <input
                       type="text"

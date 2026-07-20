@@ -29,6 +29,27 @@ const CYCLE_LABELS: Record<string, string> = {
   lifetime: 'Vitalicio',
 }
 
+/** Meses de cada ciclo, para saber si lo contratado coincide con el ciclo del plan. */
+const CYCLE_MONTHS: Record<string, number> = {
+  monthly: 1,
+  semiannual: 6,
+  annual: 12,
+  yearly: 12,
+}
+
+/**
+ * Período contratado. Si los meses pagados coinciden con el ciclo del plan se usa la
+ * etiqueta de siempre ("Mensual"); si no, se dice la duración real ("3 meses"), que es lo
+ * que determina el próximo pago.
+ */
+function periodLabel(sub: { billing_cycle: string; contracted_months?: number }): string {
+  const cycle = CYCLE_LABELS[sub.billing_cycle] ?? sub.billing_cycle
+  const months = sub.contracted_months ?? 0
+  if (sub.billing_cycle === 'lifetime' || months <= 0) return cycle
+  if (CYCLE_MONTHS[sub.billing_cycle] === months) return cycle
+  return months === 1 ? '1 mes' : `${months} meses`
+}
+
 const TIER_BORDER: Record<string, string> = {
   normal: 'border-l-emerald-500',
   reminder: 'border-l-amber-500',
@@ -71,7 +92,9 @@ export default function PlanDetailFrame({ hub, onManagePayment }: Props) {
   const paymentTone = ctx?.current_payment_tone ?? 'success'
   const planAmt = planAmountDisplay(hub)
   const nextPay = nextPaymentDate(sub)
-  const cycleLabel = CYCLE_LABELS[sub.billing_cycle] ?? sub.billing_cycle
+  // billing_cycle es el del PLAN; los meses contratados pueden ser otros (un plan mensual
+  // vendido por 3 meses decía «Mensual» junto a un período de 3 meses).
+  const cycleLabel = periodLabel(sub)
   const borderAccent = TIER_BORDER[tier] ?? TIER_BORDER.normal
   const showAlert = ctx?.show_status_banner && hub.status_banner?.message
 

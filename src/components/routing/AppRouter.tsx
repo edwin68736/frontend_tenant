@@ -11,6 +11,7 @@ import { isNativeShell } from '@/lib/platform/detect'
 const HomePage = lazy(() => import('@/pages/home/HomePage'))
 const DashboardPage = lazy(() => import('@/pages/dashboard/DashboardPage'))
 const ProductsPage = lazy(() => import('@/pages/products/ProductsPage'))
+const CombosPage = lazy(() => import('@/pages/products/CombosPage'))
 const ServicesCatalogPage = lazy(() => import('@/pages/products/ServicesCatalogPage'))
 const CategoriesPage = lazy(() => import('@/pages/products/CategoriesPage'))
 const BrandsPage = lazy(() => import('@/pages/products/BrandsPage'))
@@ -141,6 +142,7 @@ function AppRoutes() {
         <Route path="purchases/suppliers" element={<Lazy><SuppliersPage /></Lazy>} />
         <Route path="purchases" element={<Lazy><PurchasesPage /></Lazy>} />
         <Route path="products" element={<Lazy><ProductsPage /></Lazy>} />
+        <Route path="products/combos" element={<Lazy><CombosPage /></Lazy>} />
         <Route path="products/services" element={<Lazy><ServicesCatalogPage /></Lazy>} />
         <Route path="products/categories" element={<Lazy><CategoriesPage /></Lazy>} />
         <Route path="products/brands" element={<Lazy><BrandsPage /></Lazy>} />

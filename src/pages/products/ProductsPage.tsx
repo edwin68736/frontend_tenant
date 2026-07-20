@@ -228,7 +228,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     /** Stock por sucursal se carga aparte; el catálogo lista todos los productos del tenant. */
     const stockBranchId = pageMode === 'product' && activeBranchId > 0 ? activeBranchId : undefined
     return productsService
-      .list(listSearchQuery, catFilter, undefined, !includeInactive, page, perPage, undefined, pageMode)
+      // Los combos se administran en /products/combos: aquí solo el catálogo suelto.
+      .list(listSearchQuery, catFilter, undefined, !includeInactive, page, perPage, undefined, pageMode, undefined, true)
       .then(({ data: p, total: t }) => {
         if (seq !== loadSeqRef.current) return [] as Product[]
         setProducts(p ?? [])

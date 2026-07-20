@@ -4,7 +4,10 @@ import { resolvePublicAssetUrl } from '@/config/apiBaseUrl'
 export interface TenantSubscriptionView {
   has_subscription?: boolean
   plan_name: string
+  /** Ciclo del PLAN (monthly, annual…), no necesariamente lo contratado. */
   billing_cycle: string
+  /** Meses realmente contratados (start_date → end_date). Define el próximo pago. */
+  contracted_months?: number
   status: string
   tenant_status: string
   days_until_expiry: number
@@ -90,6 +93,8 @@ export interface SaasPaymentRow {
   reference?: string
   payment_date?: string
   reject_reason?: string
+  /** Boleta/factura emitida por este pago; vacío mientras no la adjunten. */
+  fiscal_doc_url?: string
   created_at: string
 }
 
