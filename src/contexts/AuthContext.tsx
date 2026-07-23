@@ -9,6 +9,7 @@ import {
 import { toast } from 'sonner'
 import { isNativeShell } from '@/lib/platform/detect'
 import { clearCompanyCaches } from '@/lib/companyConfig/store'
+import { SESSION_EXPIRED_EVENT } from '@/services/api'
 
 interface AuthState {
   user: AuthUser | null
@@ -104,6 +105,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } else {
       setState(s => ({ ...s, isLoading: false }))
     }
+  }, [])
+
+  // Sesión caducada detectada por el interceptor del API (401): este ya limpió localStorage,
+  // pero el estado del contexto vive en memoria. En Tauri/Capacitor no hay recarga de página,
+  // así que sin este listener el contexto seguía "autenticado" y LoginPage rebotaba a /home
+  // en bucle (varios toasts de sesión expirada y pantalla en blanco sin llegar al login).
+  useEffect(() => {
+    const onSessionExpired = () => {
+      setState({
+        user: null,
+        token: null,
+        modules: [],
+        permissions: [],
+        tenantStatus: '',
+        isImpersonated: false,
+        isAuthenticated: false,
+        isLoading: false,
+      })
+    }
+    window.addEventListener(SESSION_EXPIRED_EVENT, onSessionExpired)
+    return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onSessionExpired)
   }, [])
 
   const login = async (payload: LoginPayload) => {

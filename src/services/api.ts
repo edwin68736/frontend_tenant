@@ -55,6 +55,14 @@ api.interceptors.request.use((config) => {
  */
 let redirecting = false
 
+/**
+ * Evento que AuthContext escucha para desloguear su estado EN MEMORIA. Clave en Tauri/
+ * Capacitor: ahí no hay recarga de página, así que sin esto el contexto seguía con
+ * isAuthenticated=true, LoginPage rebotaba a /home, sus peticiones volvían a dar 401 y el
+ * ciclo dejaba varios toasts y la pantalla rota sin llegar nunca al login.
+ */
+export const SESSION_EXPIRED_EVENT = 'tukifac:session-expired'
+
 function redirectToLogin(message?: string) {
   if (redirecting) return
   redirecting = true
@@ -64,12 +72,19 @@ function redirectToLogin(message?: string) {
   localStorage.removeItem('active_branch')
   localStorage.removeItem('can_switch_branch')
   import('sonner').then(({ toast }) => {
-    if (message) toast.error(message)
+    // id fijo: si por cualquier motivo se dispara otra vez, sonner REEMPLAZA el toast en
+    // lugar de apilar varios (mismo patrón que el front de restaurante).
+    if (message) toast.error(message, { id: 'session-expired' })
   })
+  // Desloguear también el estado en memoria del AuthContext (ver SESSION_EXPIRED_EVENT).
+  window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT))
   if (isNativeShell()) {
     window.location.hash = '#/login'
-    // El hash no recarga la app: hay que soltar el guard para futuras sesiones.
-    redirecting = false
+    // Cooldown en vez de soltar el guard al instante: los 401 en paralelo de la MISMA sesión
+    // caída no deben repetir el toast. Se libera después para futuras sesiones expiradas.
+    window.setTimeout(() => {
+      redirecting = false
+    }, 4000)
   } else {
     window.location.href = '/login'
   }
