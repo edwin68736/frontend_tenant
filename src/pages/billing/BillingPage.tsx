@@ -127,6 +127,7 @@ function BillingContent() {
   const [downloadingDoc, setDownloadingDoc] = useState<{ saleId: number; type: 'xml' | 'xml-generated' | 'cdr' } | null>(null)
   const [documentViewerOpen, setDocumentViewerOpen] = useState(false)
   const [documentViewerUrl, setDocumentViewerUrl] = useState<string | null>(null)
+  const [documentViewerName, setDocumentViewerName] = useState<string | null>(null)
   const documentViewerUrlRef = useRef<string | null>(null)
 
   // Resúmenes y comunicaciones de baja
@@ -424,9 +425,10 @@ function BillingContent() {
     setDocumentViewerOpen(true)
     setDocumentViewerUrl(null)
     try {
-      const url = await createLocalReceiptPdfObjectUrl(saleId, format)
+      const { url, fileName } = await createLocalReceiptPdfObjectUrl(saleId, format)
       documentViewerUrlRef.current = url
       setDocumentViewerUrl(url)
+      setDocumentViewerName(fileName)
     } catch (e: any) {
       toast.error(e?.message ?? 'Error al generar PDF')
       setDocumentViewerOpen(false)
@@ -1204,6 +1206,7 @@ function BillingContent() {
         onClose={closeDocumentViewer}
         src={documentViewerUrl}
         title={viewMode === 'credit_notes' ? 'Nota de crédito (PDF)' : 'Comprobante PDF'}
+        downloadName={documentViewerName ?? undefined}
       />
 
       <Modal open={voidNcOpen} onClose={() => !voidNcSubmitting && setVoidNcOpen(false)} contentClassName="max-w-md">

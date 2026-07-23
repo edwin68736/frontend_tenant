@@ -474,11 +474,6 @@ export async function generateReceiptPdf(
       addSpace(2)
     }
 
-    if (paymentWalletVisible(data, 'ticket')) {
-      y = await renderPaymentWalletBlock(doc, data, 'ticket', y, pageW, margin)
-      addSpace(2)
-    }
-
     const showSunatQr = isElectronicSunatCode(data.sunat_code) && Boolean(data.qr_data)
     if (showPaymentCondition || showSunatQr) {
       y = await renderTicketPaymentAndSunatQrRow(doc, data, {
@@ -490,6 +485,12 @@ export async function generateReceiptPdf(
         lineH: ticketLineH,
       })
       addSpace(4)
+    }
+
+    // El QR de la billetera va DEBAJO del QR fiscal del comprobante (mismo orden que en A4).
+    if (paymentWalletVisible(data, 'ticket')) {
+      y = await renderPaymentWalletBlock(doc, data, 'ticket', y, pageW, margin)
+      addSpace(2)
     }
 
     if (!showSunatQr) {
@@ -539,10 +540,11 @@ export async function printDataToPdfBlob(
   return doc.output('blob')
 }
 
-export function receiptPdfFileName(data: PrintData, format: 'a4' | 'ticket'): string {
-  const prefix = data.sunat_code === 'QT' ? 'cotizacion' : 'comprobante'
+export function receiptPdfFileName(data: PrintData, _format: 'a4' | 'ticket'): string {
+  // Solo serie y número del comprobante (ej. NV001-00000005.pdf): sin la palabra "comprobante"
+  // ni el sufijo de formato.
   const safe = formatDocNumber(data).replace(/[^\w.-]+/g, '_')
-  return `${prefix}-${safe}-${format}.pdf`
+  return `${safe || 'comprobante'}.pdf`
 }
 
 export async function downloadReceiptPdf(
@@ -573,6 +575,7 @@ export async function openReceiptPdfInNewTab(
     url,
     title: number ? `Comprobante ${number}` : 'Comprobante',
     fit: format === 'a4' ? 'page' : undefined,
+    fileName: receiptPdfFileName(data, format),
     onClose: () => URL.revokeObjectURL(url),
   })
 }

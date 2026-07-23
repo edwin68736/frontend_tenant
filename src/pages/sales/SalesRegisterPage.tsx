@@ -117,6 +117,9 @@ const PER_PAGE = 10
 const IGV_AFFECTATION_OPTIONS = PRODUCT_IGV_AFFECTATION_OPTIONS
 /** Igual que la columna item_note del backend (varchar 255). */
 const ITEM_NOTE_MAX_LENGTH = 255
+/** Igual que la columna description de tenant_sale_items/tenant_quotation_items (varchar 255).
+ *  Pasarse hace fallar el INSERT ("Data too long") y aborta la emisión del comprobante. */
+const ITEM_DESCRIPTION_MAX_LENGTH = 255
 
 type ManualItemDraft = Omit<SaleFormItem, 'product_id' | 'serials'>
 
@@ -242,6 +245,8 @@ function SalesRegisterContent({
   const [productToConfigure, setProductToConfigure] = useState<Product | null>(null)
   const [comboToConfigure, setComboToConfigure] = useState<Product | null>(null)
   const [showManualItemModal, setShowManualItemModal] = useState(false)
+  /** Índice de la línea del carrito que se está editando (null = ninguno). */
+  const [editItemIdx, setEditItemIdx] = useState<number | null>(null)
   const [form, setForm] = useState<{
     branch_id: number
     contact_id: number | null
@@ -739,6 +744,12 @@ function SalesRegisterContent({
   }
 
   const removeItem = (idx: number) => setItems(prev => prev.filter((_, i) => i !== idx))
+
+  /** Aplica los cambios del modal de edición a la línea correspondiente. */
+  const applyItemEdit = (patch: Partial<SaleFormItem>) => {
+    setItems(prev => prev.map((it, i) => (i !== editItemIdx ? it : { ...it, ...patch })))
+    setEditItemIdx(null)
+  }
 
   const openItemNoteModal = (idx: number) => {
     setItemNoteDraft(items[idx]?.item_note ?? '')
@@ -2046,7 +2057,7 @@ function SalesRegisterContent({
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[9%]">IGV incl.</th>
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[9%]">Desc.</th>
                   <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[10%]">Total</th>
-                  <th className="w-10" />
+                  <th className="w-20" />
                 </tr>
               </thead>
               <tbody>
@@ -2100,13 +2111,9 @@ function SalesRegisterContent({
                         <span className="text-gray-700 block truncate">{it.unit}</span>
                       </td>
                       <td className="px-4 py-2.5">
-                        <input
-                          type="number"
-                          min={0.001}
-                          step={0.01}
-                          className="w-full max-w-[4.5rem] border border-gray-200 rounded-lg px-2 py-1 text-sm"
+                        <CartQuantityInput
                           value={it.quantity}
-                          onChange={e => updateItem(idx, 'quantity', Number(e.target.value))}
+                          onChange={(v) => updateItem(idx, 'quantity', v)}
                         />
                       </td>
                       <td className="px-4 py-2.5">
@@ -2160,9 +2167,26 @@ function SalesRegisterContent({
                       </td>
                       <td className="px-3 py-2.5 font-medium text-gray-700 text-right tabular-nums">{fmt(total)}</td>
                       <td className="px-2 py-2.5">
-                        <button type="button" onClick={() => removeItem(idx)} className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
-                          <Trash2 size={14} />
-                        </button>
+                        <div className="flex items-center gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setEditItemIdx(idx)}
+                            title="Editar producto"
+                            aria-label="Editar producto"
+                            className="p-1.5 text-amber-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeItem(idx)}
+                            title="Quitar del carrito"
+                            aria-label="Quitar del carrito"
+                            className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -2580,7 +2604,12 @@ function SalesRegisterContent({
         </div>
       </div>
 
-      <Modal open={showProductPicker} onClose={() => setShowProductPicker(false)} contentClassName="max-w-2xl">
+      <Modal
+        open={showProductPicker}
+        onClose={() => setShowProductPicker(false)}
+        contentClassName="max-w-2xl"
+        closeOnBackdropClick={false}
+      >
         <ProductPickerModal
           variant="sale"
           currency={form.currency}
@@ -2672,7 +2701,12 @@ function SalesRegisterContent({
         </div>
       </Modal>
 
-      <Modal open={showManualItemModal} onClose={() => setShowManualItemModal(false)} contentClassName="max-w-lg">
+      <Modal
+        open={showManualItemModal}
+        onClose={() => setShowManualItemModal(false)}
+        contentClassName="max-w-lg"
+        closeOnBackdropClick={false}
+      >
         <ManualItemModal
           open={showManualItemModal}
           currency={form.currency}
@@ -2680,6 +2714,22 @@ function SalesRegisterContent({
           taxConfig={taxConfig}
           onAdd={addManualItem}
           onClose={() => setShowManualItemModal(false)}
+        />
+      </Modal>
+
+      <Modal
+        open={editItemIdx != null}
+        onClose={() => setEditItemIdx(null)}
+        contentClassName="max-w-lg"
+        closeOnBackdropClick={false}
+      >
+        <EditItemModal
+          item={editItemIdx != null ? items[editItemIdx] ?? null : null}
+          currency={form.currency}
+          taxRate={taxRate}
+          taxConfig={taxConfig}
+          onSave={applyItemEdit}
+          onClose={() => setEditItemIdx(null)}
         />
       </Modal>
 
@@ -2802,6 +2852,7 @@ function ManualItemModal({
             value={draft.description}
             onChange={e => setField('description', e.target.value)}
             placeholder="Nombre o detalle del ítem"
+            maxLength={ITEM_DESCRIPTION_MAX_LENGTH}
             autoFocus
           />
         </div>
@@ -2900,6 +2951,261 @@ function ManualItemModal({
           className="flex-1 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90"
         >
           Agregar
+        </button>
+      </div>
+    </>
+  )
+}
+
+/**
+ * Cantidad del carrito. Conserva las flechas nativas del campo (con step="any" suben/bajan
+ * de 1 en 1) y permite editar el número a mano: al enfocar selecciona todo para reemplazar de
+ * una, y si el campo queda vacío al salir restaura el valor anterior (no lo fuerza a 0).
+ *
+ * Se selecciona todo en vez de vaciar el campo al enfocar a propósito: vaciarlo rompería las
+ * flechas (subir desde vacío saltaría al mínimo, no a valor+1).
+ */
+function CartQuantityInput({
+  value,
+  onChange,
+  className,
+}: {
+  value: number
+  onChange: (value: number) => void
+  className?: string
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const prevRef = useRef(value)
+
+  return (
+    <input
+      type="number"
+      min={0.001}
+      step="any"
+      className={className ?? 'w-full max-w-[4.5rem] border border-gray-200 rounded-lg px-2 py-1 text-sm'}
+      value={draft ?? String(value)}
+      onFocus={(e) => {
+        prevRef.current = value
+        setDraft(String(value))
+        e.target.select()
+      }}
+      onChange={(e) => {
+        setDraft(e.target.value)
+        const n = Number(e.target.value)
+        if (e.target.value.trim() !== '' && Number.isFinite(n) && n > 0) {
+          onChange(n)
+        }
+      }}
+      onBlur={() => {
+        const n = Number(draft)
+        if (draft == null || draft.trim() === '' || !Number.isFinite(n) || n <= 0) {
+          onChange(prevRef.current)
+        }
+        setDraft(null)
+      }}
+    />
+  )
+}
+
+type EditItemDraft = {
+  description: string
+  code: string
+  unit: string
+  quantity: number
+  unit_price: number
+  igv_affectation_type: string
+  price_includes_igv: boolean
+}
+
+/**
+ * Edición de una línea ya agregada al carrito (icono de lápiz). Permite corregir datos que no
+ * se pueden cambiar en la fila (descripción, unidad, afectación, IGV incluido) además de
+ * cantidad y precio. No toca modificadores, combo, descuento de línea ni nota.
+ */
+function EditItemModal({
+  item,
+  currency,
+  taxRate,
+  taxConfig,
+  onSave,
+  onClose,
+}: {
+  item: SaleFormItem | null
+  currency: string
+  taxRate: number
+  taxConfig: { taxRate: number; igvRegime?: string; taxBenefitZone?: boolean }
+  onSave: (patch: Partial<SaleFormItem>) => void
+  onClose: () => void
+}) {
+  const [draft, setDraft] = useState<EditItemDraft | null>(null)
+
+  // Al cerrar (item=null) se limpia el borrador; así reabrir la MISMA línea vuelve a leer sus
+  // valores actuales (null→item es un cambio de referencia y el efecto se re-dispara) y no
+  // arrastra ediciones que se cancelaron.
+  useEffect(() => {
+    if (!item) {
+      setDraft(null)
+      return
+    }
+    setDraft({
+      description: item.description,
+      code: item.code,
+      unit: item.unit,
+      quantity: item.quantity,
+      unit_price: item.unit_price,
+      igv_affectation_type: item.igv_affectation_type,
+      price_includes_igv: item.price_includes_igv,
+    })
+  }, [item])
+
+  if (!draft) return null
+
+  const setField = <K extends keyof EditItemDraft>(key: K, value: EditItemDraft[K]) => {
+    setDraft(prev => (prev ? { ...prev, [key]: value } : prev))
+  }
+
+  const preview = calcItemWithSubtotalDiscount(
+    draft.unit_price,
+    draft.quantity,
+    0,
+    draft.igv_affectation_type,
+    draft.price_includes_igv,
+    taxRate,
+    taxConfig,
+  )
+
+  const handleSubmit = () => {
+    if (draft.description.trim() === '') {
+      toast.error('La descripción no puede quedar vacía')
+      return
+    }
+    if (draft.quantity <= 0) {
+      toast.error('La cantidad debe ser mayor a 0')
+      return
+    }
+    onSave({
+      description: draft.description.trim(),
+      code: draft.code.trim(),
+      unit: draft.unit,
+      quantity: draft.quantity,
+      unit_price: Math.max(0, draft.unit_price),
+      igv_affectation_type: draft.igv_affectation_type,
+      price_includes_igv: draft.price_includes_igv,
+    })
+  }
+
+  return (
+    <>
+      <div className="flex items-center justify-between">
+        <h3 className="font-bold text-gray-800 text-lg">Editar producto</h3>
+        <button type="button" onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">
+          <X size={18} />
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Descripción *</label>
+          <input
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+            value={draft.description}
+            onChange={e => setField('description', e.target.value)}
+            placeholder="Nombre o detalle del ítem"
+            maxLength={ITEM_DESCRIPTION_MAX_LENGTH}
+            autoFocus
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Código</label>
+            <input
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono"
+              value={draft.code}
+              onChange={e => setField('code', e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Unidad</label>
+            <SearchableSelect
+              value={draft.unit}
+              onChange={(v) => setField('unit', String(v ?? 'NIU'))}
+              options={sunatUnitSelectOptions()}
+              searchable
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Cantidad</label>
+            <CartQuantityInput
+              value={draft.quantity}
+              onChange={(v) => setField('quantity', v)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Precio unitario</label>
+            <MoneyAmountInput
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              value={draft.unit_price}
+              onChange={(v) => setField('unit_price', Math.max(0, v))}
+              clearOnFocus
+              emptyWhenZero
+            />
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Afectación IGV</label>
+          <select
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+            value={draft.igv_affectation_type}
+            onChange={e => {
+              const code = e.target.value
+              setDraft(prev => (prev ? {
+                ...prev,
+                igv_affectation_type: code,
+                price_includes_igv: isGravadoAfectacion(code) ? prev.price_includes_igv : false,
+              } : prev))
+            }}
+          >
+            {IGV_AFFECTATION_OPTIONS.map(o => (
+              <option key={o.code} value={o.code}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+        {isGravadoAfectacion(draft.igv_affectation_type) ? (
+          <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={draft.price_includes_igv}
+              onChange={e => setField('price_includes_igv', e.target.checked)}
+              className="h-4 w-4 accent-[rgb(var(--p600))]"
+            />
+            Precio incluye IGV
+          </label>
+        ) : (
+          <p className="text-xs text-gray-500">Esta afectación no aplica IGV al total.</p>
+        )}
+        <div className="flex justify-between text-sm text-gray-600 pt-1 border-t border-gray-100">
+          <span>Total estimado</span>
+          <span className="font-semibold text-gray-900 tabular-nums">{formatSaleMoney(preview.total, currency)}</span>
+        </div>
+      </div>
+
+      <div className="flex gap-2 pt-2">
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50"
+        >
+          Cancelar
+        </button>
+        <button
+          type="button"
+          onClick={handleSubmit}
+          className="flex-1 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90"
+        >
+          Guardar
         </button>
       </div>
     </>

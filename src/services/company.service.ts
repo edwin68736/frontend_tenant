@@ -188,7 +188,11 @@ export const companyService = {
     wallet_show_on_a4: boolean
     wallet_show_on_ticket: boolean
     receipt_bank_account_ids?: number[]
-  }) => api.put('/api/company/receipt-wallet', data).then((r) => {
+  }) => api.put<{ success: boolean; data?: CompanyConfig }>('/api/company/receipt-wallet', data).then((r) => {
+    // Refrescar la caché con la config fresca del backend: sin esto el wallet/QR no llega a las
+    // previsualizaciones ni a los PDF (leen getCompanyConfigCache) y la vista de ajustes muestra
+    // datos viejos al reabrir (getConfig sirve desde caché de localStorage).
+    if (r.data?.data) setCompanyConfigCache(r.data.data)
     clearEscPosImageRasterCache() // el QR de wallet pudo cambiar
     return r.data
   }),

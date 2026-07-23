@@ -11,6 +11,9 @@ export type PdfViewerRequest = {
   title: string
   /** A4 encaja la página; el ticket se ve mejor a lo ancho. */
   fit?: 'page' | 'width'
+  /** Nombre con el que se descarga (ej. NV001-00000005.pdf). Sin esto, el botón de descarga
+   *  del visor nativo guarda con el UUID del object URL. */
+  fileName?: string
   /** Se llama al cerrar, para liberar el object URL. */
   onClose?: () => void
 }

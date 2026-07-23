@@ -249,6 +249,20 @@ html.platform-capacitor [data-sonner-toaster] {
 }
 .page-enter { animation: fadeIn 0.2s ease forwards; }
 
+/* Pulso de atención para el botón de descarga del visor de PDF: halo expansivo + latido sutil,
+   para que el usuario descargue por ese botón y no por el del visor nativo del navegador. */
+@keyframes download-attention-pulse {
+  0%   { box-shadow: 0 0 0 0 rgb(var(--p600) / 0.55); }
+  70%  { box-shadow: 0 0 0 9px rgb(var(--p600) / 0); }
+  100% { box-shadow: 0 0 0 0 rgb(var(--p600) / 0); }
+}
+.download-attention-pulse {
+  animation: download-attention-pulse 1.8s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .download-attention-pulse { animation: none; }
+}
+
 .scrollbar-checkout {
   scrollbar-width: thin;
   scrollbar-color: rgb(var(--p400)) transparent;

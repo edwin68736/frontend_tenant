@@ -256,6 +256,7 @@ function GuiasSection({
   const [detailLoading, setDetailLoading] = useState(false)
   const [documentViewerOpen, setDocumentViewerOpen] = useState(false)
   const [documentViewerUrl, setDocumentViewerUrl] = useState<string | null>(null)
+  const [documentViewerName, setDocumentViewerName] = useState<string | null>(null)
   const [viewingPdfSaleId, setViewingPdfSaleId] = useState<number | null>(null)
   const [downloadingPdfSaleId, setDownloadingPdfSaleId] = useState<number | null>(null)
   const [downloadingDoc, setDownloadingDoc] = useState<{ saleId: number; type: 'xml' | 'xml-generated' | 'cdr' } | null>(null)
@@ -279,9 +280,10 @@ function GuiasSection({
     setDocumentViewerOpen(true)
     setDocumentViewerUrl(null)
     try {
-      const url = await createLocalReceiptPdfObjectUrl(saleId, 'a4')
+      const { url, fileName } = await createLocalReceiptPdfObjectUrl(saleId, 'a4')
       documentViewerUrlRef.current = url
       setDocumentViewerUrl(url)
+      setDocumentViewerName(fileName)
     } catch (e: unknown) {
       toast.error((e as Error)?.message ?? 'Error al generar PDF')
       setDocumentViewerOpen(false)
@@ -600,6 +602,7 @@ function GuiasSection({
         onClose={closeDocumentViewer}
         src={documentViewerUrl}
         title="Guía de remisión (PDF)"
+        downloadName={documentViewerName ?? undefined}
       />
     </div>
   )

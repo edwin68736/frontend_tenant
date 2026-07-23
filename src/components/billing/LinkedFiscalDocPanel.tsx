@@ -42,6 +42,7 @@ export function LinkedFiscalDocPanel({ doc, onStatusRefresh, origin, showTimelin
   const [expanded, setExpanded] = useState(false)
   const [pdfOpen, setPdfOpen] = useState(false)
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
+  const [pdfName, setPdfName] = useState<string | null>(null)
   const [downloading, setDownloading] = useState<'pdf' | 'xml' | 'cdr' | null>(null)
   const [reversionOpen, setReversionOpen] = useState(false)
 
@@ -85,8 +86,9 @@ export function LinkedFiscalDocPanel({ doc, onStatusRefresh, origin, showTimelin
     setPdfOpen(true)
     setPdfUrl(null)
     try {
-      const url = await createLocalReceiptPdfObjectUrl(saleId, 'a4')
+      const { url, fileName } = await createLocalReceiptPdfObjectUrl(saleId, 'a4')
       setPdfUrl(url)
+      setPdfName(fileName)
     } catch (e: unknown) {
       toast.error((e as Error)?.message ?? 'Error al generar PDF')
       setPdfOpen(false)
@@ -221,7 +223,7 @@ export function LinkedFiscalDocPanel({ doc, onStatusRefresh, origin, showTimelin
           )}
         </div>
       )}
-      <DocumentViewerModal open={pdfOpen} onClose={() => { setPdfOpen(false); setPdfUrl(null) }} src={pdfUrl} title={docLabel(doc.doc_kind)} />
+      <DocumentViewerModal open={pdfOpen} onClose={() => { setPdfOpen(false); setPdfUrl(null) }} src={pdfUrl} title={docLabel(doc.doc_kind)} downloadName={pdfName ?? undefined} />
       <ReversionCreateModal
         open={reversionOpen}
         onClose={() => setReversionOpen(false)}
