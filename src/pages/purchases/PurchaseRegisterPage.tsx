@@ -11,6 +11,7 @@ import { contactsService, type Contact } from '@/services/contacts.service'
 import { productsService, type Product } from '@/services/products.service'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
+import { UnitQuantityInput } from '@/components/ui/UnitQuantityInput'
 import { ProductPickerModal } from '@/components/sales/ProductPickerModal'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
 import { QuickProductCreateModal } from '@/components/products/QuickProductCreateModal'
@@ -527,13 +528,11 @@ function PurchaseRegisterContent() {
                           {(it.serials ?? []).length}
                         </span>
                       ) : (
-                        <input
-                          type="number"
-                          min={0.001}
-                          step={0.01}
-                          className="w-full border border-gray-200 rounded-lg px-2 py-1 text-sm"
+                        <UnitQuantityInput
                           value={it.quantity}
-                          onChange={e => updateItem(idx, 'quantity', Number(e.target.value))}
+                          unit={it.unit}
+                          onChange={(v) => updateItem(idx, 'quantity', v)}
+                          className="w-full border border-gray-200 rounded-lg px-2 py-1 text-sm"
                         />
                       )}
                     </td>

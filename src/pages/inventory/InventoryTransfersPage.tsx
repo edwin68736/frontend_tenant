@@ -4,6 +4,7 @@ import { ArrowRightLeft, Package, Plus, Trash2, RotateCcw, Search, X } from 'luc
 import RequireModule from '@/components/ui/RequireModule'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Modal } from '@/components/ui/Modal'
+import { UnitQuantityInput } from '@/components/ui/UnitQuantityInput'
 import { companyService } from '@/services/company.service'
 import { productsService, type Product } from '@/services/products.service'
 import { inventoryService, type TransferInput, type TransferListItem } from '@/services/inventory.service'
@@ -14,6 +15,8 @@ interface TransferItem extends Omit<TransferInput, 'from_branch_id' | 'to_branch
   tempId: number
   product_name?: string
   product_manage_series?: boolean
+  /** Unidad SUNAT del producto: decide si la cantidad admite decimales (kg, litros…). */
+  product_unit?: string
 }
 
 interface Branch {
@@ -149,6 +152,7 @@ function InventoryTransfersContent() {
           quantity: 1,
           product_name: p.name,
           product_manage_series: p.manage_series ?? false,
+          product_unit: p.unit ?? '',
         },
       ])
       setNextTempId(id => id + 1)
@@ -333,19 +337,27 @@ function InventoryTransfersContent() {
                       )}
                     </td>
                     <td className="py-2 px-2 text-right">
-                      <input
-                        type="number"
-                        min={it.product_manage_series ? 1 : 0}
-                        step={it.product_manage_series ? 1 : 0.01}
-                        className="w-full border border-gray-200 rounded-xl px-2 py-1.5 text-xs text-right"
-                        value={it.quantity || ''}
-                        onChange={e => {
-                          const v = it.product_manage_series
-                            ? Math.max(0, Math.floor(Number(e.target.value) || 0))
-                            : Number(e.target.value) || 0
-                          updateRow(it.tempId, { quantity: v })
-                        }}
-                      />
+                      {it.product_manage_series ? (
+                        <input
+                          type="number"
+                          min={1}
+                          step={1}
+                          className="w-full border border-gray-200 rounded-xl px-2 py-1.5 text-xs text-right"
+                          value={it.quantity || ''}
+                          onChange={e =>
+                            updateRow(it.tempId, {
+                              quantity: Math.max(0, Math.floor(Number(e.target.value) || 0)),
+                            })
+                          }
+                        />
+                      ) : (
+                        <UnitQuantityInput
+                          value={it.quantity}
+                          unit={it.product_unit}
+                          onChange={(v) => updateRow(it.tempId, { quantity: v })}
+                          className="w-full border border-gray-200 rounded-xl px-2 py-1.5 text-xs text-right"
+                        />
+                      )}
                     </td>
                     <td className="py-2 px-2 text-center">
                       <button

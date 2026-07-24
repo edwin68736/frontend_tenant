@@ -426,8 +426,8 @@ function POSContent() {
         line={item}
         subtotalLabel={subtotalLabel}
         onQtyChange={(d) => setCartQty(i, item.quantity + d)}
+        onQtySet={(qty) => setCartQty(i, qty)}
         onUnitPriceChange={(v) => setCartUnitPrice(i, v)}
-
       />
     )})
 

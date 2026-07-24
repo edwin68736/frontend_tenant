@@ -120,6 +120,46 @@ export function isProductUnitFormCode(code: string): boolean {
   return PRODUCT_UNIT_FORM_CODE_SET.has((code || '').trim().toUpperCase())
 }
 
+/**
+ * Unidades MEDIBLES (continuas): peso, volumen, longitud, superficie… admiten cantidades con
+ * decimales (hasta 3, límite decimal(15,3) de la BD). ZZ (servicio) también: 1.5 horas es válido.
+ * El resto (NIU, cajas, bolsas, docenas…) son DISCRETAS: solo cantidades enteras — regla de
+ * negocio del ERP, no fiscal (el XML de SUNAT acepta decimales en cualquier unidad).
+ */
+const MEASURABLE_UNIT_CODES = new Set([
+  'KGM', 'GRM', 'TNE', 'LBR', // peso
+  'LTR', 'GLL', 'MLT',        // volumen
+  'MTR', 'CMT', 'MTK', 'MTQ', // longitud / superficie / volumen cúbico
+  'ZZ',                       // servicios (horas fraccionadas)
+])
+
+/** Resuelve alias comerciales/legacy a código catálogo 03 sin forzar ZZ→NIU. */
+function resolveUnitCode(unit: string): string {
+  const u = (unit || '').trim().toUpperCase()
+  return UNIT_ALIASES[u] ?? u
+}
+
+/** true si la unidad admite cantidades con decimales (ver MEASURABLE_UNIT_CODES). */
+export function unitAllowsDecimals(unit: string): boolean {
+  return MEASURABLE_UNIT_CODES.has(resolveUnitCode(unit))
+}
+
+/** Máximo de decimales que persiste la BD en cantidades (decimal(15,3)). */
+export const QUANTITY_MAX_DECIMALS = 3
+
+/**
+ * Ajusta una cantidad a la divisibilidad de la unidad: discretas → entero ≥ 1;
+ * medibles → 3 decimales, mínimo 0.001. NaN/∞ → 1.
+ */
+export function normalizeQuantityForUnit(qty: number, unit: string): number {
+  if (!Number.isFinite(qty)) return 1
+  if (!unitAllowsDecimals(unit)) {
+    return Math.max(1, Math.round(qty))
+  }
+  const factor = 10 ** QUANTITY_MAX_DECIMALS
+  return Math.max(1 / factor, Math.round(qty * factor) / factor)
+}
+
 /** Nombre visible de una unidad (sin código SUNAT). */
 export function sunatUnitDisplayName(code: string): string {
   const c = (code || '').trim().toUpperCase()

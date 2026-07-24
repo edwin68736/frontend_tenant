@@ -280,13 +280,13 @@ export default function InventoryDocumentPage({ direction }: InventoryDocumentPa
           return
         }
         const productIds = [...new Set(rawLines.map(l => l.product_id))]
-        const names: Record<number, { name: string; code: string }> = {}
+        const names: Record<number, { name: string; code: string; unit: string }> = {}
         await Promise.all(
           productIds.map(pid =>
             productsService.get(pid).then(res => {
-              names[pid] = { name: res.data.name, code: res.data.code ?? '' }
+              names[pid] = { name: res.data.name, code: res.data.code ?? '', unit: res.data.unit ?? '' }
             }).catch(() => {
-              names[pid] = { name: `Producto #${pid}`, code: '' }
+              names[pid] = { name: `Producto #${pid}`, code: '', unit: '' }
             })
           )
         )
@@ -304,6 +304,7 @@ export default function InventoryDocumentPage({ direction }: InventoryDocumentPa
             product_id: l.product_id,
             product_name: names[l.product_id]?.name,
             product_code: names[l.product_id]?.code,
+            product_unit: names[l.product_id]?.unit,
             quantity: l.quantity,
             unit_cost: l.unit_cost,
           }))
@@ -349,6 +350,7 @@ export default function InventoryDocumentPage({ direction }: InventoryDocumentPa
           product_id: p.id,
           product_name: p.name,
           product_code: p.code,
+          product_unit: p.unit ?? '',
           quantity: 1,
           unit_cost: direction === 'IN' ? Number(p.purchase_price ?? 0) : 0,
         },

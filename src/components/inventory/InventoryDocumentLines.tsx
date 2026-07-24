@@ -1,10 +1,13 @@
 import { Plus, Trash2 } from 'lucide-react'
+import { UnitQuantityInput } from '@/components/ui/UnitQuantityInput'
 
 export interface InventoryDocumentLineRow {
   tempId: number
   product_id: number
   product_name?: string
   product_code?: string
+  /** Unidad SUNAT del producto (NIU, KGM…): decide si la cantidad admite decimales. */
+  product_unit?: string
   quantity: number
   unit_cost: number
 }
@@ -62,13 +65,11 @@ export function InventoryDocumentLines({
                   )}
                 </td>
                 <td className="px-3 py-2">
-                  <input
-                    type="number"
-                    min={0}
-                    step="any"
+                  <UnitQuantityInput
+                    value={line.quantity}
+                    unit={line.product_unit}
+                    onChange={(v) => onChangeLine(line.tempId, { quantity: v })}
                     className="w-24 border border-gray-200 rounded-lg px-2 py-1 text-sm disabled:bg-gray-50"
-                    value={line.quantity || ''}
-                    onChange={e => onChangeLine(line.tempId, { quantity: Number(e.target.value) })}
                     disabled={disabled}
                   />
                 </td>

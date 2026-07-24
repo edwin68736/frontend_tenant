@@ -8,7 +8,13 @@ import { ProductPresentationsModal } from '@/components/products/ProductPresenta
 import { ModifierOptionsEditor } from '@/components/modifiers/ModifierOptionsEditor'
 import { productsService, getProductImageUrl, type Product, type Category, type CreateProductInput, type ModifierGroup, type ProductCatalogType, type ProductPresentation, type BulkDeleteProductsResult } from '@/services/products.service'
 import { createEmptyOptionDraft, draftsFromApiOptions, optionDraftsToPayload, validateOptionDrafts, type ModifierOptionDraft } from '@/utils/modifierOptionText'
-import { PRODUCT_UNIT_FORM_OPTIONS, productUnitFormDisplayName, isProductUnitFormCode } from '@/constants/sunatUnits'
+import {
+  PRODUCT_UNIT_FORM_OPTIONS,
+  QUANTITY_MAX_DECIMALS,
+  isProductUnitFormCode,
+  productUnitFormDisplayName,
+  unitAllowsDecimals,
+} from '@/constants/sunatUnits'
 import { inventoryService, type StockByBranch } from '@/services/inventory.service'
 import { companyService } from '@/services/company.service'
 import RequireModule from '@/components/ui/RequireModule'
@@ -1213,16 +1219,28 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 {!editing && (
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="text-xs text-gray-600 shrink-0 whitespace-nowrap">Stock inicial:</span>
+                    {/* La divisibilidad sigue a la unidad elegida: Kilos admite 2.5; Unidades solo enteros. */}
                     <input
                       type="number"
                       min={0}
-                      step={0.01}
-                      inputMode="decimal"
+                      step={unitAllowsDecimals(form.unit ?? '') ? 'any' : 1}
+                      inputMode={unitAllowsDecimals(form.unit ?? '') ? 'decimal' : 'numeric'}
                       className="w-24 sm:w-28 border border-gray-200 rounded-lg px-2 py-2 sm:py-1 text-base sm:text-sm"
                       value={form.initial_stock != null ? form.initial_stock : ''}
                       onChange={(e) => {
                         const raw = e.target.value
-                        setF('initial_stock', raw === '' ? undefined : Math.max(0, Number(raw) || 0))
+                        if (raw === '') {
+                          setF('initial_stock', undefined)
+                          return
+                        }
+                        const n = Math.max(0, Number(raw) || 0)
+                        const factor = 10 ** QUANTITY_MAX_DECIMALS
+                        setF(
+                          'initial_stock',
+                          unitAllowsDecimals(form.unit ?? '')
+                            ? Math.round(n * factor) / factor
+                            : Math.round(n),
+                        )
                       }}
                       placeholder="0"
                     />

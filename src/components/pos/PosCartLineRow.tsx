@@ -10,11 +10,15 @@ import {
   isManualCartLine,
 } from '@/utils/posCart'
 import { formatModifierLines } from '@/utils/productModifiers'
+import { normalizeQuantityForUnit, normalizeSunatUnit, unitAllowsDecimals } from '@/constants/sunatUnits'
+import { useRoundedQuantityBadge } from '@/components/ui/UnitQuantityInput'
 
 type Props = {
   line: PosCartLine
   subtotalLabel: string
   onQtyChange: (delta: number) => void
+  /** Fija la cantidad absoluta (productos medibles: teclear 0.750 kg). */
+  onQtySet?: (qty: number) => void
   onUnitPriceChange: (value: string) => void
 }
 
@@ -85,14 +89,86 @@ function CartUnitPriceInput({
   )
 }
 
+/**
+ * Cantidad tecleable del POS, para TODAS las unidades: tocar el número permite escribir la
+ * cantidad directa (20 unidades sin presionar + veinte veces; 0.750 kg en pesables). La
+ * validación sigue la unidad: discretas → entero (con aviso de redondeo); medibles → 3 dec.
+ */
+function CartQtyEditableInput({
+  quantity,
+  unit,
+  onCommit,
+}: {
+  quantity: number
+  unit: string
+  onCommit: (qty: number) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+  const { flashRounded, badge } = useRoundedQuantityBadge()
+  const allowDecimals = unitAllowsDecimals(unit)
+
+  const commit = () => {
+    const trimmed = draft.trim().replace(',', '.')
+    setEditing(false)
+    if (trimmed === '') return
+    const parsed = Number.parseFloat(trimmed)
+    if (!Number.isFinite(parsed) || parsed <= 0) return
+    const normalized = normalizeQuantityForUnit(parsed, unit)
+    if (!allowDecimals && !Number.isInteger(parsed)) {
+      flashRounded(inputRef.current, normalized)
+    }
+    onCommit(normalized)
+  }
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="text"
+        inputMode={allowDecimals ? 'decimal' : 'numeric'}
+        value={editing ? draft : String(quantity)}
+        onFocus={() => {
+          setDraft('')
+          setEditing(true)
+        }}
+        onBlur={commit}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            e.currentTarget.blur()
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            setDraft('')
+            setEditing(false)
+            e.currentTarget.blur()
+          }
+        }}
+        className="h-7 w-12 box-border rounded-lg border border-stone-200 px-1 text-center text-xs font-bold tabular-nums focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-400"
+        aria-label={allowDecimals ? 'Cantidad (admite decimales)' : 'Cantidad (solo enteros)'}
+      />
+      {badge}
+    </>
+  )
+}
+
 export function PosCartLineRow({
   line,
   subtotalLabel,
   onQtyChange,
+  onQtySet,
   onUnitPriceChange,
 }: Props) {
   const manual = isManualCartLine(line)
   const catalog = isCatalogCartLine(line)
+  // Unidad efectiva de la línea: los manuales del POS no llevan unidad → discreta (enteros).
+  const lineUnit = catalog ? normalizeSunatUnit(line.product.unit ?? '', line.product.type ?? 'product') : 'NIU'
+  // Cantidad tecleable para TODAS las unidades (escribir 20 directo en vez de 20 taps al +);
+  // la validación entero/decimal la hace el propio input según la unidad.
+  const editableQty = Boolean(onQtySet)
   const thumbUrl = catalog ? getProductImageUrl(line.product.image_url) : null
   const modifierLines = catalog && line.modifiers.length > 0 ? formatModifierLines(line.modifiers) : []
   const itemNote = catalog ? (line.notes ?? '').trim() : ''
@@ -147,7 +223,15 @@ export function PosCartLineRow({
               >
                 <span className="text-sm font-bold leading-none">−</span>
               </button>
-              <span className="w-5 text-center text-xs font-bold tabular-nums">{line.quantity}</span>
+              {editableQty ? (
+                <CartQtyEditableInput
+                  quantity={line.quantity}
+                  unit={lineUnit}
+                  onCommit={(qty) => onQtySet!(qty)}
+                />
+              ) : (
+                <span className="w-5 text-center text-xs font-bold tabular-nums">{line.quantity}</span>
+              )}
               <button
                 type="button"
                 onClick={() => onQtyChange(1)}

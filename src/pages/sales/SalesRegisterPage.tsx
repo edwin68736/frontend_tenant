@@ -67,7 +67,12 @@ import { cashbankService, type BankAccount, type CashSession, type PaymentMethod
 import { calcSaleCheckout } from '@/utils/saleEngine'
 import { calcItem, calcItemWithSubtotalDiscount, getAfectacionGroup, type SunatAfectacionGroup } from '@/utils/taxCalc'
 import { clampIssueDatePeru, getMaxIssueDatePeru, getMinIssueDatePeru, getTodayPeru, isIssueDateAllowed } from '@/utils/datesPeru'
-import { normalizeSunatUnit, sunatUnitSelectOptions } from '@/constants/sunatUnits'
+import {
+  normalizeQuantityForUnit,
+  normalizeSunatUnit,
+  sunatUnitSelectOptions,
+} from '@/constants/sunatUnits'
+import { UnitQuantityInput } from '@/components/ui/UnitQuantityInput'
 import { PRODUCT_IGV_AFFECTATION_OPTIONS } from '@/constants/igvAffectation'
 import type { CheckoutDiscountMode } from '@/utils/checkoutDiscount'
 import { roundSunat, calcPaymentChange, sumMoney } from '@/utils/money'
@@ -694,14 +699,16 @@ function SalesRegisterContent({
       toast.error('La cantidad debe ser mayor a 0')
       return
     }
+    const unit = normalizeSunatUnit(draft.unit, 'product')
     setItems(prev => [
       ...prev,
       {
         product_id: null,
         code: draft.code.trim() || 'MANUAL',
         description,
-        unit: normalizeSunatUnit(draft.unit, 'product'),
-        quantity: Math.max(1, Math.floor(draft.quantity)),
+        unit,
+        // Divisibilidad según la unidad guardada: Kilos admite 0.5; Unidades redondea a entero.
+        quantity: normalizeQuantityForUnit(draft.quantity, unit),
         unit_price: Math.max(0, draft.unit_price),
         igv_affectation_type: draft.igv_affectation_type,
         price_includes_igv: draft.price_includes_igv,
@@ -2111,8 +2118,9 @@ function SalesRegisterContent({
                         <span className="text-gray-700 block truncate">{it.unit}</span>
                       </td>
                       <td className="px-4 py-2.5">
-                        <CartQuantityInput
+                        <UnitQuantityInput
                           value={it.quantity}
+                          unit={it.unit}
                           onChange={(v) => updateItem(idx, 'quantity', v)}
                         />
                       </td>
@@ -2878,14 +2886,12 @@ function ManualItemModal({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Cantidad</label>
-            <input
-              type="number"
-              min={1}
-              step={1}
-              inputMode="numeric"
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+            {/* La divisibilidad sigue a la unidad elegida arriba: Kilos admite 0.5; Unidades no. */}
+            <UnitQuantityInput
               value={draft.quantity}
-              onChange={e => setField('quantity', Math.max(1, parseInt(e.target.value, 10) || 1))}
+              unit={draft.unit}
+              onChange={(v) => setField('quantity', v)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
             />
           </div>
           <div>
@@ -2954,56 +2960,6 @@ function ManualItemModal({
         </button>
       </div>
     </>
-  )
-}
-
-/**
- * Cantidad del carrito. Conserva las flechas nativas del campo (con step="any" suben/bajan
- * de 1 en 1) y permite editar el número a mano: al enfocar selecciona todo para reemplazar de
- * una, y si el campo queda vacío al salir restaura el valor anterior (no lo fuerza a 0).
- *
- * Se selecciona todo en vez de vaciar el campo al enfocar a propósito: vaciarlo rompería las
- * flechas (subir desde vacío saltaría al mínimo, no a valor+1).
- */
-function CartQuantityInput({
-  value,
-  onChange,
-  className,
-}: {
-  value: number
-  onChange: (value: number) => void
-  className?: string
-}) {
-  const [draft, setDraft] = useState<string | null>(null)
-  const prevRef = useRef(value)
-
-  return (
-    <input
-      type="number"
-      min={0.001}
-      step="any"
-      className={className ?? 'w-full max-w-[4.5rem] border border-gray-200 rounded-lg px-2 py-1 text-sm'}
-      value={draft ?? String(value)}
-      onFocus={(e) => {
-        prevRef.current = value
-        setDraft(String(value))
-        e.target.select()
-      }}
-      onChange={(e) => {
-        setDraft(e.target.value)
-        const n = Number(e.target.value)
-        if (e.target.value.trim() !== '' && Number.isFinite(n) && n > 0) {
-          onChange(n)
-        }
-      }}
-      onBlur={() => {
-        const n = Number(draft)
-        if (draft == null || draft.trim() === '' || !Number.isFinite(n) || n <= 0) {
-          onChange(prevRef.current)
-        }
-        setDraft(null)
-      }}
-    />
   )
 }
 
@@ -3087,7 +3043,8 @@ function EditItemModal({
       description: draft.description.trim(),
       code: draft.code.trim(),
       unit: draft.unit,
-      quantity: draft.quantity,
+      // Si cambió la unidad después de la cantidad, se re-ajusta a su divisibilidad.
+      quantity: normalizeQuantityForUnit(draft.quantity, draft.unit),
       unit_price: Math.max(0, draft.unit_price),
       igv_affectation_type: draft.igv_affectation_type,
       price_includes_igv: draft.price_includes_igv,
@@ -3137,8 +3094,9 @@ function EditItemModal({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Cantidad</label>
-            <CartQuantityInput
+            <UnitQuantityInput
               value={draft.quantity}
+              unit={draft.unit}
               onChange={(v) => setField('quantity', v)}
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
             />
