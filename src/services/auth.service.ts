@@ -29,6 +29,8 @@ export interface BranchBrief {
 
 export interface LoginResponse {
   token: string
+  /** Refresh token (30 días) para renovar el access token sin re-login. */
+  refresh_token?: string
   user: AuthUser
   modules: string[]
   permissions?: string[]
@@ -78,6 +80,7 @@ export const authService = {
   },
   logout: () => {
     localStorage.removeItem('token')
+    localStorage.removeItem('refresh_token')
     localStorage.removeItem('user')
     localStorage.removeItem('modules')
     localStorage.removeItem('tenantSlug')

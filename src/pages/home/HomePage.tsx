@@ -15,7 +15,7 @@ import { getQuickLinkTheme } from './homeTheme'
 import { HomeTutorialsPromoSection } from '@/components/home/HomeTutorialsPromoSection'
 import { HomeKpiCards } from '@/components/home/HomeKpiCards'
 import { isCapacitorAndroid } from '@/lib/platform/detect'
-import { useDesktopViewport } from '@/hooks/useMediaQuery'
+import { useDesktopViewport, useTabletViewport } from '@/hooks/useMediaQuery'
 
 type QuickLink = {
   to: string
@@ -30,6 +30,9 @@ export default function HomePage() {
 
   // El hook va primero y sin condiciones: dentro de un `||` el short-circuit podría saltárselo.
   const isDesktop = useDesktopViewport()
+  // Los tutoriales se muestran por TAMAÑO (tablet o mayor), no por plataforma: en teléfono
+  // no hacen falta, desde tablet sí. Independiente del gate de los KPIs (compactHome).
+  const showTutorials = useTabletViewport()
   // El home compacto (solo promociones + accesos rápidos) aplica en Android y también en
   // web con pantalla angosta: en móvil los totales empujan los accesos rápidos fuera de vista.
   const compactHome = isCapacitorAndroid() || !isDesktop
@@ -85,7 +88,7 @@ export default function HomePage() {
     <div className="space-y-6 md:space-y-8 -m-1 md:-m-2">
       {/* Bienvenida + promociones */}
       <section aria-label="Promociones">
-        <HomeTutorialsPromoSection withWelcomeCard={!compactHome} />
+        <HomeTutorialsPromoSection withWelcomeCard={showTutorials} />
       </section>
 
       {!compactHome && (

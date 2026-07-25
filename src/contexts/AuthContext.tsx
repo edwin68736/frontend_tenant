@@ -9,7 +9,7 @@ import {
 import { toast } from 'sonner'
 import { isNativeShell } from '@/lib/platform/detect'
 import { clearCompanyCaches } from '@/lib/companyConfig/store'
-import { SESSION_EXPIRED_EVENT } from '@/services/api'
+import { SESSION_EXPIRED_EVENT, SESSION_REFRESHED_EVENT } from '@/services/api'
 
 interface AuthState {
   user: AuthUser | null
@@ -128,6 +128,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onSessionExpired)
   }, [])
 
+  // Access token renovado por el interceptor (refresh token): actualiza el estado EN MEMORIA con
+  // los claims frescos del nuevo token (módulos/permisos/estado), sin recargar la página. Clave en
+  // Tauri/Capacitor y en la SPA: la sesión continúa sin parpadeo ni relogin.
+  useEffect(() => {
+    const onSessionRefreshed = (e: Event) => {
+      const token = (e as CustomEvent<{ token?: string }>).detail?.token
+      if (!token) return
+      setState((s) => ({
+        ...s,
+        token,
+        modules: extractModulesFromToken(token),
+        permissions: extractPermissionsFromToken(token),
+        tenantStatus: extractStatusFromToken(token),
+        isImpersonated: extractImpersonatedFromToken(token),
+        isAuthenticated: true,
+        isLoading: false,
+      }))
+    }
+    window.addEventListener(SESSION_REFRESHED_EVENT, onSessionRefreshed)
+    return () => window.removeEventListener(SESSION_REFRESHED_EVENT, onSessionRefreshed)
+  }, [])
+
   const login = async (payload: LoginPayload) => {
     const data = await authService.login(payload)
 
@@ -137,6 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const isImpersonated = extractImpersonatedFromToken(data.token)
 
     localStorage.setItem('token', data.token)
+    if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token)
     localStorage.setItem('user', JSON.stringify(data.user))
     if (data.active_branch) {
       localStorage.setItem('active_branch', JSON.stringify(data.active_branch))

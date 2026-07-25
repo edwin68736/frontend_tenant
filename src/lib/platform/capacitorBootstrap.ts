@@ -3,6 +3,7 @@ import { Keyboard, KeyboardResize } from '@capacitor/keyboard'
 import { StatusBar, Style } from '@capacitor/status-bar'
 import { isCapacitorAndroid, isCapacitorNative } from './detect'
 import { applyOrientationPolicy, startOrientationPolicyWatcher } from './orientationPolicy'
+import { reconnectBluetoothPrinter } from '@/services/printers/reconnect'
 
 let bootstrapped = false
 let stopOrientationWatcher: (() => void) | null = null
@@ -38,8 +39,16 @@ export async function bootstrapCapacitor(): Promise<void> {
     console.warn('[Tukifac] Keyboard', e)
   }
   stopOrientationWatcher = startOrientationPolicyWatcher()
+
+  // Reconecta la ticketera Bluetooth al arrancar la app.
+  void reconnectBluetoothPrinter()
+
   App.addListener('appStateChange', ({ isActive }) => {
-    if (isActive) void applyOrientationPolicy()
+    if (isActive) {
+      void applyOrientationPolicy()
+      // Y al volver del segundo plano: Android cierra el socket mientras la app no está activa.
+      void reconnectBluetoothPrinter()
+    }
   }).catch(() => {})
 }
 

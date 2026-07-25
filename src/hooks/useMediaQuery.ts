@@ -26,3 +26,8 @@ export function useDesktopViewport(): boolean {
 export function useNarrowViewport(): boolean {
   return useMediaQuery('(max-width: 767px)')
 }
+
+/** ≥768px: tablet o mayor (breakpoint `md` de Tukifac). */
+export function useTabletViewport(): boolean {
+  return useMediaQuery('(min-width: 768px)')
+}

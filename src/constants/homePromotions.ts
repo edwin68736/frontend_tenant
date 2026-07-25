@@ -1,4 +1,4 @@
-export const YOUTUBE_TUTORIALS_URL = 'https://www.youtube.com/@Tukifacperu/playlists'
+export const YOUTUBE_TUTORIALS_URL = 'https://www.youtube.com/playlist?list=PLfgZGm1_pXQI'
 export const PROMO_WHATSAPP_URL = 'https://wa.link/4d7rjm'
 
 export type HomePromoSlide = {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import {
@@ -135,24 +136,22 @@ export function QuickProductCreateModal({ open, onClose, onCreated }: Props) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Precio compra</label>
-            <input
-              type="number"
-              min={0}
-              step={0.01}
+            <MoneyAmountInput
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
               value={form.purchase_price}
-              onChange={e => patch({ purchase_price: Math.max(0, Number(e.target.value) || 0) })}
+              onChange={v => patch({ purchase_price: Math.max(0, v) })}
+              emptyWhenZero
+              clearOnFocus
             />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Precio venta *</label>
-            <input
-              type="number"
-              min={0}
-              step={0.01}
+            <MoneyAmountInput
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
               value={form.sale_price}
-              onChange={e => patch({ sale_price: Math.max(0, Number(e.target.value) || 0) })}
+              onChange={v => patch({ sale_price: Math.max(0, v) })}
+              emptyWhenZero
+              clearOnFocus
             />
           </div>
         </div>

@@ -78,6 +78,9 @@ function docTypeToSunatCode(docType: string): string {
   return ''
 }
 
+/** Tamaño de página del catálogo en POS: se cargan de 24 en 24 con scroll infinito. */
+const POS_PRODUCTS_PER_PAGE = 24
+
 export default function POSPage() {
   // El POS forma parte del módulo de ventas
   return <RequireModule moduleKey="sales"><POSContent /></RequireModule>
@@ -100,6 +103,11 @@ function POSContent() {
 
   // Catálogo
   const [products, setProducts] = useState<Product[]>([])
+  // Scroll infinito: en vez de traer todo el catálogo de golpe, se pide de a POS_PRODUCTS_PER_PAGE
+  // y se acumula al hacer scroll. productsTotal viene del backend para saber si quedan más.
+  const [productsTotal, setProductsTotal] = useState(0)
+  const [productPage, setProductPage] = useState(1)
+  const [loadingMoreProducts, setLoadingMoreProducts] = useState(false)
   const [categories, setCategories] = useState<Category[]>([])
   const [selectedCat, setSelectedCat] = useState<number | null>(null)
   const [q, setQ] = useState('')
@@ -137,6 +145,8 @@ function POSContent() {
   const [addClientModal, setAddClientModal] = useState(false)
   const [categoriesModalOpen, setCategoriesModalOpen] = useState(false)
   const categoriesScrollRef = useRef<HTMLDivElement>(null)
+  const productsScrollRef = useRef<HTMLDivElement>(null)
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null)
   const cartBtnRef = useRef<HTMLButtonElement>(null)
   const desktopCartRef = useRef<HTMLDivElement>(null)
   const configureFlySourceRef = useRef<HTMLElement | undefined>(undefined)
@@ -213,11 +223,51 @@ function POSContent() {
     if (!session) return
     setLoadingProducts(true)
     productsService
-      .list(q, selectedCat ?? undefined)
-      .then(({ data }) => setProducts(data ?? []))
+      .list(q, selectedCat ?? undefined, undefined, true, 1, POS_PRODUCTS_PER_PAGE)
+      .then(({ data, total }) => {
+        setProducts(data ?? [])
+        setProductsTotal(total ?? 0)
+        setProductPage(1)
+      })
       .catch(() => {})
       .finally(() => setLoadingProducts(false))
   }, [q, selectedCat, session])
+
+  // ¿Quedan más productos por cargar? (paginación por scroll)
+  const canLoadMoreProducts = products.length < productsTotal
+
+  const loadMoreProducts = useCallback(() => {
+    if (loadingProducts || loadingMoreProducts) return
+    if (products.length >= productsTotal) return
+    const next = productPage + 1
+    setLoadingMoreProducts(true)
+    productsService
+      .list(q, selectedCat ?? undefined, undefined, true, next, POS_PRODUCTS_PER_PAGE)
+      .then(({ data }) => {
+        setProducts((prev) => {
+          const seen = new Set(prev.map((p) => p.id))
+          return [...prev, ...(data ?? []).filter((p) => !seen.has(p.id))]
+        })
+        setProductPage(next)
+      })
+      .catch(() => {})
+      .finally(() => setLoadingMoreProducts(false))
+  }, [q, selectedCat, productPage, products.length, productsTotal, loadingProducts, loadingMoreProducts])
+
+  // Observa un centinela al final de la lista: al acercarse, pide la siguiente página.
+  useEffect(() => {
+    const sentinel = loadMoreSentinelRef.current
+    const root = productsScrollRef.current
+    if (!sentinel || !root) return
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) loadMoreProducts()
+      },
+      { root, rootMargin: '240px' },
+    )
+    io.observe(sentinel)
+    return () => io.disconnect()
+  }, [loadMoreProducts])
 
   const billingModule = hasModule('billing')
   const sunatEnabled = billingModule && Boolean(cachedSunat?.sunat_enabled ?? sunat?.sunat_enabled)
@@ -872,7 +922,7 @@ function POSContent() {
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 w-full overflow-y-auto p-1.5 sm:p-3 md:min-h-[280px]">
+          <div ref={productsScrollRef} className="flex-1 min-h-0 w-full overflow-y-auto p-1.5 sm:p-3 md:min-h-[280px]">
             {loadingProducts && products.filter(p => p.active).length === 0 ? (
               <div className="py-8 text-center text-stone-400 text-sm">
                 <div className="inline-block w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
@@ -983,6 +1033,13 @@ function POSContent() {
                     </button>
                   )
                 })}
+              </div>
+            )}
+            {canLoadMoreProducts && (
+              <div ref={loadMoreSentinelRef} className="flex items-center justify-center py-4">
+                {loadingMoreProducts && (
+                  <div className="inline-block w-5 h-5 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" aria-hidden />
+                )}
               </div>
             )}
             {!loadingProducts && products.filter(p => p.active).length === 0 && (

@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Settings2, Package, Upload, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Trash2 } from 'lucide-react'
 import { ProductImportModal } from '@/components/products/ProductImportModal'
 import { BulkDeleteProductsPinModal } from '@/components/products/BulkDeleteProductsPinModal'
+import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { ProductPresentationsModal } from '@/components/products/ProductPresentationsModal'
 import { ModifierOptionsEditor } from '@/components/modifiers/ModifierOptionsEditor'
 import { productsService, getProductImageUrl, type Product, type Category, type CreateProductInput, type ModifierGroup, type ProductCatalogType, type ProductPresentation, type BulkDeleteProductsResult } from '@/services/products.service'
@@ -1162,12 +1163,26 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         <div className={PRODUCT_FORM_GRID}>
           <div className="min-w-0">
             <label className="block text-xs font-medium text-gray-600 mb-1">Precio venta *</label>
-            <input type="number" min={0} step={0.01} inputMode="decimal" className={PRODUCT_FORM_INPUT} value={form.sale_price} onChange={e => setF('sale_price', Math.max(0, Number(e.target.value) || 0))} />
+            {/* MoneyAmountInput: permite vaciar y teclear libre; el input number crudo con
+                value=0 no dejaba borrar el cero (Number('')||0 lo devolvía a 0). */}
+            <MoneyAmountInput
+              className={PRODUCT_FORM_INPUT}
+              value={form.sale_price}
+              onChange={v => setF('sale_price', Math.max(0, v))}
+              emptyWhenZero
+              clearOnFocus
+            />
           </div>
           {pageMode === 'product' && (
             <div className="min-w-0">
               <label className="block text-xs font-medium text-gray-600 mb-1">Precio compra</label>
-              <input type="number" min={0} step={0.01} inputMode="decimal" className={PRODUCT_FORM_INPUT} value={form.purchase_price ?? 0} onChange={e => setF('purchase_price', Math.max(0, Number(e.target.value) || 0))} />
+              <MoneyAmountInput
+                className={PRODUCT_FORM_INPUT}
+                value={form.purchase_price ?? 0}
+                onChange={v => setF('purchase_price', Math.max(0, v))}
+                emptyWhenZero
+                clearOnFocus
+              />
             </div>
           )}
         </div>

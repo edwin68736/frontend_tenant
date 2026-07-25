@@ -293,8 +293,8 @@ export function HomeTutorialsPromoSection({
 
   return (
     <>
-      {/* Móvil / tablet */}
-      <div className="flex flex-col gap-2 sm:gap-3 lg:hidden">
+      {/* Solo teléfono (< md 768px): botón compacto de promociones, sin tutoriales. */}
+      <div className="flex flex-col gap-2 sm:gap-3 md:hidden">
         <button
           type="button"
           onClick={() => setShowPromoModal(true)}
@@ -308,8 +308,8 @@ export function HomeTutorialsPromoSection({
         </button>
       </div>
 
-      {/* Desktop: con tarjeta de bienvenida va a 2 columnas; sin ella, ancho completo. */}
-      <div className={withWelcomeCard ? 'hidden lg:grid lg:grid-cols-2 lg:gap-4' : 'hidden lg:block'}>
+      {/* Desde tablet (md 768px): con tarjeta de tutoriales va a 2 columnas; sin ella, ancho completo. */}
+      <div className={withWelcomeCard ? 'hidden md:grid md:grid-cols-2 md:gap-4' : 'hidden md:block'}>
         {withWelcomeCard && <HomeWelcomeCard />}
         <div
           role="button"

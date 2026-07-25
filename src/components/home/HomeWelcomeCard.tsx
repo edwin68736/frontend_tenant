@@ -2,8 +2,9 @@ import { PlayCircle } from 'lucide-react'
 import { YOUTUBE_TUTORIALS_URL } from '@/constants/homePromotions'
 
 /**
- * Tarjeta de bienvenida con acceso a los tutoriales. Solo se muestra en escritorio y web:
- * en Android el home va sin ella para no gastar altura de pantalla.
+ * Tarjeta de bienvenida con acceso a los tutoriales. Se muestra por TAMAÑO: desde tablet
+ * (md, 768px) hacia arriba, sin importar la plataforma. En teléfono se oculta para no
+ * gastar altura de pantalla.
  */
 export function HomeWelcomeCard() {
   return (

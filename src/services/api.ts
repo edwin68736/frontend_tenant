@@ -13,6 +13,10 @@ const api = axios.create({
   baseURL: 'http://localhost:3000',
   headers: { 'Content-Type': 'application/json' },
   withCredentials: false,
+  // Techo de espera del cliente = WriteTimeout del server (120s): evita que una petición quede
+  // colgada indefinidamente (antes era 0 = infinito, causa de "la vista se queda cargando"), sin
+  // cortar operaciones largas legítimas como emisión/facturación (que el server ya acota).
+  timeout: 120000,
 })
 
 api.interceptors.request.use((config) => {
@@ -63,11 +67,41 @@ let redirecting = false
  */
 export const SESSION_EXPIRED_EVENT = 'tukifac:session-expired'
 
+/** Emitido tras renovar el access token: AuthContext actualiza token/módulos/permisos en memoria. */
+export const SESSION_REFRESHED_EVENT = 'tukifac:session-refreshed'
+
+/**
+ * Un solo refresh en vuelo: si varias peticiones caen en 401 a la vez (típico burst de arranque),
+ * todas esperan el MISMO refresh en lugar de disparar N renovaciones simultáneas.
+ */
+let refreshPromise: Promise<string | null> | null = null
+
+async function refreshAccessToken(): Promise<string | null> {
+  const refreshToken = localStorage.getItem('refresh_token')
+  if (!refreshToken) return null
+  try {
+    const resp = await api.post<{ token?: string }>(
+      '/api/session/refresh',
+      { refresh_token: refreshToken },
+      // __skipAuthRefresh: que un 401 de este mismo endpoint NO dispare otro refresh (evita bucle).
+      { __skipAuthRefresh: true } as import('axios').AxiosRequestConfig & { __skipAuthRefresh?: boolean },
+    )
+    const newToken = resp?.data?.token
+    if (!newToken) return null
+    localStorage.setItem('token', newToken)
+    window.dispatchEvent(new CustomEvent(SESSION_REFRESHED_EVENT, { detail: { token: newToken } }))
+    return newToken
+  } catch {
+    return null
+  }
+}
+
 function redirectToLogin(message?: string) {
   if (redirecting) return
   redirecting = true
 
   localStorage.removeItem('token')
+  localStorage.removeItem('refresh_token')
   localStorage.removeItem('user')
   localStorage.removeItem('active_branch')
   localStorage.removeItem('can_switch_branch')
@@ -92,7 +126,27 @@ function redirectToLogin(message?: string) {
 
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
+    // Reintento de fallos transitorios SOLO en peticiones idempotentes (GET/HEAD): red caída o
+    // 502/503/504 (incluye el 503 DB_TRANSIENT del backend cuando el pool del tenant está saturado).
+    // Así un tropiezo momentáneo de la BD se reintenta en vez de expulsar al login. El timeout del
+    // cliente NO se reintenta: volver a intentarlo solo lo colgaría otra vez.
+    const rConfig = error.config
+    const rStatus = error.response?.status as number | undefined
+    const rMethod = String(rConfig?.method ?? 'get').toLowerCase()
+    const rIdempotent = rMethod === 'get' || rMethod === 'head'
+    const rIsTimeout = error.code === 'ECONNABORTED'
+    const rTransient =
+      (!error.response && !rIsTimeout) || rStatus === 502 || rStatus === 503 || rStatus === 504
+    if (rConfig && rIdempotent && rTransient) {
+      const rAttempt = (rConfig.__retryCount ?? 0) + 1
+      if (rAttempt <= 2) {
+        rConfig.__retryCount = rAttempt
+        await new Promise((resolve) => setTimeout(resolve, 400 * rAttempt))
+        return api(rConfig)
+      }
+    }
+
     const code = error.response?.data?.code as string | undefined
     if (error.response?.status === 403 && code === 'TENANT_ISOLATION_VIOLATION') {
       redirectToLogin('Sesión inválida para esta empresa. Vuelva a vincular el RUC e iniciar sesión.')
@@ -110,6 +164,24 @@ api.interceptors.response.use(
       const url = String(error.config?.url ?? '')
       if (url.includes('/api/login')) {
         return Promise.reject(error)
+      }
+      // El propio endpoint de refresh no debe reintentar refrescar (evita bucle).
+      if (error.config?.__skipAuthRefresh || url.includes('/api/session/refresh')) {
+        return Promise.reject(error)
+      }
+      // Access token expirado: intentar renovarlo UNA vez con el refresh token y reintentar la
+      // petición original. Solo si no hay refresh token (o el refresh falla) se cierra la sesión.
+      if (!error.config?.__retriedAfterRefresh && localStorage.getItem('refresh_token')) {
+        if (!refreshPromise) {
+          refreshPromise = refreshAccessToken().finally(() => {
+            refreshPromise = null
+          })
+        }
+        const newToken = await refreshPromise
+        if (newToken && error.config) {
+          error.config.__retriedAfterRefresh = true
+          return api(error.config)
+        }
       }
       redirectToLogin('Sesión expirada. Inicie sesión nuevamente.')
     }
