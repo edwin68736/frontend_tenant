@@ -66,6 +66,8 @@ export interface Product {
   /** YYYY-MM-DD cuando has_expiry_date es true. */
   expiry_date?: string | null
   is_restaurant: boolean
+  /** Canal de difusión: visible en el Catálogo Digital (tienda virtual pública). Independiente de is_restaurant. */
+  show_in_digital_catalog?: boolean
   active: boolean
   category_id: number | null
   category_name?: string
@@ -137,6 +139,8 @@ export interface CreateProductInput {
   has_expiry_date?: boolean
   expiry_date?: string | null
   is_restaurant?: boolean
+  /** Canal de difusión: visible en el Catálogo Digital (tienda virtual pública). Independiente de is_restaurant. */
+  show_in_digital_catalog?: boolean
   preparation_area?: string
   /** Solo en alta: cantidad inicial de inventario (requiere manage_stock). */
   initial_stock?: number
@@ -156,6 +160,8 @@ export interface ProductPresentation {
   id?: number
   name: string
   sale_price: number
+  /** Solo se aplica a filas nuevas (sin id); las existentes se corrigen con "Ajustar stock". */
+  initial_stock?: number
 }
 
 /** Respuesta de GET /products/:id (producto + grupos de modificadores asignados) */
@@ -283,6 +289,8 @@ export const productsService = {
     page?: number
     per_page?: number
     stock_less_than?: number
+    /** Solo productos con manage_stock=true (vista de stock actual). */
+    manage_stock_only?: boolean
   }) =>
     api
       .get<{ data: ProductReportRow[]; total?: number }>('/api/products', {
@@ -294,6 +302,7 @@ export const productsService = {
           page: params.page,
           per_page: params.per_page,
           stock_less_than: params.stock_less_than,
+          manage_stock_only: params.manage_stock_only,
           report: true,
         },
       })

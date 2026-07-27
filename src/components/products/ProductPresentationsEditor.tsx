@@ -6,13 +6,17 @@ type Props = {
   presentations: ProductPresentation[]
   onChange: (rows: ProductPresentation[]) => void
   embedded?: boolean
+  /** Solo tiene sentido con manage_stock activo. Se muestra por fila nueva (sin id) — tanto al
+   *  crear el producto como al agregar una presentación nueva en una edición posterior; las filas
+   *  existentes ya tienen su stock y se corrigen con "Ajustar stock". */
+  showInitialStock?: boolean
 }
 
 function emptyRow(): ProductPresentation {
   return { name: '', sale_price: 0 }
 }
 
-export function ProductPresentationsEditor({ presentations, onChange, embedded }: Props) {
+export function ProductPresentationsEditor({ presentations, onChange, embedded, showInitialStock }: Props) {
   const rows = presentations.length > 0 ? presentations : [emptyRow()]
 
   const setRow = (index: number, patch: Partial<ProductPresentation>) => {
@@ -82,6 +86,19 @@ export function ProductPresentationsEditor({ presentations, onChange, embedded }
                 className="w-full min-h-[44px] border border-gray-200 rounded-xl px-3 py-2 text-sm tabular-nums"
               />
             </div>
+            {showInitialStock && !row.id && (
+              <div className="w-full sm:w-24 shrink-0">
+                <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Stock inicial</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={row.initial_stock ?? ''}
+                  onChange={(e) => setRow(index, { initial_stock: e.target.value === '' ? undefined : Math.max(0, Number(e.target.value)) })}
+                  placeholder="0"
+                  className="w-full min-h-[44px] border border-gray-200 rounded-xl px-3 py-2 text-sm tabular-nums"
+                />
+              </div>
+            )}
             <div className="flex sm:items-end">
               <button
                 type="button"

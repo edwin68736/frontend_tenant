@@ -1,6 +1,6 @@
 import type { StockMovement } from '@/services/inventory.service'
 
-const MOVEMENT_TYPE_LABELS: Record<string, string> = {
+export const MOVEMENT_TYPE_LABELS: Record<string, string> = {
   in: 'Entrada',
   out: 'Salida',
   adjustment_in: 'Ajuste (entrada)',

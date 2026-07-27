@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ArrowRightLeft, Package, Plus, Trash2, RotateCcw, Search, X } from 'lucide-react'
+import { ArrowRightLeft, Package, Plus, Trash2, Search, X, History } from 'lucide-react'
 import RequireModule from '@/components/ui/RequireModule'
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Modal } from '@/components/ui/Modal'
+import { SearchSelect } from '@/components/ui/SearchSelect'
 import { UnitQuantityInput } from '@/components/ui/UnitQuantityInput'
 import { companyService } from '@/services/company.service'
-import { productsService, type Product } from '@/services/products.service'
-import { inventoryService, type TransferInput, type TransferListItem } from '@/services/inventory.service'
+import { productsService, type Product, type ProductPresentation } from '@/services/products.service'
+import { inventoryService, type TransferInput } from '@/services/inventory.service'
 
 const PER_PAGE = 10
 
@@ -17,6 +18,9 @@ interface TransferItem extends Omit<TransferInput, 'from_branch_id' | 'to_branch
   product_manage_series?: boolean
   /** Unidad SUNAT del producto: decide si la cantidad admite decimales (kg, litros…). */
   product_unit?: string
+  product_has_variants?: boolean
+  presentations?: ProductPresentation[]
+  presentation_id?: number
 }
 
 interface Branch {
@@ -41,16 +45,10 @@ function InventoryTransfersContent() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [nextTempId, setNextTempId] = useState(1)
-  const [transfers, setTransfers] = useState<TransferListItem[]>([])
-  const [confirmingId, setConfirmingId] = useState<number | null>(null)
-  const [cancellingId, setCancellingId] = useState<number | null>(null)
-  /** ID de transferencia para el diálogo de confirmar recepción; null = cerrado */
-  const [confirmDialogTransferId, setConfirmDialogTransferId] = useState<number | null>(null)
-  /** ID de transferencia para el diálogo de cancelar; null = cerrado */
-  const [cancelDialogTransferId, setCancelDialogTransferId] = useState<number | null>(null)
 
   // Modal agregar productos
   const [modalOpen, setModalOpen] = useState(false)
+  const [modalSearchInput, setModalSearchInput] = useState('')
   const [modalSearch, setModalSearch] = useState('')
   const [modalPage, setModalPage] = useState(1)
   const [modalProducts, setModalProducts] = useState<Product[]>([])
@@ -58,14 +56,6 @@ function InventoryTransfersContent() {
   const [modalLoading, setModalLoading] = useState(false)
   const [stockByProduct, setStockByProduct] = useState<Record<number, number>>({})
   const [addingProductId, setAddingProductId] = useState<number | null>(null)
-
-  const loadTransfers = useCallback(() => {
-    inventoryService.listTransfers({ limit: 50 }).then(setTransfers).catch(() => {})
-  }, [])
-
-  useEffect(() => {
-    loadTransfers()
-  }, [loadTransfers])
 
   useEffect(() => {
     companyService
@@ -78,6 +68,16 @@ function InventoryTransfersContent() {
       .catch(() => toast.error('Error cargando sucursales'))
       .finally(() => setLoading(false))
   }, [])
+
+  // Búsqueda con debounce: antes cada tecla disparaba una petición.
+  useEffect(() => {
+    const t = setTimeout(() => setModalSearch(modalSearchInput.trim()), 350)
+    return () => clearTimeout(t)
+  }, [modalSearchInput])
+
+  useEffect(() => {
+    setModalPage(1)
+  }, [modalSearch])
 
   const loadModalProducts = useCallback(() => {
     if (!modalOpen) return
@@ -96,24 +96,22 @@ function InventoryTransfersContent() {
     loadModalProducts()
   }, [loadModalProducts])
 
+  // Una sola consulta para todo el lote en vez de N peticiones (una por producto).
   useEffect(() => {
     if (!fromBranchId || modalProducts.length === 0) {
       setStockByProduct({})
       return
     }
-    const map: Record<number, number> = {}
     let cancelled = false
-    Promise.all(
-      modalProducts.map(p =>
-        inventoryService.getStock(p.id, fromBranchId).then(stocks => {
-          if (cancelled) return
-          const row = stocks.find(s => s.branch_id === fromBranchId)
-          map[p.id] = row ? row.quantity : 0
-        })
-      )
-    ).then(() => {
-      if (!cancelled) setStockByProduct(prev => ({ ...prev, ...map }))
-    })
+    inventoryService
+      .getStockSummary(modalProducts.map(p => p.id), fromBranchId)
+      .then(summary => {
+        if (cancelled) return
+        const map: Record<number, number> = {}
+        for (const p of modalProducts) map[p.id] = summary[String(p.id)] ?? 0
+        setStockByProduct(prev => ({ ...prev, ...map }))
+      })
+      .catch(() => {})
     return () => { cancelled = true }
   }, [fromBranchId, modalProducts])
 
@@ -127,6 +125,29 @@ function InventoryTransfersContent() {
 
   const addProductToTransfer = (p: Product) => {
     setAddingProductId(p.id)
+    // Con variantes, cada presentación es un renglón propio (cantidades independientes): no
+    // acumula sobre una fila existente como los productos simples.
+    if (p.has_variants) {
+      productsService.get(p.id).then(d => {
+        setItems(prev => [
+          ...prev,
+          {
+            tempId: nextTempId,
+            product_id: p.id,
+            quantity: 1,
+            product_name: p.name,
+            product_manage_series: false,
+            product_unit: p.unit ?? '',
+            product_has_variants: true,
+            presentations: d.presentations ?? [],
+          },
+        ])
+        setNextTempId(id => id + 1)
+        toast.success(`${p.name} agregado. Elige la presentación y la cantidad.`)
+        setAddingProductId(null)
+      })
+      return
+    }
     const existing = items.find(it => it.product_id === p.id)
     if (existing) {
       const newQty = existing.quantity + 1
@@ -166,6 +187,7 @@ function InventoryTransfersContent() {
       toast.error('Selecciona primero la sucursal de origen')
       return
     }
+    setModalSearchInput('')
     setModalSearch('')
     setModalPage(1)
     setModalOpen(true)
@@ -185,50 +207,26 @@ function InventoryTransfersContent() {
       toast.error('Agrega al menos un producto con cantidad')
       return
     }
+    const missingPresentation = validItems.find(it => it.product_has_variants && !it.presentation_id)
+    if (missingPresentation) {
+      toast.error(`Selecciona la presentación de "${missingPresentation.product_name}"`)
+      return
+    }
     setSaving(true)
     try {
       await inventoryService.createTransfer({
         from_branch_id: fromBranchId,
         to_branch_id: toBranchId,
         notes,
-        items: validItems.map(it => ({ product_id: it.product_id, quantity: it.quantity })),
+        items: validItems.map(it => ({ product_id: it.product_id, presentation_id: it.presentation_id, quantity: it.quantity })),
       })
-      toast.success('Transferencia enviada. Confirma la recepción en la sucursal destino.')
+      toast.success('Transferencia enviada. Confirma la recepción desde el historial.')
       setItems([])
       setNotes('')
-      loadTransfers()
     } catch (e: any) {
       toast.error(e?.response?.data?.error ?? 'Error al registrar transferencia')
     } finally {
       setSaving(false)
-    }
-  }
-
-  const handleConfirm = async (id: number) => {
-    setConfirmingId(id)
-    try {
-      await inventoryService.confirmTransfer(id)
-      toast.success('Transferencia confirmada')
-      loadTransfers()
-    } catch (e: any) {
-      toast.error(e?.response?.data?.error ?? 'Error al confirmar')
-    } finally {
-      setConfirmingId(null)
-      setConfirmDialogTransferId(null)
-    }
-  }
-
-  const handleCancel = async (id: number) => {
-    setCancellingId(id)
-    try {
-      await inventoryService.cancelTransfer(id)
-      toast.success('Transferencia cancelada')
-      loadTransfers()
-    } catch (e: any) {
-      toast.error(e?.response?.data?.error ?? 'Error al cancelar')
-    } finally {
-      setCancellingId(null)
-      setCancelDialogTransferId(null)
     }
   }
 
@@ -244,155 +242,166 @@ function InventoryTransfersContent() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex items-start justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-lg font-bold text-gray-800">Transferencias de inventario</h2>
           <p className="text-sm text-gray-500">
             Mueve stock entre sucursales. Agrega varios productos desde el modal de búsqueda.
           </p>
         </div>
+        <Link
+          to="/inventory/transfers/history"
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          <History size={14} /> Ver historial
+        </Link>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
-        <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3 xl:col-span-1">
-          <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-            <ArrowRightLeft size={16} /> Datos de la transferencia
-          </h3>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Desde sucursal</label>
-            <select
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-              value={fromBranchId ?? ''}
-              onChange={e => {
-                const val = e.target.value ? Number(e.target.value) : undefined
+      <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
+        <div className="flex flex-wrap gap-3 items-start">
+          <div className="w-full sm:w-auto sm:min-w-[220px]">
+            <label className="block text-xs font-medium text-gray-500 mb-1">Desde sucursal</label>
+            <SearchSelect
+              options={branches.filter(b => b.id !== toBranchId).map(b => ({ value: String(b.id), label: b.name }))}
+              value={fromBranchId ? String(fromBranchId) : ''}
+              onChange={v => {
+                const val = v ? Number(v) : undefined
                 setFromBranchId(val)
                 if (val === toBranchId) setToBranchId(undefined)
               }}
-            >
-              <option value="">Selecciona origen</option>
-              {branches.filter(b => b.id !== toBranchId).map(b => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
+              placeholder="Selecciona origen"
+            />
           </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Hacia sucursal</label>
-            <select
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-              value={toBranchId ?? ''}
-              onChange={e => {
-                const val = e.target.value ? Number(e.target.value) : undefined
+          <div className="w-full sm:w-auto sm:min-w-[220px]">
+            <label className="block text-xs font-medium text-gray-500 mb-1">Hacia sucursal</label>
+            <SearchSelect
+              options={branches.filter(b => b.id !== fromBranchId).map(b => ({ value: String(b.id), label: b.name }))}
+              value={toBranchId ? String(toBranchId) : ''}
+              onChange={v => {
+                const val = v ? Number(v) : undefined
                 setToBranchId(val)
                 if (val === fromBranchId) setFromBranchId(undefined)
               }}
-            >
-              <option value="">Selecciona destino</option>
-              {branches.filter(b => b.id !== fromBranchId).map(b => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Notas (opcional)</label>
-            <textarea
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none"
-              rows={3}
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              placeholder="Ej: Traslado para sucursal 2"
+              placeholder="Selecciona destino"
             />
           </div>
         </div>
+      </div>
 
-        <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3 xl:col-span-2">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-              <Package size={16} /> Productos a transferir
-            </h3>
-            <button
-              type="button"
-              onClick={openModal}
-              className="flex items-center gap-1 px-3 py-1.5 bg-[rgb(var(--p600))] text-white rounded-xl text-xs font-medium hover:opacity-90"
-            >
-              <Plus size={14} /> Agregar productos
-            </button>
-          </div>
+      <div className="bg-white rounded-2xl shadow-sm p-4 space-y-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+            <Package size={16} /> Productos a transferir
+          </h3>
+          <button
+            type="button"
+            onClick={openModal}
+            className="flex items-center gap-1 px-3 py-1.5 bg-[rgb(var(--p600))] text-white rounded-xl text-xs font-medium hover:opacity-90"
+          >
+            <Plus size={14} /> Agregar productos
+          </button>
+        </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="text-left py-2 px-2">Producto</th>
-                  <th className="text-right py-2 px-2 w-24">Cantidad</th>
-                  <th className="w-10"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map(it => (
-                  <tr key={it.tempId} className="border-b border-gray-50">
-                    <td className="py-2 px-2">
-                      <span className="font-medium">{it.product_name ?? `#${it.product_id}`}</span>
-                      {it.product_manage_series && (
-                        <span className="ml-1.5 text-[10px] bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded">Series</span>
-                      )}
-                    </td>
-                    <td className="py-2 px-2 text-right">
-                      {it.product_manage_series ? (
-                        <input
-                          type="number"
-                          min={1}
-                          step={1}
-                          className="w-full border border-gray-200 rounded-xl px-2 py-1.5 text-xs text-right"
-                          value={it.quantity || ''}
-                          onChange={e =>
-                            updateRow(it.tempId, {
-                              quantity: Math.max(0, Math.floor(Number(e.target.value) || 0)),
-                            })
-                          }
-                        />
-                      ) : (
-                        <UnitQuantityInput
-                          value={it.quantity}
-                          unit={it.product_unit}
-                          onChange={(v) => updateRow(it.tempId, { quantity: v })}
-                          className="w-full border border-gray-200 rounded-xl px-2 py-1.5 text-xs text-right"
-                        />
-                      )}
-                    </td>
-                    <td className="py-2 px-2 text-center">
-                      <button
-                        type="button"
-                        onClick={() => removeRow(it.tempId)}
-                        className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg"
-                        title="Quitar"
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-gray-100">
+                <th className="text-left py-2 px-2">Producto</th>
+                <th className="text-left py-2 px-2 w-40">Presentación</th>
+                <th className="text-right py-2 px-2 w-24">Cantidad</th>
+                <th className="w-10"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map(it => (
+                <tr key={it.tempId} className="border-b border-gray-50">
+                  <td className="py-2 px-2">
+                    <span className="font-medium">{it.product_name ?? `#${it.product_id}`}</span>
+                    {it.product_manage_series && (
+                      <span className="ml-1.5 text-[10px] bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded">Series</span>
+                    )}
+                  </td>
+                  <td className="py-2 px-2">
+                    {it.product_has_variants && (
+                      <select
+                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs"
+                        value={it.presentation_id ?? ''}
+                        onChange={e => updateRow(it.tempId, { presentation_id: e.target.value ? Number(e.target.value) : undefined })}
                       >
-                        <Trash2 size={13} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {items.length === 0 && (
-                  <tr>
-                    <td colSpan={3} className="py-6 text-center text-gray-400 text-xs">
-                      No hay productos. Haz clic en &quot;Agregar productos&quot; para buscar y añadir.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                        <option value="">Elegir...</option>
+                        {(it.presentations ?? []).map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    )}
+                  </td>
+                  <td className="py-2 px-2 text-right">
+                    {it.product_manage_series ? (
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        className="w-full border border-gray-200 rounded-xl px-2 py-1.5 text-xs text-right"
+                        value={it.quantity || ''}
+                        onChange={e =>
+                          updateRow(it.tempId, {
+                            quantity: Math.max(0, Math.floor(Number(e.target.value) || 0)),
+                          })
+                        }
+                      />
+                    ) : (
+                      <UnitQuantityInput
+                        value={it.quantity}
+                        unit={it.product_unit}
+                        onChange={(v) => updateRow(it.tempId, { quantity: v })}
+                        className="w-full border border-gray-200 rounded-xl px-2 py-1.5 text-xs text-right"
+                      />
+                    )}
+                  </td>
+                  <td className="py-2 px-2 text-center">
+                    <button
+                      type="button"
+                      onClick={() => removeRow(it.tempId)}
+                      className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg"
+                      title="Quitar"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {items.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="py-6 text-center text-gray-400 text-xs">
+                    No hay productos. Haz clic en &quot;Agregar productos&quot; para buscar y añadir.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
 
-          <div className="pt-3 border-t border-gray-100 flex justify-end">
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={saving}
-              className="flex items-center gap-2 px-4 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50"
-            >
-              <ArrowRightLeft size={14} />
-              {saving ? 'Enviando...' : 'Enviar transferencia'}
-            </button>
-          </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Notas (opcional)</label>
+          <textarea
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none"
+            rows={2}
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder="Ej: Traslado para sucursal 2"
+          />
+        </div>
+
+        <div className="pt-3 border-t border-gray-100 flex justify-end">
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={saving}
+            className="flex items-center gap-2 px-4 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50"
+          >
+            <ArrowRightLeft size={14} />
+            {saving ? 'Enviando...' : 'Enviar transferencia'}
+          </button>
         </div>
       </div>
 
@@ -419,14 +428,14 @@ function InventoryTransfersContent() {
               type="text"
               className="w-full border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-sm"
               placeholder="Buscar por nombre o código..."
-              value={modalSearch}
-              onChange={e => setModalSearch(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && (setModalPage(1), loadModalProducts())}
+              value={modalSearchInput}
+              onChange={e => setModalSearchInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && setModalSearch(modalSearchInput.trim())}
             />
           </div>
           <button
             type="button"
-            onClick={() => { setModalPage(1); loadModalProducts() }}
+            onClick={() => setModalSearch(modalSearchInput.trim())}
             className="px-4 py-2 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200"
           >
             Buscar
@@ -461,7 +470,11 @@ function InventoryTransfersContent() {
                           )}
                         </div>
                       </td>
-                      <td className="py-2 px-2 text-right text-gray-600">
+                      <td
+                        className={`py-2 px-2 text-right font-mono ${
+                          fromBranchId && available === 0 ? 'text-red-500 font-semibold' : 'text-gray-600'
+                        }`}
+                      >
                         {fromBranchId ? (available !== null ? available : '—') : '—'}
                       </td>
                       <td className="py-2 px-2 text-right">
@@ -510,103 +523,6 @@ function InventoryTransfersContent() {
           </div>
         )}
       </Modal>
-
-      <div className="bg-white rounded-2xl shadow-sm p-4">
-        <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2 mb-3">
-          <RotateCcw size={16} /> Transferencias — Estados
-        </h3>
-        <p className="text-xs text-gray-500 mb-3">
-          Enviado = stock reservado en origen. Al confirmar en destino se suma el stock allí y ya no se puede cancelar.
-        </p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left py-2 px-2">Fecha</th>
-                <th className="text-left py-2 px-2">Origen → Destino</th>
-                <th className="text-left py-2 px-2">Productos</th>
-                <th className="text-center py-2 px-2 w-28">Estado</th>
-                <th className="text-right py-2 px-2 w-40">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {transfers.map(t => (
-                <tr key={t.id} className="border-b border-gray-50">
-                  <td className="py-2 px-2 text-gray-600">{new Date(t.created_at).toLocaleString()}</td>
-                  <td className="py-2 px-2">
-                    <span className="font-medium">{t.from_branch_name}</span>
-                    <span className="text-gray-400 mx-1">→</span>
-                    <span className="font-medium">{t.to_branch_name}</span>
-                  </td>
-                  <td className="py-2 px-2">
-                    {t.lines.map((l, i) => (
-                      <span key={i} className="mr-2">
-                        {l.product_name} × {l.quantity}{l.with_serials ? ' (series)' : ''}
-                      </span>
-                    ))}
-                  </td>
-                  <td className="py-2 px-2 text-center">
-                    {t.status === 'pending' && <span className="text-amber-600 text-xs font-medium">Enviado</span>}
-                    {t.status === 'confirmed' && <span className="text-green-600 text-xs font-medium">Confirmado</span>}
-                    {t.status === 'cancelled' && <span className="text-gray-500 text-xs">Cancelado</span>}
-                  </td>
-                  <td className="py-2 px-2 text-right">
-                    {t.status === 'pending' && (
-                      <span className="flex gap-1 justify-end">
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDialogTransferId(t.id)}
-                          disabled={confirmingId !== null}
-                          className="px-2 py-1 rounded-lg bg-emerald-100 text-emerald-700 text-xs font-medium hover:bg-emerald-200 disabled:opacity-50"
-                        >
-                          {confirmingId === t.id ? '...' : 'Confirmar'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setCancelDialogTransferId(t.id)}
-                          disabled={cancellingId !== null}
-                          className="px-2 py-1 rounded-lg border border-red-200 text-red-600 text-xs font-medium hover:bg-red-50 disabled:opacity-50"
-                        >
-                          {cancellingId === t.id ? '...' : 'Cancelar'}
-                        </button>
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {transfers.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="py-6 text-center text-gray-400 text-xs">Sin transferencias</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <ConfirmDialog
-        open={confirmDialogTransferId != null}
-        onClose={() => setConfirmDialogTransferId(null)}
-        onConfirm={async () => {
-          if (confirmDialogTransferId != null) await handleConfirm(confirmDialogTransferId)
-        }}
-        title="Confirmar recepción en destino"
-        message="El stock se sumará en la sucursal destino y ya no se podrá cancelar esta transferencia."
-        confirmLabel="Confirmar recepción"
-        loading={confirmingId !== null}
-      />
-      <ConfirmDialog
-        open={cancelDialogTransferId != null}
-        onClose={() => setCancelDialogTransferId(null)}
-        onConfirm={async () => {
-          if (cancelDialogTransferId != null) await handleCancel(cancelDialogTransferId)
-        }}
-        title="Cancelar transferencia"
-        message="El stock volverá a la sucursal origen. Esta acción solo aplica a transferencias en estado Enviado."
-        confirmLabel="Cancelar transferencia"
-        variant="danger"
-        loading={cancellingId !== null}
-      />
     </div>
   )
 }

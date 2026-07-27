@@ -146,6 +146,13 @@ export function selectionFromProductPresentation(p: ProductPresentation): CartMo
   }
 }
 
+/** ID de la presentación elegida en una línea (para descontar el stock de esa variante y no del
+ *  agregado del producto). undefined si el producto no tiene presentaciones o no eligió ninguna. */
+export function presentationIdFromSelection(selected: CartModifierEntry[]): number | undefined {
+  const variant = selected.find((s) => s.type === 'variant')
+  return variant && variant.option_id > 0 ? variant.option_id : undefined
+}
+
 export function toggleExtraSelection(
   selected: CartModifierEntry[],
   group: ModifierGroup,

@@ -12,6 +12,8 @@ export interface StockMovement {
   product_id: number
   product_code?: string
   product_name?: string
+  presentation_id?: number
+  presentation_name?: string
   branch_id: number
   branch_name?: string
   type: 'in' | 'out' | 'transfer' | 'adjustment' | string
@@ -25,6 +27,8 @@ export interface StockMovement {
   operation_type_name?: string
   sunat_code?: string
   inventory_document_id?: number
+  /** Números de serie que participaron en este movimiento (productos con manage_series). */
+  serials?: string[]
   user_id?: number
   user_name?: string
   created_at: string
@@ -180,7 +184,7 @@ export interface CreateTransferInput {
   from_branch_id: number
   to_branch_id: number
   notes?: string
-  items: { product_id: number; quantity: number }[]
+  items: { product_id: number; presentation_id?: number; quantity: number }[]
 }
 
 export const inventoryService = {
@@ -231,7 +235,7 @@ export const inventoryService = {
     api.post<{ ok: boolean; message?: string }>(`/api/inventory/transfers/${id}/reverse`).then(r => r.data),
 
   /** Stock por producto. Con branch_id: solo esa sucursal; sin él: suma todas. product_ids → { "1": 15 } */
-  getStockSummary: (productIds: number[], branch_id?: number) =>
+  getStockSummary: (productIds: number[], branch_id?: number): Promise<Record<string, number>> =>
     productIds.length === 0
       ? Promise.resolve({})
       : api
@@ -246,6 +250,7 @@ export const inventoryService = {
   /** Ajuste de inventario: type "in" | "out", quantity, notes. Si tiene series: serials[] (entrada = nuevos, salida = a retirar). */
   adjustment: (body: {
     product_id: number
+    presentation_id?: number
     branch_id: number
     type: 'in' | 'out'
     quantity: number
@@ -318,7 +323,14 @@ export interface TransferListItem {
   notes: string
   created_at: string
   confirmed_at: string | null
-  lines: { product_id: number; product_name: string; quantity: number; with_serials: boolean }[]
+  lines: {
+    product_id: number
+    product_name: string
+    presentation_id?: number
+    presentation_name?: string
+    quantity: number
+    with_serials: boolean
+  }[]
 }
 
 /** Item de log legacy (por línea). */

@@ -39,6 +39,7 @@ const COLS: ExportColumn<Row>[] = [
   },
   { key: 'product_code', label: 'Código' },
   { key: 'product_name', label: 'Producto' },
+  { key: 'presentation_name', label: 'Presentación', format: (v: unknown) => String(v ?? '—') },
   { key: 'type', label: 'Movimiento', format: (v: unknown) => fmtMovementType(v) },
   {
     key: 'operation_type_name',
@@ -61,6 +62,7 @@ const COLS: ExportColumn<Row>[] = [
   { key: 'user_name', label: 'Usuario' },
   { key: 'reference', label: 'Referencia' },
   { key: 'notes', label: 'Notas' },
+  { key: 'serials', label: 'Series', format: (_v: unknown, row: Row) => (row.serials ?? []).join(', ') },
 ]
 
 const MOVEMENT_KIND_OPTIONS: { value: string; label: string }[] = [

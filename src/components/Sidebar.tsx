@@ -4,10 +4,10 @@ import { BRAND_APP_LOGO } from '@/config/branding'
 import { companyService } from '@/services/company.service'
 import {
   Home,
-  LayoutDashboard, ShoppingCart, Receipt, Truck, Tag, Boxes, Package, PackagePlus, PackageMinus, FileSpreadsheet,
+  LayoutDashboard, ShoppingCart, Receipt, Truck, Tag, Boxes, Package,
   BookUser, Wallet, Building2, Users, Settings, LogOut,
   Utensils, FileText, X, Grid3x3, Layers, ChefHat, UserCog,
-  Shield, MapPin, FileCode, ShieldCheck, ArrowRightLeft, ListOrdered, LayoutGrid,
+  Shield, MapPin, FileCode, ShieldCheck, ArrowRightLeft, ListOrdered, LayoutGrid, RotateCcw, ShoppingBag,
   ChevronLeft, ChevronRight, BarChart3, CreditCard, Briefcase, UserCircle, Car,
 } from 'lucide-react'
 import { clsx } from 'clsx'
@@ -100,6 +100,14 @@ const NAV_GROUPS: NavGroup[] = [
         icon: <CreditCard size={14} />,
         module: 'memberships',
         permission: 'memberships.view',
+        exact: true,
+      },
+      {
+        id: 'ventas-pedidos-web',
+        to: '/sales/pedidos-web',
+        label: 'Pedidos web',
+        icon: <ShoppingBag size={14} />,
+        module: 'ecommerce',
         exact: true,
       },
       {
@@ -214,16 +222,14 @@ const NAV_GROUPS: NavGroup[] = [
       {
         id: 'inv-stock',
         to: '/inventory',
-        label: 'Stock',
+        label: 'Movimientos',
         icon: <Package size={14} />,
         module: 'inventory',
         permission: 'inventory.view',
         exact: true,
       },
-      { id: 'inv-transfers', to: '/inventory/transfers', label: 'Transferencias', icon: <ArrowRightLeft size={14} />, module: 'inventory', permission: 'inventory.manage' },
-      { id: 'inv-ingress', to: '/inventory/ingress', label: 'Ingresos', icon: <PackagePlus size={14} />, module: 'inventory', permission: 'inventory.manage' },
-      { id: 'inv-import', to: '/inventory/import-adjustment', label: 'Importar Conteo Físico', icon: <FileSpreadsheet size={14} />, module: 'inventory', permission: 'inventory.manage' },
-      { id: 'inv-egress', to: '/inventory/egress', label: 'Egresos', icon: <PackageMinus size={14} />, module: 'inventory', permission: 'inventory.manage' },
+      { id: 'inv-transfers', to: '/inventory/transfers', label: 'Transferencias', icon: <ArrowRightLeft size={14} />, module: 'inventory', permission: 'inventory.manage', exact: true },
+      { id: 'inv-transfer-history', to: '/inventory/transfers/history', label: 'Historial transf.', icon: <RotateCcw size={14} />, module: 'inventory', permission: 'inventory.manage' },
       { id: 'inv-kardex', to: '/inventory/kardex', label: 'Kardex', icon: <ListOrdered size={14} />, module: 'inventory', permission: 'inventory.view' },
     ],
   },

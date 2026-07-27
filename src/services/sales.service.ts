@@ -193,6 +193,7 @@ export interface CreateSaleInput {
   global_discount_value?: number
   items: {
     product_id?: number | null
+    presentation_id?: number
     code: string
     description: string
     unit: string

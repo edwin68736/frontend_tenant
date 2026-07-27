@@ -67,7 +67,7 @@ import { useFlyToCart } from '@/hooks/useFlyToCart'
 import { useBarcodeProductScanner } from '@/hooks/useBarcodeProductScanner'
 import { BarcodeScannerModal } from '@/components/barcode/BarcodeScannerModal'
 import { playCartAddSound, playCartRemoveSound } from '@/utils/cartSounds'
-import { productConfigurationBadge, productNeedsSaleConfiguration } from '@/utils/productModifiers'
+import { productConfigurationBadge, productNeedsSaleConfiguration, presentationIdFromSelection } from '@/utils/productModifiers'
 
 /** doc_type legacy → código SUNAT cuando sunat_code no viene en la serie */
 function docTypeToSunatCode(docType: string): string {
@@ -686,6 +686,9 @@ function POSContent() {
           const unitPrice = cartLineUnitPrice(i)
           return {
             product_id: i.product.id,
+            // Variante elegida (ej. color): el backend descuenta el stock de esa presentación en
+            // vez del agregado del producto cuando el producto tiene presentaciones con stock propio.
+            presentation_id: presentationIdFromSelection(i.modifiers),
             code: i.product.code,
             description: i.product.name,
             unit: i.product.unit,

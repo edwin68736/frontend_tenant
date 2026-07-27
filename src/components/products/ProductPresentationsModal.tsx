@@ -9,6 +9,9 @@ type Props = {
   presentations: ProductPresentation[]
   onClose: () => void
   onSave: (presentations: ProductPresentation[]) => void
+  /** true con manage_stock activo: permite fijar el stock inicial de cada presentación nueva
+   *  (fila sin id), tanto al crear el producto como al agregar una en una edición posterior. */
+  showInitialStock?: boolean
 }
 
 export function ProductPresentationsModal({
@@ -17,6 +20,7 @@ export function ProductPresentationsModal({
   presentations,
   onClose,
   onSave,
+  showInitialStock,
 }: Props) {
   const [draft, setDraft] = useState<ProductPresentation[]>([])
 
@@ -53,7 +57,7 @@ export function ProductPresentationsModal({
           ) : null}
         </div>
         <div className="py-4 flex-1 min-h-0 flex flex-col overflow-hidden">
-          <ProductPresentationsEditor presentations={draft} onChange={setDraft} embedded />
+          <ProductPresentationsEditor presentations={draft} onChange={setDraft} embedded showInitialStock={showInitialStock} />
         </div>
         <div className="pt-3 border-t border-gray-100 flex gap-2 shrink-0">
           <button

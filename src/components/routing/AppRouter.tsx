@@ -8,6 +8,8 @@ import SsoPage from '@/pages/auth/SsoPage'
 import RucPage from '@/pages/auth/RucPage'
 import { isNativeShell } from '@/lib/platform/detect'
 
+const EcommerceStorePage = lazy(() => import('@/pages/ecommerce/store/EcommerceStorePage'))
+
 const HomePage = lazy(() => import('@/pages/home/HomePage'))
 const DashboardPage = lazy(() => import('@/pages/dashboard/DashboardPage'))
 const ProductsPage = lazy(() => import('@/pages/products/ProductsPage'))
@@ -27,6 +29,7 @@ const PurchaseRegisterPage = lazy(() => import('@/pages/purchases/PurchaseRegist
 const SuppliersPage = lazy(() => import('@/pages/contacts/SuppliersPage'))
 const InventoryPage = lazy(() => import('@/pages/inventory/InventoryPage'))
 const InventoryTransfersPage = lazy(() => import('@/pages/inventory/InventoryTransfersPage'))
+const InventoryTransferHistoryPage = lazy(() => import('@/pages/inventory/InventoryTransferHistoryPage'))
 const InventoryKardexPage = lazy(() => import('@/pages/inventory/InventoryKardexPage'))
 const InventoryIngressPage = lazy(() => import('@/pages/inventory/InventoryIngressPage'))
 const InventoryEgressPage = lazy(() => import('@/pages/inventory/InventoryEgressPage'))
@@ -50,6 +53,7 @@ const ConductoresPage = lazy(() => import('@/pages/fleet/ConductoresPage'))
 const VehiculosPage = lazy(() => import('@/pages/fleet/VehiculosPage'))
 const ModulesPage = lazy(() => import('@/pages/modules/ModulesPage'))
 const MembershipsPage = lazy(() => import('@/pages/memberships/MembershipsPage'))
+const PedidosWebPage = lazy(() => import('@/pages/ecommerce/PedidosWebPage'))
 const ReportsLayout = lazy(() => import('@/pages/reports/ReportsLayout'))
 const SalesReportPage = lazy(() => import('@/pages/reports/SalesReportPage'))
 const ProductsReportPage = lazy(() => import('@/pages/reports/ProductsReportPage'))
@@ -111,6 +115,9 @@ function AppRoutes() {
     <Routes>
       <Route path="/ruc" element={<RucPage />} />
       <Route path="/auth/sso" element={<SsoPage />} />
+      {/* Tienda pública (Catálogo Digital): sin login, layout propio, fuera de RequireAuth/MainLayout.
+          "/*" además cubre "/ecommerce/" (slash final) y futuras subrutas sin caer en FallbackRedirect. */}
+      <Route path="/ecommerce/*" element={<Lazy><EcommerceStorePage /></Lazy>} />
       <Route
         path="/login"
         element={
@@ -150,6 +157,7 @@ function AppRoutes() {
         <Route path="inventory" element={<Lazy><InventoryPage /></Lazy>} />
         <Route path="inventory/services" element={<Navigate to="/products/services" replace />} />
         <Route path="inventory/transfers" element={<Lazy><InventoryTransfersPage /></Lazy>} />
+        <Route path="inventory/transfers/history" element={<Lazy><InventoryTransferHistoryPage /></Lazy>} />
         <Route path="inventory/ingress" element={<Lazy><InventoryIngressPage /></Lazy>} />
         <Route path="inventory/ingress/new" element={<Lazy><InventoryIngressPage /></Lazy>} />
         <Route path="inventory/ingress/:id/edit" element={<Lazy><InventoryIngressPage /></Lazy>} />
@@ -172,6 +180,7 @@ function AppRoutes() {
         <Route path="fleet/vehicles" element={<Lazy><VehiculosPage /></Lazy>} />
         <Route path="modules" element={<Lazy><ModulesPage /></Lazy>} />
         <Route path="memberships" element={<Lazy><MembershipsPage /></Lazy>} />
+        <Route path="sales/pedidos-web" element={<Lazy><PedidosWebPage /></Lazy>} />
         <Route path="reports" element={<Lazy><ReportsLayout /></Lazy>}>
           <Route index element={<Navigate to="/reports/sales" replace />} />
           <Route path="sales" element={<Lazy><SalesReportPage /></Lazy>} />

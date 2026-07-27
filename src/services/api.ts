@@ -96,7 +96,20 @@ async function refreshAccessToken(): Promise<string | null> {
   }
 }
 
+/**
+ * Rutas públicas (sin login) que viven fuera de RequireAuth/MainLayout pero siguen dentro del
+ * mismo árbol de providers (BranchCheckoutSeriesProvider, FeatureProvider, etc.). Si el navegador
+ * tiene una sesión de administrador vencida en el mismo origen, esos providers igual disparan
+ * llamadas autenticadas de fondo; un 401 de esas llamadas NO debe expulsar a /login a alguien que
+ * está viendo la tienda pública.
+ */
+function isOnPublicRoute(): boolean {
+  const path = isNativeShell() ? window.location.hash.replace(/^#/, '') : window.location.pathname
+  return path.startsWith('/ecommerce')
+}
+
 function redirectToLogin(message?: string) {
+  if (isOnPublicRoute()) return
   if (redirecting) return
   redirecting = true
 

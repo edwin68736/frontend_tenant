@@ -17,6 +17,7 @@ import {
   unitAllowsDecimals,
 } from '@/constants/sunatUnits'
 import { inventoryService, type StockByBranch } from '@/services/inventory.service'
+import { StockAdjustmentModal } from '@/components/inventory/StockAdjustmentModal'
 import { companyService } from '@/services/company.service'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
@@ -69,6 +70,7 @@ function emptyForm(pageMode: ProductCatalogType): CreateProductInput {
       has_expiry_date: false,
       expiry_date: null,
       is_restaurant: false,
+      show_in_digital_catalog: false,
       category_id: null,
       code: '',
       description: '',
@@ -92,6 +94,7 @@ function emptyForm(pageMode: ProductCatalogType): CreateProductInput {
     has_expiry_date: false,
     expiry_date: null,
     is_restaurant: false,
+    show_in_digital_catalog: false,
     preparation_area: '',
     category_id: null,
     code: '',
@@ -310,6 +313,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       has_expiry_date: p.has_expiry_date ?? false,
       expiry_date: p.expiry_date ? String(p.expiry_date).slice(0, 10) : null,
       is_restaurant: p.is_restaurant ?? false,
+      show_in_digital_catalog: p.show_in_digital_catalog ?? false,
       preparation_area: p.preparation_area ?? '',
       category_id: p.category_id,
       description: p.description ?? '',
@@ -445,6 +449,9 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           id: p.id,
           name: p.name.trim(),
           sale_price: Number(p.sale_price) || 0,
+          // Solo aplica a filas nuevas (sin id); las existentes ya tienen su stock propio y el
+          // backend lo ignora para esas.
+          initial_stock: p.id ? undefined : Math.max(0, Number(p.initial_stock) || 0),
         }))
       } else if (editing) {
         payload.presentations = []
@@ -1308,6 +1315,17 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 </select>
               </div>
             )}
+            {/* Canal de difusión: independiente de "Producto de restaurante" (que es del módulo
+                Restaurante/comandas). Controla si el producto aparece en la tienda pública. */}
+            <label className="flex items-center gap-2.5 cursor-pointer touch-manipulation min-h-[2.75rem] sm:min-h-0 sm:col-span-2">
+              <input
+                type="checkbox"
+                checked={form.show_in_digital_catalog ?? false}
+                onChange={(e) => setF('show_in_digital_catalog', e.target.checked)}
+                className="rounded w-4 h-4 shrink-0"
+              />
+              <span className="text-sm text-gray-700">Mostrar en Catálogo Digital (tienda virtual)</span>
+            </label>
           </div>
         )}
 
@@ -1413,6 +1431,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         presentations={presentations}
         onClose={() => setShowPresentationsModal(false)}
         onSave={setPresentations}
+        showInitialStock={Boolean(form.manage_stock)}
       />
 
       {/* Modal Grupos de extras */}
@@ -1489,7 +1508,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
 
       {/* Modal Ajuste de stock */}
       {adjustmentProduct && (
-        <AdjustmentModal
+        <StockAdjustmentModal
           product={adjustmentProduct}
           defaultBranchId={activeBranchId}
           onClose={() => setAdjustmentProduct(null)}
@@ -1727,164 +1746,5 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         />
       )}
     </div>
-  )
-}
-
-function AdjustmentModal({
-  product,
-  defaultBranchId,
-  onClose,
-  onSaved,
-}: {
-  product: Product
-  defaultBranchId: number
-  onClose: () => void
-  onSaved: () => void
-}) {
-  const [branches, setBranches] = useState<{ id: number; name: string }[]>([])
-  const [branchId, setBranchId] = useState<number>(defaultBranchId)
-  const [type, setType] = useState<'in' | 'out'>('in')
-  const [quantity, setQuantity] = useState(product.manage_series ? 1 : 1)
-  const [notes, setNotes] = useState('')
-  const [serials, setSerials] = useState<string[]>([])
-  const [availableSerials, setAvailableSerials] = useState<{ serial: string; branch_id: number; status: string }[]>([])
-  const [loading, setLoading] = useState(false)
-  const [loadingSerials, setLoadingSerials] = useState(false)
-
-  useEffect(() => {
-    companyService.listBranches().then(b => {
-      const list = (b ?? []) as { id: number; name: string }[]
-      setBranches(list)
-      if (defaultBranchId > 0) {
-        setBranchId(defaultBranchId)
-      } else if (list.length > 0 && branchId === 0) {
-        setBranchId(list[0].id)
-      }
-    })
-  }, [defaultBranchId])
-
-  useEffect(() => {
-    if (!branchId || type !== 'out' || !product.manage_series) return
-    setLoadingSerials(true)
-    productsService.getSerials(product.id).then(list => {
-      setAvailableSerials((list ?? []).filter(s => s.branch_id === branchId && s.status === 'available'))
-      setLoadingSerials(false)
-    })
-  }, [product.id, branchId, type])
-
-  useEffect(() => {
-    if (product.manage_series && type === 'in') setSerials(Array(Math.max(0, Math.floor(quantity))).fill(''))
-    if (product.manage_series && type === 'out') setSerials([])
-  }, [product.manage_series, type, quantity])
-
-  const setSerialAt = (index: number, value: string) => {
-    setSerials(prev => { const next = [...prev]; next[index] = value; return next })
-  }
-
-  const handleSubmit = async () => {
-    if (!branchId) { toast.error('Selecciona una sucursal'); return }
-    const qty = product.manage_series ? Math.floor(quantity) : quantity
-    if (qty <= 0) { toast.error('La cantidad debe ser mayor a 0'); return }
-    if (notes.trim() === '') { toast.error('Indica el motivo del ajuste'); return }
-    if (product.manage_series) {
-      if (type === 'in') {
-        const list = serials.map(s => s.trim()).filter(Boolean)
-        if (list.length !== qty) { toast.error(`Debes ingresar exactamente ${qty} número(s) de serie`); return }
-        const seen = new Set<string>()
-        for (const s of list) { if (seen.has(s)) { toast.error('No se permiten seriales duplicados'); return }; seen.add(s) }
-      } else {
-        if (serials.length !== qty) { toast.error(`Selecciona exactamente ${qty} serie(s) a retirar`); return }
-      }
-    } else if (type === 'out') {
-      const stock = await inventoryService.getStock(product.id, branchId)
-      const total = (stock.find(s => s.branch_id === branchId)?.quantity ?? 0) || (stock[0]?.quantity ?? 0)
-      if (qty > total) { toast.error(`Stock insuficiente. Disponible: ${total}`); return }
-    }
-    setLoading(true)
-    try {
-      await inventoryService.adjustment({
-        product_id: product.id, branch_id: branchId, type, quantity: qty, notes: notes.trim(),
-        serials: product.manage_series ? (type === 'in' ? serials.map(s => s.trim()).filter(Boolean) : serials) : undefined,
-      })
-      toast.success('Ajuste registrado. Se actualizó el kardex.')
-      onSaved()
-    } catch (e: any) {
-      toast.error(e?.response?.data?.error ?? 'Error al registrar ajuste')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <Modal open onClose={onClose} contentClassName="max-w-lg" closeOnBackdropClick={false}>
-      <h3 className="font-bold text-gray-800">Ajuste de stock</h3>
-      <p className="text-sm text-gray-500">{product.name}</p>
-      <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">Sucursal</label>
-        {branches.length >= MIN_OPTIONS_FOR_SEARCH ? (
-          <SearchSelect
-            options={branches.map(b => ({ value: String(b.id), label: b.name }))}
-            value={String(branchId || '')}
-            onChange={v => setBranchId(v ? Number(v) : 0)}
-            placeholder="Selecciona sucursal"
-          />
-        ) : (
-          <select className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" value={branchId || ''} onChange={e => setBranchId(e.target.value ? Number(e.target.value) : 0)}>
-            <option value="">Selecciona sucursal</option>
-            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select>
-        )}
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de ajuste</label>
-        <div className="flex gap-4">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="adjType" checked={type === 'in'} onChange={() => setType('in')} />
-            <span className="text-sm">Aumentar stock</span>
-          </label>
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="adjType" checked={type === 'out'} onChange={() => setType('out')} />
-            <span className="text-sm">Disminuir stock</span>
-          </label>
-        </div>
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">Cantidad</label>
-        <input type="number" min={product.manage_series ? 1 : 0.01} step={product.manage_series ? 1 : 0.01} className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" value={quantity} onChange={e => setQuantity(product.manage_series ? Math.max(0, Math.floor(Number(e.target.value) || 0)) : Number(e.target.value) || 0)} />
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">Motivo del ajuste *</label>
-        <textarea className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none" rows={2} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Ej: Ajuste por inventario físico" />
-      </div>
-      {product.manage_series && type === 'in' && (
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Números de serie (uno por unidad)</label>
-          <div className="space-y-2 max-h-40 overflow-y-auto">
-            {serials.map((s, i) => (
-              <input key={i} type="text" className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm font-mono" placeholder={`Serie ${i + 1}`} value={s} onChange={e => setSerialAt(i, e.target.value)} />
-            ))}
-          </div>
-        </div>
-      )}
-      {product.manage_series && type === 'out' && (
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Selecciona las series a retirar</label>
-          {loadingSerials ? <p className="text-sm text-gray-500">Cargando series...</p> : availableSerials.length === 0 ? <p className="text-sm text-amber-600">No hay series disponibles en esta sucursal.</p> : (
-            <div className="max-h-40 overflow-y-auto border border-gray-100 rounded-lg p-2 space-y-1">
-              {availableSerials.map((s, i) => (
-                <label key={i} className="flex items-center gap-2 cursor-pointer">
-                  <input type="checkbox" checked={serials.includes(s.serial)} onChange={e => { const max = Math.floor(quantity); if (e.target.checked) setSerials(prev => prev.length < max ? [...prev, s.serial] : prev); else setSerials(prev => prev.filter(x => x !== s.serial)) }} />
-                  <span className="font-mono text-sm">{s.serial}</span>
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-      <div className="flex gap-2 pt-2">
-        <button type="button" onClick={onClose} className="flex-1 py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cancelar</button>
-        <button type="button" onClick={handleSubmit} disabled={loading} className="flex-1 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50">{loading ? 'Guardando...' : 'Guardar ajuste'}</button>
-      </div>
-    </Modal>
   )
 }

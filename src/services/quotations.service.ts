@@ -29,6 +29,7 @@ export interface Quotation {
 export interface QuotationItem {
   id?: number
   product_id?: number | null
+  presentation_id?: number | null
   code: string
   description: string
   unit: string
@@ -52,6 +53,7 @@ export interface QuotationDetail {
 
 export interface QuotationItemInput {
   product_id?: number | null
+  presentation_id?: number | null
   code: string
   description: string
   unit: string

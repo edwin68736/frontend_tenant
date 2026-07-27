@@ -29,7 +29,7 @@ import {
   createCatalogCartLine,
   type CatalogCartLine,
 } from '@/utils/posCart'
-import { formatModifierLines, parseStoredModifiers } from '@/utils/productModifiers'
+import { formatModifierLines, parseStoredModifiers, presentationIdFromSelection } from '@/utils/productModifiers'
 import {
   SaleAdditionalInfoDrawer,
   emptySaleFiscalForm,
@@ -99,6 +99,9 @@ type SeriesRow = SalePreviewSeries & { id: number; doc_type: string; branch_id?:
 /** Ítem del detalle en el formulario (incluye datos para cálculo y envío). */
 export interface SaleFormItem {
   product_id: number | null
+  /** Variante/presentación elegida (ej. color), cuando el producto tiene presentaciones con
+   *  stock propio. Sin esto, la venta descontaría el agregado del producto en vez de la variante. */
+  presentation_id?: number
   code: string
   description: string
   unit: string
@@ -175,6 +178,7 @@ function catalogLineToSaleItem(line: CatalogCartLine): SaleFormItem {
   const p = line.product
   return {
     product_id: p.id,
+    presentation_id: presentationIdFromSelection(line.modifiers),
     line_key: line.configureKey,
     code: p.code ?? '',
     description: p.name,
@@ -566,6 +570,7 @@ function SalesRegisterContent({
         setItems(
           (detail.items ?? []).map((it) => ({
             product_id: it.product_id ?? null,
+            presentation_id: it.presentation_id ?? undefined,
             code: it.code || '',
             description: it.description,
             unit: it.unit || 'NIU',
@@ -573,6 +578,8 @@ function SalesRegisterContent({
             unit_price: it.unit_price,
             igv_affectation_type: it.igv_affectation_type || '10',
             price_includes_igv: it.price_includes_igv ?? true,
+            modifiers_json: it.modifiers_json || undefined,
+            item_note: it.item_note || undefined,
           })),
         )
         if (linkQuotationId) {
@@ -1196,6 +1203,7 @@ function SalesRegisterContent({
           show_terms_conditions: fiscalForm.show_terms_conditions,
           items: items.map((it, idx) => ({
             product_id: it.product_id ?? null,
+            presentation_id: it.presentation_id ?? undefined,
             code: it.code,
             description: it.description.trim(),
             unit: it.unit,
@@ -1426,6 +1434,7 @@ function SalesRegisterContent({
         global_discount_value: discountValue > 0 ? discountValue : undefined,
         items: items.map((it) => ({
           product_id: it.product_id ?? null,
+          presentation_id: it.presentation_id,
           code: it.code,
           description: it.description.trim(),
           unit: it.unit,

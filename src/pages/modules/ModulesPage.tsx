@@ -1,19 +1,24 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Utensils, Layers, ChefHat, UserCog, Grid3x3, Lock, ArrowLeft, CreditCard } from 'lucide-react'
+import { Utensils, Layers, ChefHat, UserCog, Grid3x3, Lock, ArrowLeft, CreditCard, ShoppingBag, Settings2, Image as ImageIcon } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import RestaurantTablesPage from '@/pages/restaurant/RestaurantTablesPage'
 import RestaurantFloorsPage from '@/pages/restaurant/RestaurantFloorsPage'
 import RestaurantProductsPage from '@/pages/restaurant/RestaurantProductsPage'
 import RestaurantSettingsPage from '@/pages/restaurant/RestaurantSettingsPage'
+import EcommerceGeneralSettings from '@/pages/ecommerce/EcommerceGeneralSettings'
+import EcommerceDesignSettings from '@/pages/ecommerce/EcommerceDesignSettings'
+import EcommerceBannersSettings from '@/pages/ecommerce/EcommerceBannersSettings'
 
 export default function ModulesPage() {
   const navigate = useNavigate()
   const { hasModule } = useAuth()
   const restaurantEnabled = hasModule('restaurant')
   const membershipsEnabled = hasModule('memberships')
-  const [activeModule, setActiveModule] = useState<'restaurant' | null>(null)
+  const ecommerceEnabled = hasModule('ecommerce')
+  const [activeModule, setActiveModule] = useState<'restaurant' | 'ecommerce' | null>(null)
   const [restaurantSection, setRestaurantSection] = useState<'tables' | 'floors' | 'products' | 'settings'>('tables')
+  const [ecommerceSection, setEcommerceSection] = useState<'general' | 'design' | 'banners'>('general')
 
   return (
     <div className="space-y-5">
@@ -88,6 +93,38 @@ export default function ModulesPage() {
                 : 'Solicita al administrador la activación de este módulo.'}
             </p>
           </button>
+
+          {/* Tienda Virtual (Catálogo Digital) */}
+          <button
+            type="button"
+            onClick={() => ecommerceEnabled && setActiveModule('ecommerce')}
+            className={`bg-white rounded-2xl border p-5 flex flex-col gap-3 shadow-sm text-left transition
+              ${ecommerceEnabled ? 'hover:shadow-md hover:-translate-y-0.5 cursor-pointer border-gray-100' : 'opacity-70 cursor-not-allowed border-dashed border-gray-200'}`}
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-11 h-11 rounded-xl bg-[rgb(var(--p50))] flex items-center justify-center flex-shrink-0">
+                <ShoppingBag size={20} className="text-[rgb(var(--p600))]" />
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold text-gray-800 text-sm">Tienda Virtual</h3>
+                  {!ecommerceEnabled && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-500">
+                      <Lock size={10} /> No habilitado
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Catálogo digital público con carrito y pedidos por WhatsApp.
+                </p>
+              </div>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-1">
+              {ecommerceEnabled
+                ? 'Haz clic para diseñar y configurar tu tienda.'
+                : 'Solicita al administrador la activación de este módulo.'}
+            </p>
+          </button>
         </div>
       )}
 
@@ -147,6 +184,58 @@ export default function ModulesPage() {
             {restaurantSection === 'floors' && <RestaurantFloorsPage />}
             {restaurantSection === 'products' && <RestaurantProductsPage />}
             {restaurantSection === 'settings' && <RestaurantSettingsPage />}
+          </div>
+        </div>
+      )}
+
+      {/* Panel de opciones — Tienda Virtual */}
+      {activeModule === 'ecommerce' && ecommerceEnabled && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm">
+          <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-800">Tienda Virtual · ajustes</h3>
+              <p className="text-xs text-gray-500">
+                Configura y diseña tu catálogo digital sin salir de esta vista.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveModule(null)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-gray-200 text-gray-600 hover:bg-gray-50"
+            >
+              <ArrowLeft size={12} />
+              <span>Volver a módulos</span>
+            </button>
+          </div>
+
+          <div className="px-5 py-3 border-b border-gray-100 flex flex-wrap gap-2">
+            <ModuleTab
+              active={ecommerceSection === 'general'}
+              onClick={() => setEcommerceSection('general')}
+              icon={<Settings2 size={13} />}
+            >
+              General
+            </ModuleTab>
+            <ModuleTab
+              active={ecommerceSection === 'design'}
+              onClick={() => setEcommerceSection('design')}
+              icon={<Grid3x3 size={13} />}
+            >
+              Diseño
+            </ModuleTab>
+            <ModuleTab
+              active={ecommerceSection === 'banners'}
+              onClick={() => setEcommerceSection('banners')}
+              icon={<ImageIcon size={13} />}
+            >
+              Banners
+            </ModuleTab>
+          </div>
+
+          <div className="p-4 md:p-5">
+            {ecommerceSection === 'general' && <EcommerceGeneralSettings />}
+            {ecommerceSection === 'design' && <EcommerceDesignSettings />}
+            {ecommerceSection === 'banners' && <EcommerceBannersSettings />}
           </div>
         </div>
       )}
