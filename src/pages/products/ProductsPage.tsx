@@ -149,7 +149,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [bulkActionInProgress, setBulkActionInProgress] = useState(false)
-  const [bulkToggleConfirm, setBulkToggleConfirm] = useState(false)
+  const [bulkToggleOpen, setBulkToggleOpen] = useState(false)
   const [bulkRestaurantConfirm, setBulkRestaurantConfirm] = useState<boolean | null>(null)
   const [bulkDigitalConfirm, setBulkDigitalConfirm] = useState<boolean | null>(null)
   const [bulkStockConfirm, setBulkStockConfirm] = useState<boolean | null>(null)
@@ -565,12 +565,14 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     }
   }
 
-  const handleBulkToggle = async () => {
+  const handleBulkToggle = async (action: 'activate' | 'deactivate') => {
     setBulkActionInProgress(true)
     try {
-      const result = await productsService.bulkToggle([...selectedIds])
+      const updates = { active: action === 'activate' }
+      const result = await productsService.bulkUpdate([...selectedIds], updates)
       if (result.success) {
-        toast.success(`${result.updated} producto(s) actualizado(s)`)
+        const verb = action === 'activate' ? 'activado(s)' : 'desactivado(s)'
+        toast.success(`${result.updated} producto(s) ${verb}`)
         setSelectedIds(new Set())
         load()
       }
@@ -578,7 +580,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       toast.error('Error al actualizar productos')
     } finally {
       setBulkActionInProgress(false)
-      setBulkToggleConfirm(false)
+      setBulkToggleOpen(false)
     }
   }
 
@@ -805,7 +807,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
             <button
               type="button"
               disabled={bulkActionInProgress}
-              onClick={() => setBulkToggleConfirm(true)}
+              onClick={() => setBulkToggleOpen(true)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
             >
               <ToggleLeft size={14} />
@@ -1798,16 +1800,46 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         />
       )}
 
-      <ConfirmDialog
-        open={bulkToggleConfirm}
-        onClose={() => setBulkToggleConfirm(false)}
-        onConfirm={handleBulkToggle}
-        title="Activar/Desactivar productos"
-        message={<p>¿Activar o desactivar los {selectedCount} producto(s) seleccionado(s)?</p>}
-        confirmLabel="Continuar"
-        cancelLabel="Cancelar"
-        loading={bulkActionInProgress}
-      />
+      <Modal
+        open={bulkToggleOpen}
+        onClose={() => setBulkToggleOpen(false)}
+        contentClassName="max-w-md"
+      >
+        <div className="p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Activar/Desactivar productos</h2>
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            ¿Qué deseas hacer con los {selectedCount} producto(s) seleccionado(s)?
+          </p>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              disabled={bulkActionInProgress}
+              onClick={() => handleBulkToggle('activate')}
+              className="flex-1 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg disabled:opacity-50 transition-colors"
+            >
+              {bulkActionInProgress ? 'Procesando...' : '✓ Activar'}
+            </button>
+            <button
+              type="button"
+              disabled={bulkActionInProgress}
+              onClick={() => handleBulkToggle('deactivate')}
+              className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg disabled:opacity-50 transition-colors"
+            >
+              {bulkActionInProgress ? 'Procesando...' : '✕ Desactivar'}
+            </button>
+          </div>
+          <button
+            type="button"
+            disabled={bulkActionInProgress}
+            onClick={() => setBulkToggleOpen(false)}
+            className="w-full px-4 py-2 border border-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+        </div>
+        </div>
+      </Modal>
 
       <ConfirmDialog
         open={bulkRestaurantConfirm !== null}
