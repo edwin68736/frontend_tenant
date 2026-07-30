@@ -1841,57 +1841,129 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         </div>
       </Modal>
 
-      <ConfirmDialog
+      <Modal
         open={bulkRestaurantConfirm !== null}
         onClose={() => setBulkRestaurantConfirm(null)}
-        onConfirm={() => handleBulkUpdate({ is_restaurant: !bulkRestaurantConfirm })}
-        title={bulkRestaurantConfirm ? 'Marcar como restaurante' : 'Desmarcar como restaurante'}
-        message={
-          <p>
-            {bulkRestaurantConfirm
-              ? `¿Marcar los ${selectedCount} producto(s) como de restaurante?`
-              : `¿Desmarcar los ${selectedCount} producto(s) como de restaurante?`}
-          </p>
-        }
-        confirmLabel="Continuar"
-        cancelLabel="Cancelar"
-        loading={bulkActionInProgress}
-      />
+        contentClassName="max-w-md"
+      >
+        <div className="p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Clasificación de restaurante</h2>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              ¿Cómo deseas clasificar los {selectedCount} producto(s) seleccionado(s)?
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                disabled={bulkActionInProgress}
+                onClick={() => handleBulkUpdate({ is_restaurant: true })}
+                className="flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-lg disabled:opacity-50 transition-colors"
+              >
+                {bulkActionInProgress ? 'Procesando...' : '✓ Restaurante'}
+              </button>
+              <button
+                type="button"
+                disabled={bulkActionInProgress}
+                onClick={() => handleBulkUpdate({ is_restaurant: false })}
+                className="flex-1 px-4 py-2.5 bg-gray-600 hover:bg-gray-700 text-white font-medium rounded-lg disabled:opacity-50 transition-colors"
+              >
+                {bulkActionInProgress ? 'Procesando...' : '✕ No restaurante'}
+              </button>
+            </div>
+            <button
+              type="button"
+              disabled={bulkActionInProgress}
+              onClick={() => setBulkRestaurantConfirm(null)}
+              className="w-full px-4 py-2 border border-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </Modal>
 
-      <ConfirmDialog
+      <Modal
         open={bulkDigitalConfirm !== null}
         onClose={() => setBulkDigitalConfirm(null)}
-        onConfirm={() => handleBulkUpdate({ show_in_digital_catalog: !bulkDigitalConfirm })}
-        title={bulkDigitalConfirm ? 'Mostrar en catálogo digital' : 'Ocultar del catálogo digital'}
-        message={
-          <p>
-            {bulkDigitalConfirm
-              ? `¿Mostrar los ${selectedCount} producto(s) en la tienda virtual?`
-              : `¿Ocultar los ${selectedCount} producto(s) de la tienda virtual?`}
-          </p>
-        }
-        confirmLabel="Continuar"
-        cancelLabel="Cancelar"
-        loading={bulkActionInProgress}
-      />
+        contentClassName="max-w-md"
+      >
+        <div className="p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Catálogo digital</h2>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              ¿Deseas mostrar los {selectedCount} producto(s) en la tienda virtual?
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                disabled={bulkActionInProgress}
+                onClick={() => handleBulkUpdate({ show_in_digital_catalog: true })}
+                className="flex-1 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg disabled:opacity-50 transition-colors"
+              >
+                {bulkActionInProgress ? 'Procesando...' : '✓ Mostrar'}
+              </button>
+              <button
+                type="button"
+                disabled={bulkActionInProgress}
+                onClick={() => handleBulkUpdate({ show_in_digital_catalog: false })}
+                className="flex-1 px-4 py-2.5 bg-gray-600 hover:bg-gray-700 text-white font-medium rounded-lg disabled:opacity-50 transition-colors"
+              >
+                {bulkActionInProgress ? 'Procesando...' : '✕ Ocultar'}
+              </button>
+            </div>
+            <button
+              type="button"
+              disabled={bulkActionInProgress}
+              onClick={() => setBulkDigitalConfirm(null)}
+              className="w-full px-4 py-2 border border-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {pageMode === 'product' && (
-        <ConfirmDialog
+        <Modal
           open={bulkStockConfirm !== null}
           onClose={() => setBulkStockConfirm(null)}
-          onConfirm={() => handleBulkUpdate({ manage_stock: !bulkStockConfirm })}
-          title={bulkStockConfirm ? 'Activar control de stock' : 'Desactivar control de stock'}
-          message={
-            <p>
-              {bulkStockConfirm
-                ? `¿Activar control de stock para los ${selectedCount} producto(s)?`
-                : `¿Desactivar control de stock para los ${selectedCount} producto(s)?`}
-            </p>
-          }
-          confirmLabel="Continuar"
-          cancelLabel="Cancelar"
-          loading={bulkActionInProgress}
-        />
+          contentClassName="max-w-md"
+        >
+          <div className="p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Control de stock</h2>
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600">
+                ¿Deseas controlar el stock de los {selectedCount} producto(s)?
+              </p>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  disabled={bulkActionInProgress}
+                  onClick={() => handleBulkUpdate({ manage_stock: true })}
+                  className="flex-1 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg disabled:opacity-50 transition-colors"
+                >
+                  {bulkActionInProgress ? 'Procesando...' : '✓ Controlar'}
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkActionInProgress}
+                  onClick={() => handleBulkUpdate({ manage_stock: false })}
+                  className="flex-1 px-4 py-2.5 bg-gray-600 hover:bg-gray-700 text-white font-medium rounded-lg disabled:opacity-50 transition-colors"
+                >
+                  {bulkActionInProgress ? 'Procesando...' : '✕ No controlar'}
+                </button>
+              </div>
+              <button
+                type="button"
+                disabled={bulkActionInProgress}
+                onClick={() => setBulkStockConfirm(null)}
+                className="w-full px-4 py-2 border border-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       <ConfirmDialog
