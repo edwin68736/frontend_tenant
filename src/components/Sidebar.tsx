@@ -8,7 +8,7 @@ import {
   BookUser, Wallet, Building2, Users, Settings, LogOut,
   Utensils, FileText, X, Grid3x3, Layers, ChefHat, UserCog,
   Shield, MapPin, FileCode, ShieldCheck, ArrowRightLeft, ListOrdered, LayoutGrid, RotateCcw, ShoppingBag,
-  ChevronLeft, ChevronRight, BarChart3, CreditCard, Briefcase, UserCircle, Car,
+  ChevronLeft, ChevronRight, BarChart3, CreditCard, Briefcase, UserCircle, Car, Lock,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -346,28 +346,29 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
     })
   }
 
-  // Filtrar items según módulos del JWT y permisos del rol
+  // Visibilidad de items:
+  // - Bloqueo por PLAN (falta el módulo): se MUESTRA con candado → al entrar, upsell "mejora tu plan".
+  // - Bloqueo por PERMISO de rol: se OCULTA (lo decide el admin del tenant, no es cuestión de plan).
+  const decorate = (item: SimpleItem): (SimpleItem & { locked: boolean }) | null => {
+    const hasPermAccess = item.permission == null || hasPermission(item.permission)
+    if (!hasPermAccess) return null
+    const locked = item.module != null && !modules.includes(item.module)
+    return { ...item, locked }
+  }
+
   const visibleSimpleItems = useMemo(
-    () =>
-      SIMPLE_ITEMS.filter(item => {
-        const hasModuleAccess = item.module == null || modules.includes(item.module)
-        const hasPermAccess = item.permission == null || hasPermission(item.permission)
-        return hasModuleAccess && hasPermAccess
-      }),
+    () => SIMPLE_ITEMS.map(decorate).filter((x): x is SimpleItem & { locked: boolean } => x !== null),
     [modules, hasPermission],
   )
 
   const visibleGroups = useMemo(
     () =>
-      NAV_GROUPS.map(group => {
-        const children = group.children.filter(child => {
-          // Billing: siempre mostrar en menú (no ocultar); al entrar a la vista se muestra mensaje de actualizar plan
-          const hasModuleAccess = child.module == null || child.module === 'billing' || modules.includes(child.module)
-          const hasPermAccess = child.permission == null || child.module === 'billing' || hasPermission(child.permission)
-          return hasModuleAccess && hasPermAccess
-        })
-        return { ...group, children }
-      }).filter(group => group.children.length > 0),
+      NAV_GROUPS.map(group => ({
+        ...group,
+        children: group.children
+          .map(decorate)
+          .filter((x): x is SimpleItem & { locked: boolean } => x !== null),
+      })).filter(group => group.children.length > 0),
     [modules, hasPermission],
   )
 
@@ -442,6 +443,7 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
                   >
                     <span className="shrink-0">{child.icon}</span>
                     <span className="truncate min-w-0">{child.label}</span>
+                    {child.locked && <Lock size={11} className="ml-auto shrink-0 opacity-50" />}
                   </NavLink>
                 ))}
               </div>
@@ -519,6 +521,9 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
                 >
                   {item.icon}
                   {!isCollapsed && <span>{item.label}</span>}
+                  {!isCollapsed && 'locked' in item && item.locked && (
+                    <Lock size={11} className="ml-auto shrink-0 opacity-50" />
+                  )}
                 </NavLink>
               )
             }

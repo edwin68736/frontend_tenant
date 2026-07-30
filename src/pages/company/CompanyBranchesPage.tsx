@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Plus, Pencil, Trash2, MapPin } from 'lucide-react'
 import { companyService, type BranchRow } from '@/services/company.service'
+import { PlanLimitBanner } from '@/components/ui/PlanLimitBanner'
 import { Modal } from '@/components/ui/Modal'
 
 const empty = (): Partial<BranchRow> => ({
@@ -98,6 +99,7 @@ export default function CompanyBranchesPage() {
 
   return (
     <div className="space-y-4">
+      <PlanLimitBanner resource="branches" />
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-gray-800">Sucursales</h2>

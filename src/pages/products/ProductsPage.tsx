@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Settings2, Package, Upload, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Settings2, Package, Upload, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Trash2, CheckCircle, Eye, EyeOff } from 'lucide-react'
 import { ProductImportModal } from '@/components/products/ProductImportModal'
 import { BulkDeleteProductsPinModal } from '@/components/products/BulkDeleteProductsPinModal'
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
@@ -20,6 +20,7 @@ import { inventoryService, type StockByBranch } from '@/services/inventory.servi
 import { StockAdjustmentModal } from '@/components/inventory/StockAdjustmentModal'
 import { companyService } from '@/services/company.service'
 import RequireModule from '@/components/ui/RequireModule'
+import { PlanLimitBanner } from '@/components/ui/PlanLimitBanner'
 import { Modal } from '@/components/ui/Modal'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { SearchSelect, MIN_OPTIONS_FOR_SEARCH } from '@/components/ui/SearchSelect'
@@ -145,6 +146,13 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const [modifierGroups, setModifierGroups] = useState<ModifierGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [bulkActionInProgress, setBulkActionInProgress] = useState(false)
+  const [bulkToggleConfirm, setBulkToggleConfirm] = useState(false)
+  const [bulkRestaurantConfirm, setBulkRestaurantConfirm] = useState<boolean | null>(null)
+  const [bulkDigitalConfirm, setBulkDigitalConfirm] = useState<boolean | null>(null)
+  const [bulkStockConfirm, setBulkStockConfirm] = useState<boolean | null>(null)
   /** Texto enviado al listado: solo con 2+ caracteres; con 0–1 no filtra por nombre/código. */
   const listSearchQuery = useMemo(() => {
     const t = q.trim()
@@ -196,8 +204,6 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const [stockByProductId, setStockByProductId] = useState<Record<string, number>>({})
   const [adjustmentProduct, setAdjustmentProduct] = useState<Product | null>(null)
   const [importModalOpen, setImportModalOpen] = useState(false)
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
-  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
   const [deletingProduct, setDeletingProduct] = useState(false)
 
@@ -559,6 +565,50 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     }
   }
 
+  const handleBulkToggle = async () => {
+    setBulkActionInProgress(true)
+    try {
+      const result = await productsService.bulkToggle([...selectedIds])
+      if (result.success) {
+        toast.success(`${result.updated} producto(s) actualizado(s)`)
+        setSelectedIds(new Set())
+        load()
+      }
+    } catch (error) {
+      toast.error('Error al actualizar productos')
+    } finally {
+      setBulkActionInProgress(false)
+      setBulkToggleConfirm(false)
+    }
+  }
+
+  const handleBulkUpdate = async (updates: Parameters<typeof productsService.bulkUpdate>[1]) => {
+    setBulkActionInProgress(true)
+    try {
+      const result = await productsService.bulkUpdate([...selectedIds], updates)
+      if (result.success) {
+        const updateDesc = Object.entries(updates)
+          .map(([k, v]) => {
+            if (k === 'is_restaurant') return v ? 'marcados como restaurante' : 'desmarcados como restaurante'
+            if (k === 'show_in_digital_catalog') return v ? 'mostrados en catálogo digital' : 'ocultados del catálogo digital'
+            if (k === 'manage_stock') return v ? 'con control de stock' : 'sin control de stock'
+            return k
+          })
+          .join(', ')
+        toast.success(`${result.updated} producto(s) ${updateDesc}`)
+        setSelectedIds(new Set())
+        load()
+      }
+    } catch (error) {
+      toast.error('Error al actualizar productos')
+    } finally {
+      setBulkActionInProgress(false)
+      setBulkRestaurantConfirm(null)
+      setBulkDigitalConfirm(null)
+      setBulkStockConfirm(null)
+    }
+  }
+
   const handleSaveModifierGroup = async () => {
     const name = groupFormName.trim()
     if (!name) { toast.error('Nombre del grupo requerido'); return }
@@ -655,6 +705,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
 
   return (
     <div className="space-y-4">
+      {pageMode === 'product' && <PlanLimitBanner resource="products" />}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-lg font-bold text-gray-800">
@@ -737,25 +788,65 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       </div>
 
       {canDeleteProducts && selectedCount > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 px-1 py-2 rounded-xl border border-red-200 bg-red-50/80">
-          <span className="text-sm font-medium text-red-900">
-            {selectedCount} {pageMode === 'service' ? 'servicio' : 'producto'}{selectedCount === 1 ? '' : 's'} seleccionado{selectedCount === 1 ? '' : 's'}
-          </span>
-          <div className="flex items-center gap-2">
+        <div className="space-y-2 px-1 py-2 rounded-xl border border-blue-200 bg-blue-50/80">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-blue-900">
+              {selectedCount} {pageMode === 'service' ? 'servicio' : 'producto'}{selectedCount === 1 ? '' : 's'} seleccionado{selectedCount === 1 ? '' : 's'}
+            </span>
             <button
               type="button"
               onClick={() => setSelectedIds(new Set())}
-              className="px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg bg-white text-gray-700 hover:bg-gray-50"
+              className="px-2 py-1 text-xs font-medium border border-gray-200 rounded-lg bg-white text-gray-700 hover:bg-gray-50"
             >
               Limpiar
             </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={bulkActionInProgress}
+              onClick={() => setBulkToggleConfirm(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              <ToggleLeft size={14} />
+              Activar/Desactivar
+            </button>
+            <button
+              type="button"
+              disabled={bulkActionInProgress}
+              onClick={() => setBulkRestaurantConfirm(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+            >
+              <Package size={14} />
+              Marcar restaurante
+            </button>
+            <button
+              type="button"
+              disabled={bulkActionInProgress}
+              onClick={() => setBulkDigitalConfirm(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50"
+            >
+              <Eye size={14} />
+              Mostrar en catálogo
+            </button>
+            {pageMode === 'product' && (
+              <button
+                type="button"
+                disabled={bulkActionInProgress}
+                onClick={() => setBulkStockConfirm(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+              >
+                <CheckCircle size={14} />
+                Controlar stock
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setBulkDeleteOpen(true)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-700"
             >
               <Trash2 size={14} />
-              Eliminar seleccionados
+              Eliminar
             </button>
           </div>
         </div>
@@ -1704,6 +1795,70 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
             productsService.bulkDeleteCatalog([...selectedIds], reason)
           }
           onDone={handleBulkDeleteDone}
+        />
+      )}
+
+      <ConfirmDialog
+        open={bulkToggleConfirm}
+        onClose={() => setBulkToggleConfirm(false)}
+        onConfirm={handleBulkToggle}
+        title="Activar/Desactivar productos"
+        message={<p>¿Activar o desactivar los {selectedCount} producto(s) seleccionado(s)?</p>}
+        confirmLabel="Continuar"
+        cancelLabel="Cancelar"
+        loading={bulkActionInProgress}
+      />
+
+      <ConfirmDialog
+        open={bulkRestaurantConfirm !== null}
+        onClose={() => setBulkRestaurantConfirm(null)}
+        onConfirm={() => handleBulkUpdate({ is_restaurant: !bulkRestaurantConfirm })}
+        title={bulkRestaurantConfirm ? 'Marcar como restaurante' : 'Desmarcar como restaurante'}
+        message={
+          <p>
+            {bulkRestaurantConfirm
+              ? `¿Marcar los ${selectedCount} producto(s) como de restaurante?`
+              : `¿Desmarcar los ${selectedCount} producto(s) como de restaurante?`}
+          </p>
+        }
+        confirmLabel="Continuar"
+        cancelLabel="Cancelar"
+        loading={bulkActionInProgress}
+      />
+
+      <ConfirmDialog
+        open={bulkDigitalConfirm !== null}
+        onClose={() => setBulkDigitalConfirm(null)}
+        onConfirm={() => handleBulkUpdate({ show_in_digital_catalog: !bulkDigitalConfirm })}
+        title={bulkDigitalConfirm ? 'Mostrar en catálogo digital' : 'Ocultar del catálogo digital'}
+        message={
+          <p>
+            {bulkDigitalConfirm
+              ? `¿Mostrar los ${selectedCount} producto(s) en la tienda virtual?`
+              : `¿Ocultar los ${selectedCount} producto(s) de la tienda virtual?`}
+          </p>
+        }
+        confirmLabel="Continuar"
+        cancelLabel="Cancelar"
+        loading={bulkActionInProgress}
+      />
+
+      {pageMode === 'product' && (
+        <ConfirmDialog
+          open={bulkStockConfirm !== null}
+          onClose={() => setBulkStockConfirm(null)}
+          onConfirm={() => handleBulkUpdate({ manage_stock: !bulkStockConfirm })}
+          title={bulkStockConfirm ? 'Activar control de stock' : 'Desactivar control de stock'}
+          message={
+            <p>
+              {bulkStockConfirm
+                ? `¿Activar control de stock para los ${selectedCount} producto(s)?`
+                : `¿Desactivar control de stock para los ${selectedCount} producto(s)?`}
+            </p>
+          }
+          confirmLabel="Continuar"
+          cancelLabel="Cancelar"
+          loading={bulkActionInProgress}
         />
       )}
 
