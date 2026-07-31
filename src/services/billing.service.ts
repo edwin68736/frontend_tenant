@@ -77,6 +77,21 @@ export const billingService = {
   resend: (saleId: number): Promise<BillingResult & { invoice?: unknown }> =>
     api.post(`/api/billing/resend/${saleId}`, undefined, { timeout: MANUAL_BILLING_TIMEOUT_MS }).then(r => r.data),
 
+  /**
+   * Corrección fiscal: reenvía el comprobante con otra fecha de emisión, conservando
+   * su numeración, aunque SUNAT ya lo haya aceptado. Resuelve los casos emitidos
+   * contra el ambiente de pruebas que hay que llevar a producción.
+   *
+   * El backend solo la acepta bajo acceso maestro; el tenant recibe 403.
+   */
+  reissue: (
+    saleId: number,
+    body: { issue_date: string; reason: string; observation?: string },
+  ): Promise<BillingResult & { invoice?: unknown }> =>
+    api
+      .post(`/api/billing/reissue/${saleId}`, body, { timeout: MANUAL_BILLING_TIMEOUT_MS })
+      .then(r => r.data),
+
   /** Anular la venta generando y enviando una nota de crédito a SUNAT; luego se anula la venta original. */
   voidWithCreditNote: (saleId: number, reason: string): Promise<{ success: boolean; message?: string; nc_sale?: unknown; invoice?: unknown }> =>
     api.post(`/api/billing/void-with-credit-note/${saleId}`, { reason }).then(r => r.data),

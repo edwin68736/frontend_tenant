@@ -28,6 +28,10 @@ export interface Sale {
   created_at: string
   /** Si es NOTA_CREDITO: ID de la venta que se anuló */
   original_sale_id?: number | null
+  /** Corrección fiscal de soporte: reenviado a SUNAT con otra fecha de emisión. */
+  reissued_at?: string | null
+  reissued_from_date?: string | null
+  reissue_count?: number
   /** Si esta NV ya generó factura/boleta electrónica (backend). */
   electronic_issue_sale_id?: number | null
   electronic_issue_doc_type?: string | null
