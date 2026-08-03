@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Send, Eye, RefreshCw, X, FileText, FileCode, Archive, Download, FileSignature, FileBarChart, Ban, Search, Ticket, FileDown, ChevronDown, Truck, Receipt, MoreVertical } from 'lucide-react'
+import { Send, Eye, RefreshCw, X, FileText, FileCode, Archive, Download, FileSignature, FileBarChart, Ban, Search, Ticket, FileDown, ChevronDown, Truck, Receipt, MoreVertical, CalendarClock } from 'lucide-react'
 import { salesService, type Sale, type SaleDetail } from '@/services/sales.service'
 import { PrintDocButton } from '@/components/print/PrintDocButton'
 import { RowMenu } from '@/components/ui/RowMenu'
@@ -18,6 +18,7 @@ import { SalePaymentsBreakdown } from '@/components/sales/SalePaymentsBreakdown'
 import { BnConfirmationPanel } from '@/components/receivables/BnConfirmationPanel'
 import { DespatchFormModal, buildDespatchPrefillFromSaleDetail, type DespatchPrefill } from '@/components/billing/DespatchFormModal'
 import { FiscalRetentionPerceptionModal } from '@/components/billing/FiscalRetentionPerceptionModal'
+import { FiscalReissueModal, type FiscalReissueTarget } from '@/components/billing/FiscalReissueModal'
 import {
   filterSeriesBySunatCode,
   FISCAL_DOC_SERIES_SETTINGS_PATH,
@@ -35,6 +36,7 @@ import {
   type GuiaSeriesRow,
 } from '@/utils/despatchSeries'
 import { DocumentViewerModal } from '@/components/ui/DocumentViewerModal'
+import { useAuth } from '@/contexts/AuthContext'
 import { getTodayPeru, formatDisplayDatePeru } from '@/utils/datesPeru'
 import { formatSaleDocumentNumber } from '@/utils/format'
 import { createLocalReceiptPdfObjectUrl, downloadLocalReceiptPdf } from '@/utils/localReceiptPdf'
@@ -90,6 +92,10 @@ export default function BillingPage() {
 function BillingContent() {
   const navigate = useNavigate()
   const location = useLocation()
+  // La corrección fiscal solo se ofrece en sesiones de soporte. El backend
+  // vuelve a exigirlo: ocultar el botón no es la barrera, solo evita mostrar
+  // una acción que el tenant no puede ejecutar.
+  const { isImpersonated } = useAuth()
   const [sunatEnabled, setSunatEnabled] = useState<boolean | null>(null)
   const [searchParams] = useSearchParams()
   const [viewMode, setViewMode] = useState<'invoices' | 'credit_notes' | 'summaries_voided'>('invoices')
@@ -103,6 +109,8 @@ function BillingContent() {
   const [total, setTotal] = useState(0)
   const [sending, setSending] = useState<number | null>(null)
   const [resending, setResending] = useState<number | null>(null)
+  const [reissueTarget, setReissueTarget] = useState<FiscalReissueTarget | null>(null)
+  const [reissueSubmitting, setReissueSubmitting] = useState(false)
   const [voidNcOpen, setVoidNcOpen] = useState(false)
   const [voidNcTarget, setVoidNcTarget] = useState<{ id: number; series: string; number: string } | null>(null)
   const [voidNcReason, setVoidNcReason] = useState('')
@@ -291,6 +299,29 @@ function BillingContent() {
       toast.error(e.response?.data?.error ?? e.message ?? 'Error reenviando', { id: tid })
     } finally {
       setResending(null)
+    }
+  }
+
+  const handleReissue = async (input: { issue_date: string; reason: string; observation?: string }) => {
+    if (!reissueTarget) return
+    const saleId = reissueTarget.id
+    setReissueSubmitting(true)
+    const tid = toast.loading('Reenviando con la fecha corregida…')
+    try {
+      const res = await billingService.reissue(saleId, input)
+      const status = resolveManualBillingStatus(res)
+      const msg = manualBillingMessage(res)
+      if (status === 'accepted' || status === 'already_accepted') toast.success(msg, { id: tid })
+      else if (status === 'rejected' || status === 'error') toast.error(msg, { id: tid })
+      else toast.info(msg, { id: tid })
+      applyBillingEvent({ sale_id: saleId, status: billingStatusForUI(res) })
+      setReissueTarget(null)
+      // La fecha de emisión cambió en la venta; el listado en memoria quedó viejo.
+      void load()
+    } catch (e: any) {
+      toast.error(e.response?.data?.error ?? e.message ?? 'Error al corregir el comprobante', { id: tid })
+    } finally {
+      setReissueSubmitting(false)
     }
   }
 
@@ -696,7 +727,21 @@ function BillingContent() {
               const showCdr = canShowCdr(bs)
               return (
               <tr key={s.id} className="border-b border-gray-50 hover:bg-gray-50">
-                <td className="px-4 py-3 text-gray-500 text-xs">{formatDisplayDatePeru(s.issue_date)}</td>
+                <td className="px-4 py-3 text-gray-500 text-xs">
+                  {formatDisplayDatePeru(s.issue_date)}
+                  {s.reissued_at && (
+                    <span
+                      className="ml-1 inline-block px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-[10px] font-medium align-middle"
+                      title={
+                        s.reissued_from_date
+                          ? `Corregido por soporte; fecha original ${formatDisplayDatePeru(s.reissued_from_date)}`
+                          : 'Corregido por soporte'
+                      }
+                    >
+                      Reemitido
+                    </span>
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   <p className="text-xs text-gray-400">{s.doc_type}</p>
                   <p className="font-mono font-bold text-gray-800">
@@ -878,6 +923,18 @@ function BillingContent() {
                           label: 'Reenviar a SUNAT',
                           disabled: resending === s.id,
                           onClick: () => void handleResend(s.id),
+                        },
+                        {
+                          hidden: !(isImpersonated && viewMode === 'invoices' && !isSaleCancelled(s)),
+                          icon: <CalendarClock size={14} className="text-amber-600" />,
+                          label: 'Corregir y reenviar',
+                          disabled: reissueSubmitting,
+                          onClick: () =>
+                            setReissueTarget({
+                              id: s.id,
+                              number: formatSaleDocumentNumber(s.series, s.number),
+                              issueDate: formatDisplayDatePeru(s.issue_date),
+                            }),
                         },
                         {
                           icon: <Eye size={14} className="text-gray-500" />,
@@ -1279,6 +1336,13 @@ function BillingContent() {
             load()
           }
         }}
+      />
+
+      <FiscalReissueModal
+        target={reissueTarget}
+        submitting={reissueSubmitting}
+        onClose={() => setReissueTarget(null)}
+        onConfirm={handleReissue}
       />
     </div>
   )

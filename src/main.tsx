@@ -7,6 +7,7 @@ import { AuthProvider } from './contexts/AuthContext'
 import { BranchProvider } from './contexts/BranchContext'
 import { BranchCheckoutSeriesProvider } from './contexts/BranchCheckoutSeriesContext'
 import { FeatureProvider } from './contexts/FeatureContext'
+import { ModulesProvider } from './contexts/ModulesContext'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { NativeShellProvider } from '@/providers/NativeShellProvider'
 import { TenantBindingProvider } from '@/contexts/TenantBindingContext'
@@ -19,6 +20,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <TenantBindingProvider>
       <AuthProvider>
         <FeatureProvider>
+          <ModulesProvider>
           <BranchProvider>
             <BranchCheckoutSeriesProvider>
               <ThemeProvider>
@@ -27,6 +29,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
               </ThemeProvider>
             </BranchCheckoutSeriesProvider>
           </BranchProvider>
+          </ModulesProvider>
         </FeatureProvider>
       </AuthProvider>
       </TenantBindingProvider>

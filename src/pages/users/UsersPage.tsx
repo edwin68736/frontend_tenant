@@ -10,6 +10,7 @@ import { SearchSelect, MIN_OPTIONS_FOR_SEARCH } from '@/components/ui/SearchSele
 import { UserBranchMultiSelect } from '@/components/users/UserBranchMultiSelect'
 import { UserModuleProfileCell } from './moduleProfiles/UserModuleProfileCell'
 import { RestaurantUserProfileModal } from './moduleProfiles/RestaurantUserProfileModal'
+import { PlanLimitBanner } from '@/components/ui/PlanLimitBanner'
 import { restaurantProfileSummary } from './moduleProfiles/restaurantProfile'
 import { useModuleProfileColumns } from './moduleProfiles/useModuleProfileColumns'
 import type { RestaurantStaffState } from './moduleProfiles/types'
@@ -195,6 +196,7 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-4">
+      <PlanLimitBanner resource="users" />
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-gray-800">Usuarios</h2>

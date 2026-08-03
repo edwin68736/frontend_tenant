@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Settings2, Package, Upload, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Trash2 } from 'lucide-react'
+import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Settings2, Package, Upload, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Trash2, CheckCircle, Eye, EyeOff } from 'lucide-react'
 import { ProductImportModal } from '@/components/products/ProductImportModal'
 import { BulkDeleteProductsPinModal } from '@/components/products/BulkDeleteProductsPinModal'
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
@@ -20,6 +20,7 @@ import { inventoryService, type StockByBranch } from '@/services/inventory.servi
 import { StockAdjustmentModal } from '@/components/inventory/StockAdjustmentModal'
 import { companyService } from '@/services/company.service'
 import RequireModule from '@/components/ui/RequireModule'
+import { PlanLimitBanner } from '@/components/ui/PlanLimitBanner'
 import { Modal } from '@/components/ui/Modal'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { SearchSelect, MIN_OPTIONS_FOR_SEARCH } from '@/components/ui/SearchSelect'
@@ -145,6 +146,13 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const [modifierGroups, setModifierGroups] = useState<ModifierGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [bulkActionInProgress, setBulkActionInProgress] = useState(false)
+  const [bulkToggleOpen, setBulkToggleOpen] = useState(false)
+  const [bulkRestaurantConfirm, setBulkRestaurantConfirm] = useState<boolean | null>(null)
+  const [bulkDigitalConfirm, setBulkDigitalConfirm] = useState<boolean | null>(null)
+  const [bulkStockConfirm, setBulkStockConfirm] = useState<boolean | null>(null)
   /** Texto enviado al listado: solo con 2+ caracteres; con 0–1 no filtra por nombre/código. */
   const listSearchQuery = useMemo(() => {
     const t = q.trim()
@@ -196,8 +204,6 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const [stockByProductId, setStockByProductId] = useState<Record<string, number>>({})
   const [adjustmentProduct, setAdjustmentProduct] = useState<Product | null>(null)
   const [importModalOpen, setImportModalOpen] = useState(false)
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
-  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
   const [deletingProduct, setDeletingProduct] = useState(false)
 
@@ -559,6 +565,52 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     }
   }
 
+  const handleBulkToggle = async (action: 'activate' | 'deactivate') => {
+    setBulkActionInProgress(true)
+    try {
+      const updates = { active: action === 'activate' }
+      const result = await productsService.bulkUpdate([...selectedIds], updates)
+      if (result.success) {
+        const verb = action === 'activate' ? 'activado(s)' : 'desactivado(s)'
+        toast.success(`${result.updated} producto(s) ${verb}`)
+        setSelectedIds(new Set())
+        load()
+      }
+    } catch (error) {
+      toast.error('Error al actualizar productos')
+    } finally {
+      setBulkActionInProgress(false)
+      setBulkToggleOpen(false)
+    }
+  }
+
+  const handleBulkUpdate = async (updates: Parameters<typeof productsService.bulkUpdate>[1]) => {
+    setBulkActionInProgress(true)
+    try {
+      const result = await productsService.bulkUpdate([...selectedIds], updates)
+      if (result.success) {
+        const updateDesc = Object.entries(updates)
+          .map(([k, v]) => {
+            if (k === 'is_restaurant') return v ? 'marcados como restaurante' : 'desmarcados como restaurante'
+            if (k === 'show_in_digital_catalog') return v ? 'mostrados en catálogo digital' : 'ocultados del catálogo digital'
+            if (k === 'manage_stock') return v ? 'con control de stock' : 'sin control de stock'
+            return k
+          })
+          .join(', ')
+        toast.success(`${result.updated} producto(s) ${updateDesc}`)
+        setSelectedIds(new Set())
+        load()
+      }
+    } catch (error) {
+      toast.error('Error al actualizar productos')
+    } finally {
+      setBulkActionInProgress(false)
+      setBulkRestaurantConfirm(null)
+      setBulkDigitalConfirm(null)
+      setBulkStockConfirm(null)
+    }
+  }
+
   const handleSaveModifierGroup = async () => {
     const name = groupFormName.trim()
     if (!name) { toast.error('Nombre del grupo requerido'); return }
@@ -655,6 +707,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
 
   return (
     <div className="space-y-4">
+      {pageMode === 'product' && <PlanLimitBanner resource="products" />}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-lg font-bold text-gray-800">
@@ -737,25 +790,65 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       </div>
 
       {canDeleteProducts && selectedCount > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 px-1 py-2 rounded-xl border border-red-200 bg-red-50/80">
-          <span className="text-sm font-medium text-red-900">
-            {selectedCount} {pageMode === 'service' ? 'servicio' : 'producto'}{selectedCount === 1 ? '' : 's'} seleccionado{selectedCount === 1 ? '' : 's'}
-          </span>
-          <div className="flex items-center gap-2">
+        <div className="space-y-2 px-1 py-2 rounded-xl border border-blue-200 bg-blue-50/80">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-blue-900">
+              {selectedCount} {pageMode === 'service' ? 'servicio' : 'producto'}{selectedCount === 1 ? '' : 's'} seleccionado{selectedCount === 1 ? '' : 's'}
+            </span>
             <button
               type="button"
               onClick={() => setSelectedIds(new Set())}
-              className="px-3 py-1.5 text-xs font-medium border border-gray-200 rounded-lg bg-white text-gray-700 hover:bg-gray-50"
+              className="px-2 py-1 text-xs font-medium border border-gray-200 rounded-lg bg-white text-gray-700 hover:bg-gray-50"
             >
               Limpiar
             </button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={bulkActionInProgress}
+              onClick={() => setBulkToggleOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              <ToggleLeft size={14} />
+              Activar/Desactivar
+            </button>
+            <button
+              type="button"
+              disabled={bulkActionInProgress}
+              onClick={() => setBulkRestaurantConfirm(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50"
+            >
+              <Package size={14} />
+              Marcar restaurante
+            </button>
+            <button
+              type="button"
+              disabled={bulkActionInProgress}
+              onClick={() => setBulkDigitalConfirm(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50"
+            >
+              <Eye size={14} />
+              Mostrar en catálogo
+            </button>
+            {pageMode === 'product' && (
+              <button
+                type="button"
+                disabled={bulkActionInProgress}
+                onClick={() => setBulkStockConfirm(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+              >
+                <CheckCircle size={14} />
+                Controlar stock
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setBulkDeleteOpen(true)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-700"
             >
               <Trash2 size={14} />
-              Eliminar seleccionados
+              Eliminar
             </button>
           </div>
         </div>
@@ -1705,6 +1798,172 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           }
           onDone={handleBulkDeleteDone}
         />
+      )}
+
+      <Modal
+        open={bulkToggleOpen}
+        onClose={() => setBulkToggleOpen(false)}
+        contentClassName="max-w-md"
+      >
+        <div className="p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Activar/Desactivar productos</h2>
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            ¿Qué deseas hacer con los {selectedCount} producto(s) seleccionado(s)?
+          </p>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              disabled={bulkActionInProgress}
+              onClick={() => handleBulkToggle('activate')}
+              className="flex-1 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg disabled:opacity-50 transition-colors"
+            >
+              {bulkActionInProgress ? 'Procesando...' : '✓ Activar'}
+            </button>
+            <button
+              type="button"
+              disabled={bulkActionInProgress}
+              onClick={() => handleBulkToggle('deactivate')}
+              className="flex-1 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg disabled:opacity-50 transition-colors"
+            >
+              {bulkActionInProgress ? 'Procesando...' : '✕ Desactivar'}
+            </button>
+          </div>
+          <button
+            type="button"
+            disabled={bulkActionInProgress}
+            onClick={() => setBulkToggleOpen(false)}
+            className="w-full px-4 py-2 border border-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+        </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={bulkRestaurantConfirm !== null}
+        onClose={() => setBulkRestaurantConfirm(null)}
+        contentClassName="max-w-md"
+      >
+        <div className="p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Clasificación de restaurante</h2>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              ¿Cómo deseas clasificar los {selectedCount} producto(s) seleccionado(s)?
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                disabled={bulkActionInProgress}
+                onClick={() => handleBulkUpdate({ is_restaurant: true })}
+                className="flex-1 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-medium rounded-lg disabled:opacity-50 transition-colors"
+              >
+                {bulkActionInProgress ? 'Procesando...' : '✓ Restaurante'}
+              </button>
+              <button
+                type="button"
+                disabled={bulkActionInProgress}
+                onClick={() => handleBulkUpdate({ is_restaurant: false })}
+                className="flex-1 px-4 py-2.5 bg-gray-600 hover:bg-gray-700 text-white font-medium rounded-lg disabled:opacity-50 transition-colors"
+              >
+                {bulkActionInProgress ? 'Procesando...' : '✕ No restaurante'}
+              </button>
+            </div>
+            <button
+              type="button"
+              disabled={bulkActionInProgress}
+              onClick={() => setBulkRestaurantConfirm(null)}
+              className="w-full px-4 py-2 border border-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={bulkDigitalConfirm !== null}
+        onClose={() => setBulkDigitalConfirm(null)}
+        contentClassName="max-w-md"
+      >
+        <div className="p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">Catálogo digital</h2>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              ¿Deseas mostrar los {selectedCount} producto(s) en la tienda virtual?
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                disabled={bulkActionInProgress}
+                onClick={() => handleBulkUpdate({ show_in_digital_catalog: true })}
+                className="flex-1 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg disabled:opacity-50 transition-colors"
+              >
+                {bulkActionInProgress ? 'Procesando...' : '✓ Mostrar'}
+              </button>
+              <button
+                type="button"
+                disabled={bulkActionInProgress}
+                onClick={() => handleBulkUpdate({ show_in_digital_catalog: false })}
+                className="flex-1 px-4 py-2.5 bg-gray-600 hover:bg-gray-700 text-white font-medium rounded-lg disabled:opacity-50 transition-colors"
+              >
+                {bulkActionInProgress ? 'Procesando...' : '✕ Ocultar'}
+              </button>
+            </div>
+            <button
+              type="button"
+              disabled={bulkActionInProgress}
+              onClick={() => setBulkDigitalConfirm(null)}
+              className="w-full px-4 py-2 border border-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {pageMode === 'product' && (
+        <Modal
+          open={bulkStockConfirm !== null}
+          onClose={() => setBulkStockConfirm(null)}
+          contentClassName="max-w-md"
+        >
+          <div className="p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Control de stock</h2>
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600">
+                ¿Deseas controlar el stock de los {selectedCount} producto(s)?
+              </p>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  disabled={bulkActionInProgress}
+                  onClick={() => handleBulkUpdate({ manage_stock: true })}
+                  className="flex-1 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg disabled:opacity-50 transition-colors"
+                >
+                  {bulkActionInProgress ? 'Procesando...' : '✓ Controlar'}
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkActionInProgress}
+                  onClick={() => handleBulkUpdate({ manage_stock: false })}
+                  className="flex-1 px-4 py-2.5 bg-gray-600 hover:bg-gray-700 text-white font-medium rounded-lg disabled:opacity-50 transition-colors"
+                >
+                  {bulkActionInProgress ? 'Procesando...' : '✕ No controlar'}
+                </button>
+              </div>
+              <button
+                type="button"
+                disabled={bulkActionInProgress}
+                onClick={() => setBulkStockConfirm(null)}
+                className="w-full px-4 py-2 border border-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       <ConfirmDialog

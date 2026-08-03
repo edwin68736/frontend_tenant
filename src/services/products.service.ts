@@ -425,6 +425,28 @@ export const productsService = {
       })
       .then(r => r.data.image_url)
   },
+
+  /** Activa/desactiva múltiples productos */
+  bulkToggle: (productIds: number[]) =>
+    api
+      .patch<{ success: boolean; updated: number }>('/api/products/bulk-toggle', {
+        product_ids: productIds,
+      })
+      .then(r => r.data),
+
+  /** Actualiza múltiples productos con los campos especificados */
+  bulkUpdate: (productIds: number[], updates: {
+    active?: boolean
+    is_restaurant?: boolean
+    show_in_digital_catalog?: boolean
+    manage_stock?: boolean
+  }) =>
+    api
+      .patch<{ success: boolean; updated: number }>('/api/products/bulk-update', {
+        product_ids: productIds,
+        updates,
+      })
+      .then(r => r.data),
 }
 
 /** Devuelve la URL absoluta de la imagen del producto (backend guarda rutas relativas). */
