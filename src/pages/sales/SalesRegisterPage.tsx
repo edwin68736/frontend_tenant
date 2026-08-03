@@ -94,7 +94,12 @@ import {
 } from '@/utils/saleCreditPayment'
 
 /** Tipo de serie de venta (desde API). */
-type SeriesRow = SalePreviewSeries & { id: number; doc_type: string; branch_id?: number }
+type SeriesRow = SalePreviewSeries & {
+  id: number
+  doc_type: string
+  branch_id?: number
+  active?: boolean
+}
 
 /** Ítem del detalle en el formulario (incluye datos para cálculo y envío). */
 export interface SaleFormItem {
@@ -597,13 +602,17 @@ function SalesRegisterContent({
   }, [editingQuotationId, linkQuotationId, loading])
 
   const billingOk = hasModule('billing') && sunatEnabled
+  // Una serie desactivada no puede emitirse: el backend ya no la envía, y aquí se vuelve
+  // a descartar para que ni el selector ni los tipos de documento la ofrezcan si quedara
+  // en una respuesta cacheada. Mismo criterio que el POS y las guías.
+  const activeSeries = series.filter((s) => s.active !== false)
   const seriesFiltered = isQuotation
-    ? series
-    : series.filter(
+    ? activeSeries
+    : activeSeries.filter(
         (s) => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === form.sunat_code,
       )
   const tipoOptions = codesForMode(mode, billingOk, canFactura).filter((code) =>
-    series.some((s) => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === code),
+    activeSeries.some((s) => ((s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)) === code),
   )
 
   useEffect(() => {

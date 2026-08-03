@@ -129,7 +129,18 @@ export interface DocumentUsageView {
   warning_level: 'none' | 'low' | 'high' | 'exhausted'
   warning_message?: string
   can_emit: boolean
+  /** Fin de la suscripción pagada: hasta aquí valen los paquetes comprados. */
   billing_cycle_end?: string
+  /**
+   * Fecha en que el cupo mensual del plan vuelve a estar completo. No coincide con
+   * `billing_cycle_end` cuando el cliente paga varios meses por adelantado: los
+   * documentos del plan se renuevan cada mes, la suscripción vence al final.
+   */
+  quota_period_end?: string
+  /** Mes en curso dentro de la suscripción (1 = primero). */
+  quota_period_index?: number
+  /** Total de meses que cubre la suscripción. */
+  quota_period_total?: number
 }
 
 export interface DocumentPackageCatalog {

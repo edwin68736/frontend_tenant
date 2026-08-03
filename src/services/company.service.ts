@@ -249,7 +249,16 @@ export const companyService = {
   updateBranch: (id: number, data: Partial<BranchRow>) =>
     api.put(`/api/company/branches/${id}`, data).then((r) => r.data),
   deleteBranch: (id: number) => api.delete(`/api/company/branches/${id}`).then((r) => r.data),
-  listSeries: (params?: { branch_id?: number; category?: string }): Promise<SeriesRow[]> =>
+  /**
+   * Series del tenant. Devuelve SOLO las activas: una serie desactivada no debe poder
+   * elegirse al emitir. `include_inactive` es para la pantalla de configuración, que
+   * necesita listarlas todas para poder reactivarlas.
+   */
+  listSeries: (params?: {
+    branch_id?: number
+    category?: string
+    include_inactive?: boolean
+  }): Promise<SeriesRow[]> =>
     api.get<{ data: SeriesRow[] }>('/api/company/series', { params }).then((r) => r.data.data ?? []),
   listSeriesDocumentTypes: (): Promise<SeriesDocumentTypesResponse> =>
     api.get<{ data: SeriesDocumentType[]; category_labels: Record<string, string> }>('/api/company/series/document-types').then((r) => ({

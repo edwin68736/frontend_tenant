@@ -1,29 +1,20 @@
-import { Link } from 'react-router-dom'
-import { type ElementType } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   ShoppingCart,
   Receipt,
   FileText,
+  Truck,
   Tag,
   Wallet,
   LayoutDashboard,
   Grid3x3,
-  ArrowRight,
 } from 'lucide-react'
-import { getQuickLinkTheme } from './homeTheme'
 import { HomeTutorialsPromoSection } from '@/components/home/HomeTutorialsPromoSection'
 import { HomeKpiCards } from '@/components/home/HomeKpiCards'
+import { HomeGreeting } from '@/components/home/HomeGreeting'
+import { HomeQuickAccessGrid, type QuickLink } from '@/components/home/HomeQuickAccessGrid'
 import { isCapacitorAndroid } from '@/lib/platform/detect'
 import { useDesktopViewport, useTabletViewport } from '@/hooks/useMediaQuery'
-
-type QuickLink = {
-  to: string
-  icon: ElementType
-  label: string
-  description: string
-}
-
 
 export default function HomePage() {
   const { modules } = useAuth()
@@ -51,12 +42,21 @@ export default function HomePage() {
       icon: Receipt,
       label: 'Notas de venta',
       description: 'Notas de venta internas (SUNAT 00), sin envío obligatorio',
+      newTo: '/sales/nota-venta',
     },
     hasModule('sales') && {
-      to: '/quotations/new',
+      to: '/quotations',
       icon: FileText,
-      label: 'Nueva cotización',
+      label: 'Cotizaciones',
       description: 'Cotiza precios antes de emitir el comprobante',
+      newTo: '/quotations/new',
+    },
+    hasModule('purchases') && {
+      to: '/purchases',
+      icon: Truck,
+      label: 'Compras',
+      description: 'Registra facturas y boletas de tus proveedores',
+      newTo: '/purchases/register',
     },
     hasModule('products') && {
       to: '/products',
@@ -85,7 +85,9 @@ export default function HomePage() {
   ].filter(Boolean) as QuickLink[]
 
   return (
-    <div className="space-y-6 md:space-y-8 -m-1 md:-m-2">
+    <div className="-m-1 space-y-5 md:-m-2 md:space-y-8">
+      <HomeGreeting />
+
       {/* Bienvenida + promociones */}
       <section aria-label="Promociones">
         <HomeTutorialsPromoSection withWelcomeCard={showTutorials} />
@@ -102,44 +104,9 @@ export default function HomePage() {
         <section className="space-y-3 pb-1">
           <div>
             <h2 className="text-base font-bold text-gray-900">Accesos rápidos</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Atajos a las secciones más usadas</p>
+            <p className="mt-0.5 text-xs text-gray-500">Atajos a las secciones más usadas</p>
           </div>
-          {/* Mínimo 2 columnas: en móvil una sola dejaba mucho aire a los lados. */}
-          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
-            {quickLinks.map((link) => {
-              const Icon = link.icon
-              const theme = getQuickLinkTheme(link.to)
-              return (
-                <Link
-                  key={link.to}
-                  to={link.to}
-                  className={`group relative flex flex-col overflow-hidden rounded-2xl border border-gray-200/90 bg-white p-5 md:p-6 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${theme.borderHover} ${theme.shadowHover}`}
-                >
-                  <div
-                    className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${theme.topBar}`}
-                    aria-hidden
-                  />
-                  <div
-                    className={`mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br shadow-sm transition-all duration-300 group-hover:text-white group-hover:shadow-md ${theme.iconBg} ${theme.iconText} ${theme.iconHoverBg}`}
-                  >
-                    <Icon className="h-6 w-6" />
-                  </div>
-                  <p className={`text-sm md:text-base font-semibold text-gray-900 transition-colors ${theme.linkHover}`}>
-                    {link.label}
-                  </p>
-                  <p className="mt-1.5 flex-1 text-xs md:text-sm text-gray-500 leading-relaxed line-clamp-2">
-                    {link.description}
-                  </p>
-                  <span
-                    className={`mt-4 inline-flex items-center gap-1 text-xs font-semibold opacity-0 translate-y-1 transition-all duration-300 group-hover:opacity-100 group-hover:translate-y-0 ${theme.accent}`}
-                  >
-                    Ir ahora
-                    <ArrowRight size={14} />
-                  </span>
-                </Link>
-              )
-            })}
-          </div>
+          <HomeQuickAccessGrid links={quickLinks} />
         </section>
       )}
     </div>

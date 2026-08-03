@@ -15,6 +15,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { isCapacitorNative } from '@/lib/platform/detect'
 import { MODAL_FOOTER_SAFE } from '@/utils/safeAreaClasses'
+import SidebarTutorialsLink from './SidebarTutorialsLink'
 
 type SimpleItem = {
   id: string
@@ -496,6 +497,8 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
 
       {/* Navegación */}
       <nav className="flex-1 px-2 py-3 overflow-y-auto overflow-x-visible space-y-2">
+        <SidebarTutorialsLink collapsed={isCollapsed} onNavigate={onClose} />
+
         {['home', 'dashboard', 'preventa', 'ventas', 'compras', 'contacts', 'productos', 'inventario', 'finanzas', 'doc-avanzados', 'reportes', 'administracion', 'empresa', 'modules'].map(
           (entryId) => {
             const item = visibleSimpleItems.find(i => i.id === entryId)

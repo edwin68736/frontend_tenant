@@ -51,7 +51,12 @@ export default function CompanySeriesPage() {
 
   const load = () =>
     Promise.all([
-      companyService.listSeries({ category: filterCategory || undefined }),
+      // Esta es la pantalla de configuración: necesita ver también las series
+      // desactivadas para poder reactivarlas. El resto de vistas solo recibe las activas.
+      companyService.listSeries({
+        category: filterCategory || undefined,
+        include_inactive: true,
+      }),
       companyService.listBranches(),
       companyService.getSunat(),
       companyService.listSeriesDocumentTypes(),

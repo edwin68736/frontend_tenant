@@ -294,3 +294,64 @@ html.platform-capacitor [data-sonner-toaster] {
 .fly-cart-particle {
   box-shadow: 0 16px 40px rgba(15, 23, 42, 0.28);
 }
+
+/* Icono animado de YouTube (link de tutoriales del sidebar) */
+@keyframes youtube-bg-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+@keyframes youtube-play-loop {
+  0%,
+  100% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  38% {
+    transform: translateX(2px) scale(1.04);
+    opacity: 1;
+  }
+  52% {
+    transform: translateX(5px);
+    opacity: 0;
+  }
+  53% {
+    transform: translateX(-5px);
+    opacity: 0;
+  }
+  68% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.youtube-icon-bg {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: youtube-bg-pulse 2.4s ease-in-out infinite;
+}
+
+.youtube-icon-play-wrap {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: youtube-play-loop 2.4s ease-in-out infinite;
+}
+
+/**
+ * Bottom sheet de <Modal>: en móvil el panel va pegado al borde inferior (items-end,
+ * sin padding en el overlay). Como la app es edge-to-edge en Android (StatusBar
+ * overlaysWebView + setDecorFitsSystemWindows(false) + viewport-fit=cover), la barra
+ * de gestos tapa el pie del modal. Se declara fuera de @layer para ganar por orden de
+ * fuente al `p-4` de Tailwind. Solo bajo sm: desde ahí el modal se centra con padding en
+ * el overlay y `sm:p-6`/`md:p-7` siguen mandando. Los modales con `!p-0` no se afectan.
+ */
+@media (max-width: 639.98px) {
+  .modal-sheet-safe {
+    padding-bottom: max(1rem, var(--safe-bottom));
+  }
+}

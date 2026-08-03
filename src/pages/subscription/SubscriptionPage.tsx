@@ -251,7 +251,14 @@ export default function SubscriptionPage() {
               ) : (
                 <>
                   <div className="flex items-end justify-between gap-2 mb-2">
-                    <p className="text-xs text-gray-500">Uso del cupo del plan</p>
+                    <div className="min-w-0">
+                      <p className="text-xs text-gray-500">Uso del cupo mensual del plan</p>
+                      {hub.documents.quota_period_index && hub.documents.quota_period_total ? (
+                        <p className="text-[11px] text-gray-400 mt-0.5">
+                          Mes {hub.documents.quota_period_index} de {hub.documents.quota_period_total} de tu suscripción
+                        </p>
+                      ) : null}
+                    </div>
                     <span className="text-sm font-bold text-gray-800">{hub.documents.usage_percent}%</span>
                   </div>
                   <div className="h-2.5 rounded-full bg-gray-100 overflow-hidden mb-4">
@@ -265,8 +272,8 @@ export default function SubscriptionPage() {
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                     {[
-                      { label: 'Cupo plan', value: hub.documents.plan_limit, sub: `${hub.documents.plan_remaining} restantes` },
-                      { label: 'Usados', value: hub.documents.plan_used, sub: 'del plan' },
+                      { label: 'Cupo del mes', value: hub.documents.plan_limit, sub: `${hub.documents.plan_remaining} restantes` },
+                      { label: 'Usados', value: hub.documents.plan_used, sub: 'este mes' },
                       { label: 'Paquetes', value: hub.documents.package_remaining, sub: `+${hub.documents.package_bonus} bonus` },
                       { label: 'Disponibles', value: hub.documents.total_available, sub: 'total', highlight: true },
                     ].map(c => (
@@ -290,9 +297,22 @@ export default function SubscriptionPage() {
                       {hub.documents.warning_message}
                     </p>
                   )}
-                  {hub.documents.billing_cycle_end && (
-                    <p className="text-xs text-gray-500 mt-2">Los paquetes vencen con el ciclo ({formatDate(hub.documents.billing_cycle_end)}).</p>
-                  )}
+                  {/* Dos fechas distintas y fáciles de confundir: el cupo del plan se
+                      renueva cada mes, mientras que los paquetes comprados duran hasta
+                      que vence la suscripción. */}
+                  <div className="mt-2 space-y-0.5">
+                    {hub.documents.quota_period_end && (
+                      <p className="text-xs text-gray-600">
+                        Tu cupo de {hub.documents.plan_limit} documentos se renueva el{' '}
+                        <span className="font-semibold">{formatDate(hub.documents.quota_period_end)}</span>.
+                      </p>
+                    )}
+                    {hub.documents.billing_cycle_end && (
+                      <p className="text-xs text-gray-500">
+                        Los paquetes adicionales vencen al terminar tu suscripción ({formatDate(hub.documents.billing_cycle_end)}).
+                      </p>
+                    )}
+                  </div>
                 </>
               )}
               {!hub.documents.is_unlimited && (hub.document_packages?.length ?? 0) > 0 && (

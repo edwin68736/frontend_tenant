@@ -75,9 +75,14 @@ export function Modal({ open, onClose, children, contentClassName, closeOnBackdr
   // Evitar aria-hidden mientras el foco sigue dentro (provoca aviso de accesibilidad).
   const ariaHidden = !open && focusMoved
 
+  // `modal-sheet-safe` respeta la safe area inferior (barra de gestos Android) en el
+  // bottom sheet móvil; desde sm vuelve al padding normal.
+  const baseContentClasses =
+    'bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full p-4 sm:p-6 md:p-7 modal-sheet-safe space-y-4 max-h-[min(92dvh,900px)] overflow-y-auto overscroll-contain'
+
   const contentClasses = contentClassName
-    ? `bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full p-4 sm:p-6 md:p-7 space-y-4 max-h-[min(92dvh,900px)] overflow-y-auto overscroll-contain ${contentClassName}`
-    : `bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full max-w-xl md:max-w-lg p-4 sm:p-6 md:p-7 space-y-4 max-h-[min(92dvh,900px)] overflow-y-auto overscroll-contain`
+    ? `${baseContentClasses} ${contentClassName}`
+    : `${baseContentClasses} max-w-xl md:max-w-lg`
 
   return createPortal(
     <div
