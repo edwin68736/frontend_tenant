@@ -1,6 +1,6 @@
 [package]
 name = "tukifac-tenant"
-version = "1.2.7"
+version = "1.2.8"
 description = "Tukifac Tenant Panel"
 edition = "2021"
 
