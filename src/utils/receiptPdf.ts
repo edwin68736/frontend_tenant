@@ -21,6 +21,7 @@ import {
 import { ticketColumnLayoutMm } from '@/utils/receiptTicketLayout'
 import { getPrintIssuerAddress } from '@/utils/printIssuer'
 import { trimCompanyAdditionalNotes } from '@/utils/receiptCompanyNotes'
+import { getCreditNoteReference } from '@/utils/receiptCreditNoteRef'
 import {
   normalizeTicketPaperWidth,
   ticketMarginMm,
@@ -347,6 +348,18 @@ export async function generateReceiptPdf(
       )
       if (data.client.address) {
         addTicketWrapped(`Dirección: ${data.client.address}`, FONT_SIZE_SM)
+      }
+    }
+    // Nota de crédito/débito: SUNAT exige el tipo de nota y el comprobante que modifica.
+    const creditNoteRef = getCreditNoteReference(data)
+    if (creditNoteRef) {
+      if (creditNoteRef.noteTypeLabel) {
+        addTicketWrapped(`Tipo de nota: ${creditNoteRef.noteTypeLabel}`, FONT_SIZE_SM)
+      }
+      addTicketWrapped(`Tipo Doc. Ref.: ${creditNoteRef.docTypeLabel}`, FONT_SIZE_SM)
+      addTicketWrapped(`Documento Ref.: ${creditNoteRef.docNumber}`, FONT_SIZE_SM)
+      if (creditNoteRef.reason) {
+        addTicketWrapped(`Motivo: ${creditNoteRef.reason}`, FONT_SIZE_SM)
       }
     }
     addTicketWrapped(`Tipo Moneda: ${data.currency === 'USD' ? 'DÓLARES' : 'SOLES'}`, FONT_SIZE_SM)

@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import SupportModeBanner from '@/components/SupportModeBanner'
+import PlanReminderModal from '@/components/PlanReminderModal'
 import { SubscriptionStatusProvider } from '@/contexts/SubscriptionStatusContext'
 import { BRAND_TOP_BAR } from '@/config/branding'
 import { isCapacitorNative } from '@/lib/platform/detect'
@@ -43,6 +44,8 @@ export default function MainLayout() {
 
   return (
     <SubscriptionStatusProvider>
+      {/* Aviso de vencimiento/mora: se monta una vez para todo el ERP. */}
+      <PlanReminderModal />
       <div
         className={clsx(
           'relative flex h-[100dvh] min-h-screen-safe w-full max-w-[100vw] flex-col overflow-hidden',

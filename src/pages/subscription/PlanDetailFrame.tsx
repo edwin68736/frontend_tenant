@@ -92,6 +92,7 @@ export default function PlanDetailFrame({ hub, onManagePayment }: Props) {
   const paymentTone = ctx?.current_payment_tone ?? 'success'
   const planAmt = planAmountDisplay(hub)
   const nextPay = nextPaymentDate(sub)
+  const hasDebt = Boolean(ctx?.has_real_debt) && (ctx?.display_debt_amount ?? 0) > 0
   // billing_cycle es el del PLAN; los meses contratados pueden ser otros (un plan mensual
   // vendido por 3 meses decía «Mensual» junto a un período de 3 meses).
   const cycleLabel = periodLabel(sub)
@@ -110,7 +111,12 @@ export default function PlanDetailFrame({ hub, onManagePayment }: Props) {
           </div>
           <div className="min-w-0">
             <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Tu plan actual</p>
-            <h2 className="text-xl font-bold text-gray-900 truncate">{sub.plan_name || 'Sin plan'}</h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-xl font-bold text-gray-900 truncate">{sub.plan_name || 'Sin plan'}</h2>
+              <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-bold ${statusBadgeClass(sub.status)}`}>
+                {(STATUS_LABELS[sub.status] ?? sub.status).toUpperCase()}
+              </span>
+            </div>
             <p className="text-sm text-gray-500 mt-0.5">Ciclo {cycleLabel.toLowerCase()}</p>
           </div>
         </div>
@@ -126,67 +132,76 @@ export default function PlanDetailFrame({ hub, onManagePayment }: Props) {
       </div>
 
       <div className="p-5 space-y-4">
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          <DetailCell label="Estado de suscripción">
-            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-bold ${statusBadgeClass(sub.status)}`}>
-              {(STATUS_LABELS[sub.status] ?? sub.status).toUpperCase()}
-            </span>
-          </DetailCell>
-
-          <DetailCell label="Pago actual">
-            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold ${paymentToneClass(paymentTone)}`}>
-              {payShort.icon === 'ok' && <CheckCircle2 size={12} />}
-              {payShort.icon === 'warn' && <AlertTriangle size={12} />}
-              {payShort.icon === 'danger' && <AlertTriangle size={12} />}
-              {paymentLabel}
-            </span>
-          </DetailCell>
-
-          <DetailCell label="Monto del plan">{formatMoney(planAmt)}</DetailCell>
-
-          <DetailCell label="Próximo pago">
+        {/* Tres datos, no ocho. «Próximo pago» y «Vencimiento» convivían como columnas sueltas
+            y se leían como contradictorios —el cobro vence antes que el plan— cuando en
+            realidad responden a preguntas distintas: hasta cuándo tengo servicio, y hasta
+            cuándo tengo para pagar. Cada bloque responde una sola. */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+          <DetailCell label="Servicio activo hasta">
             <span className="inline-flex items-center gap-1 font-medium">
               <Calendar size={14} className="text-gray-400 shrink-0" />
-              {nextPay ? formatDate(nextPay) : '—'}
+              {sub.end_date ? formatDate(sub.end_date) : '—'}
             </span>
-          </DetailCell>
-
-          <DetailCell label="Inicio del período">
-            {sub.start_date ? formatDate(sub.start_date) : '—'}
-          </DetailCell>
-
-          <DetailCell label="Vencimiento">
-            {sub.end_date ? formatDate(sub.end_date) : '—'}
-          </DetailCell>
-
-          <DetailCell label="Días restantes">
             <span
-              className={
-                sub.days_until_expiry <= (ctx?.max_reminder_days ?? 7) && sub.days_until_expiry > 0
-                  ? 'text-amber-700'
-                  : sub.days_until_expiry <= 0
-                    ? 'text-red-700'
-                    : 'text-emerald-700'
-              }
+              className={`block text-xs mt-0.5 ${
+                sub.days_until_expiry <= 0
+                  ? 'text-red-700'
+                  : sub.days_until_expiry <= (ctx?.max_reminder_days ?? 7)
+                    ? 'text-amber-700'
+                    : 'text-gray-500'
+              }`}
             >
-              {sub.days_until_expiry >= 0 ? `${sub.days_until_expiry} días` : 'Vencido'}
+              {sub.days_until_expiry > 0
+                ? `Quedan ${sub.days_until_expiry} día(s)`
+                : sub.days_until_expiry === 0
+                  ? 'Vence hoy'
+                  : 'Vencido'}
             </span>
           </DetailCell>
 
-          <DetailCell label="Ciclo de facturación">{cycleLabel}</DetailCell>
-        </div>
+          <DetailCell label="Importe del período">
+            <span className="font-medium">{formatMoney(planAmt)}</span>
+            <span className="block text-xs text-gray-500 mt-0.5">
+              {sub.start_date && sub.end_date
+                ? `${formatDate(sub.start_date)} → ${formatDate(sub.end_date)}`
+                : cycleLabel}
+            </span>
+          </DetailCell>
 
-        {(ctx?.has_real_debt && (ctx.display_debt_amount ?? 0) > 0) && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm text-amber-900">
-            <p className="font-semibold">Monto pendiente del ciclo actual</p>
-            <p className="text-lg font-bold mt-0.5">{formatMoney(ctx.display_debt_amount ?? 0)}</p>
-            {(sub.is_suspended || sub.tenant_status === 'suspended') && sub.reconnection_fee > 0 && (
-              <p className="text-xs mt-1 opacity-90">
-                Puede incluir cargo de reconexión (S/ {sub.reconnection_fee.toFixed(2)}) por suspensión.
-              </p>
+          <DetailCell label="Pago">
+            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold ${paymentToneClass(paymentTone)}`}>
+              {payShort.icon === 'ok' && <CheckCircle2 size={12} />}
+              {payShort.icon !== 'ok' && <AlertTriangle size={12} />}
+              {paymentLabel}
+            </span>
+            {hasDebt && nextPay ? (
+              <span className="block text-xs text-gray-500 mt-1">
+                Vence el {formatDate(nextPay)}
+              </span>
+            ) : null}
+            {hasDebt && (sub.is_suspended || sub.tenant_status === 'suspended') && sub.reconnection_fee > 0 ? (
+              <span className="block text-xs text-gray-500 mt-0.5">
+                Incluye reconexión de {formatMoney(sub.reconnection_fee)}
+              </span>
+            ) : null}
+          </DetailCell>
+
+          {/* El aviso ocupa la cuarta columna en pantallas anchas, donde antes quedaba un
+              hueco, y pasa a línea completa cuando no cabe. */}
+          <div className="sm:col-span-3 xl:col-span-1 flex items-start">
+            {showAlert ? (
+              <div className={`w-full rounded-xl border px-3 py-2.5 flex gap-2 text-sm ${bannerClass(hub.status_banner.variant)}`}>
+                <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                <p className="font-medium">{hub.status_banner.message}</p>
+              </div>
+            ) : (
+              <div className="w-full rounded-xl border border-emerald-100 bg-emerald-50/60 px-3 py-2.5 flex gap-2 text-sm text-emerald-800">
+                <CheckCircle2 size={16} className="shrink-0 mt-0.5" />
+                <p className="font-medium">Tu suscripción está al día.</p>
+              </div>
             )}
           </div>
-        )}
+        </div>
 
         {sub.provisional_hours_left != null && sub.provisional_hours_left > 0 && (
           <p className="text-sm text-blue-800 flex items-center gap-2">
@@ -197,20 +212,6 @@ export default function PlanDetailFrame({ hub, onManagePayment }: Props) {
 
         {sub.has_pending_payment_review && (
           <p className="text-sm text-blue-700">Tienes un comprobante en revisión. Te avisaremos al aprobarlo.</p>
-        )}
-
-        {showAlert && (
-          <div className={`rounded-xl border px-3 py-2.5 flex gap-2 text-sm ${bannerClass(hub.status_banner.variant)}`}>
-            <AlertTriangle size={16} className="shrink-0 mt-0.5" />
-            <p className="font-medium">{hub.status_banner.message}</p>
-          </div>
-        )}
-
-        {!ctx?.has_real_debt && tier === 'normal' && sub.status === 'active' && !showAlert && (
-          <p className="text-sm text-emerald-700 flex items-center gap-2">
-            <CheckCircle2 size={16} className="shrink-0" />
-            Tu suscripción está al día.
-          </p>
         )}
       </div>
     </section>

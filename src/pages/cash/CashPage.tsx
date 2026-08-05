@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, X, TrendingUp, TrendingDown, Wallet, History } from 'lucide-react'
+import { Plus, X, TrendingUp, TrendingDown, Wallet, History, Pencil, Trash2 } from 'lucide-react'
 import { cashbankService, type CashSession, type CashMovement, type OpenCashSessionRow } from '@/services/cashbank.service'
 import { useBranch } from '@/contexts/BranchContext'
+import { useAuth } from '@/contexts/AuthContext'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
+import { PendingRefundsPanel, PendingRefundsNotice } from '@/components/cash/PendingRefundsPanel'
 
 // Categorías preestablecidas para movimientos de caja
 const INCOME_CATEGORIES = [
@@ -152,12 +154,12 @@ export default function CashPage() {
 
 function CashContent() {
   const { activeBranchId } = useBranch()
+  const { hasPermission } = useAuth()
   const [session, setSession] = useState<CashSession | null | undefined>(undefined)
   const [openInBranch, setOpenInBranch] = useState<OpenCashSessionRow[]>([])
   const [movements, setMovements] = useState<CashMovement[]>([])
   const [history, setHistory] = useState<CashSession[]>([])
   const [loading, setLoading] = useState(true)
-  const [showHistory, setShowHistory] = useState(false)
 
   // Modal abrir caja
   const [showOpen, setShowOpen] = useState(false)
@@ -186,6 +188,14 @@ function CashContent() {
   const [showArqueoModal, setShowArqueoModal] = useState(false)
   const [arqueoDraft, setArqueoDraft] = useState<Record<string, number>>(emptyArqueo())
   const [savingArqueoDraft, setSavingArqueoDraft] = useState(false)
+
+  // Corregir apertura / eliminar caja vacía (historial)
+  const [openingEdit, setOpeningEdit] = useState<{ session: CashSession; amount: number } | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<CashSession | null>(null)
+  const [sessionAdminBusy, setSessionAdminBusy] = useState(false)
+  // Corregir el monto de apertura es de quien abre la caja; borrarla, de quien la administra.
+  const canAdjustOpening = hasPermission('cashbank.open')
+  const canDeleteSession = hasPermission('cashbank.manage')
 
   const load = async () => {
     try {
@@ -281,6 +291,36 @@ function CashContent() {
     }
   }
 
+  const handleSaveOpening = async () => {
+    if (!openingEdit) return
+    setSessionAdminBusy(true)
+    try {
+      await cashbankService.updateOpeningBalance(openingEdit.session.id, openingEdit.amount)
+      toast.success('Monto de apertura corregido')
+      setOpeningEdit(null)
+      load()
+    } catch (e: any) {
+      toast.error(e.response?.data?.error ?? 'No se pudo corregir el monto')
+    } finally {
+      setSessionAdminBusy(false)
+    }
+  }
+
+  const handleDeleteSession = async () => {
+    if (!deleteTarget) return
+    setSessionAdminBusy(true)
+    try {
+      await cashbankService.deleteSession(deleteTarget.id)
+      toast.success('Caja eliminada')
+      setDeleteTarget(null)
+      load()
+    } catch (e: any) {
+      toast.error(e.response?.data?.error ?? 'No se pudo eliminar la caja')
+    } finally {
+      setSessionAdminBusy(false)
+    }
+  }
+
   const handleUpdateArqueoDraft = async () => {
     if (!session) return
     setSavingArqueoDraft(true)
@@ -309,12 +349,6 @@ function CashContent() {
           <h2 className="text-lg font-bold text-gray-800">Caja</h2>
           <p className="text-sm text-gray-500">Mi caja — una sesión abierta por usuario en la sucursal</p>
         </div>
-        <button
-          onClick={() => setShowHistory(!showHistory)}
-          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 w-full sm:w-auto justify-center sm:justify-start"
-        >
-          <History size={14} /> Historial
-        </button>
       </div>
 
       {openInBranch.length > 0 && (
@@ -392,6 +426,13 @@ function CashContent() {
             </button>
           </div>
 
+          {/* Devoluciones que quedaron esperando una caja abierta. Se oculta si no hay. */}
+          <PendingRefundsPanel
+            sessionId={session.id}
+            branchId={activeBranchId || session.branch_id}
+            onApplied={load}
+          />
+
           {/* Movimientos */}
           <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
             <div className="px-3 sm:px-4 py-3 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
@@ -422,25 +463,31 @@ function CashContent() {
           <Wallet size={40} className="text-gray-300 mb-4" />
           <h3 className="text-xl font-bold text-gray-700">Caja cerrada</h3>
           <p className="text-gray-400 text-sm mt-1 mb-6">Abre la caja para comenzar a registrar movimientos</p>
+          {/* Avisa antes de abrir: la salida solo puede registrarse con una caja abierta. */}
+          <PendingRefundsNotice branchId={activeBranchId} />
           <button onClick={() => setShowOpen(true)} className="px-6 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90">
             Abrir caja
           </button>
         </div>
       )}
 
-      {/* Historial */}
-      {showHistory && (
-        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-3 sm:px-4 py-3 border-b border-gray-100"><p className="text-sm font-semibold text-gray-700">Historial de sesiones</p></div>
+      {/* Historial: siempre visible, como en Tukichef. Escondido detrás de un botón se
+          confundía con «no hay sesiones anteriores». */}
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-3 sm:px-4 py-3 border-b border-gray-100 flex items-center gap-2">
+            <History size={14} className="text-gray-400" />
+            <p className="text-sm font-semibold text-gray-700">Historial de sesiones</p>
+            <span className="ml-auto text-xs text-gray-400">{history.length} sesiones</span>
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[640px]">
-              <thead className="bg-gray-50"><tr>{['Apertura','Cierre','Balance apert.','Balance cierre','Estado','Arqueo'].map(h => <th key={h} className="text-left px-3 sm:px-4 py-2 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">{h}</th>)}</tr></thead>
+              <thead className="bg-gray-50"><tr>{['Apertura','Cierre','Balance apert.','Balance cierre','Estado','Arqueo','Acciones'].map(h => <th key={h} className="text-left px-3 sm:px-4 py-2 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">{h}</th>)}</tr></thead>
               <tbody>
                 {history.map(s => (
                   <tr key={s.id} className="border-b border-gray-50">
                     <td className="px-3 sm:px-4 py-2 text-xs whitespace-nowrap">{new Date(s.opened_at).toLocaleString()}</td>
                     <td className="px-3 sm:px-4 py-2 text-xs whitespace-nowrap">{s.closed_at ? new Date(s.closed_at).toLocaleString() : '-'}</td>
-                    <td className="px-3 sm:px-4 py-2 font-medium">S/ {Number(s.opening_balance).toFixed(2)}</td>
+                    <td className="px-3 sm:px-4 py-2 font-medium whitespace-nowrap">S/ {Number(s.opening_balance).toFixed(2)}</td>
                     <td className="px-3 sm:px-4 py-2 font-medium">{s.closing_balance != null ? `S/ ${Number(s.closing_balance).toFixed(2)}` : '-'}</td>
                     <td className="px-3 sm:px-4 py-2"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.status === 'open' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{s.status === 'open' ? 'Abierta' : 'Cerrada'}</span></td>
                     <td className="px-3 sm:px-4 py-2">
@@ -452,13 +499,100 @@ function CashContent() {
                         )
                       )}
                     </td>
+                    <td className="px-3 sm:px-4 py-2">
+                      <div className="flex items-center gap-2 whitespace-nowrap">
+                        {canAdjustOpening && (
+                          <button
+                            type="button"
+                            title="Corregir el monto de apertura"
+                            onClick={() => setOpeningEdit({ session: s, amount: Number(s.opening_balance) })}
+                            className="inline-flex items-center gap-1 text-xs text-[rgb(var(--p600))] hover:underline"
+                          >
+                            <Pencil size={13} /> Apertura
+                          </button>
+                        )}
+                        {/* Solo las cajas sin nada registrado: las demás respaldan dinero contado. */}
+                        {canDeleteSession && s.empty && (
+                          <button
+                            type="button"
+                            title="Eliminar esta caja (no registró movimientos ni ventas)"
+                            onClick={() => setDeleteTarget(s)}
+                            className="inline-flex items-center gap-1 text-xs text-red-600 hover:underline"
+                          >
+                            <Trash2 size={13} /> Eliminar
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            {history.length === 0 && (
+              <p className="text-center text-gray-400 text-sm py-8">Sin sesiones anteriores</p>
+            )}
           </div>
+      </div>
+
+      {/* Modal corregir monto de apertura */}
+      <Modal open={!!openingEdit} onClose={() => setOpeningEdit(null)} contentClassName="max-w-md w-full mx-2 sm:mx-0">
+        <h3 className="font-bold text-gray-800 text-base sm:text-lg">Corregir monto de apertura</h3>
+        <p className="text-xs text-gray-500">
+          Caja abierta el {openingEdit ? new Date(openingEdit.session.opened_at).toLocaleString() : ''}.
+          {openingEdit?.session.status === 'closed' &&
+            ' Al estar cerrada, se recalculan el saldo esperado y la diferencia del arqueo.'}
+        </p>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Monto de apertura (S/)</label>
+          <MoneyAmountInput
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+            value={openingEdit?.amount ?? 0}
+            onChange={v => setOpeningEdit(prev => (prev ? { ...prev, amount: v } : prev))}
+            emptyWhenZero
+            placeholder="0.00"
+          />
         </div>
-      )}
+        <div className="flex flex-col-reverse sm:flex-row gap-2">
+          <button
+            onClick={() => setOpeningEdit(null)}
+            className="flex-1 py-2.5 sm:py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSaveOpening}
+            disabled={sessionAdminBusy}
+            className="flex-1 py-2.5 sm:py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50"
+          >
+            {sessionAdminBusy ? 'Guardando…' : 'Guardar'}
+          </button>
+        </div>
+      </Modal>
+
+      {/* Modal eliminar caja vacía */}
+      <Modal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} contentClassName="max-w-md w-full mx-2 sm:mx-0">
+        <h3 className="font-bold text-gray-800 text-base sm:text-lg">Eliminar caja</h3>
+        <p className="text-sm text-gray-600">
+          Se eliminará definitivamente la caja abierta el{' '}
+          {deleteTarget ? new Date(deleteTarget.opened_at).toLocaleString() : ''}. No registró
+          movimientos ni ventas, así que no se pierde información. Esta acción no se puede deshacer.
+        </p>
+        <div className="flex flex-col-reverse sm:flex-row gap-2">
+          <button
+            onClick={() => setDeleteTarget(null)}
+            className="flex-1 py-2.5 sm:py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleDeleteSession}
+            disabled={sessionAdminBusy}
+            className="flex-1 py-2.5 sm:py-2 bg-red-600 text-white rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50"
+          >
+            {sessionAdminBusy ? 'Eliminando…' : 'Eliminar'}
+          </button>
+        </div>
+      </Modal>
 
       {/* Modal abrir caja */}
       <Modal open={showOpen} onClose={() => setShowOpen(false)} contentClassName="max-w-md w-full mx-2 sm:mx-0">

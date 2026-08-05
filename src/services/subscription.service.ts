@@ -3,6 +3,7 @@ import { resolvePublicAssetUrl } from '@/config/apiBaseUrl'
 
 export interface TenantSubscriptionView {
   has_subscription?: boolean
+  subscription_id?: number
   plan_name: string
   /** Ciclo del PLAN (monthly, annual…), no necesariamente lo contratado. */
   billing_cycle: string
@@ -62,12 +63,15 @@ export interface StatusBanner {
 export interface BillingContextView {
   reminder_days: number[]
   max_reminder_days: number
-  urgency_tier: 'normal' | 'reminder' | 'grace' | 'overdue' | 'suspended' | 'blocked' | 'provisional' | 'review'
+  urgency_tier: 'normal' | 'reminder' | 'payment_due' | 'grace' | 'overdue' | 'suspended' | 'blocked' | 'provisional' | 'review'
   plan_amount: number
   current_payment_label: string
   current_payment_tone: 'success' | 'warning' | 'danger' | 'info' | 'muted'
   has_real_debt: boolean
   display_debt_amount?: number
+  /** Plazo del cobro en curso: dia limite y dias restantes (negativo = plazo agotado). */
+  payment_due_date?: string
+  payment_days_left?: number
   show_status_banner: boolean
   status_banner_variant?: string
   status_banner_message?: string

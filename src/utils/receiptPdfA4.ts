@@ -16,6 +16,7 @@ import {
 } from '@/utils/receiptBonificacion'
 import { lineGlobalSubtotalDiscount, lineSubtotalDiscount } from '@/utils/receiptDiscount'
 import { trimCompanyAdditionalNotes } from '@/utils/receiptCompanyNotes'
+import { getCreditNoteReference } from '@/utils/receiptCreditNoteRef'
 import { getPrintIssuerAddress } from '@/utils/printIssuer'
 import { fitReceiptLogoMm, resolveReceiptLogoForPdf } from '@/utils/receiptLogoPdf'
 import { rasterPxForMm } from '@/utils/receiptPdfRaster'
@@ -326,6 +327,23 @@ function drawCustomerBlock(
       ctx.y += LINE_H
     } else {
       drawA4Field(ctx, 'CLIENTE', 'CLIENTE VARIOS', leftX)
+      ctx.y += LINE_H
+    }
+  }
+
+  // Nota de crédito/débito: SUNAT exige el tipo de nota y el comprobante que modifica.
+  const creditNoteRef = getCreditNoteReference(data)
+  if (creditNoteRef) {
+    if (creditNoteRef.noteTypeLabel) {
+      drawA4Field(ctx, 'TIPO DE NOTA', creditNoteRef.noteTypeLabel, leftX)
+      ctx.y += LINE_H
+    }
+    drawA4Field(ctx, 'TIPO DOC. REF.', creditNoteRef.docTypeLabel, leftX)
+    ctx.y += LINE_H
+    drawA4Field(ctx, 'DOCUMENTO REF.', creditNoteRef.docNumber, leftX)
+    ctx.y += LINE_H
+    if (creditNoteRef.reason) {
+      drawA4Field(ctx, 'MOTIVO', creditNoteRef.reason, leftX)
       ctx.y += LINE_H
     }
   }

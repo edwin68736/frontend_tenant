@@ -218,6 +218,19 @@ export interface BulkDeleteProductsResult {
 }
 
 export const productsService = {
+  /**
+   * Código libre sugerido para el formulario de alta.
+   *
+   * SUNAT exige código por línea del comprobante: un producto sin código se guarda bien pero
+   * revienta al facturar. Se sugiere uno y el usuario puede reemplazarlo por el suyo.
+   */
+  nextCode: async (branchId?: number): Promise<string> => {
+    const { data } = await api.get<{ code: string }>('/api/products/next-code', {
+      params: branchId ? { branch_id: branchId } : undefined,
+    })
+    return data.code ?? ''
+  },
+
   /** Lista productos. Con per_page se usa paginación en backend y se devuelve total. manage_stock_only para transferencias/inventario. */
   list: (
     q = '',

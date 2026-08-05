@@ -33,6 +33,14 @@ export interface PrintData {
   payment_wallet?: PrintPaymentWallet
   /** Información adicional fiscal (retención operativa, O/C, guías). */
   fiscal?: PrintFiscalContext
+  /** Nota de crédito/débito (07/08): documento que modifica, según SUNAT. */
+  affected_doc_sunat_code?: string
+  affected_doc_number?: string
+  /** Motivo declarado (desMotivo). */
+  credit_note_reason?: string
+  /** Tipo de nota: código del catálogo 09/10 y su etiqueta «01 - Anulación de la operación». */
+  note_type_code?: string
+  note_type_label?: string
   /** Cotización: fecha de vigencia (dd/mm/yyyy). */
   valid_until?: string
   /** Observaciones comerciales (cotización). */

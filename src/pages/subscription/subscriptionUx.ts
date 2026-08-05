@@ -3,6 +3,8 @@ import type { BillingContextView, BillingHub, TenantSubscriptionView } from '@/s
 export type UrgencyTier =
   | 'normal'
   | 'reminder'
+  /** Cobro del período en curso pendiente, con el plan aún lejos de vencer. */
+  | 'payment_due'
   | 'grace'
   | 'overdue'
   | 'suspended'
@@ -14,6 +16,7 @@ export type UrgencyTier =
 const WIDGET_ACCENT: Record<string, string> = {
   normal: 'border-emerald-200/90 bg-emerald-50/50 hover:bg-emerald-50 text-gray-800',
   reminder: 'border-amber-200/90 bg-amber-50/50 hover:bg-amber-50 text-gray-800',
+  payment_due: 'border-amber-200/90 bg-amber-50/50 hover:bg-amber-50 text-gray-800',
   grace: 'border-amber-200/90 bg-amber-50/60 hover:bg-amber-50 text-gray-800',
   overdue: 'border-red-200/90 bg-red-50/50 hover:bg-red-50 text-gray-800',
   suspended: 'border-red-300/90 bg-red-50/60 hover:bg-red-50 text-gray-800',

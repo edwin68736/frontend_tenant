@@ -3,7 +3,6 @@ import { toast } from 'sonner'
 import {
   AlertTriangle,
   Building2,
-  ChevronRight,
   Clock,
   Download,
   CreditCard,
@@ -15,7 +14,6 @@ import {
   Loader2,
   Package,
   RefreshCw,
-  Wallet,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { useSubscriptionStatus } from '@/contexts/SubscriptionStatusContext'
@@ -44,6 +42,41 @@ const INVOICE_STATUS_UI: Record<string, { label: string; className: string }> = 
   overdue: { label: 'Vencido', className: 'bg-red-100 text-red-700' },
   paid: { label: 'Pagado', className: 'bg-emerald-100 text-emerald-700' },
   rejected: { label: 'Anulado', className: 'bg-gray-100 text-gray-600' },
+}
+
+/** Cobro emitido cuya fecha de pago todavía no llega: no es deuda aún. */
+const NOT_DUE_YET_UI = { label: 'Por vencer', className: 'bg-gray-100 text-gray-600' }
+
+/**
+ * Estado del cobro tal como lo entiende el cliente.
+ *
+ * El estado guardado no distingue un cobro que ya debía estar pagado de otro emitido por
+ * adelantado: los dos son `pending`. Marcar ambos como «Por pagar» hacía que un cobro con
+ * vencimiento a semanas se leyera como deuda y chocara con el «al día» de la cabecera.
+ */
+function invoiceStatusUI(inv: { status: string; due_date?: string }) {
+  const base = INVOICE_STATUS_UI[inv.status] ?? {
+    label: inv.status,
+    className: 'bg-gray-100 text-gray-600',
+  }
+  if (inv.status !== 'pending' || !inv.due_date) return base
+  return isDueDatePassed(inv.due_date) ? base : NOT_DUE_YET_UI
+}
+
+/** ¿La fecha límite ya llegó? Por día de calendario en Lima, como el backend. */
+function isDueDatePassed(dueDate: string): boolean {
+  const day = (d: Date) =>
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Lima',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(d)
+  try {
+    return day(new Date(dueDate)) <= day(new Date())
+  } catch {
+    return true
+  }
 }
 
 function Section({
@@ -213,15 +246,10 @@ export default function SubscriptionPage() {
   const cfg = hub.payment_config
   const portalAlt = cfg.portal_url_override?.trim()
 
-  const quickLinks = [
-    { id: 'historial-pagos', label: 'Historial de pagos', icon: CreditCard },
-    { id: 'gestionar-pago', label: 'Mis pagos y deudas', icon: FileUp },
-    { id: 'metodos-pago', label: 'Métodos de pago', icon: Wallet },
-    { id: 'historial-suscripcion', label: 'Historial de suscripción', icon: History },
-  ]
-
   return (
-    <div className="max-w-7xl mx-auto space-y-4 pb-10 px-1 sm:px-0">
+    // El tope de 1280px dejaba media pantalla en blanco a los costados en monitores anchos.
+    // 1600 aprovecha el espacio sin que las líneas de texto se vuelvan incómodas de leer.
+    <div className="w-full max-w-[1600px] mx-auto space-y-4 pb-10 px-1 sm:px-0">
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Suscripción</h1>
@@ -242,7 +270,9 @@ export default function SubscriptionPage() {
 
       <PlanDetailFrame hub={hub} onManagePayment={() => scrollTo('gestionar-pago')} />
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px] gap-6 items-start">
+      {/* La columna de referencia (cómo pagar, soporte) acompaña al contenido en pantallas
+          anchas y pasa debajo en las estrechas. */}
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-5 items-start">
         <div className="space-y-5 min-w-0">
           {hub.documents && (
             <Section title="Documentos electrónicos" icon={FileText}>
@@ -403,10 +433,7 @@ export default function SubscriptionPage() {
                   <tbody>
                     {hub.invoices.map(inv => {
                       const payable = inv.status === 'pending' || inv.status === 'overdue'
-                      const ui = INVOICE_STATUS_UI[inv.status] ?? {
-                        label: inv.status,
-                        className: 'bg-gray-100 text-gray-600',
-                      }
+                      const ui = invoiceStatusUI(inv)
                       return (
                         <tr key={inv.id} className="border-b border-gray-50">
                           <td className="py-2.5 pr-3 whitespace-nowrap">
@@ -458,6 +485,9 @@ export default function SubscriptionPage() {
             )}
           </Section>
 
+          {/* Los dos historiales son consulta, no acción: en pantallas anchas caben lado a
+              lado y evitan una columna larguísima con media pantalla vacía al costado. */}
+          <div className="grid grid-cols-1 2xl:grid-cols-2 gap-5 items-start">
           <Section id="historial-pagos" title="Historial de pagos" icon={CreditCard}>
             {hub.payments.length === 0 ? (
               <p className="text-sm text-gray-500">Sin pagos registrados.</p>
@@ -527,38 +557,24 @@ export default function SubscriptionPage() {
               </ul>
             )}
           </Section>
+          </div>
         </div>
 
         <aside className="space-y-4 xl:sticky xl:top-4">
-          <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Acciones rápidas</h3>
-            <ul className="space-y-1">
-              {quickLinks.map(link => (
-                <li key={link.id}>
-                  <button
-                    type="button"
-                    onClick={() => scrollTo(link.id)}
-                    className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-gray-700 hover:bg-gray-50 text-left group"
-                  >
-                    <link.icon size={16} className="text-gray-400 group-hover:text-gray-600" />
-                    <span className="flex-1 font-medium">{link.label}</span>
-                    <ChevronRight size={14} className="text-gray-300" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-            {portalAlt && (
-              <a
-                href={portalAlt}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-3 flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium border border-gray-200 hover:bg-gray-50"
-              >
-                <ExternalLink size={16} />
-                Cambiar plan / portal
-              </a>
-            )}
-          </div>
+          {/* «Acciones rápidas» eran anclas a secciones de esta misma página; con el listado
+              reordenado y más compacto ya se llega a todas sin saltos. Solo se conserva el
+              portal alternativo, que sí lleva fuera. */}
+          {portalAlt && (
+            <a
+              href={portalAlt}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-2xl text-sm font-medium border border-gray-200 bg-white shadow-sm hover:bg-gray-50"
+            >
+              <ExternalLink size={16} />
+              Cambiar plan / portal
+            </a>
+          )}
 
           <div id="metodos-pago" className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden scroll-mt-24">
             <div className="px-4 py-3 border-b border-gray-50 flex items-center gap-2">

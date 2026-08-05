@@ -306,7 +306,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     clearPendingImage()
     setEditing(p)
     setForm({
-      code: p.code,
+      // Producto viejo sin código: se propone uno al abrir, para que se corrija al pasar por aquí.
+      code: p.code?.trim() || generateRandomProductCode(),
       name: p.name,
       type: (p.type as ProductCatalogType | undefined) ?? pageMode,
       unit: p.unit,
@@ -410,6 +411,13 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
 
   const handleSave = async () => {
     if (!form.name) { toast.error('Nombre requerido'); return }
+    // El formulario sugiere un código al abrirse, pero puede haberse borrado: sin él el
+    // producto se guarda y luego no se puede facturar (SUNAT lo exige por línea).
+    if (!form.code?.trim()) {
+      const suggested = generateRandomProductCode()
+      setF('code', suggested)
+      form.code = suggested
+    }
     const payload: CreateProductInput = { ...form, type: pageMode === 'service' ? 'service' : 'product' }
     if (pageMode === 'service' || payload.type === 'service') {
       payload.type = 'service'

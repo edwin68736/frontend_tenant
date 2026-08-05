@@ -14,11 +14,17 @@ import {
   CreditCard,
   Settings,
   Headphones,
+  BadgeCheck,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { useModules } from '@/contexts/ModulesContext'
+import { useSubscriptionStatus } from '@/contexts/SubscriptionStatusContext'
 import { billingService } from '@/services/billing.service'
 import { membershipsService } from '@/services/memberships.service'
-import { subscriptionService } from '@/services/subscription.service'
+import {
+  buildPlanNotifications,
+  planNotificationIconClass,
+} from '@/pages/subscription/planNotifications'
 import {
   buildSupportWhatsAppHref,
   DEFAULT_SUPPORT_WHATSAPP_MESSAGE,
@@ -39,11 +45,12 @@ interface Props {
 
 export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar }: Props) {
   const { user, logout, hasModule, hasPermission } = useAuth()
+  const { hub } = useSubscriptionStatus()
+  const { limits } = useModules()
   const showSettings = canAccessErpSettings(hasPermission)
 
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
-  const [supportHref, setSupportHref] = useState<string | null>(null)
   const [billingCounts, setBillingCounts] = useState<{ pending: number; error: number; rejected: number } | null>(null)
   const [membershipReminderCounts, setMembershipReminderCounts] = useState<{
     overdue: number
@@ -52,14 +59,10 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
   const userMenuRef = useRef<HTMLDivElement>(null)
   const notifRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    subscriptionService
-      .getHub()
-      .then((hub) =>
-        setSupportHref(buildSupportWhatsAppHref(hub.support, DEFAULT_SUPPORT_WHATSAPP_MESSAGE)),
-      )
-      .catch(() => setSupportHref(null))
-  }, [])
+  // Soporte y notificaciones del plan salen del mismo hub que ya carga el layout: pedirlo otra
+  // vez aquí duplicaba la request y podía mostrar un estado distinto al del widget del header.
+  const supportHref = hub ? buildSupportWhatsAppHref(hub.support, DEFAULT_SUPPORT_WHATSAPP_MESSAGE) : null
+  const planNotifications = buildPlanNotifications(hub, limits)
 
   useEffect(() => {
     if (hasModule('billing')) {
@@ -101,7 +104,7 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
   const memOver = membershipReminderCounts?.overdue ?? 0
   const memUp = membershipReminderCounts?.upcoming ?? 0
   const memBadgeTotal = memOver + memUp
-  const notifBadgeTotal = billingBadgeTotal + memBadgeTotal
+  const notifBadgeTotal = billingBadgeTotal + memBadgeTotal + planNotifications.length
 
   return (
     <header className="bg-white border-b border-gray-100/80 px-4 py-1.5 flex items-center gap-2 sm:gap-3 flex-shrink-0 min-h-[3.25rem] rounded-2xl">
@@ -145,10 +148,35 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
         </button>
         {notifOpen && (
           <div className="fixed left-4 right-4 top-16 z-50 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-1.5 sm:w-80 rounded-2xl border border-gray-100 bg-white shadow-xl ring-1 ring-black/5 py-2 max-h-[70vh] overflow-y-auto">
+            {planNotifications.length > 0 ? (
+              <>
+                <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase border-b border-gray-100">
+                  Mi plan
+                </div>
+                {planNotifications.map((n) => (
+                  <Link
+                    key={n.id}
+                    to={n.to}
+                    onClick={() => setNotifOpen(false)}
+                    className="flex items-start gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    <BadgeCheck
+                      size={18}
+                      className={`${planNotificationIconClass(n.tone)} flex-shrink-0 mt-0.5`}
+                    />
+                    <span>{n.message}</span>
+                  </Link>
+                ))}
+              </>
+            ) : null}
             {billingCounts &&
             (billingCounts.pending > 0 || billingCounts.error > 0 || billingCounts.rejected > 0) ? (
               <>
-                <div className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase border-b border-gray-100">
+                <div
+                  className={`px-3 py-2 text-xs font-semibold text-gray-500 uppercase border-b border-gray-100 ${
+                    planNotifications.length > 0 ? 'mt-1' : ''
+                  }`}
+                >
                   Facturación electrónica
                 </div>
                 {billingCounts.pending > 0 && (
@@ -187,8 +215,9 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
               <>
                 <div
                   className={`px-3 py-2 text-xs font-semibold text-gray-500 uppercase border-b border-gray-100 ${
-                    billingCounts &&
-                    (billingCounts.pending > 0 || billingCounts.error > 0 || billingCounts.rejected > 0)
+                    planNotifications.length > 0 ||
+                    (billingCounts &&
+                      (billingCounts.pending > 0 || billingCounts.error > 0 || billingCounts.rejected > 0))
                       ? 'mt-1'
                       : ''
                   }`}

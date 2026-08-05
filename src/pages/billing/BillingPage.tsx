@@ -756,8 +756,24 @@ function BillingContent() {
                       listado era ruido, la gran mayoría son venta interna. */}
                 </td>
                 {viewMode === 'credit_notes' && (
-                  <td className="px-4 py-3 text-gray-500 text-xs">
-                    {s.original_sale_id != null ? `Venta #${s.original_sale_id}` : '—'}
+                  <td className="px-4 py-3">
+                    {/* SUNAT identifica el documento modificado por tipo + serie-correlativo;
+                        el ID interno de la venta no le dice nada a nadie. */}
+                    {s.affected_doc_number ? (
+                      <>
+                        <p className="text-xs text-gray-400">
+                          {s.affected_doc_type || s.affected_doc_sunat_code || 'Comprobante'}
+                        </p>
+                        <p className="font-mono text-xs font-semibold text-gray-700">
+                          {s.affected_doc_number}
+                        </p>
+                        {s.note_type_reason && (
+                          <p className="text-[11px] text-gray-400 mt-0.5">{s.note_type_reason}</p>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-xs text-gray-300">—</span>
+                    )}
                   </td>
                 )}
                 <td className="px-4 py-3 text-gray-600 text-sm">{s.contact_name ?? 'Sin cliente'}</td>

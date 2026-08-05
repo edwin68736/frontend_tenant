@@ -118,6 +118,23 @@ export function isElectronicSunatCode(code?: string | null): boolean {
   return c === '01' || c === '03'
 }
 
+/** Nota de crédito (07) o de débito (08). */
+export function isCreditOrDebitNote(sunatCode?: string | null, docType?: string | null): boolean {
+  const c = String(sunatCode ?? '').trim()
+  if (c === '07' || c === '08') return true
+  const dt = String(docType ?? '').toUpperCase()
+  return dt === 'NOTA_CREDITO' || dt === 'NOTA_DEBITO'
+}
+
+/** Tipo del comprobante que la nota modifica (catálogo 01). */
+export function getAffectedDocSunatLabel(code?: string | null): string {
+  const c = String(code ?? '').trim()
+  if (SUNAT_TIPO_COMPROBANTE[c]) return SUNAT_TIPO_COMPROBANTE[c]
+  if (c === '01') return 'FACTURA ELECTRÓNICA'
+  if (c === '03') return 'BOLETA DE VENTA ELECTRÓNICA'
+  return c || '—'
+}
+
 export function getTipoDocIdentidadLabel(code: string): string {
   if (!code) return ''
   const c = String(code).trim()

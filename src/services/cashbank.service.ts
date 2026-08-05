@@ -28,6 +28,8 @@ export interface CashSession {
   opened_at: string
   closed_at: string | null
   notes?: string
+  /** Sin movimientos ni ventas: se puede eliminar sin perder nada. */
+  empty?: boolean
 }
 
 export interface CashMovement {
@@ -215,6 +217,16 @@ export const cashbankService = {
 
   saveArqueo: (id: number, arqueo: Record<string, number>): Promise<{ sum: number }> =>
     api.post(`/api/cashbank/sessions/${id}/arqueo`, { arqueo }).then(r => r.data),
+
+  /** Corrige el monto con el que se abrió la caja (requiere cashbank.open). */
+  updateOpeningBalance: (id: number, opening_balance: number): Promise<CashSession> =>
+    api
+      .patch(`/api/cashbank/sessions/${id}/opening-balance`, { opening_balance })
+      .then(r => r.data.data ?? r.data),
+
+  /** Borra una caja sin movimientos ni ventas (requiere cashbank.manage). */
+  deleteSession: (id: number): Promise<void> =>
+    api.delete(`/api/cashbank/sessions/${id}`).then(() => undefined),
 
   listMovements: (sessionId: number): Promise<CashMovement[]> =>
     api.get(`/api/cashbank/sessions/${sessionId}/movements`).then(r => r.data.data ?? r.data ?? []),
