@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { DespatchFormModal } from '@/components/billing/DespatchFormModal'
 import { filterAllGuiaSeries, type GuiaSunatCode, type GuiaSeriesRow } from '@/utils/despatchSeries'
@@ -7,11 +7,16 @@ import { companyService } from '@/services/company.service'
 import RequireModule from '@/components/ui/RequireModule'
 import SunatRequiredMessage from '@/components/ui/SunatRequiredMessage'
 
+/** Segmento de ruta (remitente/transportista) → código SUNAT de la guía. */
+function guiaSunatCodeFromParam(guiaTipo: string | undefined): GuiaSunatCode {
+  return guiaTipo === 'transportista' ? '31' : '09'
+}
+
 function GuiaRemisionCreateContent() {
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const tipoParam = searchParams.get('tipo')
-  const initialGuiaCode: GuiaSunatCode = tipoParam === '31' ? '31' : '09'
+  const { guiaTipo } = useParams<{ guiaTipo: string }>()
+  const guiaSunatCode = guiaSunatCodeFromParam(guiaTipo)
+  const listPath = `/billing/docs/despatches/${guiaSunatCode === '31' ? 'transportista' : 'remitente'}`
 
   const [sunatEnabled, setSunatEnabled] = useState<boolean | null>(null)
   const [series, setSeries] = useState<GuiaSeriesRow[]>([])
@@ -50,16 +55,16 @@ function GuiaRemisionCreateContent() {
 
   const mainBranchId = branches.find((b) => b.name === 'Principal')?.id ?? branches[0]?.id ?? 1
   const title =
-    initialGuiaCode === '31' ? 'Nueva guía transportista (31)' : 'Nueva guía de remisión (09)'
+    guiaSunatCode === '31' ? 'Nueva guía transportista (31)' : 'Nueva guía de remisión (09)'
 
   return (
     <DespatchFormModal
       layout="page"
       open
-      initialGuiaCode={initialGuiaCode}
+      guiaSunatCode={guiaSunatCode}
       title={title}
-      onClose={() => navigate('/billing/docs/despatches')}
-      onCreated={() => navigate('/billing/docs/despatches')}
+      onClose={() => navigate(listPath)}
+      onCreated={() => navigate(listPath)}
       series={series}
       branches={branches}
       mainBranchId={mainBranchId}

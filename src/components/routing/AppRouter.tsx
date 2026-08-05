@@ -48,6 +48,7 @@ const ErpSettingsRedirect = lazy(() =>
 const BillingPage = lazy(() => import('@/pages/billing/BillingPage'))
 const SunatDocsPage = lazy(() => import('@/pages/billing/SunatDocsPage'))
 const GuiaRemisionCreatePage = lazy(() => import('@/pages/billing/GuiaRemisionCreatePage'))
+const GuiaListPage = lazy(() => import('@/pages/billing/GuiaListPage'))
 const TransportistasPage = lazy(() => import('@/pages/fleet/TransportistasPage'))
 const ConductoresPage = lazy(() => import('@/pages/fleet/ConductoresPage'))
 const VehiculosPage = lazy(() => import('@/pages/fleet/VehiculosPage'))
@@ -172,8 +173,13 @@ function AppRoutes() {
         <Route path="cashbank/bank" element={<Lazy><BankPage /></Lazy>} />
         <Route path="cashbank/payment-methods" element={<Lazy><PaymentMethodsPage /></Lazy>} />
         <Route path="billing" element={<Lazy><BillingPage /></Lazy>} />
-        <Route path="billing/docs/despatches/new" element={<Lazy><GuiaRemisionCreatePage /></Lazy>} />
-        <Route path="billing/docs" element={<Navigate to="/billing/docs/despatches" replace />} />
+        {/* Guías de remisión: vistas independientes por tipo (remitente 09 / transportista 31). */}
+        <Route path="billing/docs/despatches/:guiaTipo/new" element={<Lazy><GuiaRemisionCreatePage /></Lazy>} />
+        <Route path="billing/docs/despatches/:guiaTipo" element={<Lazy><GuiaListPage /></Lazy>} />
+        {/* Compatibilidad con enlaces viejos a la vista combinada. */}
+        <Route path="billing/docs/despatches/new" element={<Navigate to="/billing/docs/despatches/remitente/new" replace />} />
+        <Route path="billing/docs/despatches" element={<Navigate to="/billing/docs/despatches/remitente" replace />} />
+        <Route path="billing/docs" element={<Navigate to="/billing/docs/retentions" replace />} />
         <Route path="billing/docs/:docType" element={<Lazy><SunatDocsPage /></Lazy>} />
         <Route path="fleet/carriers" element={<Lazy><TransportistasPage /></Lazy>} />
         <Route path="fleet/drivers" element={<Lazy><ConductoresPage /></Lazy>} />

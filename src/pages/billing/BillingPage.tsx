@@ -1327,12 +1327,16 @@ function BillingContent() {
       <DespatchFormModal
         open={guiaModalOpen}
         onClose={() => { setGuiaModalOpen(false); setGuiaPrefill(null) }}
-        onCreated={() => toast.success('Guía encolada. Consulte en Documentos → Guías de remisión.')}
+        onCreated={() => toast.success('Guía encolada. Consulte en Documentos → G.R. Remitente.')}
         series={guiaSeries}
         branches={guiaBranches}
         mainBranchId={guiaBranches.find(b => b.name === 'Principal')?.id ?? guiaBranches[0]?.id ?? 1}
         prefill={guiaPrefill}
         title="Generar guía desde comprobante"
+        // Generar una guía a partir de un comprobante propio siempre es remitente (09): la
+        // guía transportista (31) es para cuando la empresa transporta mercadería ajena, un
+        // flujo sin relación con "emití esta factura/boleta".
+        guiaSunatCode="09"
       />
 
       <FiscalRetentionPerceptionModal

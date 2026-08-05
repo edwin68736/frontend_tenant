@@ -309,6 +309,8 @@ export interface SunatDespatch {
   cdr_url?: string
   details_count: number
   created_at?: string
+  /** Tipo de la guía en sí (catálogo 01): "09" remitente, "31" transportista. */
+  guia_sunat_code?: string
 }
 
 export interface SunatRetention {

@@ -8,7 +8,7 @@ import {
   BookUser, Wallet, Building2, Users, Settings, LogOut,
   Utensils, FileText, X, Grid3x3, Layers, ChefHat, UserCog,
   Shield, MapPin, FileCode, ShieldCheck, ArrowRightLeft, ListOrdered, LayoutGrid, RotateCcw, ShoppingBag,
-  ChevronLeft, ChevronRight, BarChart3, CreditCard, Briefcase, UserCircle, Car, Lock,
+  ChevronLeft, ChevronRight, BarChart3, CreditCard, Briefcase, UserCircle, Car, Lock, Send,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -250,7 +250,8 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Documentos avanzados',
     icon: <Layers size={16} />,
     children: [
-      { id: 'doc-guias', to: '/billing/docs/despatches', label: 'Guías de remisión', icon: <Truck size={14} />, module: 'billing', permission: 'billing.send' },
+      { id: 'doc-guias-remitente', to: '/billing/docs/despatches/remitente', label: 'G.R. Remitente', icon: <Send size={14} />, module: 'billing', permission: 'billing.send' },
+      { id: 'doc-guias-transportista', to: '/billing/docs/despatches/transportista', label: 'G.R. Transportista', icon: <Truck size={14} />, module: 'billing', permission: 'billing.send' },
       { id: 'doc-transportistas', to: '/fleet/carriers', label: 'Transportistas', icon: <Truck size={14} />, module: 'billing', permission: 'billing.send' },
       { id: 'doc-conductores', to: '/fleet/drivers', label: 'Conductores', icon: <UserCircle size={14} />, module: 'billing', permission: 'billing.send' },
       { id: 'doc-vehiculos', to: '/fleet/vehicles', label: 'Vehículos', icon: <Car size={14} />, module: 'billing', permission: 'billing.send' },

@@ -5,7 +5,11 @@ import { Plus, Trash2, UserPlus, X, Search, FileText, Settings, ArrowLeft, Loade
 import { consultaService } from '@/services/consulta.service'
 import { Modal } from '@/components/ui/Modal'
 import { UbigeoSelects } from '@/components/UbigeoSelects'
+import { SearchableSelect } from '@/components/SearchableSelect'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
+import { QuickCarrierCreateModal } from '@/components/billing/QuickCarrierCreateModal'
+import { QuickDriverCreateModal } from '@/components/billing/QuickDriverCreateModal'
+import { QuickVehicleCreateModal } from '@/components/billing/QuickVehicleCreateModal'
 import { ProductPickerModal } from '@/components/sales/ProductPickerModal'
 import { ubigeoToIds } from '@/services/ubigeo.service'
 import { companyService } from '@/services/company.service'
@@ -65,8 +69,12 @@ export interface DespatchFormModalProps {
   title?: string
   /** 'page' = vista completa; 'modal' (default) = diálogo */
   layout?: 'modal' | 'page'
-  /** Tipo GRE inicial al abrir (09 remitente / 31 transportista) */
-  initialGuiaCode?: GuiaSunatCode
+  /**
+   * Tipo de guía de la vista: 09 remitente o 31 transportista. Fijo durante toda la vida del
+   * formulario — cada tipo vive en su propia ruta/página, así que no hay un selector para
+   * cambiarlo a mitad de llenado (eso era lo que confundía: una sola vista mezclando ambos).
+   */
+  guiaSunatCode: GuiaSunatCode
 }
 
 type DespatchLineItem = {
@@ -211,13 +219,12 @@ export function DespatchFormModal({
   prefill,
   title = 'Nueva guía de remisión',
   layout = 'modal',
-  initialGuiaCode = '09',
+  guiaSunatCode,
 }: DespatchFormModalProps) {
   const [sending, setSending] = useState(false)
   const [createMode, setCreateMode] = useState<DespatchCreateMode>('standalone')
   const [sourceLocked, setSourceLocked] = useState(false)
   const [sourceDocLabel, setSourceDocLabel] = useState('')
-  const [guiaSunatCode, setGuiaSunatCode] = useState<GuiaSunatCode>('09')
   const [form, setForm] = useState<Partial<CreateDespatchInput>>(() => emptyForm(mainBranchId, 0))
   const [lineItems, setLineItems] = useState<DespatchLineItem[]>([])
   const [customers, setCustomers] = useState<Contact[]>([])
@@ -240,6 +247,9 @@ export function DespatchFormModal({
   const [selectedDriverId, setSelectedDriverId] = useState<number | ''>('')
   const [selectedVehicleId, setSelectedVehicleId] = useState<number | ''>('')
   const [companyRuc, setCompanyRuc] = useState('')
+  const [showQuickCarrier, setShowQuickCarrier] = useState(false)
+  const [showQuickDriver, setShowQuickDriver] = useState(false)
+  const [showQuickVehicle, setShowQuickVehicle] = useState(false)
 
   const seriesFiltered = useMemo(() => {
     const byCode = filterGuiaSeriesBySunatCode(series, guiaSunatCode)
@@ -255,6 +265,9 @@ export function DespatchFormModal({
   const showFlotaPrivada = guiaSunatCode === '09' && modTraslado === '02'
   const showFleetPickers = showTransportistaPublico || showFlotaPrivada || showTransportista
   const modalidadLocked = guiaSunatCode === '31'
+  // Cada tipo vive en su propia lista; volver debe llevar a la de este formulario, no a una
+  // vista mixta que ya no existe.
+  const listPath = guiaSunatCode === '31' ? '/billing/docs/despatches/transportista' : '/billing/docs/despatches/remitente'
   const isStandalone = createMode === 'standalone'
   const isPageLayout = layout === 'page'
   const fieldGrid = isPageLayout
@@ -304,15 +317,13 @@ export function DespatchFormModal({
     setSelectedDriverId('')
     setSelectedVehicleId('')
     setCreateMode(prefill?.mode ?? 'standalone')
-    const startGuiaCode = prefill ? '09' : initialGuiaCode
-    setGuiaSunatCode(startGuiaCode)
-    const remitenteSeries = filterGuiaSeriesBySunatCode(series, startGuiaCode)
+    const remitenteSeries = filterGuiaSeriesBySunatCode(series, guiaSunatCode)
     const firstSeriesId = remitenteSeries[0]?.id ?? 0
     if (prefill) {
       applyPrefill(prefill, firstSeriesId)
       if (prefill.locked) setSourceLocked(true)
     } else {
-      const base = emptyForm(mainBranchId, firstSeriesId, startGuiaCode)
+      const base = emptyForm(mainBranchId, firstSeriesId, guiaSunatCode)
       setForm(base)
       setLineItems([])
       setContactId(null)
@@ -320,7 +331,7 @@ export function DespatchFormModal({
       setPartidaUbigeo(ubigeoToIds(''))
       setLlegadaUbigeo(ubigeoToIds(''))
       setRemitenteUbigeo(ubigeoToIds(''))
-      if (startGuiaCode === '31') {
+      if (guiaSunatCode === '31') {
         setForm((f) => ({
           ...f,
           remitente: { tipo_doc: '6', num_doc: '', rzn_social: '', address: '', ubigeo: '' },
@@ -383,7 +394,7 @@ export function DespatchFormModal({
         })
       })
       .catch(() => {})
-  }, [open, prefill, mainBranchId, series, initialGuiaCode])
+  }, [open, prefill, mainBranchId, series, guiaSunatCode])
 
   useEffect(() => {
     if (!open) return
@@ -557,26 +568,6 @@ export function DespatchFormModal({
     const row = fleetVehicles.find((v) => v.id === id)
     if (!row) return
     setForm((f) => ({ ...f, envio: { ...f.envio!, ...vehicleToEnvio(row) } }))
-  }
-
-  const handleGuiaTypeChange = (code: GuiaSunatCode) => {
-    setGuiaSunatCode(code)
-    if (code === '31') {
-      setRemitenteUbigeo(ubigeoToIds(''))
-    }
-    setForm((f) => ({
-      ...f,
-      remitente:
-        code === '31'
-          ? f.remitente ?? { tipo_doc: '6', num_doc: '', rzn_social: '', address: '', ubigeo: '' }
-          : undefined,
-      envio: {
-        ...f.envio!,
-        mod_traslado: '02',
-        transportista_ruc: code === '31' ? undefined : f.envio?.transportista_ruc,
-        transportista_razon: code === '31' ? undefined : f.envio?.transportista_razon,
-      },
-    }))
   }
 
   const handleModTrasladoChange = (mod: string) => {
@@ -875,7 +866,7 @@ export function DespatchFormModal({
     layout === 'page' ? (
       <header className="flex items-center gap-3 pb-4 border-b border-gray-100">
         <Link
-          to="/billing/docs/despatches"
+          to={listPath}
           className="inline-flex items-center justify-center p-2 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 shrink-0"
           aria-label="Volver a guías"
         >
@@ -910,6 +901,38 @@ export function DespatchFormModal({
         onCreated={(contact) => {
           setCustomers((prev) => [...prev, contact])
           setContactId(contact.id)
+        }}
+      />
+
+      {/* Alta rápida de flota: para no obligar a abandonar la guía a medio llenar. */}
+      <QuickCarrierCreateModal
+        open={showQuickCarrier}
+        onClose={() => setShowQuickCarrier(false)}
+        stacked
+        onCreated={(carrier) => {
+          setFleetCarriers((prev) => [...prev, carrier])
+          setSelectedCarrierId(carrier.id)
+          setForm((f) => ({ ...f, envio: { ...f.envio!, ...carrierToEnvio(carrier) } }))
+        }}
+      />
+      <QuickDriverCreateModal
+        open={showQuickDriver}
+        onClose={() => setShowQuickDriver(false)}
+        stacked
+        onCreated={(driver) => {
+          setFleetDrivers((prev) => [...prev, driver])
+          setSelectedDriverId(driver.id)
+          setForm((f) => ({ ...f, envio: { ...f.envio!, ...driverToEnvio(driver) } }))
+        }}
+      />
+      <QuickVehicleCreateModal
+        open={showQuickVehicle}
+        onClose={() => setShowQuickVehicle(false)}
+        stacked
+        onCreated={(vehicle) => {
+          setFleetVehicles((prev) => [...prev, vehicle])
+          setSelectedVehicleId(vehicle.id)
+          setForm((f) => ({ ...f, envio: { ...f.envio!, ...vehicleToEnvio(vehicle) } }))
         }}
       />
     </>
@@ -1026,48 +1049,28 @@ export function DespatchFormModal({
           )}
 
           <div className={fieldGrid}>
-            <div className={fieldCol2}>
-              <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de guía</label>
-              <select
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-                value={guiaSunatCode}
-                onChange={(ev) => handleGuiaTypeChange(ev.target.value as GuiaSunatCode)}
-              >
-                <option value="09">Guía Remitente (09)</option>
-                <option value="31">Guía Transportista (31)</option>
-              </select>
-            </div>
-            <div className={fieldCol2}>
+            <div className={fieldCol3}>
               <label className="block text-xs font-medium text-gray-600 mb-1">Serie</label>
-              <select
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono"
+              <SearchableSelect
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono bg-white text-left flex items-center justify-between gap-2 min-h-[42px]"
                 value={form.series_id ?? ''}
-                onChange={(ev) => setForm((f) => ({ ...f, series_id: Number(ev.target.value) }))}
-              >
-                {seriesFiltered.length === 0 ? (
-                  <option value="">Sin serie configurada</option>
-                ) : (
-                  seriesFiltered.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.series}
-                    </option>
-                  ))
-                )}
-              </select>
+                onChange={(v) => setForm((f) => ({ ...f, series_id: v == null ? 0 : Number(v) }))}
+                options={seriesFiltered.map((s) => ({ value: s.id, label: s.series }))}
+                placeholder="Sin serie configurada"
+                searchable={seriesFiltered.length > 5}
+                disabled={seriesFiltered.length === 0}
+              />
             </div>
-            <div className={fieldCol2}>
+            <div className={fieldCol3}>
               <label className="block text-xs font-medium text-gray-600 mb-1">Sucursal</label>
-              <select
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-                value={form.branch_id}
-                onChange={(ev) => setForm((f) => ({ ...f, branch_id: Number(ev.target.value) }))}
-              >
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
+              <SearchableSelect
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2 min-h-[42px]"
+                value={form.branch_id ?? ''}
+                onChange={(v) => setForm((f) => ({ ...f, branch_id: v == null ? f.branch_id : Number(v) }))}
+                options={branches.map((b) => ({ value: b.id, label: b.name }))}
+                placeholder="Seleccionar sucursal…"
+                searchable={branches.length > 5}
+              />
             </div>
           </div>
 
@@ -1078,23 +1081,23 @@ export function DespatchFormModal({
                 <div className={fieldCol3 || undefined}>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Cliente *</label>
                   <div className="flex gap-2 items-stretch">
-                    <select
-                      className="flex-1 min-w-0 border border-gray-200 rounded-xl px-3 py-2 text-sm"
-                      value={contactId ?? ''}
-                      onChange={(ev) =>
-                        setContactId(ev.target.value ? Number(ev.target.value) : null)
-                      }
-                    >
-                      <option value="">Seleccionar cliente...</option>
-                      {customers.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.business_name}
-                          {formatTipoDocIdentidadDisplay(c.doc_type, c.doc_number)
-                            ? ` — ${formatTipoDocIdentidadDisplay(c.doc_type, c.doc_number)}`
-                            : ''}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="flex-1 min-w-0">
+                      <SearchableSelect
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2 min-h-[42px]"
+                        value={contactId ?? ''}
+                        onChange={(v) => setContactId(v == null ? null : Number(v))}
+                        options={customers.map((c) => ({
+                          value: c.id,
+                          // El documento va en el label para poder buscar por RUC/DNI.
+                          label: formatTipoDocIdentidadDisplay(c.doc_type, c.doc_number)
+                            ? `${c.business_name} — ${formatTipoDocIdentidadDisplay(c.doc_type, c.doc_number)}`
+                            : c.business_name,
+                        }))}
+                        placeholder="Seleccionar cliente…"
+                        searchPlaceholder="Buscar por nombre o RUC/DNI..."
+                        allowClear
+                      />
+                    </div>
                     <button
                       type="button"
                       onClick={() => setAddClientOpen(true)}
@@ -1148,34 +1151,31 @@ export function DespatchFormModal({
             <div className={fieldGrid}>
               <div className={fieldCol2}>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Motivo *</label>
-                <select
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-                  value={form.envio?.cod_traslado}
-                  onChange={(ev) => handleMotivoChange(ev.target.value)}
-                >
-                  {SUNAT_MOTIVO_TRASLADO.map((m) => (
-                    <option key={m.code} value={m.code}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
+                <SearchableSelect
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2 min-h-[42px]"
+                  value={form.envio?.cod_traslado ?? ''}
+                  onChange={(v) => handleMotivoChange(v == null ? '' : String(v))}
+                  options={SUNAT_MOTIVO_TRASLADO.map((m) => ({ value: m.code, label: m.label }))}
+                  placeholder="Seleccionar motivo…"
+                />
               </div>
               <div className={fieldCol2}>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Modalidad *</label>
-                <select
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-500"
-                  value={modTraslado}
-                  disabled={modalidadLocked}
-                  onChange={(ev) => handleModTrasladoChange(ev.target.value)}
-                >
-                  {SUNAT_MODALIDAD_TRASLADO.map((m) => (
-                    <option key={m.code} value={m.code}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
-                {modalidadLocked && (
-                  <p className="text-[11px] text-gray-500 mt-1">Guía transportista usa transporte privado (02).</p>
+                {modalidadLocked ? (
+                  <>
+                    <div className="w-full border border-gray-200 bg-gray-100 text-gray-500 rounded-xl px-3 py-2 text-sm min-h-[42px] flex items-center">
+                      Transporte privado (02)
+                    </div>
+                    <p className="text-[11px] text-gray-500 mt-1">Guía transportista usa transporte privado (02).</p>
+                  </>
+                ) : (
+                  <SearchableSelect
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2 min-h-[42px]"
+                    value={modTraslado}
+                    onChange={(v) => handleModTrasladoChange(v == null ? modTraslado : String(v))}
+                    options={SUNAT_MODALIDAD_TRASLADO.map((m) => ({ value: m.code, label: m.label }))}
+                    placeholder="Seleccionar modalidad…"
+                  />
                 )}
               </div>
               <div className={fieldCol2}>
@@ -1304,53 +1304,85 @@ export function DespatchFormModal({
                 {showTransportistaPublico && (
                   <div>
                     <label className="block text-xs font-medium text-gray-600 mb-1">Transportista</label>
-                    <select
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
-                      value={selectedCarrierId === '' ? '' : String(selectedCarrierId)}
-                      onChange={(ev) => handleFleetCarrierChange(ev.target.value)}
-                    >
-                      <option value="">— Manual —</option>
-                      {fleetCarriers.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.doc_number} — {c.business_name}
-                          {c.is_default ? ' ★' : ''}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="flex gap-2 items-stretch">
+                      <div className="flex-1 min-w-0">
+                        <SearchableSelect
+                          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2 min-h-[42px]"
+                          value={selectedCarrierId === '' ? '' : selectedCarrierId}
+                          onChange={(v) => handleFleetCarrierChange(v == null ? '' : String(v))}
+                          options={fleetCarriers.map((c) => ({
+                            value: c.id,
+                            label: `${c.doc_number} — ${c.business_name}${c.is_default ? ' ★' : ''}`,
+                          }))}
+                          placeholder="— Manual —"
+                          allowClear
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowQuickCarrier(true)}
+                        className="shrink-0 inline-flex items-center justify-center rounded-xl border border-violet-300 bg-white px-3 py-2 text-violet-700 hover:bg-violet-50 min-h-[42px]"
+                        title="Nuevo transportista"
+                        aria-label="Nuevo transportista"
+                      >
+                        <Plus size={16} />
+                      </button>
+                    </div>
                   </div>
                 )}
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Conductor</label>
-                  <select
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
-                    value={selectedDriverId === '' ? '' : String(selectedDriverId)}
-                    onChange={(ev) => handleFleetDriverChange(ev.target.value)}
-                  >
-                    <option value="">— Manual —</option>
-                    {fleetDrivers.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.doc_number} — {d.full_name}
-                        {d.is_default ? ' ★' : ''}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex gap-2 items-stretch">
+                    <div className="flex-1 min-w-0">
+                      <SearchableSelect
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2 min-h-[42px]"
+                        value={selectedDriverId === '' ? '' : selectedDriverId}
+                        onChange={(v) => handleFleetDriverChange(v == null ? '' : String(v))}
+                        options={fleetDrivers.map((d) => ({
+                          value: d.id,
+                          label: `${d.doc_number} — ${d.full_name}${d.is_default ? ' ★' : ''}`,
+                        }))}
+                        placeholder="— Manual —"
+                        allowClear
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowQuickDriver(true)}
+                      className="shrink-0 inline-flex items-center justify-center rounded-xl border border-violet-300 bg-white px-3 py-2 text-violet-700 hover:bg-violet-50 min-h-[42px]"
+                      title="Nuevo conductor"
+                      aria-label="Nuevo conductor"
+                    >
+                      <Plus size={16} />
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Vehículo</label>
-                  <select
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
-                    value={selectedVehicleId === '' ? '' : String(selectedVehicleId)}
-                    onChange={(ev) => handleFleetVehicleChange(ev.target.value)}
-                  >
-                    <option value="">— Manual —</option>
-                    {fleetVehicles.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.plate}
-                        {v.brand ? ` — ${v.brand}` : ''}
-                        {v.is_default ? ' ★' : ''}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex gap-2 items-stretch">
+                    <div className="flex-1 min-w-0">
+                      <SearchableSelect
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2 min-h-[42px]"
+                        value={selectedVehicleId === '' ? '' : selectedVehicleId}
+                        onChange={(v) => handleFleetVehicleChange(v == null ? '' : String(v))}
+                        options={fleetVehicles.map((v) => ({
+                          value: v.id,
+                          label: `${v.plate}${v.brand ? ` — ${v.brand}` : ''}${v.is_default ? ' ★' : ''}`,
+                        }))}
+                        placeholder="— Manual —"
+                        allowClear
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowQuickVehicle(true)}
+                      className="shrink-0 inline-flex items-center justify-center rounded-xl border border-violet-300 bg-white px-3 py-2 text-violet-700 hover:bg-violet-50 min-h-[42px]"
+                      title="Nuevo vehículo"
+                      aria-label="Nuevo vehículo"
+                    >
+                      <Plus size={16} />
+                    </button>
+                  </div>
                 </div>
               </div>
             </section>
@@ -1560,21 +1592,23 @@ export function DespatchFormModal({
               <div className={isPageLayout ? fieldGrid : 'grid grid-cols-1 sm:grid-cols-2 gap-3'}>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Remitente — tipo doc.</label>
-                  <select
+                  <SearchableSelect
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2 min-h-[42px]"
                     value={form.remitente?.tipo_doc ?? '6'}
-                    onChange={(ev) =>
+                    onChange={(v) =>
                       setForm((f) => ({
                         ...f,
-                        remitente: { ...(f.remitente ?? { num_doc: '', rzn_social: '', address: '', ubigeo: '' }), tipo_doc: ev.target.value },
+                        remitente: { ...(f.remitente ?? { num_doc: '', rzn_social: '', address: '', ubigeo: '' }), tipo_doc: v == null ? '6' : String(v) },
                       }))
                     }
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-                  >
-                    <option value="6">RUC</option>
-                    <option value="1">DNI</option>
-                    <option value="4">C.E.</option>
-                    <option value="7">Pasaporte</option>
-                  </select>
+                    options={[
+                      { value: '6', label: 'RUC' },
+                      { value: '1', label: 'DNI' },
+                      { value: '4', label: 'C.E.' },
+                      { value: '7', label: 'Pasaporte' },
+                    ]}
+                    searchable={false}
+                  />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Remitente — RUC/DNI *</label>
@@ -1779,20 +1813,19 @@ export function DespatchFormModal({
                           {itemsLocked ? (
                             <span>{it.unidad}</span>
                           ) : (
-                            <select
-                              className="w-full min-w-[7rem] border border-gray-200 rounded-lg px-2 py-1 text-sm"
-                              value={it.unidad}
-                              onChange={(ev) => updateLineItem(idx, { unidad: ev.target.value })}
-                            >
-                              {it.unidad && !isSunatUnitCode(it.unidad) && (
-                                <option value={it.unidad}>{sunatUnitDisplayName(it.unidad)}</option>
-                              )}
-                              {SUNAT_UNITS.map((u) => (
-                                <option key={u.code} value={u.code}>
-                                  {u.label}
-                                </option>
-                              ))}
-                            </select>
+                            <div className="min-w-[7rem]">
+                              <SearchableSelect
+                                className="w-full border border-gray-200 rounded-lg px-2 py-1 text-sm bg-white text-left flex items-center justify-between gap-1 min-h-[30px]"
+                                value={it.unidad}
+                                onChange={(v) => updateLineItem(idx, { unidad: v == null ? it.unidad : String(v) })}
+                                options={[
+                                  ...(it.unidad && !isSunatUnitCode(it.unidad)
+                                    ? [{ value: it.unidad, label: sunatUnitDisplayName(it.unidad) }]
+                                    : []),
+                                  ...SUNAT_UNITS.map((u) => ({ value: u.code, label: u.label })),
+                                ]}
+                              />
+                            </div>
                           )}
                         </td>
                         <td className="px-3 py-2">
