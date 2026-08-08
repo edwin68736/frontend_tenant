@@ -29,8 +29,12 @@ export function ErpCompanySettings() {
   const logoPreviewSrc = resolveCompanyLogoDisplayUrl(form.logo_url)
 
   useEffect(() => {
+    // force: true — esta pantalla reenvía el formulario COMPLETO al guardar (handleSave),
+    // así que si arrancara con un caché viejo, guardar cualquier cambio (p. ej. el logo)
+    // pisaría en el backend campos no tocados (como términos y condiciones) con datos
+    // desactualizados. Ver companyService.getConfig en company.service.ts.
     companyService
-      .getConfig()
+      .getConfig({ force: true })
       .then((data) => {
         setForm(data)
         const ids = ubigeoToIds(data.ubigeo ?? '')

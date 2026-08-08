@@ -416,7 +416,10 @@ function SalesRegisterContent({
   useEffect(() => {
     const seriesCategory = seriesCategoryForMode(mode)
     Promise.all([
-      companyService.getConfig(),
+      // force: true — esta pantalla decide qué se imprime (términos y condiciones, logo,
+      // cuentas bancarias, etc.); un caché viejo aquí podía dejar "Términos y condiciones"
+      // sin mostrarse aunque ya estuviera configurado y guardado correctamente en el backend.
+      companyService.getConfig({ force: true }),
       companyService.listSeries({ branch_id: activeBranchId, category: seriesCategory }),
       companyService.getSunat(),
       contactsService.list('', 'customer'),

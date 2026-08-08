@@ -130,11 +130,24 @@ export interface SeriesRow {
 
 let configInFlight: Promise<CompanyConfig> | null = null
 
+// El caché de config (logo incluido) vive en localStorage sin expirar nunca por sí
+// solo: un dispositivo que ya tenía una sesión abierta antes de que se cambiara el
+// logo en OTRA PC se quedaba sirviendo ese caché viejo para siempre (getConfig solo
+// pega al backend si no hay caché o si se pasa `force`, y `force` únicamente lo
+// dispara el propio flujo de edición en el dispositivo donde se edita). Por eso el
+// logo "solo se ve en la PC donde se cambió". Para no perder la carga instantánea
+// desde caché pero sí llegar a ver cambios hechos en otro dispositivo, se revalida
+// una vez en segundo plano por carga de la app (stale-while-revalidate).
+let revalidatedThisLoad = false
+
 export const companyService = {
   /**
    * Config del tenant. Se cachea al primer fetch (login) y se sirve desde caché;
    * solo consulta al backend si no hay caché o si `force` es true. Las ediciones
-   * (updateConfig / uploadLogo / deleteLogo) refrescan el caché.
+   * (updateConfig / uploadLogo / deleteLogo) refrescan el caché. Además, la primera
+   * vez que se sirve desde caché en cada carga de la app se dispara un refresh en
+   * segundo plano (sin bloquear al llamador) para traer cambios hechos en otra PC
+   * (p. ej. el logo).
    */
   getConfig: (opts?: { force?: boolean }): Promise<CompanyConfig> => {
     if (!opts?.force) {
@@ -144,6 +157,12 @@ export const companyService = {
         // (p. ej. tras recargar la app o si el primer intento falló).
         const cachedLogo = cached.logo_data_url || cached.logo_url
         if (!getCompanyLogoDataUrlSync(cachedLogo)) void ensureCompanyLogoDataUrl(cachedLogo)
+        if (!revalidatedThisLoad) {
+          revalidatedThisLoad = true
+          void companyService.getConfig({ force: true }).catch(() => {
+            /* revalidación en segundo plano: si falla, se sigue sirviendo el caché */
+          })
+        }
         return Promise.resolve(cached)
       }
       if (configInFlight) return configInFlight
