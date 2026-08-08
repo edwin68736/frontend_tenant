@@ -58,6 +58,14 @@ export default defineConfig(({ mode }) => {
       include: ['@tauri-apps/api/core', '@capacitor/core'],
     },
     build: {
+      // Sin esto, Vite 7 usa safari16 como piso por defecto (esbuild) y deja sin
+      // transpilar sintaxis ES2021+ (ej. `||=`, usado 150+ veces en jsPDF/Recharts,
+      // que se cargan eager en el chunk de arranque vía MainLayout → PdfViewerHost).
+      // En iPhones con Safari más viejo eso es un SyntaxError de PARSEO del <script>
+      // antes de que React llegue a montar — pantalla en blanco / "no carga", sin que
+      // el ErrorBoundary pueda atraparlo. Bajar el target hace que esbuild transpile
+      // TODO el bundle (incluidas las dependencias) a algo compatible.
+      target: ['es2019', 'safari13', 'ios13', 'chrome87', 'firefox78', 'edge88'],
       rollupOptions: {
         output: {
           manualChunks(id) {
