@@ -32,6 +32,10 @@ export function useBarcodeProductScanner({
   const [scanQuery, setScanQuery] = useState('')
   const [scanProcessing, setScanProcessing] = useState(false)
   const useCameraBarcodeScanner = isCapacitorNative()
+  // Fuerza modo lector físico aunque estemos en Capacitor nativo (donde por defecto se
+  // abre cámara). Con esto activo, el efecto de abajo no reabre la cámara.
+  const [forcePhysicalScanner, setForcePhysicalScanner] = useState(false)
+  const usingCameraNow = useCameraBarcodeScanner && !forcePhysicalScanner
 
   const focusScanInput = useCallback(() => {
     window.setTimeout(() => {
@@ -56,6 +60,7 @@ export function useBarcodeProductScanner({
     setScannerMode(false)
     setCameraScannerOpen(false)
     setScanQuery('')
+    setForcePhysicalScanner(false)
   }, [])
 
   const handleBarcodeScan = useCallback(
@@ -70,9 +75,9 @@ export function useBarcodeProductScanner({
           setScanQuery('')
           onClearSearch?.()
           if (showSuccessToast) toast.success(`${product.name} agregado`)
-          if (useCameraBarcodeScanner && closeCameraOnScan) {
+          if (usingCameraNow && closeCameraOnScan) {
             closeScanner()
-          } else if (!useCameraBarcodeScanner) {
+          } else if (!usingCameraNow) {
             focusScanInput()
           }
         } else {
@@ -93,11 +98,12 @@ export function useBarcodeProductScanner({
       resolveProduct,
       scanProcessing,
       showSuccessToast,
-      useCameraBarcodeScanner,
+      usingCameraNow,
     ],
   )
 
   const activateScanner = useCallback(() => {
+    setForcePhysicalScanner(false)
     setScannerMode(true)
     if (useCameraBarcodeScanner) {
       setCameraScannerOpen(true)
@@ -116,26 +122,42 @@ export function useBarcodeProductScanner({
       if (!next) {
         setCameraScannerOpen(false)
         setScanQuery('')
-      } else if (useCameraBarcodeScanner) {
-        setCameraScannerOpen(true)
+        setForcePhysicalScanner(false)
       } else {
-        focusScanInput()
+        setForcePhysicalScanner(false)
+        if (useCameraBarcodeScanner) {
+          setCameraScannerOpen(true)
+        } else {
+          focusScanInput()
+        }
       }
       return next
     })
   }, [focusScanInput, useCameraBarcodeScanner])
+
+  /**
+   * Fuerza el modo "lector físico" (foco en el input, sin cámara) aunque estemos en
+   * Capacitor nativo, donde por defecto se abre cámara. La cámara sigue disponible
+   * aparte con `activateScanner`/`toggleScannerMode`.
+   */
+  const activatePhysicalScanner = useCallback(() => {
+    setForcePhysicalScanner(true)
+    setCameraScannerOpen(false)
+    setScannerMode(true)
+    focusScanInput()
+  }, [focusScanInput])
 
   useEffect(() => {
     if (!scannerMode) {
       setCameraScannerOpen(false)
       return
     }
-    if (useCameraBarcodeScanner) {
+    if (usingCameraNow) {
       setCameraScannerOpen(true)
       return
     }
     focusScanInput()
-  }, [scannerMode, useCameraBarcodeScanner, focusScanInput])
+  }, [scannerMode, usingCameraNow, focusScanInput])
 
   const handleSearchKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -164,10 +186,12 @@ export function useBarcodeProductScanner({
     scannerMode,
     cameraScannerOpen,
     useCameraBarcodeScanner,
+    usingCameraNow,
     scanQuery,
     setScanQuery,
     scanProcessing,
     activateScanner,
+    activatePhysicalScanner,
     deactivateScanner,
     closeScanner,
     toggleScannerMode,

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Settings2, Package, Upload, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Trash2, CheckCircle, Eye, EyeOff } from 'lucide-react'
+import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Settings2, Package, Upload, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Trash2, CheckCircle, Eye, EyeOff, Keyboard } from 'lucide-react'
 import { ProductImportModal } from '@/components/products/ProductImportModal'
 import { BulkDeleteProductsPinModal } from '@/components/products/BulkDeleteProductsPinModal'
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
@@ -1183,9 +1183,9 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                   className="flex-1 min-w-0 px-3 py-2.5 sm:py-2 text-base sm:text-sm font-mono border-0 outline-none bg-transparent"
                   placeholder={
                     pageMode === 'product' && codeBarcodeScan.scannerMode
-                      ? codeBarcodeScan.useCameraBarcodeScanner
+                      ? codeBarcodeScan.cameraScannerOpen
                         ? 'Cámara activa — apunta al código'
-                        : 'Escanear código de barras…'
+                        : 'Escanear con lector físico o pegar código…'
                       : pageMode === 'product'
                         ? 'Código de barras'
                         : 'Ej. A3K9Z1'
@@ -1212,28 +1212,47 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                   onClick={codeBarcodeScan.toggleScannerMode}
                   className={clsx(
                     'inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 sm:p-2 transition-colors touch-manipulation shrink-0 w-full sm:w-auto',
-                    codeBarcodeScan.scannerMode
+                    codeBarcodeScan.scannerMode && codeBarcodeScan.cameraScannerOpen
                       ? 'border-primary-300 bg-primary-50 text-primary-700'
                       : 'border-gray-200 bg-stone-50 text-stone-600 hover:bg-stone-100',
                   )}
                   title={
-                    codeBarcodeScan.scannerMode
-                      ? 'Modo escáner activo: escanee o pegue el código'
-                      : 'Activar escáner de código de barras'
+                    codeBarcodeScan.useCameraBarcodeScanner
+                      ? 'Escanear con la cámara'
+                      : codeBarcodeScan.scannerMode
+                        ? 'Modo escáner activo: escanee o pegue el código'
+                        : 'Activar escáner de código de barras'
                   }
-                  aria-label="Escanear código de barras"
+                  aria-label="Escanear con la cámara"
                 >
                   <ScanBarcode size={18} aria-hidden />
-                  <span className="text-sm font-medium sm:sr-only">Escanear</span>
+                  <span className="text-sm font-medium sm:sr-only">Cámara</span>
+                </button>
+              )}
+              {pageMode === 'product' && codeBarcodeScan.useCameraBarcodeScanner && (
+                <button
+                  type="button"
+                  onClick={codeBarcodeScan.activatePhysicalScanner}
+                  className={clsx(
+                    'inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 sm:p-2 transition-colors touch-manipulation shrink-0 w-full sm:w-auto',
+                    codeBarcodeScan.scannerMode && !codeBarcodeScan.cameraScannerOpen
+                      ? 'border-primary-300 bg-primary-50 text-primary-700'
+                      : 'border-gray-200 bg-stone-50 text-stone-600 hover:bg-stone-100',
+                  )}
+                  title="Usar lector físico (pistola USB/Bluetooth) en vez de la cámara"
+                  aria-label="Usar lector físico de código de barras"
+                >
+                  <Keyboard size={18} aria-hidden />
+                  <span className="text-sm font-medium sm:sr-only">Lector físico</span>
                 </button>
               )}
             </div>
-            {pageMode === 'product' && codeBarcodeScan.scannerMode && !codeBarcodeScan.useCameraBarcodeScanner && (
+            {pageMode === 'product' && codeBarcodeScan.scannerMode && !codeBarcodeScan.cameraScannerOpen && (
               <p className="mt-1.5 text-xs text-gray-500 leading-snug">
-                Escanee con lector USB o pegue el código. El valor se rellena en el campo al escanear.
+                Escanee con el lector físico (pistola) o pegue el código. El valor se rellena en el campo al escanear.
               </p>
             )}
-            {pageMode === 'product' && codeBarcodeScan.scannerMode && codeBarcodeScan.useCameraBarcodeScanner && (
+            {pageMode === 'product' && codeBarcodeScan.scannerMode && codeBarcodeScan.cameraScannerOpen && (
               <p className="mt-1.5 text-xs text-primary-700 leading-snug">
                 Apunta la cámara al código de barras del producto.
               </p>

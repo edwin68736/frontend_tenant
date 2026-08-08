@@ -27,6 +27,12 @@ type Props = {
   title?: string
   subtitle?: string
   footerHint?: string
+  /**
+   * 'fullscreen' (por defecto) cubre toda la pantalla, como en el formulario de producto.
+   * 'compact' ancla la cámara arriba ocupando ~30% del alto, dejando visible lo que haya
+   * debajo (en POS, el carrito) para que el usuario vea qué se va agregando al escanear.
+   */
+  variant?: 'fullscreen' | 'compact'
 }
 
 export function BarcodeScannerModal({
@@ -37,7 +43,9 @@ export function BarcodeScannerModal({
   title = 'Escanear código',
   subtitle = 'Apunta al código de barras',
   footerHint = 'El código se aplicará al detectarlo',
+  variant = 'fullscreen',
 }: Props) {
+  const compact = variant === 'compact'
   const regionId = useId().replace(/:/g, '')
   const scannerRef = useRef<Html5Qrcode | null>(null)
   const lastCodeRef = useRef('')
@@ -143,37 +151,67 @@ export function BarcodeScannerModal({
 
   return createPortal(
     <div
-      className={clsx('fixed inset-0 flex flex-col', CAMERA_SCANNER_Z)}
+      className={clsx(
+        'fixed flex flex-col',
+        compact ? 'inset-x-0 top-0 h-[32dvh] min-h-[190px] max-h-[320px]' : 'inset-0',
+        CAMERA_SCANNER_Z,
+      )}
       role="dialog"
-      aria-modal="true"
+      aria-modal={!compact || undefined}
       aria-label="Escanear código de barras"
     >
-      <div className="absolute inset-0 bg-stone-950" aria-hidden />
+      <div
+        className={clsx('absolute inset-0 bg-stone-950', compact && 'shadow-[0_10px_28px_rgba(0,0,0,0.45)]')}
+        aria-hidden
+      />
 
-      <div className="relative z-10 flex items-center justify-between gap-3 px-4 sm:px-6 pt-safe pb-3">
+      <div
+        className={clsx(
+          'relative z-10 flex items-center justify-between gap-3 px-4 sm:px-6',
+          compact ? 'pt-safe pb-1.5' : 'pt-safe pb-3',
+        )}
+      >
         <div className="flex items-center gap-2 text-white min-w-0">
-          <ScanBarcode size={22} className="shrink-0 text-primary-300" aria-hidden />
+          <ScanBarcode size={compact ? 18 : 22} className="shrink-0 text-primary-300" aria-hidden />
           <div className="min-w-0">
-            <p className="font-semibold text-sm sm:text-base truncate">{title}</p>
-            <p className="text-xs text-stone-300 truncate">{subtitle}</p>
+            <p className={clsx('font-semibold truncate', compact ? 'text-xs' : 'text-sm sm:text-base')}>{title}</p>
+            {!compact && <p className="text-xs text-stone-300 truncate">{subtitle}</p>}
           </div>
         </div>
         <button
           type="button"
           onClick={handleClose}
-          className="shrink-0 p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white touch-manipulation"
+          className={clsx(
+            'shrink-0 rounded-xl bg-white/10 hover:bg-white/20 text-white touch-manipulation',
+            compact ? 'p-1.5' : 'p-2.5',
+          )}
           aria-label="Cerrar escáner y apagar cámara"
         >
-          <X size={22} />
+          <X size={compact ? 18 : 22} />
         </button>
       </div>
 
-      <div className="relative flex-1 min-h-0 flex flex-col items-center justify-center px-4 sm:px-6 pb-safe">
-        <div className="relative w-full max-w-lg aspect-[4/3] rounded-2xl overflow-hidden bg-black shadow-2xl ring-1 ring-white/10">
+      <div
+        className={clsx(
+          'relative flex-1 min-h-0 flex flex-col items-center justify-center',
+          compact ? 'px-3 pb-2' : 'px-4 sm:px-6 pb-safe',
+        )}
+      >
+        <div
+          className={clsx(
+            'relative w-full rounded-2xl overflow-hidden bg-black shadow-2xl ring-1 ring-white/10',
+            compact ? 'h-full max-w-md' : 'max-w-lg aspect-[4/3]',
+          )}
+        >
           <div id={regionId} className="absolute inset-0 w-full h-full [&_video]:object-cover [&_canvas]:hidden" />
 
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
-            <div className="relative w-[88%] max-w-[340px] h-[32%] max-h-[140px]">
+            <div
+              className={clsx(
+                'relative w-[88%] max-w-[340px]',
+                compact ? 'h-[60%] max-h-[90px]' : 'h-[32%] max-h-[140px]',
+              )}
+            >
               <span className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-primary-400 rounded-tl-lg" />
               <span className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-primary-400 rounded-tr-lg" />
               <span className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-primary-400 rounded-bl-lg" />
@@ -188,16 +226,18 @@ export function BarcodeScannerModal({
 
           {(starting || busy) && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-              <Loader2 className="w-10 h-10 text-white animate-spin" aria-hidden />
+              <Loader2 className={clsx('text-white animate-spin', compact ? 'w-6 h-6' : 'w-10 h-10')} aria-hidden />
             </div>
           )}
         </div>
 
         {error ? (
-          <p className="mt-4 text-center text-sm text-red-300 max-w-md px-2">{error}</p>
-        ) : (
+          <p className={clsx('text-center text-red-300 px-2', compact ? 'mt-1 text-[11px] line-clamp-2' : 'mt-4 text-sm max-w-md')}>
+            {error}
+          </p>
+        ) : !compact ? (
           <p className="mt-4 text-center text-xs text-stone-400 max-w-md">{footerHint}</p>
-        )}
+        ) : null}
       </div>
 
       <style>{`

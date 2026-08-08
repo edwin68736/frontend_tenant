@@ -52,6 +52,18 @@ export function useBarcodeFieldScanner({ onScan, closeCameraOnScan = true }: Opt
     setCameraScannerOpen(true)
   }, [])
 
+  /**
+   * Fuerza el modo "lector físico" (foco en el input, sin cámara) aunque estemos en
+   * Capacitor nativo, donde `toggleScannerMode` abre la cámara por defecto. Así, en la
+   * app Android/iOS empaquetada, el usuario puede elegir pistola/lector USB en vez de
+   * cámara sin perder la opción de cámara (que sigue disponible con el botón normal).
+   */
+  const activatePhysicalScanner = useCallback(() => {
+    setCameraScannerOpen(false)
+    setScannerMode(true)
+    focusInput()
+  }, [focusInput])
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (scannerMode && e.key === 'Enter') {
@@ -80,6 +92,7 @@ export function useBarcodeFieldScanner({ onScan, closeCameraOnScan = true }: Opt
     useCameraBarcodeScanner,
     toggleScannerMode,
     openCameraScanner,
+    activatePhysicalScanner,
     closeScanner,
     deactivateScanner,
     handleKeyDown,

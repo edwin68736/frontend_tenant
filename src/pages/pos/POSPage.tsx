@@ -7,7 +7,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
-import { Plus, Search, ShoppingCart, Trash2, X, ChevronRight, UserPlus, Package, ScanBarcode, LayoutGrid } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Trash2, X, ChevronRight, UserPlus, Package, ScanBarcode, LayoutGrid, Keyboard } from 'lucide-react'
 import { clsx } from 'clsx'
 import { productsService, getProductImageUrl, type Product, type Category } from '@/services/products.service'
 import { contactsService, type Contact } from '@/services/contacts.service'
@@ -377,6 +377,13 @@ function POSContent() {
     onProductFound: product => addToCart(product),
     onClearSearch: () => setQ(''),
   })
+
+  // Al activar la cámara para escanear, abrir el carrito: la cámara queda anclada arriba
+  // (variant="compact", ~30% de alto) y el carrito abajo, así el usuario ve qué se va
+  // agregando en cada escaneo sin que la cámara tape toda la pantalla.
+  useEffect(() => {
+    if (barcodeScan.cameraScannerOpen) setCartModalOpen(true)
+  }, [barcodeScan.cameraScannerOpen])
 
   const setCartQty = (index: number, qty: number) => {
     if (qty <= 0) {
@@ -889,9 +896,9 @@ function POSContent() {
                   )}
                   placeholder={
                     barcodeScan.scannerMode
-                      ? barcodeScan.useCameraBarcodeScanner
+                      ? barcodeScan.usingCameraNow
                         ? 'Cámara activa — apunta al código'
-                        : 'Escanear código de barras…'
+                        : 'Escanear con lector físico…'
                       : 'Buscar producto...'
                   }
                   value={q}
@@ -908,19 +915,37 @@ function POSContent() {
                 onClick={barcodeScan.toggleScannerMode}
                 className={clsx(
                   'shrink-0 inline-flex items-center justify-center rounded-xl border p-2 transition-colors touch-manipulation',
-                  barcodeScan.scannerMode
+                  barcodeScan.scannerMode && barcodeScan.usingCameraNow
                     ? 'border-primary-300 bg-primary-50 text-primary-700'
                     : 'border-stone-200 bg-stone-50 text-stone-600 hover:bg-stone-100',
                 )}
                 title={
-                  barcodeScan.scannerMode
-                    ? 'Modo escáner activo: Enter agrega al carrito'
-                    : 'Activar escáner de código de barras'
+                  barcodeScan.useCameraBarcodeScanner
+                    ? 'Escanear con la cámara'
+                    : barcodeScan.scannerMode
+                      ? 'Modo escáner activo: Enter agrega al carrito'
+                      : 'Activar escáner de código de barras'
                 }
-                aria-label="Escanear código de barras"
+                aria-label="Escanear con la cámara"
               >
                 <ScanBarcode size={18} aria-hidden />
               </button>
+              {barcodeScan.useCameraBarcodeScanner && (
+                <button
+                  type="button"
+                  onClick={barcodeScan.activatePhysicalScanner}
+                  className={clsx(
+                    'shrink-0 inline-flex items-center justify-center rounded-xl border p-2 transition-colors touch-manipulation',
+                    barcodeScan.scannerMode && !barcodeScan.usingCameraNow
+                      ? 'border-primary-300 bg-primary-50 text-primary-700'
+                      : 'border-stone-200 bg-stone-50 text-stone-600 hover:bg-stone-100',
+                  )}
+                  title="Usar lector físico (pistola USB/Bluetooth) en vez de la cámara"
+                  aria-label="Usar lector físico de código de barras"
+                >
+                  <Keyboard size={18} aria-hidden />
+                </button>
+              )}
               <PosProductViewModeToggle mode={productViewMode} onChange={changeProductViewMode} />
             </div>
           </div>
@@ -1298,6 +1323,7 @@ function POSContent() {
         title="Escanear producto"
         subtitle="Apunta al código de barras"
         footerHint="El producto se agregará al carrito al detectar el código"
+        variant="compact"
       />
 
       <PosCategoriesModal
