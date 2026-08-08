@@ -104,14 +104,6 @@ const NAV_GROUPS: NavGroup[] = [
         exact: true,
       },
       {
-        id: 'ventas-pedidos-web',
-        to: '/sales/pedidos-web',
-        label: 'Pedidos web',
-        icon: <ShoppingBag size={14} />,
-        module: 'ecommerce',
-        exact: true,
-      },
-      {
         id: 'ventas-facturas', to: '/billing', label: 'Consulta de comprobantes', icon: <FileText size={14} />, module: 'billing', permission: 'billing.send', exact: true },
       { id: 'ventas-pos', to: '/sales/pos', label: 'Punto de venta', icon: <ShoppingCart size={14} />, module: 'sales', permission: 'sales.pos' },
       {
@@ -123,13 +115,20 @@ const NAV_GROUPS: NavGroup[] = [
         permission: 'sales.view',
         exact: true,
       },
+    ],
+  },
+  {
+    id: 'tienda-virtual',
+    label: 'Tienda virtual',
+    icon: <ShoppingBag size={16} />,
+    children: [
       {
-        id: 'ventas-cxc',
-        to: '/sales/receivables',
-        label: 'Cuentas por cobrar',
-        icon: <Wallet size={14} />,
-        module: 'sales',
-        permission: 'sales.view',
+        id: 'tienda-pedidos-web',
+        to: '/sales/pedidos-web',
+        label: 'Pedidos web',
+        icon: <ShoppingBag size={14} />,
+        module: 'ecommerce',
+        exact: true,
       },
     ],
   },
@@ -242,6 +241,14 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'fin-caja', to: '/cashbank/cash', label: 'Caja', icon: <Wallet size={14} />, module: 'cashbank', permission: 'cashbank.view' },
       { id: 'fin-bancos', to: '/cashbank/bank', label: 'Cuentas / Bancos', icon: <Building2 size={14} />, module: 'cashbank', permission: 'cashbank.view' },
       { id: 'fin-metodos', to: '/cashbank/payment-methods', label: 'Métodos de pago', icon: <Wallet size={14} />, module: 'cashbank', permission: 'cashbank.manage' },
+      {
+        id: 'fin-cxc',
+        to: '/sales/receivables',
+        label: 'Cuentas por cobrar',
+        icon: <Wallet size={14} />,
+        module: 'sales',
+        permission: 'sales.view',
+      },
       { id: 'fin-reporte-caja', to: '/cashbank/reports', label: 'Reporte de caja', icon: <FileText size={14} />, module: 'cashbank', permission: 'reports.view' },
     ],
   },
@@ -502,7 +509,7 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
       <nav className="flex-1 px-2 py-3 overflow-y-auto overflow-x-visible space-y-2">
         <SidebarTutorialsLink collapsed={isCollapsed} onNavigate={onClose} />
 
-        {['home', 'dashboard', 'preventa', 'ventas', 'compras', 'contacts', 'productos', 'inventario', 'finanzas', 'doc-avanzados', 'reportes', 'administracion', 'empresa', 'modules'].map(
+        {['home', 'dashboard', 'preventa', 'ventas', 'tienda-virtual', 'compras', 'contacts', 'productos', 'inventario', 'finanzas', 'doc-avanzados', 'reportes', 'administracion', 'empresa', 'modules'].map(
           (entryId) => {
             const item = visibleSimpleItems.find(i => i.id === entryId)
             if (item) {
