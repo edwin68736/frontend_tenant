@@ -544,9 +544,22 @@ function drawAmountInWords(ctx: A4Ctx, data: PrintData, startY: number): number 
   return y + 1
 }
 
-async function drawElectronicPaymentAndQrRow(ctx: A4Ctx, data: PrintData, startY: number): Promise<number> {
+type ElectronicRowResult = {
+  /** Y para continuar el contenido de la columna izquierda (cuentas bancarias, etc.). */
+  leftY: number
+  /** Fondo del QR SUNAT (para enganchar debajo el QR de billetera Yape/Plin), o null si no hubo QR. */
+  qrBottomY: number | null
+  /** Página donde quedó dibujado el QR SUNAT. */
+  qrPage: number
+}
+
+async function drawElectronicPaymentAndQrRow(
+  ctx: A4Ctx,
+  data: PrintData,
+  startYs: { boxStartY: number; qrStartY: number },
+): Promise<ElectronicRowResult> {
   const { doc } = ctx
-  const rowY = startY
+  const { boxStartY, qrStartY } = startYs
   const leftW = CONTENT_W * 0.5
   const leftX = MARGIN
   const pad = 3
@@ -567,9 +580,9 @@ async function drawElectronicPaymentAndQrRow(ctx: A4Ctx, data: PrintData, startY
   const boxH = pad * 2 + payLines.length * (LINE_H + 0.2) + 1
   doc.setLineWidth(0.25)
   doc.setDrawColor(0, 0, 0)
-  doc.rect(leftX, rowY, leftW, boxH)
+  doc.rect(leftX, boxStartY, leftW, boxH)
 
-  let ly = rowY + pad + LINE_H - 0.3
+  let ly = boxStartY + pad + LINE_H - 0.3
   for (const line of payLines) {
     setFont(doc, FONT, line.bold ? 'bold' : 'normal')
     if (line.bullet) {
@@ -581,32 +594,37 @@ async function drawElectronicPaymentAndQrRow(ctx: A4Ctx, data: PrintData, startY
     ly += LINE_H + 0.2
   }
 
-  let blockH = boxH
   const qrSize = 42
   const qrX = PAGE_W - MARGIN - qrSize
+  let qrBottomY: number | null = null
+  const qrPage = doc.getNumberOfPages()
 
   if (data.qr_data) {
     try {
       const qrUrl = await qrDataUrl(data.qr_data, qrSize)
-      doc.addImage(qrUrl, 'PNG', qrX, rowY, qrSize, qrSize, undefined, 'NONE')
-      blockH = Math.max(blockH, qrSize)
+      doc.addImage(qrUrl, 'PNG', qrX, qrStartY, qrSize, qrSize, undefined, 'NONE')
+      qrBottomY = qrStartY + qrSize
 
       if (data.sunat_hash?.trim()) {
         setFont(doc, FONT_XS, 'normal')
         const hashLines = doc.splitTextToSize(`Código Hash: ${data.sunat_hash.trim()}`, qrSize + 6)
-        let hy = rowY + qrSize + 2.5
+        let hy = qrStartY + qrSize + 2.5
         for (const hl of hashLines) {
           doc.text(hl, qrX + qrSize / 2, hy, { align: 'center', maxWidth: qrSize + 6 })
           hy += LINE_H - 0.3
         }
-        blockH = Math.max(blockH, hy - rowY)
+        qrBottomY = hy - (LINE_H - 0.3)
       }
     } catch {
       /* sin QR */
     }
   }
 
-  return rowY + blockH + 5
+  // El contenido que sigue (cuentas bancarias, vendedor, términos) va en la columna
+  // izquierda igual que la caja de pago, y no se cruza en X con el QR (columna derecha):
+  // depende solo de dónde termina la caja, no de la altura del QR (42mm) — antes esperaba
+  // el QR completo aunque la caja fuera mucho más corta, dejando un hueco grande sin usar.
+  return { leftY: boxStartY + boxH + 5, qrBottomY, qrPage }
 }
 
 function drawPaymentMethodBox(ctx: A4Ctx, data: PrintData, startY: number): number {
@@ -676,36 +694,53 @@ function drawSeller(ctx: A4Ctx, data: PrintData, startY: number): number {
   return y + LINE_H + 3
 }
 
+/**
+ * Dibuja una línea en `y`, saltando a una página nueva ANTES si no entra completa en lo
+ * que queda de la página actual (deja MARGIN de aire abajo). Devuelve el `y` ya avanzado
+ * para la siguiente línea. Usa todo el espacio disponible de la página actual antes de
+ * saltar — a diferencia de "medir todo el bloque y decidir de una si cabe o no", que
+ * dejaba la página 1 a medio llenar cuando el bloque completo no cabía.
+ */
+function drawLineWithPageBreak(ctx: A4Ctx, y: number, line: string): number {
+  const { doc } = ctx
+  let cursorY = y
+  if (cursorY + LINE_H > PAGE_H - MARGIN) {
+    doc.addPage()
+    cursorY = MARGIN
+  }
+  doc.text(line, MARGIN, cursorY)
+  return cursorY + LINE_H
+}
+
+/** Dibuja legenda ("Son: ..."), términos y condiciones, y observaciones, con salto de
+ * página automático línea por línea si el texto (configurable por el negocio, puede ser
+ * largo) no entra completo en lo que queda de la página. Nunca se oculta ni se recorta. */
 function drawLegendAndNotes(ctx: A4Ctx, data: PrintData, startY: number, skipLegend = false): number {
   const { doc } = ctx
   let y = startY
+
   if (data.legend_text && !skipLegend) {
     setFont(doc, FONT_SM)
     for (const line of doc.splitTextToSize(`Son: ${data.legend_text}`, CONTENT_W * 0.65)) {
-      doc.text(line, MARGIN, y)
-      y += LINE_H
+      y = drawLineWithPageBreak(ctx, y, line)
     }
     y += 2
   }
   if (data.fiscal?.show_terms_conditions && data.fiscal.terms_text?.trim()) {
     setFont(doc, FONT_SM, 'bold')
-    doc.text('Términos y condiciones:', MARGIN, y)
-    y += LINE_H
+    y = drawLineWithPageBreak(ctx, y, 'Términos y condiciones:')
     setFont(doc, FONT_SM)
     for (const line of doc.splitTextToSize(data.fiscal.terms_text.trim(), CONTENT_W * 0.65)) {
-      doc.text(line, MARGIN, y)
-      y += LINE_H
+      y = drawLineWithPageBreak(ctx, y, line)
     }
     y += 2
   }
   if (data.notes?.trim() && data.notes.trim() !== data.fiscal?.fiscal_observations?.trim()) {
     setFont(doc, FONT_SM, 'bold')
-    doc.text('Observaciones:', MARGIN, y)
-    y += LINE_H
+    y = drawLineWithPageBreak(ctx, y, 'Observaciones:')
     setFont(doc, FONT_SM)
     for (const line of doc.splitTextToSize(data.notes.trim(), CONTENT_W * 0.65)) {
-      doc.text(line, MARGIN, y)
-      y += LINE_H
+      y = drawLineWithPageBreak(ctx, y, line)
     }
     y += 2
   }
@@ -728,23 +763,32 @@ function estimateA4FooterContentHeight(data: PrintData): number {
   return h
 }
 
-async function drawFooter(ctx: A4Ctx, data: PrintData, minY: number) {
+async function drawFooter(ctx: A4Ctx, data: PrintData, minY: number, opts?: { bottomAnchor?: boolean }) {
   const { doc } = ctx
   const consultBase = data.company.website?.trim()
   const showElectronic = isElectronicSunatCode(data.sunat_code)
   const showQtNote = data.sunat_code === 'QT'
+  // bottomAnchor=false en página de continuación (términos/observaciones largos que ya
+  // saltaron de página): forzar el pie al fondo ahí dejaba un hueco enorme entre el fin
+  // del texto y el pie. Con false, el pie va justo debajo del contenido.
+  const bottomAnchor = opts?.bottomAnchor !== false
 
-  // Pie completo siempre visible (GRACIAS + Tukifac! + URL), sin recortar al borde.
   const contentH = estimateA4FooterContentHeight(data)
   const maxStart = PAGE_H - FOOTER_BOTTOM_MARGIN - contentH
   const afterContent = minY + 6
   let y: number
-  if (afterContent <= maxStart) {
-    y = maxStart // contenido corto: pie al fondo
-  } else if (afterContent + contentH <= PAGE_H - FOOTER_BOTTOM_MARGIN) {
-    y = afterContent // cabe debajo del QR / términos
+  if (afterContent + contentH > PAGE_H - FOOTER_BOTTOM_MARGIN) {
+    // El pie ni siquiera cabe pegado al contenido en esta página: página nueva para él
+    // (una hoja en blanco siempre tiene de sobra para ~15-28mm de pie).
+    doc.addPage()
+    y = MARGIN
+  } else if (bottomAnchor && afterContent <= maxStart) {
+    y = maxStart // contenido corto en la página normal: pie al fondo (look habitual)
   } else {
-    y = maxStart // priorizar pie entero (URL y marca visibles)
+    // No corresponde anclar al fondo (página de continuación) o no cabe con margen ideal:
+    // pegar el pie justo debajo del contenido. Nunca usar maxStart aquí sin más — retroceder
+    // encima de texto ya dibujado (términos, QR, etc.) es lo que causaba el overlap original.
+    y = afterContent
   }
 
   setFont(doc, FONT, 'normal')
@@ -816,11 +860,21 @@ export async function renderReceiptA4(doc: jsPDF, data: PrintData): Promise<void
   const rightEndY = drawTotalsRight(ctx, data, sectionY)
 
   let leftY: number
+  let sunatQrBottomY: number | null = null
+  let sunatQrPage: number | null = null
   if (showPaymentCondition) {
     if (isElectronic) {
       const legendEndY = drawAmountInWords(ctx, data, sectionY)
-      const blockStartY = Math.max(rightEndY, legendEndY) + 3
-      leftY = await drawElectronicPaymentAndQrRow(ctx, data, blockStartY)
+      // El QR debe esperar a que termine la columna de totales (misma franja X a la
+      // derecha) para no solaparse — posición idéntica a antes, no se toca.
+      const qrStartY = Math.max(rightEndY, legendEndY) + 3
+      // La caja "CONDICIÓN DE PAGO" va en la columna izquierda (no se cruza con los
+      // totales en X): no necesita esperarlos, solo el "SON: ..." que tiene encima.
+      const boxStartY = legendEndY + 2
+      const row = await drawElectronicPaymentAndQrRow(ctx, data, { boxStartY, qrStartY })
+      leftY = row.leftY
+      sunatQrBottomY = row.qrBottomY
+      sunatQrPage = row.qrPage
     } else {
       leftY = drawPaymentMethodBox(ctx, data, sectionY)
     }
@@ -830,22 +884,42 @@ export async function renderReceiptA4(doc: jsPDF, data: PrintData): Promise<void
   // Las cuentas bancarias no dependen de este ajuste: se eligen en Empresa → Comprobantes.
   leftY = drawBankAccounts(ctx, data, leftY)
   leftY = drawSeller(ctx, data, leftY)
+
+  // Términos y condiciones/observaciones pueden ser un texto largo configurado por el
+  // negocio: drawLegendAndNotes usa TODO el espacio que quede en esta página y solo salta
+  // a una nueva si hace falta (línea por línea, nunca recorta ni oculta el texto).
+  const pagesBeforeLegend = doc.getNumberOfPages()
   leftY = drawLegendAndNotes(ctx, data, leftY, isElectronic)
+  const pageBroke = doc.getNumberOfPages() > pagesBeforeLegend
 
-  await drawFooter(ctx, data, Math.max(leftY, rightEndY))
+  // Si hubo salto de página, rightEndY (totales de la página 1) ya no aplica — el pie va
+  // en la página donde terminó el texto, y sin anclar al fondo (evita el hueco enorme
+  // entre el fin del texto y el pie en una página de continuación).
+  const footerMinY = pageBroke ? leftY : Math.max(leftY, rightEndY)
+  await drawFooter(ctx, data, footerMinY, { bottomAnchor: !pageBroke })
 
-  // QR de pago (Yape/Plin) en el pie de página, pegado al lado derecho.
-  // Va aparte del pie centrado (GRACIAS/Tukifac/QR SUNAT) para que no se solapen.
+  // QR de pago (Yape/Plin): si hay QR del comprobante (boleta/factura), va pegado justo
+  // debajo de ese QR, en su misma columna/página — así ambos QR quedan juntos en vez de
+  // que el de la billetera aparezca solo al fondo de la página (o en la página de
+  // continuación si los términos saltaron de página). Para nota de venta (sin QR SUNAT)
+  // se mantiene el pie de página como antes.
   if (paymentWalletVisible(data, 'a4')) {
-    const walletBlockH = 42
-    await renderPaymentWalletBlock(
-      doc,
-      data,
-      'a4',
-      PAGE_H - FOOTER_BOTTOM_MARGIN - walletBlockH,
-      PAGE_W,
-      MARGIN,
-      'right',
-    )
+    if (sunatQrBottomY != null && sunatQrPage != null) {
+      const currentPage = doc.getNumberOfPages()
+      if (sunatQrPage !== currentPage) doc.setPage(sunatQrPage)
+      await renderPaymentWalletBlock(doc, data, 'a4', sunatQrBottomY + 6, PAGE_W, MARGIN, 'right')
+      if (sunatQrPage !== currentPage) doc.setPage(currentPage)
+    } else {
+      const walletBlockH = 42
+      await renderPaymentWalletBlock(
+        doc,
+        data,
+        'a4',
+        PAGE_H - FOOTER_BOTTOM_MARGIN - walletBlockH,
+        PAGE_W,
+        MARGIN,
+        'right',
+      )
+    }
   }
 }
