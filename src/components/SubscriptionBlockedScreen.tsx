@@ -1,8 +1,10 @@
 import { useNavigate } from 'react-router-dom'
-import { AlertTriangle, CreditCard, Headphones, Lock } from 'lucide-react'
+import { useState } from 'react'
+import { AlertTriangle, CreditCard, Headphones, Lock, Package } from 'lucide-react'
 import { useSubscriptionStatus } from '@/contexts/SubscriptionStatusContext'
 import { planReminderTitle } from '@/pages/subscription/planNotifications'
 import { formatMoney } from '@/pages/subscription/subscriptionUx'
+import PlanPickerModal from '@/components/PlanPickerModal'
 import {
   buildSupportWhatsAppHref,
   DEFAULT_SUPPORT_WHATSAPP_MESSAGE,
@@ -22,6 +24,7 @@ import { BARCODE_SCANNER_Z } from '@/utils/uiLayers'
 export default function SubscriptionBlockedScreen() {
   const { hub } = useSubscriptionStatus()
   const navigate = useNavigate()
+  const [pickerOpen, setPickerOpen] = useState(false)
   if (!hub) return null
 
   const sub = hub.subscription
@@ -81,17 +84,30 @@ export default function SubscriptionBlockedScreen() {
               Contactar a soporte
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={() => navigate('/subscription')}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[rgb(var(--p600))] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[rgb(var(--p700))]"
-            >
-              <CreditCard size={16} />
-              Ver mi suscripción
-            </button>
+            <>
+              {debt > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => navigate('/subscription')}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  <CreditCard size={16} />
+                  Pagar mi deuda actual
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setPickerOpen(true)}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[rgb(var(--p600))] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[rgb(var(--p700))]"
+              >
+                <Package size={16} />
+                Elegir plan
+              </button>
+            </>
           )}
         </div>
       </div>
+      <PlanPickerModal open={pickerOpen} onClose={() => setPickerOpen(false)} />
     </div>
   )
 }

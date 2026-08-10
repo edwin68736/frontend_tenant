@@ -16,6 +16,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
+import PlanPickerModal from '@/components/PlanPickerModal'
 import { useSubscriptionStatus } from '@/contexts/SubscriptionStatusContext'
 import {
   assetUrl,
@@ -154,6 +155,7 @@ export default function SubscriptionPage() {
 
   /** Deuda que se está pagando; null = formulario cerrado. */
   const [payInvoice, setPayInvoice] = useState<BillingInvoice | null>(null)
+  const [pickerOpen, setPickerOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -562,8 +564,17 @@ export default function SubscriptionPage() {
 
         <aside className="space-y-4 xl:sticky xl:top-4">
           {/* «Acciones rápidas» eran anclas a secciones de esta misma página; con el listado
-              reordenado y más compacto ya se llega a todas sin saltos. Solo se conserva el
-              portal alternativo, que sí lleva fuera. */}
+              reordenado y más compacto ya se llega a todas sin saltos. Se conserva el portal
+              alternativo (lleva fuera) y se agrega el selector de planes propio de la app. */}
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            className="flex w-full items-center justify-center gap-2 px-3 py-2.5 rounded-2xl text-sm font-medium border border-gray-200 bg-white shadow-sm hover:bg-gray-50"
+          >
+            <Package size={16} />
+            Elegir otro plan
+          </button>
+
           {portalAlt && (
             <a
               href={portalAlt}
@@ -722,6 +733,8 @@ export default function SubscriptionPage() {
           </div>
         </form>
       </Modal>
+
+      <PlanPickerModal open={pickerOpen} onClose={() => setPickerOpen(false)} />
     </div>
   )
 }

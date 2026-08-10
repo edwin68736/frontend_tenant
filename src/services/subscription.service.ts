@@ -169,6 +169,21 @@ export interface BillingHub {
   events: TimelineEvent[]
 }
 
+/** Plan visible para elegir/renovar (GET /api/subscription/plans). Solo activos. */
+export interface PublicPlan {
+  id: number
+  name: string
+  description: string
+  price: number
+  billing_cycle: string
+  is_unlimited_documents: boolean
+  monthly_documents_limit: number
+  max_users: number
+  max_branches: number
+  max_products: number
+  modules: string[]
+}
+
 /** URL absoluta para assets en /storage (QR SaaS). */
 export function assetUrl(path: string): string {
   return resolvePublicAssetUrl(path)
@@ -185,6 +200,16 @@ export const subscriptionService = {
 
   purchaseDocumentPackage: (form: FormData): Promise<{ success: boolean; usage?: DocumentUsageView }> =>
     api.post('/api/subscription/document-packages/purchase', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data),
+
+  listPlans: (): Promise<PublicPlan[]> =>
+    api.get('/api/subscription/plans').then(r => (r.data as { plans: PublicPlan[] }).plans),
+
+  /** Elegir plan y, opcionalmente, adjuntar comprobante en el mismo paso (comprobante no
+   * obligatorio, a diferencia de submitPayment). */
+  submitRenewalRequest: (form: FormData): Promise<{ success: boolean; message?: string; hub?: BillingHub }> =>
+    api.post('/api/subscription/renewal-request', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(r => r.data),
 }
