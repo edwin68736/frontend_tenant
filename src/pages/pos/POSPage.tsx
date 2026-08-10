@@ -376,6 +376,9 @@ function POSContent() {
     branchId: activeBranchId ?? session?.branch_id,
     onProductFound: product => addToCart(product),
     onClearSearch: () => setQ(''),
+    // No cerrar la cámara tras cada escaneo: en una venta con varios productos, el
+    // usuario debe poder escanear uno tras otro sin reabrir la cámara cada vez.
+    closeCameraOnScan: false,
   })
 
   // Al activar la cámara para escanear, abrir el carrito: la cámara queda anclada arriba
@@ -1146,6 +1149,9 @@ function POSContent() {
         open={cartModalOpen}
         onClose={() => setCartModalOpen(false)}
         itemCount={cartCount}
+        // Con la cámara abierta (compact, ~32dvh arriba) el carrito no puede crecer hasta
+        // 88dvh como de costumbre: quedaba tapado/recortado detrás de la cámara.
+        maxHeightDvh={barcodeScan.cameraScannerOpen ? 62 : undefined}
         footer={
           <div className="p-3 sm:p-4 border-t border-gray-100 space-y-2 shrink-0 bg-white pb-[max(0.75rem,var(--safe-bottom))]">
             <button

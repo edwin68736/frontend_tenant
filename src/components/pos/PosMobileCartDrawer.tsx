@@ -12,10 +12,16 @@ type Props = {
   header?: ReactNode
   children: ReactNode
   footer: ReactNode
+  /**
+   * Alto máximo del panel en dvh, para cuando algo más (la cámara de escaneo, anclada
+   * arriba) ya ocupa parte de la pantalla. Sin esto, el panel podía crecer hasta 88dvh y
+   * quedar tapado (recortado) detrás de la cámara, que se dibuja encima (z-index mayor).
+   */
+  maxHeightDvh?: number
 }
 
 /** Panel carrito móvil/tablet vertical — portal en body para quedar sobre el header. */
-export function PosMobileCartDrawer({ open, onClose, itemCount, header, children, footer }: Props) {
+export function PosMobileCartDrawer({ open, onClose, itemCount, header, children, footer, maxHeightDvh }: Props) {
   const tablet = isTabletCapacitorDevice()
 
   useEffect(() => {
@@ -44,6 +50,7 @@ export function PosMobileCartDrawer({ open, onClose, itemCount, header, children
             'pos-cart-drawer-panel w-full bg-white shadow-2xl flex flex-col overflow-hidden ring-1 ring-stone-200/80 mx-auto',
             tablet ? 'rounded-2xl max-w-[min(94vw,42rem)]' : 'rounded-t-2xl',
           )}
+          style={maxHeightDvh ? { maxHeight: `min(${maxHeightDvh}dvh, 42rem)` } : undefined}
           role="dialog"
           aria-modal="true"
           aria-label="Carrito de compras"

@@ -53,6 +53,21 @@ export function BarcodeScannerModal({
   const [starting, setStarting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // onScan/busy en refs: si el efecto que arranca la cámara dependiera de ellos
+  // directamente, cada escaneo (que cambia `busy` y la identidad de `onScan`, ya que el
+  // callback del padre suele depender de su propio estado "procesando") reiniciaba la
+  // sesión de Html5Qrcode entera. Con la cámara aún apuntando al mismo código, el reinicio
+  // lo detectaba de nuevo al instante → ciclo infinito de escaneos. Con refs, el decode
+  // callback siempre usa la versión más reciente sin que la cámara se reinicie.
+  const onScanRef = useRef(onScan)
+  const busyRef = useRef(busy)
+  useEffect(() => {
+    onScanRef.current = onScan
+  }, [onScan])
+  useEffect(() => {
+    busyRef.current = busy
+  }, [busy])
+
   const stopScanner = useCallback(async () => {
     const instance = scannerRef.current
     scannerRef.current = null
@@ -119,12 +134,12 @@ export function BarcodeScannerModal({
           },
           (decoded) => {
             const code = decoded.trim()
-            if (!code || busy) return
+            if (!code || busyRef.current) return
             const now = Date.now()
             if (code === lastCodeRef.current && now - lastAtRef.current < SCAN_COOLDOWN_MS) return
             lastCodeRef.current = code
             lastAtRef.current = now
-            void onScan(code)
+            void onScanRef.current(code)
           },
           () => {
             /* frame sin lectura */
@@ -145,7 +160,10 @@ export function BarcodeScannerModal({
       cancelled = true
       void stopScanner()
     }
-  }, [open, regionId, onScan, busy, stopScanner])
+    // onScan/busy fuera a propósito (ver refs arriba): la sesión de cámara solo debe
+    // arrancar/pararse al abrir/cerrar el modal, no en cada escaneo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, regionId, stopScanner])
 
   if (!open || typeof document === 'undefined') return null
 
