@@ -68,6 +68,17 @@ export function paymentConditionLeftLines(data: PrintData, opts?: PaymentConditi
       lines.push(cols != null ? formatPaymentDetailLine('Vuelto', amt, '', cols) : `Vuelto: ${amt}`)
     }
   }
+
+  // Cuotas de venta a crédito, justo debajo de los detalles de pago — independiente de si ya
+  // hay pagos registrados (una venta recién emitida a crédito puede no tener ninguno todavía).
+  if (data.credit_installments && data.credit_installments.length > 0) {
+    lines.push('Cuotas:')
+    for (const inst of data.credit_installments) {
+      const label = `${inst.installment_no}) ${inst.due_date}`
+      const amt = moneyFmt(inst.amount, inst.currency || data.currency)
+      lines.push(cols != null ? formatPaymentDetailLine(label, amt, '', cols) : `${label}: ${amt}`)
+    }
+  }
   return lines
 }
 
