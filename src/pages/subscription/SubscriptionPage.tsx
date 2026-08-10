@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import {
   AlertTriangle,
-  Building2,
   Clock,
   Download,
   CreditCard,
@@ -26,6 +25,7 @@ import {
   type SupportConfig,
 } from '@/services/subscription.service'
 import PlanDetailFrame from './PlanDetailFrame'
+import PaymentMethodsPanel from './PaymentMethodsPanel'
 import {
   STATUS_LABELS,
   billingCyclePaymentTotal,
@@ -587,44 +587,8 @@ export default function SubscriptionPage() {
             </a>
           )}
 
-          <div id="metodos-pago" className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden scroll-mt-24">
-            <div className="px-4 py-3 border-b border-gray-50 flex items-center gap-2">
-              <CreditCard size={16} className="text-gray-500" />
-              <h3 className="text-sm font-semibold text-gray-800">Métodos de pago</h3>
-            </div>
-            <div className="p-4 space-y-4">
-              {(cfg.yape_qr_url || cfg.plin_qr_url) && (
-                <div className="flex gap-3 flex-wrap justify-center">
-                  {cfg.yape_qr_url && (
-                    <PaymentQrImage label="Yape" path={cfg.yape_qr_url} />
-                  )}
-                  {cfg.plin_qr_url && (
-                    <PaymentQrImage label="Plin" path={cfg.plin_qr_url} />
-                  )}
-                </div>
-              )}
-              <ul className="flex flex-wrap gap-1.5">
-                {cfg.methods.map(m => (
-                  <li key={m.key} className="px-2 py-0.5 rounded-md bg-gray-100 text-[11px] font-medium text-gray-700">
-                    {m.label}
-                  </li>
-                ))}
-              </ul>
-              {cfg.bank_accounts.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-[10px] font-semibold text-gray-500 uppercase flex items-center gap-1">
-                    <Building2 size={12} /> Cuentas
-                  </p>
-                  {cfg.bank_accounts.map((b, i) => (
-                    <div key={i} className="rounded-lg bg-gray-50 p-2.5 text-xs text-gray-700">
-                      <p className="font-semibold">{b.bank}</p>
-                      <p className="truncate">{b.account_number}</p>
-                      {b.cci && <p className="text-gray-500">CCI: {b.cci}</p>}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+          <div id="metodos-pago" className="scroll-mt-24">
+            <PaymentMethodsPanel cfg={cfg} />
           </div>
 
           <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
@@ -739,27 +703,3 @@ export default function SubscriptionPage() {
   )
 }
 
-function PaymentQrImage({ label, path }: { label: string; path: string }) {
-  const [failed, setFailed] = useState(false)
-  const src = assetUrl(path)
-  if (failed) {
-    return (
-      <div className="flex h-28 w-28 flex-col items-center justify-center rounded-lg border border-amber-200 bg-amber-50 px-2 text-center text-[10px] text-amber-800">
-        <span className="font-semibold">{label}</span>
-        <span className="mt-1">No se pudo cargar el QR</span>
-        <span className="mt-0.5 break-all text-amber-700/80">{src}</span>
-      </div>
-    )
-  }
-  return (
-    <img
-      src={src}
-      alt={`QR ${label}`}
-      className="h-28 rounded-lg border"
-      onError={() => {
-        setFailed(true)
-        toast.error(`No se pudo cargar el QR de ${label}. Verifique que el API exponga /storage (Nginx → backend).`)
-      }}
-    />
-  )
-}

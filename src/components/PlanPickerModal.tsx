@@ -5,6 +5,7 @@ import { Modal } from '@/components/ui/Modal'
 import { useSubscriptionStatus } from '@/contexts/SubscriptionStatusContext'
 import { subscriptionService, type PublicPlan } from '@/services/subscription.service'
 import { formatMoney } from '@/pages/subscription/subscriptionUx'
+import PaymentMethodsPanel from '@/pages/subscription/PaymentMethodsPanel'
 import { SUBSCRIPTION_BLOCKED_MODAL_Z } from '@/utils/uiLayers'
 
 const inputClass =
@@ -167,6 +168,13 @@ export default function PlanPickerModal({ open, onClose }: Props) {
             Puedes adjuntar tu comprobante ahora para agilizar la aprobación, o enviar solo la
             solicitud y pagar después desde tu suscripción.
           </p>
+
+          {hub && (
+            hub.payment_config.methods.length > 0 ||
+            hub.payment_config.bank_accounts.length > 0 ||
+            hub.payment_config.yape_qr_url ||
+            hub.payment_config.plin_qr_url
+          ) && <PaymentMethodsPanel cfg={hub.payment_config} />}
 
           <div className="grid sm:grid-cols-2 gap-3">
             <div>
