@@ -652,6 +652,93 @@ function drawPaymentMethodBox(ctx: A4Ctx, data: PrintData, startY: number): numb
   return boxY + boxH + 5
 }
 
+function installmentStatusLabel(status?: string): string {
+  switch (status) {
+    case 'paid':
+      return 'Pagada'
+    case 'partial':
+      return 'Parcial'
+    case 'overdue':
+      return 'Vencida'
+    default:
+      return 'Pendiente'
+  }
+}
+
+/**
+ * Cuotas de una venta a crédito, justo debajo de la condición/método de pago (misma columna
+ * izquierda, no se cruza con el QR SUNAT que va a la derecha). Se muestra siempre que haya
+ * cuotas, independiente de `showPaymentCondition` (Nota de Venta): es información propia de
+ * la venta, no una preferencia de qué tan detallado se ve el método de pago.
+ */
+function drawCreditInstallmentsTable(ctx: A4Ctx, data: PrintData, startY: number): number {
+  const rows = data.credit_installments ?? []
+  if (rows.length === 0) return startY
+  const { doc } = ctx
+  const tableX = MARGIN
+
+  const cols: TableCol[] = [
+    { label: 'N°', w: 12, align: 'center' },
+    { label: 'VENCIMIENTO', w: 32, align: 'center' },
+    { label: 'MONTO', w: 30, align: 'right' },
+    { label: 'ESTADO', w: 26, align: 'center' },
+  ]
+  const tableW = cols.reduce((s, c) => s + c.w, 0)
+  const colX: number[] = []
+  let cx = tableX
+  for (const c of cols) {
+    colX.push(cx)
+    cx += c.w
+  }
+  const rowH = LINE_H + 0.6
+
+  let y = startY
+  setFont(doc, FONT, 'bold')
+  doc.text('CUOTAS:', tableX, y)
+  y += LINE_H + 1
+
+  const tableTop = y
+  const headerH = rowH + 0.6
+  doc.setFillColor(...GRAY)
+  doc.rect(tableX, tableTop, tableW, headerH, 'F')
+  doc.setDrawColor(0, 0, 0)
+  doc.setLineWidth(0.2)
+  doc.rect(tableX, tableTop, tableW, headerH)
+
+  setFont(doc, FONT_XS, 'bold')
+  const hy = tableTop + rowH
+  cols.forEach((c, i) => {
+    const tx = c.align === 'right' ? colX[i] + c.w - 1.5 : c.align === 'center' ? colX[i] + c.w / 2 : colX[i] + 1.5
+    doc.text(c.label, tx, hy, { align: c.align ?? 'left', maxWidth: c.w - 2 })
+    if (i > 0) doc.line(colX[i], tableTop, colX[i], tableTop + headerH)
+  })
+  doc.line(tableX + tableW, tableTop, tableX + tableW, tableTop + headerH)
+
+  let rowY = tableTop + headerH
+  setFont(doc, FONT_XS, 'normal')
+  for (const inst of rows) {
+    const midY = rowY + rowH - 0.5
+    doc.text(String(inst.installment_no), colX[0] + cols[0].w / 2, midY, { align: 'center' })
+    doc.text(formatDisplayDate(inst.due_date), colX[1] + cols[1].w / 2, midY, { align: 'center' })
+    doc.text(
+      `${moneySymbol(inst.currency || data.currency)} ${formatPlainAmount(inst.amount)}`,
+      colX[2] + cols[2].w - 1.5,
+      midY,
+      { align: 'right' },
+    )
+    doc.text(installmentStatusLabel(inst.status), colX[3] + cols[3].w / 2, midY, { align: 'center' })
+    rowY += rowH
+  }
+  const bodyBottom = rowY
+
+  for (let i = 1; i < cols.length; i++) doc.line(colX[i], tableTop + headerH, colX[i], bodyBottom)
+  doc.line(tableX, tableTop + headerH, tableX, bodyBottom)
+  doc.line(tableX + tableW, tableTop + headerH, tableX + tableW, bodyBottom)
+  doc.line(tableX, bodyBottom, tableX + tableW, bodyBottom)
+
+  return bodyBottom + 4
+}
+
 function drawBankAccounts(ctx: A4Ctx, data: PrintData, startY: number): number {
   const { doc } = ctx
   const banks = data.bank_accounts ?? []
@@ -881,6 +968,8 @@ export async function renderReceiptA4(doc: jsPDF, data: PrintData): Promise<void
   } else {
     leftY = sectionY
   }
+  // Cuotas de venta a crédito, justo debajo de la condición/método de pago.
+  leftY = drawCreditInstallmentsTable(ctx, data, leftY)
   // Las cuentas bancarias no dependen de este ajuste: se eligen en Empresa → Comprobantes.
   leftY = drawBankAccounts(ctx, data, leftY)
   leftY = drawSeller(ctx, data, leftY)
