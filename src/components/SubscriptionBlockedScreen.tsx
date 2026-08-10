@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { AlertTriangle, CreditCard, Headphones, Lock, Package } from 'lucide-react'
 import { useSubscriptionStatus } from '@/contexts/SubscriptionStatusContext'
 import { planReminderTitle } from '@/pages/subscription/planNotifications'
@@ -20,12 +21,17 @@ import { BARCODE_SCANNER_Z } from '@/utils/uiLayers'
  * A diferencia de `PlanReminderModal` (dismisseable, una vez por día), esta pantalla no se
  * puede cerrar: se mantiene mientras `can_operate` siga en false, porque el backend tampoco
  * deja operar ninguna otra ruta mientras tanto.
+ *
+ * Portal a document.body: se monta dentro de <main className="page-enter">, cuyo `animation`
+ * anima `transform` (fadeIn) — eso convierte a `<main>` en el containing block de sus hijos
+ * `position: fixed`, así que sin portal el `fixed inset-0` quedaba relativo al panel de
+ * contenido (no cubría sidebar/header) en vez de a toda la ventana.
  */
 export default function SubscriptionBlockedScreen() {
   const { hub } = useSubscriptionStatus()
   const navigate = useNavigate()
   const [pickerOpen, setPickerOpen] = useState(false)
-  if (!hub) return null
+  if (!hub || typeof document === 'undefined') return null
 
   const sub = hub.subscription
   const ctx = hub.billing_context
@@ -38,7 +44,7 @@ export default function SubscriptionBlockedScreen() {
   const canSubmitPayment = sub.can_submit_payment !== false
   const supportHref = buildSupportWhatsAppHref(hub.support, DEFAULT_SUPPORT_WHATSAPP_MESSAGE)
 
-  return (
+  return createPortal(
     <div
       className={`fixed inset-0 ${BARCODE_SCANNER_Z} flex items-center justify-center bg-gray-950/60 p-4 pt-safe pb-safe`}
       role="alertdialog"
@@ -108,6 +114,7 @@ export default function SubscriptionBlockedScreen() {
         </div>
       </div>
       <PlanPickerModal open={pickerOpen} onClose={() => setPickerOpen(false)} />
-    </div>
+    </div>,
+    document.body,
   )
 }
