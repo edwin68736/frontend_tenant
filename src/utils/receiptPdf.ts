@@ -390,12 +390,20 @@ export async function generateReceiptPdf(
 
     const emitTicketAmountRow = (label: string, amount: string, opts?: { bold?: boolean }) => {
       setTicketDetailFont(Boolean(opts?.bold))
-      const labelMaxW = Math.max(10, lay.xEndPUnit - margin - lay.gap - 1)
+      // Ancho de importe propio para esta sección: a diferencia de la tabla de ítems (CANT/UNID/
+      // DESC/P.UNIT/TOTAL), acá solo hay label + un importe, sin columna P.UNIT compitiendo por
+      // espacio. Reusar lay.wMoney (16mm, pensado para esa tabla de 2 columnas angostas) dejaba
+      // sin espacio a montos largos ("S/ 4,622.77"): jsPDF los envolvía en 2 líneas puertas
+      // adentro (el `maxWidth` de doc.text corta y salta de línea solo, sin avisar), y como este
+      // bucle solo cuenta líneas del LABEL (nunca 2 líneas acá), la fila siguiente arrancaba en
+      // y + ticketLineH y quedaba literalmente encima de esa segunda línea del monto anterior.
+      const amountW = Math.max(lay.wMoney, innerW * 0.45)
+      const labelMaxW = Math.max(10, lay.xEndTotal - amountW - margin - lay.gap - 1)
       const labelLines = doc.splitTextToSize(label, labelMaxW)
       for (let i = 0; i < labelLines.length; i++) {
         doc.text(labelLines[i], margin, y, { maxWidth: labelMaxW })
         if (i === labelLines.length - 1) {
-          doc.text(amount, lay.xEndTotal, y, { align: 'right', maxWidth: lay.wMoney })
+          doc.text(amount, lay.xEndTotal, y, { align: 'right', maxWidth: amountW })
         }
         y += ticketLineH
       }
