@@ -11,9 +11,11 @@ interface ModalProps {
   closeOnBackdropClick?: boolean
   /** Capa superior cuando se abre encima de otro modal (picker, etc.). */
   stacked?: boolean
+  /** Override explícito de capa (ej. SUBSCRIPTION_BLOCKED_MODAL_Z) cuando ni `stacked` alcanza. */
+  zClassName?: string
 }
 
-export function Modal({ open, onClose, children, contentClassName, closeOnBackdropClick = true, stacked = false }: ModalProps) {
+export function Modal({ open, onClose, children, contentClassName, closeOnBackdropClick = true, stacked = false, zClassName }: ModalProps) {
   const [focusMoved, setFocusMoved] = useState(true)
   const overlayRef = useRef<HTMLDivElement>(null)
 
@@ -87,7 +89,7 @@ export function Modal({ open, onClose, children, contentClassName, closeOnBackdr
   return createPortal(
     <div
       ref={overlayRef}
-      className={`fixed inset-0 ${stacked ? PORTAL_MODAL_STACK_Z : PORTAL_MODAL_Z} flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm`}
+      className={`fixed inset-0 ${zClassName ?? (stacked ? PORTAL_MODAL_STACK_Z : PORTAL_MODAL_Z)} flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm`}
       style={{ display: open ? undefined : 'none', pointerEvents: open ? undefined : 'none' }}
       onClick={handleBackdropClick}
       role="dialog"

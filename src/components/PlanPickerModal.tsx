@@ -5,6 +5,7 @@ import { Modal } from '@/components/ui/Modal'
 import { useSubscriptionStatus } from '@/contexts/SubscriptionStatusContext'
 import { subscriptionService, type PublicPlan } from '@/services/subscription.service'
 import { formatMoney } from '@/pages/subscription/subscriptionUx'
+import { SUBSCRIPTION_BLOCKED_MODAL_Z } from '@/utils/uiLayers'
 
 const inputClass =
   'w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white'
@@ -74,7 +75,12 @@ export default function PlanPickerModal({ open, onClose }: Props) {
   }
 
   return (
-    <Modal open={open} onClose={onClose} contentClassName="max-w-2xl">
+    <Modal
+      open={open}
+      onClose={onClose}
+      contentClassName="max-w-2xl"
+      zClassName={SUBSCRIPTION_BLOCKED_MODAL_Z}
+    >
       <div className="flex items-start justify-between gap-3 border-b border-gray-100 pb-3">
         <div>
           <h3 className="font-bold text-gray-800">{selected ? selected.name : 'Elegir plan'}</h3>
