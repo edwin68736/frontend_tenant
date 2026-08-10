@@ -94,13 +94,19 @@ function quotaNotification(
 }
 
 /**
- * Tiers que justifican interrumpir al tenant con un modal al entrar.
+ * Tiers que justifican interrumpir al tenant con un modal (dismisseable) al entrar.
  *
  * Quedan fuera `normal` (nada que avisar), `review` (ya envió su comprobante y está en
  * validación) y `provisional` (tiene acceso concedido): en esos dos el tenant ya hizo su
  * parte, interrumpirlo sería ruido. El aviso pasivo de la campana les basta.
+ *
+ * `overdue`/`suspended`/`blocked` también quedan fuera a propósito: esos tiers implican
+ * `can_operate=false` en el backend (ver `pkg/saas/state.go: CanOperate`), y ya los cubre
+ * `SubscriptionBlockedScreen`, una pantalla que no se puede cerrar mientras siga bloqueado.
+ * Mostrar además este modal dismisseable-una-vez-al-día sobre esos tiers dejaba al tenant
+ * cerrarlo y quedarse en pantallas que igual fallan en silencio contra el resto de la API.
  */
-const MODAL_TIERS = new Set(['reminder', 'payment_due', 'grace', 'overdue', 'suspended', 'blocked'])
+const MODAL_TIERS = new Set(['reminder', 'payment_due', 'grace'])
 
 const MODAL_TITLES: Record<string, string> = {
   reminder: 'Tu plan está por vencer',

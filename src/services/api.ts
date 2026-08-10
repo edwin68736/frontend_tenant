@@ -71,6 +71,14 @@ export const SESSION_EXPIRED_EVENT = 'tukifac:session-expired'
 export const SESSION_REFRESHED_EVENT = 'tukifac:session-refreshed'
 
 /**
+ * 402 emitido por `SubscriptionGate` (backend) cuando `can_operate=false` (plan vencido fuera
+ * de gracia, suspendido o bloqueado). No es un error de sesión: no desloguea, solo avisa para
+ * que `SubscriptionStatusContext` refresque el hub y la UI bloquee con el motivo real en vez de
+ * dejar que cada pantalla falle en silencio con su propio catch genérico.
+ */
+export const SUBSCRIPTION_BLOCKED_EVENT = 'tukifac:subscription-blocked'
+
+/**
  * Un solo refresh en vuelo: si varias peticiones caen en 401 a la vez (típico burst de arranque),
  * todas esperan el MISMO refresh en lugar de disparar N renovaciones simultáneas.
  */
@@ -171,6 +179,10 @@ api.interceptors.response.use(
     }
     if (error.response?.status === 409 && error.response?.data?.code === 'SESSION_UPDATED') {
       redirectToLogin('Tu acceso fue actualizado. Vuelve a iniciar sesión.')
+      return Promise.reject(error)
+    }
+    if (error.response?.status === 402 && (code === 'SUBSCRIPTION_REQUIRED' || code === 'TENANT_BLOCKED')) {
+      window.dispatchEvent(new CustomEvent(SUBSCRIPTION_BLOCKED_EVENT))
       return Promise.reject(error)
     }
     if (error.response?.status === 401) {

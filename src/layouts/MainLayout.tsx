@@ -1,10 +1,11 @@
 import { PdfViewerHost } from '@/components/pdf/PdfViewerHost'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import SupportModeBanner from '@/components/SupportModeBanner'
 import PlanReminderModal from '@/components/PlanReminderModal'
-import { SubscriptionStatusProvider } from '@/contexts/SubscriptionStatusContext'
+import SubscriptionBlockedScreen from '@/components/SubscriptionBlockedScreen'
+import { SubscriptionStatusProvider, useSubscriptionStatus } from '@/contexts/SubscriptionStatusContext'
 import { BRAND_TOP_BAR } from '@/config/branding'
 import { isCapacitorNative } from '@/lib/platform/detect'
 import {
@@ -16,11 +17,18 @@ import {
 import { useEffect, useState } from 'react'
 import { clsx } from 'clsx'
 
-export default function MainLayout() {
+/** Envuelto por SubscriptionStatusProvider para poder leer `blocked` antes del <Outlet/>. */
+function MainLayoutInner() {
   const nativeCapacitor = isCapacitorNative()
   /** Barra decorativa: web/Tauri desktop; oculta en Capacitor (celulares/tablets). */
   const showBrandTopBar = !nativeCapacitor
   const mobileFlush = nativeCapacitor
+
+  const { blocked } = useSubscriptionStatus()
+  const { pathname } = useLocation()
+  // /subscription siempre debe verse: es la única salida que tiene el tenant para regularizar.
+  const onSubscriptionPage = pathname.startsWith('/subscription')
+  const showBlockedScreen = blocked && !onSubscriptionPage
 
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
@@ -43,8 +51,10 @@ export default function MainLayout() {
   }, [sidebarOpen])
 
   return (
-    <SubscriptionStatusProvider>
-      {/* Aviso de vencimiento/mora: se monta una vez para todo el ERP. */}
+    <>
+      {/* Aviso de vencimiento/mora no bloqueante (recordatorio, pago próximo, gracia): se monta
+          una vez para todo el ERP. Los tiers que sí bloquean el acceso usan
+          SubscriptionBlockedScreen más abajo, no este modal. */}
       <PlanReminderModal />
       <div
         className={clsx(
@@ -150,7 +160,7 @@ export default function MainLayout() {
                   mobileFlush ? 'rounded-none lg:rounded-2xl' : 'rounded-2xl',
                 )}
               >
-                <Outlet />
+                {showBlockedScreen ? <SubscriptionBlockedScreen /> : <Outlet />}
                 {/* Visor de PDF: montado una vez, se abre desde cualquier página. */}
                 <PdfViewerHost />
               </main>
@@ -158,6 +168,14 @@ export default function MainLayout() {
           </div>
         </div>
       </div>
+    </>
+  )
+}
+
+export default function MainLayout() {
+  return (
+    <SubscriptionStatusProvider>
+      <MainLayoutInner />
     </SubscriptionStatusProvider>
   )
 }
