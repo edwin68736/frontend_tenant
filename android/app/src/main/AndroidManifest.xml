@@ -37,7 +37,13 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
-    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <!-- Sin maxSdkVersion: aunque en API 31+ es "normal" (sin prompt runtime) y BLUETOOTH_CONNECT
+         es el que de verdad manda, algunos stacks Bluetooth de fabricante siguen exigiendo este
+         permiso legacy en la ruta interna de conexión RFCOMM/SDP. Con maxSdkVersion="30" quedaba
+         excluido del paquete instalado en Android 12+, y el sistema rechazaba la conexión con
+         "lacks permission android.permission.BLUETOOTH" aunque BLUETOOTH_CONNECT sí estuviera
+         concedido. -->
+    <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
