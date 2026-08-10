@@ -22,11 +22,17 @@ type Props = {
  * Cierra un hueco real: antes no había ningún lugar en la app donde el tenant pudiera ver la
  * lista de planes y elegir uno; todo camino de "renovar" llevaba directo al formulario de pago.
  */
+const MONTH_PRESETS = [1, 3, 6, 12]
+
 export default function PlanPickerModal({ open, onClose }: Props) {
   const { hub, setHub, refresh } = useSubscriptionStatus()
   const [plans, setPlans] = useState<PublicPlan[]>([])
   const [loadingPlans, setLoadingPlans] = useState(false)
   const [selected, setSelected] = useState<PublicPlan | null>(null)
+  // true cuando el plan elegido es el MISMO que el tenant ya tiene activo: es un adelanto de
+  // pago, no un cambio de plan — se salta el grid y cambia el copy para que quede claro.
+  const [advancingCurrentPlan, setAdvancingCurrentPlan] = useState(false)
+  const [months, setMonths] = useState(1)
   const [paymentMethod, setPaymentMethod] = useState('')
   const [reference, setReference] = useState('')
   const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10))
@@ -36,6 +42,8 @@ export default function PlanPickerModal({ open, onClose }: Props) {
   useEffect(() => {
     if (!open) return
     setSelected(null)
+    setAdvancingCurrentPlan(false)
+    setMonths(1)
     setReceipt(null)
     setReference('')
     setPaymentMethod(hub?.payment_config.methods[0]?.key ?? '')
@@ -43,17 +51,34 @@ export default function PlanPickerModal({ open, onClose }: Props) {
     setLoadingPlans(true)
     subscriptionService
       .listPlans()
-      .then(setPlans)
+      .then(list => {
+        setPlans(list)
+        // Suscripción activa (no bloqueada) + el mismo plan ya está en la lista: es un tenant
+        // que quiere adelantar pago, no elegir plan — saltar directo al formulario.
+        if (hub?.subscription.can_operate && hub.subscription.plan_name) {
+          const current = list.find(p => p.name === hub.subscription.plan_name)
+          if (current) selectPlan(current)
+        }
+      })
       .catch(() => toast.error('No se pudieron cargar los planes'))
       .finally(() => setLoadingPlans(false))
-  }, [open, hub?.payment_config.methods])
+  }, [open, hub?.payment_config.methods, hub?.subscription.can_operate, hub?.subscription.plan_name])
+
+  const totalAmount = selected ? +(selected.price * months).toFixed(2) : 0
+
+  const selectPlan = (plan: PublicPlan) => {
+    setSelected(plan)
+    setMonths(1)
+    setAdvancingCurrentPlan(Boolean(hub?.subscription.can_operate) && plan.name === hub?.subscription.plan_name)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!selected) return
     const form = new FormData()
     form.append('plan_id', String(selected.id))
-    form.append('amount', String(selected.price))
+    form.append('period_months', String(months))
+    form.append('amount', String(totalAmount))
     // El resto es opcional: el tenant puede pedir el plan sin adjuntar nada todavía.
     if (paymentMethod) form.append('payment_method', paymentMethod)
     if (paymentDate) form.append('payment_date', paymentDate)
@@ -84,9 +109,15 @@ export default function PlanPickerModal({ open, onClose }: Props) {
     >
       <div className="flex items-start justify-between gap-3 border-b border-gray-100 pb-3">
         <div>
-          <h3 className="font-bold text-gray-800">{selected ? selected.name : 'Elegir plan'}</h3>
+          <h3 className="font-bold text-gray-800">
+            {advancingCurrentPlan ? 'Adelantar pago' : selected ? selected.name : 'Elegir plan'}
+          </h3>
           <p className="text-xs text-gray-500 mt-0.5">
-            {selected ? 'Confirma tu solicitud' : 'Selecciona el plan que quieres contratar o al que quieres cambiarte'}
+            {advancingCurrentPlan
+              ? `Suma meses a tu plan actual (${selected?.name}) sin esperar a que venza`
+              : selected
+                ? 'Confirma tu solicitud'
+                : 'Selecciona el plan que quieres contratar o al que quieres cambiarte'}
           </p>
         </div>
         <button
@@ -114,7 +145,7 @@ export default function PlanPickerModal({ open, onClose }: Props) {
                 <button
                   key={p.id}
                   type="button"
-                  onClick={() => setSelected(p)}
+                  onClick={() => selectPlan(p)}
                   className="text-left rounded-2xl border border-gray-200 p-4 hover:border-primary-400 hover:shadow-md transition-all"
                 >
                   <div className="flex items-center gap-2 mb-1">
@@ -151,17 +182,50 @@ export default function PlanPickerModal({ open, onClose }: Props) {
         <form onSubmit={handleSubmit} className="space-y-4 pt-4">
           <button
             type="button"
-            onClick={() => setSelected(null)}
+            onClick={() => { setSelected(null); setAdvancingCurrentPlan(false) }}
             className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700"
           >
             <ChevronLeft size={14} /> Elegir otro plan
           </button>
 
-          <div className="rounded-xl border border-gray-100 bg-gray-50/70 px-3 py-2.5 text-sm flex items-center justify-between">
-            <span className="text-gray-600">Plan elegido</span>
-            <span className="font-semibold text-gray-800">
-              {selected.name} · {formatMoney(selected.price)}
-            </span>
+          <div className="rounded-xl border border-gray-100 bg-gray-50/70 px-3 py-2.5 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600">Plan elegido</span>
+              <span className="font-semibold text-gray-800">{selected.name} · {formatMoney(selected.price)}/mes</span>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs text-gray-600">¿Por cuántos meses?</label>
+            <div className="mt-1 flex flex-wrap gap-2">
+              {MONTH_PRESETS.map(m => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setMonths(m)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${
+                    months === m
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  {m} {m === 1 ? 'mes' : 'meses'}
+                </button>
+              ))}
+              <input
+                type="number"
+                min={1}
+                max={24}
+                className="w-20 border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center"
+                value={months}
+                onChange={e => setMonths(Math.max(1, Math.min(24, +e.target.value || 1)))}
+              />
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-primary-100 bg-primary-50/60 px-3 py-2.5 text-sm flex items-center justify-between">
+            <span className="text-gray-700">Total a depositar</span>
+            <span className="text-lg font-bold text-gray-900">{formatMoney(totalAmount)}</span>
           </div>
 
           <p className="text-xs text-gray-500">
