@@ -175,6 +175,18 @@ export interface BillingHub {
   events: TimelineEvent[]
 }
 
+/** Ciclo fijo (1/3/6/12 meses — nunca otro valor) habilitado para este plan, con su precio ya
+ *  calculado por el backend (bruto y con descuento aplicado). Elegir uno de estos es la ÚNICA
+ *  forma de renovar por autoservicio — no existe un número de meses libre acá, eso es exclusivo
+ *  del panel central. */
+export interface PublicPlanCycle {
+  months: number
+  discount_type: '' | 'percent' | 'fixed'
+  discount_value: number
+  gross_amount: number
+  net_amount: number
+}
+
 /** Plan visible para elegir/renovar (GET /api/subscription/plans). Solo activos. */
 export interface PublicPlan {
   id: number
@@ -188,6 +200,8 @@ export interface PublicPlan {
   max_branches: number
   max_products: number
   modules: string[]
+  /** Vacío para planes "lifetime" (pago único, no aplica ciclo). */
+  cycles: PublicPlanCycle[]
 }
 
 /** URL absoluta para assets en /storage (QR SaaS). */
