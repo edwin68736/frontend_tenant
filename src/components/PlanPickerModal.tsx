@@ -25,6 +25,12 @@ type Props = {
  * El ciclo (1/3/6/12 meses) se elige entre los que trae `plan.cycles` — ya no un número de meses
  * libre: cada plan solo permite los ciclos fijos que el panel central habilitó para él, con el
  * precio (bruto y neto tras descuento) que el backend ya calculó. Nunca se recalcula acá.
+ *
+ * El ciclo se elige en la MISMA tarjeta del plan (grid inicial), no en un paso aparte después:
+ * antes había que primero elegir el plan y recién en la pantalla siguiente elegir el ciclo — dos
+ * decisiones separadas para una sola elección real. Ahora la tarjeta ya muestra los ciclos con su
+ * precio, y "Elegir este plan" confirma los dos juntos; el paso de pago que sigue ya no vuelve a
+ * preguntar el ciclo, solo lo muestra como resumen.
  */
 export default function PlanPickerModal({ open, onClose }: Props) {
   const { hub, setHub, refresh } = useSubscriptionStatus()
@@ -35,6 +41,10 @@ export default function PlanPickerModal({ open, onClose }: Props) {
   // pago, no un cambio de plan — se salta el grid y cambia el copy para que quede claro.
   const [advancingCurrentPlan, setAdvancingCurrentPlan] = useState(false)
   const [months, setMonths] = useState(1)
+  // Ciclo elegido por tarjeta, mientras el tenant todavía está mirando el grid (antes de
+  // confirmar con "Elegir este plan"). Vive aparte de `months` porque `months` es la elección ya
+  // CONFIRMADA del plan seleccionado; esto es solo la selección en progreso en cada tarjeta.
+  const [cardMonths, setCardMonths] = useState<Record<number, number>>({})
   const [paymentMethod, setPaymentMethod] = useState('')
   const [reference, setReference] = useState('')
   const [paymentDate, setPaymentDate] = useState(() => new Date().toISOString().slice(0, 10))
@@ -66,16 +76,24 @@ export default function PlanPickerModal({ open, onClose }: Props) {
       .finally(() => setLoadingPlans(false))
   }, [open, hub?.payment_config.methods, hub?.subscription.can_operate, hub?.subscription.plan_name])
 
-  // Ciclos elegibles del plan: para "lifetime" (pago único) solo tiene sentido el de 1 — no se le
-  // ofrece "3/6/12 meses" a un plan que no vence.
+  // Ciclos elegibles de un plan: para "lifetime" (pago único) solo tiene sentido el de 1 — no se
+  // le ofrece "3/6/12 meses" a un plan que no vence.
+  const cyclesOf = (plan: PublicPlan) => plan.cycles.filter(c => plan.billing_cycle !== 'lifetime' || c.months === 1)
   const isLifetime = selected?.billing_cycle === 'lifetime'
-  const availableCycles = (selected?.cycles ?? []).filter(c => !isLifetime || c.months === 1)
+  const availableCycles = selected ? cyclesOf(selected) : []
   const selectedCycle = availableCycles.find(c => c.months === months)
   const totalAmount = selectedCycle?.net_amount ?? 0
 
-  const selectPlan = (plan: PublicPlan) => {
+  // Ciclo que la tarjeta de `plan` tiene elegido AHORA MISMO en el grid (antes de confirmar).
+  const cardCycle = (plan: PublicPlan) => {
+    const cycles = cyclesOf(plan)
+    const chosen = cardMonths[plan.id]
+    return cycles.find(c => c.months === chosen) ?? cycles[0]
+  }
+
+  const selectPlan = (plan: PublicPlan, months?: number) => {
     setSelected(plan)
-    setMonths(plan.cycles[0]?.months ?? 1)
+    setMonths(months ?? cardCycle(plan)?.months ?? 1)
     setAdvancingCurrentPlan(Boolean(hub?.subscription.can_operate) && plan.name === hub?.subscription.plan_name)
   }
 
@@ -124,7 +142,7 @@ export default function PlanPickerModal({ open, onClose }: Props) {
               ? `Suma meses a tu plan actual (${selected?.name}) sin esperar a que venza`
               : selected
                 ? 'Confirma tu solicitud'
-                : 'Selecciona el plan que quieres contratar o al que quieres cambiarte'}
+                : 'Elige el plan y por cuánto tiempo quieres pagarlo'}
           </p>
         </div>
         <button
@@ -148,40 +166,76 @@ export default function PlanPickerModal({ open, onClose }: Props) {
             <p className="py-8 text-center text-sm text-gray-500">No hay planes disponibles por ahora.</p>
           ) : (
             <div className="grid sm:grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto pr-1">
-              {plans.map(p => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => selectPlan(p)}
-                  className="text-left rounded-2xl border border-gray-200 p-4 hover:border-primary-400 hover:shadow-md transition-all"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <Package size={16} className="text-primary-600" />
-                    <span className="font-semibold text-gray-800">{p.name}</span>
+              {plans.map(p => {
+                const cycles = cyclesOf(p)
+                const chosen = cardCycle(p)
+                return (
+                  <div
+                    key={p.id}
+                    className="text-left rounded-2xl border border-gray-200 p-4 hover:border-primary-300 transition-colors flex flex-col"
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <Package size={16} className="text-primary-600" />
+                      <span className="font-semibold text-gray-800">{p.name}</span>
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {chosen ? formatMoney(chosen.net_amount) : formatMoney(p.price)}
+                      <span className="text-xs font-normal text-gray-500">
+                        {' '}
+                        /{chosen ? (chosen.months === 1 ? 'mes' : `${chosen.months} meses`) : billingCycleShort(p.billing_cycle)}
+                      </span>
+                    </p>
+                    {chosen && chosen.net_amount !== chosen.gross_amount && (
+                      <p className="text-xs text-gray-400 line-through -mt-1">{formatMoney(chosen.gross_amount)}</p>
+                    )}
+                    {p.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{p.description}</p>}
+
+                    {cycles.length > 1 && (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {cycles.map(c => (
+                          <button
+                            key={c.months}
+                            type="button"
+                            onClick={() => setCardMonths(m => ({ ...m, [p.id]: c.months }))}
+                            className={`px-2 py-1 rounded-lg text-[11px] font-medium border ${
+                              chosen?.months === c.months
+                                ? 'bg-slate-900 text-white border-slate-900'
+                                : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                            }`}
+                          >
+                            {c.months}m
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    <ul className="mt-3 space-y-1 text-xs text-gray-600">
+                      <li className="flex items-center gap-1.5">
+                        <Check size={12} className="text-emerald-600 shrink-0" />
+                        {p.is_unlimited_documents
+                          ? 'Documentos electrónicos ilimitados'
+                          : `${p.monthly_documents_limit} documentos/mes`}
+                      </li>
+                      <li className="flex items-center gap-1.5">
+                        <Check size={12} className="text-emerald-600 shrink-0" />
+                        {p.max_users > 0 ? `Hasta ${p.max_users} usuarios` : 'Usuarios ilimitados'}
+                      </li>
+                      <li className="flex items-center gap-1.5">
+                        <Check size={12} className="text-emerald-600 shrink-0" />
+                        {p.max_branches > 0 ? `Hasta ${p.max_branches} sucursales` : 'Sucursales ilimitadas'}
+                      </li>
+                    </ul>
+
+                    <button
+                      type="button"
+                      onClick={() => selectPlan(p, chosen?.months)}
+                      className="mt-4 w-full px-3 py-2 rounded-xl bg-slate-900 text-white text-sm font-semibold hover:bg-slate-800"
+                    >
+                      Elegir este plan
+                    </button>
                   </div>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {formatMoney(p.price)}
-                    <span className="text-xs font-normal text-gray-500"> /{billingCycleShort(p.billing_cycle)}</span>
-                  </p>
-                  {p.description && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{p.description}</p>}
-                  <ul className="mt-3 space-y-1 text-xs text-gray-600">
-                    <li className="flex items-center gap-1.5">
-                      <Check size={12} className="text-emerald-600 shrink-0" />
-                      {p.is_unlimited_documents
-                        ? 'Documentos electrónicos ilimitados'
-                        : `${p.monthly_documents_limit} documentos/mes`}
-                    </li>
-                    <li className="flex items-center gap-1.5">
-                      <Check size={12} className="text-emerald-600 shrink-0" />
-                      {p.max_users > 0 ? `Hasta ${p.max_users} usuarios` : 'Usuarios ilimitados'}
-                    </li>
-                    <li className="flex items-center gap-1.5">
-                      <Check size={12} className="text-emerald-600 shrink-0" />
-                      {p.max_branches > 0 ? `Hasta ${p.max_branches} sucursales` : 'Sucursales ilimitadas'}
-                    </li>
-                  </ul>
-                </button>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
@@ -195,47 +249,33 @@ export default function PlanPickerModal({ open, onClose }: Props) {
             <ChevronLeft size={14} /> Elegir otro plan
           </button>
 
-          <div className="rounded-xl border border-gray-100 bg-gray-50/70 px-3 py-2.5 text-sm">
+          <div className="rounded-xl border border-gray-100 bg-gray-50/70 px-3 py-2.5 text-sm space-y-1">
             <div className="flex items-center justify-between">
               <span className="text-gray-600">Plan elegido</span>
-              <span className="font-semibold text-gray-800">{selected.name} · {formatMoney(selected.price)}/mes</span>
+              <span className="font-semibold text-gray-800">{selected.name}</span>
             </div>
+            {!isLifetime && (
+              <div className="flex items-center justify-between">
+                <span className="text-gray-600">Ciclo</span>
+                <span className="font-semibold text-gray-800">
+                  {months} {months === 1 ? 'mes' : 'meses'}
+                </span>
+              </div>
+            )}
           </div>
 
-          {!isLifetime && (
-            <div>
-              <label className="text-xs text-gray-600">¿Por cuánto tiempo?</label>
-              <div className="mt-1 flex flex-wrap gap-2">
-                {availableCycles.map(c => (
-                  <button
-                    key={c.months}
-                    type="button"
-                    onClick={() => setMonths(c.months)}
-                    className={`px-3 py-1.5 rounded-lg text-sm font-medium border text-left ${
-                      months === c.months
-                        ? 'bg-slate-900 text-white border-slate-900'
-                        : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                    }`}
-                  >
-                    <div>{c.months} {c.months === 1 ? 'mes' : 'meses'}</div>
-                    <div className={`text-[11px] font-normal ${months === c.months ? 'text-gray-300' : 'text-gray-500'}`}>
-                      {c.net_amount !== c.gross_amount && (
-                        <span className="line-through opacity-70 mr-1">{formatMoney(c.gross_amount)}</span>
-                      )}
-                      {formatMoney(c.net_amount)}
-                    </div>
-                  </button>
-                ))}
-              </div>
-              {availableCycles.length === 0 && (
-                <p className="mt-1 text-xs text-amber-600">Este plan no tiene ciclos disponibles por ahora — contacta a soporte.</p>
-              )}
-            </div>
+          {!selectedCycle && (
+            <p className="text-xs text-amber-600">Este plan no tiene ciclos disponibles por ahora — contacta a soporte.</p>
           )}
 
           <div className="rounded-xl border border-primary-100 bg-primary-50/60 px-3 py-2.5 text-sm flex items-center justify-between">
             <span className="text-gray-700">Total a depositar</span>
-            <span className="text-lg font-bold text-gray-900">{formatMoney(totalAmount)}</span>
+            <span className="text-lg font-bold text-gray-900">
+              {selectedCycle && selectedCycle.net_amount !== selectedCycle.gross_amount && (
+                <span className="text-sm font-normal text-gray-400 line-through mr-2">{formatMoney(selectedCycle.gross_amount)}</span>
+              )}
+              {formatMoney(totalAmount)}
+            </span>
           </div>
 
           <p className="text-xs text-gray-500">
