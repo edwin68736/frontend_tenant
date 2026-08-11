@@ -34,10 +34,16 @@ export interface TenantSubscriptionView {
   start_date?: string
 }
 
+/** "qr": el método muestra su propio QR (qr_url, opcional). "bank_account": muestra la lista
+ *  compartida de cuentas bancarias (PaymentConfigView.bank_accounts) en vez de un QR. */
+export type PaymentMethodKind = 'qr' | 'bank_account'
+
 export interface PaymentMethodConfig {
   key: string
   label: string
   enabled: boolean
+  kind: PaymentMethodKind
+  qr_url?: string
 }
 
 export interface BankAccountConfig {

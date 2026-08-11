@@ -587,9 +587,25 @@ export default function SubscriptionPage() {
             </a>
           )}
 
-          <div id="metodos-pago" className="scroll-mt-24">
-            <PaymentMethodsPanel cfg={cfg} />
-          </div>
+          {/* Referencia rápida de qué métodos existen — el QR/cuenta bancaria de cada uno recién
+              se muestra al elegirlo en el formulario de pago (más abajo), no acá: antes este
+              bloque mostraba TODOS los QR y TODAS las cuentas bancarias juntos sin importar el
+              método elegido en el pago. */}
+          {cfg.methods.length > 0 && (
+            <div id="metodos-pago" className="scroll-mt-24 rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-2">
+                <CreditCard size={14} />
+                Métodos de pago
+              </h3>
+              <ul className="flex flex-wrap gap-2">
+                {cfg.methods.map(m => (
+                  <li key={m.key} className="px-2.5 py-1 rounded-lg border border-gray-200 bg-gray-50 text-xs font-semibold text-gray-700">
+                    {m.label}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-2">
@@ -649,6 +665,9 @@ export default function SubscriptionPage() {
               />
             </div>
           </div>
+
+          {paymentMethod && <PaymentMethodsPanel cfg={cfg} selectedMethodKey={paymentMethod} />}
+
           <div className="grid sm:grid-cols-2 gap-3">
             <div>
               <label className="text-xs text-gray-600">Fecha de pago</label>

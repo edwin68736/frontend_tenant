@@ -233,32 +233,28 @@ export default function PlanPickerModal({ open, onClose }: Props) {
             solicitud y pagar después desde tu suscripción.
           </p>
 
-          {hub && (
-            hub.payment_config.methods.length > 0 ||
-            hub.payment_config.bank_accounts.length > 0 ||
-            hub.payment_config.yape_qr_url ||
-            hub.payment_config.plin_qr_url
-          ) && <PaymentMethodsPanel cfg={hub.payment_config} />}
-
-          <div className="grid sm:grid-cols-2 gap-3">
+          {hub && hub.payment_config.methods.length > 0 && (
             <div>
-              <label className="text-xs text-gray-600">Método (opcional)</label>
+              <label className="text-xs text-gray-600">Método de pago (opcional)</label>
               <select className={inputClass} value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
-                <option value="">Sin especificar</option>
-                {hub?.payment_config.methods.map(m => (
+                <option value="">Elige un método para ver cómo pagar…</option>
+                {hub.payment_config.methods.map(m => (
                   <option key={m.key} value={m.key}>{m.label}</option>
                 ))}
               </select>
             </div>
-            <div>
-              <label className="text-xs text-gray-600">Fecha de pago</label>
-              <input
-                type="date"
-                className={inputClass}
-                value={paymentDate}
-                onChange={e => setPaymentDate(e.target.value)}
-              />
-            </div>
+          )}
+
+          {hub && paymentMethod && <PaymentMethodsPanel cfg={hub.payment_config} selectedMethodKey={paymentMethod} />}
+
+          <div>
+            <label className="text-xs text-gray-600">Fecha de pago</label>
+            <input
+              type="date"
+              className={inputClass}
+              value={paymentDate}
+              onChange={e => setPaymentDate(e.target.value)}
+            />
           </div>
           <div>
             <label className="text-xs text-gray-600">Referencia / Nº operación</label>
