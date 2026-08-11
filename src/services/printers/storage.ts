@@ -1,4 +1,5 @@
 ﻿import type { PrinterConfig, PrinterConnectionMode, StoredPrinterSettings } from './types'
+import { defaultConnectionForPlatform, effectiveConnection } from './platform'
 
 export const PRINTER_SETTINGS_STORAGE_KEY_V3 = 'tukifac_printer_settings_v1'
 const PRINTER_SETTINGS_STORAGE_KEY_V2 = 'tukichef_kitchen_printer_settings_v2'
@@ -22,7 +23,7 @@ function normalizeConnection(raw: unknown): PrinterConnectionMode {
 
 export function normalizeSlot(raw: Partial<PrinterConfig> | undefined): PrinterConfig {
   const connection = normalizeConnection(raw?.connection)
-  return {
+  const slot: PrinterConfig = {
     connection,
     printerName: String(raw?.printerName ?? '').trim(),
     tcpHost: String(raw?.tcpHost ?? '').trim(),
@@ -33,11 +34,14 @@ export function normalizeSlot(raw: Partial<PrinterConfig> | undefined): PrinterC
     bluetoothName: String(raw?.bluetoothName ?? '').trim(),
     bluetoothMac: String(raw?.bluetoothMac ?? '').trim(),
   }
+  // Corrige connection contra la plataforma y los datos ya cargados (IP/MAC) antes de guardar —
+  // ver effectiveConnection en platform.ts para el bug que esto evita.
+  return { ...slot, connection: effectiveConnection(slot) }
 }
 
 function emptySlot(): PrinterConfig {
   return {
-    connection: 'windows',
+    connection: defaultConnectionForPlatform(),
     printerName: '',
     tcpHost: '',
     tcpPort: DEFAULT_TCP_PORT,
