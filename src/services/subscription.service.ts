@@ -44,6 +44,10 @@ export interface PaymentMethodConfig {
   enabled: boolean
   kind: PaymentMethodKind
   qr_url?: string
+  /** Logo del método (ej. ícono de Yape/Plin), se muestra junto al QR. */
+  logo_url?: string
+  /** Texto libre (multilínea) con datos para pagar — ej. número de Yape/Plin y titular. */
+  extra_info?: string
 }
 
 export interface BankAccountConfig {
@@ -53,6 +57,10 @@ export interface BankAccountConfig {
   holder: string
   currency: string
   enabled?: boolean
+  /** Logo del banco. */
+  logo_url?: string
+  /** Texto libre (multilínea) con instrucciones adicionales para este depósito/transferencia. */
+  extra_info?: string
 }
 
 export interface SupportConfig {
