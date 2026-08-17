@@ -93,6 +93,9 @@ export interface BillingInvoice {
   period_start: string
   period_end: string
   provisional_used: boolean
+  /** Boleta/factura del pago que saldó este período; vacío si aún no está pagado o el admin
+   *  todavía no la adjuntó. */
+  fiscal_doc_url?: string
 }
 
 export interface SaasPaymentRow {

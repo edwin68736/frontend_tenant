@@ -72,6 +72,10 @@ export const STATUS_LABELS: Record<string, string> = {
   pending_review: 'En revisión',
   approved: 'Aprobado',
   rejected: 'Rechazado',
+  // reversed: pago que SÍ se había aprobado y luego se anuló (ver RevertApprovedPayment en el
+  // backend) — sin esta entrada caía al código crudo, igual que pasaba con PAYMENT_REVERSED en
+  // el timeline de eventos.
+  reversed: 'Anulado',
 }
 
 export function formatMoney(n: number, c = 'PEN') {
@@ -129,6 +133,57 @@ export function paymentToneClass(tone: string) {
 
 export function statusBadgeClass(status: string) {
   return STATUS_BADGE[status] ?? 'bg-gray-100 text-gray-700'
+}
+
+/** Estado de cada período, en lenguaje del cliente (no el del backend). */
+const INVOICE_STATUS_UI: Record<string, { label: string; className: string }> = {
+  pending: { label: 'Por pagar', className: 'bg-amber-100 text-amber-800' },
+  overdue: { label: 'Vencido', className: 'bg-red-100 text-red-700' },
+  paid: { label: 'Pagado', className: 'bg-emerald-100 text-emerald-700' },
+  rejected: { label: 'Anulado', className: 'bg-gray-100 text-gray-600' },
+}
+
+/** Cobro emitido cuya fecha de pago todavía no llega: no es deuda aún. */
+const NOT_DUE_YET_UI = { label: 'Por vencer', className: 'bg-gray-100 text-gray-600' }
+
+/** ¿La fecha límite ya llegó? Por día de calendario en Lima, como el backend. */
+export function isDueDatePassed(dueDate: string): boolean {
+  const day = (d: Date) =>
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'America/Lima',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(d)
+  try {
+    return day(new Date(dueDate)) <= day(new Date())
+  } catch {
+    return true
+  }
+}
+
+/**
+ * Estado del cobro tal como lo entiende el cliente.
+ *
+ * El estado guardado no distingue un cobro que ya debía estar pagado de otro emitido por
+ * adelantado: los dos son `pending`. Marcar ambos como «Por pagar» hacía que un cobro con
+ * vencimiento a semanas se leyera como deuda y chocara con el «al día» de la cabecera.
+ */
+export function invoiceStatusUI(inv: { status: string; due_date?: string }) {
+  const base = INVOICE_STATUS_UI[inv.status] ?? {
+    label: inv.status,
+    className: 'bg-gray-100 text-gray-600',
+  }
+  if (inv.status !== 'pending' || !inv.due_date) return base
+  return isDueDatePassed(inv.due_date) ? base : NOT_DUE_YET_UI
+}
+
+/** true si el cobro es deuda real, cobrable HOY (vencido, o pendiente cuyo plazo ya llegó) —
+ *  no un cobro emitido por adelantado para el próximo período (ese es "por vencer"). */
+export function isInvoicePayableNow(inv: { status: string; due_date: string }): boolean {
+  if (inv.status === 'overdue') return true
+  if (inv.status === 'pending') return isDueDatePassed(inv.due_date)
+  return false
 }
 
 /** Monto del período: plan + reconexión solo si el tenant está suspendido por mora. */

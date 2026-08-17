@@ -300,7 +300,21 @@ export default function SalesReportPage() {
         detraccion_amount: s.has_detraccion ? (s.detraccion_amount ?? 0) : 0,
         net_payable: s.has_detraccion ? (s.net_payable ?? s.total) : s.total,
       }))
-      await exportTableToExcel<Sale & { doc_display?: string }>('Ventas', COLS, withDoc, `reporte-ventas-${filters.from || 'todo'}-${filters.to || 'todo'}.xlsx`)
+      // Suma directa sobre las filas que quedaron en el archivo (respeta los filtros aplicados,
+      // incluidas o no las anuladas según "Estado venta") — no depende del resumen de tarjetas,
+      // así la fila de totales siempre cuadra con lo que el usuario ve en las filas de arriba.
+      const footerRow = COLS.map((col, i) => {
+        if (i === 0) return 'TOTAL'
+        if (!col.excelNumber) return ''
+        return withDoc.reduce((sum, row) => sum + (Number(row[col.key as keyof typeof row]) || 0), 0)
+      })
+      await exportTableToExcel<Sale & { doc_display?: string }>(
+        'Ventas',
+        COLS,
+        withDoc,
+        `reporte-ventas-${filters.from || 'todo'}-${filters.to || 'todo'}.xlsx`,
+        footerRow,
+      )
       toast.success('Excel descargado')
     } catch {
       toast.error('Error al exportar')

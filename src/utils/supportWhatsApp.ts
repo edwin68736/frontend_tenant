@@ -45,8 +45,12 @@ export async function openExternalUrl(url: string): Promise<void> {
     }
   }
 
-  const opened = window.open(url, '_blank', 'noopener,noreferrer')
-  if (!opened) window.location.assign(url)
+  // Sin fallback a la pestaña actual: `window.open` devolviendo null/undefined no significa de
+  // forma confiable que el popup se bloqueó (varía por navegador) — usarlo como señal para
+  // redirigir la pestaña actual causaba que, cuando SÍ se abría la pestaña nueva, la actual
+  // igual terminara navegando a la misma URL. Si el navegador bloquea el popup, que muestre su
+  // propio aviso; no vale la pena arriesgar sacar al tenant de la app por eso.
+  window.open(url, '_blank', 'noopener,noreferrer')
 }
 
 export async function openSupportWhatsApp(

@@ -13,7 +13,11 @@ export async function exportTableToExcel<T extends object>(
   sheetName: string,
   columns: ExportColumn<T>[],
   data: T[],
-  filename?: string
+  filename?: string,
+  /** Fila extra al final (ej. totales). Opt-in: quien no la pase mantiene el export de siempre
+   *  sin fila agregada — Kardex, Productos, etc. no la necesitan (o directamente no tendría
+   *  sentido sumar sus columnas, como un saldo corriente). */
+  footerRow?: CellValue[],
 ): Promise<void> {
   const headers: CellValue[] = columns.map(c => c.label)
   const body: CellValue[][] = data.map(row =>
@@ -28,6 +32,7 @@ export async function exportTableToExcel<T extends object>(
     })
   )
   const rows: CellValue[][] = [headers, ...body]
+  if (footerRow) rows.push(footerRow)
   const bytes = await writeXlsx({
     sheets: [{ name: sheetName.slice(0, 31), rows }],
   })

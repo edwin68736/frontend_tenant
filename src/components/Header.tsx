@@ -30,6 +30,7 @@ import {
   DEFAULT_SUPPORT_WHATSAPP_MESSAGE,
   openExternalUrl,
 } from '@/utils/supportWhatsApp'
+import { WhatsAppGlyph } from '@/components/icons/WhatsAppGlyph'
 import SubscriptionHeaderWidget from '@/components/SubscriptionHeaderWidget'
 import SubscriptionUserMenuItem from '@/components/SubscriptionUserMenuItem'
 import HeaderQuickActions from '@/components/HeaderQuickActions'
@@ -130,6 +131,20 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
         <HeaderQuickActions />
         <SubscriptionHeaderWidget />
       </div>
+
+      {/* Botón de soporte directo por WhatsApp — visible desde md (medio/grande); en pantallas
+          chicas ya está en el menú de usuario (más abajo), no hace falta duplicarlo acá donde
+          compite por espacio con el resto de la barra. */}
+      {supportHref && (
+        <button
+          type="button"
+          onClick={() => void openExternalUrl(supportHref)}
+          className="hidden md:inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-semibold transition-colors shrink-0"
+        >
+          <WhatsAppGlyph className="w-4 h-4" />
+          Soporte
+        </button>
+      )}
 
       {/* Notificaciones */}
       <div className="relative" ref={notifRef}>

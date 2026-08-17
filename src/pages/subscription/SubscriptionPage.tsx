@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
   AlertTriangle,
+  ChevronRight,
   Clock,
   Download,
   CreditCard,
@@ -10,8 +11,12 @@ import {
   FileUp,
   Headphones,
   History,
+  Info,
   Loader2,
+  Mail,
+  MessageCircle,
   Package,
+  Phone,
   RefreshCw,
 } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
@@ -25,6 +30,7 @@ import {
   type SupportConfig,
 } from '@/services/subscription.service'
 import PlanDetailFrame from './PlanDetailFrame'
+import PendingPaymentBanner from './PendingPaymentBanner'
 import PaymentMethodsPanel from './PaymentMethodsPanel'
 import {
   STATUS_LABELS,
@@ -32,53 +38,15 @@ import {
   docProgressColor,
   formatDate,
   formatMoney,
+  invoiceStatusUI,
+  isInvoicePayableNow,
 } from './subscriptionUx'
 
 const inputClass =
   'w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 bg-white'
 
-/** Estado de cada período, en lenguaje del cliente (no el del backend). */
-const INVOICE_STATUS_UI: Record<string, { label: string; className: string }> = {
-  pending: { label: 'Por pagar', className: 'bg-amber-100 text-amber-800' },
-  overdue: { label: 'Vencido', className: 'bg-red-100 text-red-700' },
-  paid: { label: 'Pagado', className: 'bg-emerald-100 text-emerald-700' },
-  rejected: { label: 'Anulado', className: 'bg-gray-100 text-gray-600' },
-}
-
-/** Cobro emitido cuya fecha de pago todavía no llega: no es deuda aún. */
-const NOT_DUE_YET_UI = { label: 'Por vencer', className: 'bg-gray-100 text-gray-600' }
-
-/**
- * Estado del cobro tal como lo entiende el cliente.
- *
- * El estado guardado no distingue un cobro que ya debía estar pagado de otro emitido por
- * adelantado: los dos son `pending`. Marcar ambos como «Por pagar» hacía que un cobro con
- * vencimiento a semanas se leyera como deuda y chocara con el «al día» de la cabecera.
- */
-function invoiceStatusUI(inv: { status: string; due_date?: string }) {
-  const base = INVOICE_STATUS_UI[inv.status] ?? {
-    label: inv.status,
-    className: 'bg-gray-100 text-gray-600',
-  }
-  if (inv.status !== 'pending' || !inv.due_date) return base
-  return isDueDatePassed(inv.due_date) ? base : NOT_DUE_YET_UI
-}
-
-/** ¿La fecha límite ya llegó? Por día de calendario en Lima, como el backend. */
-function isDueDatePassed(dueDate: string): boolean {
-  const day = (d: Date) =>
-    new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'America/Lima',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(d)
-  try {
-    return day(new Date(dueDate)) <= day(new Date())
-  } catch {
-    return true
-  }
-}
+/** Filas que se muestran de entrada en listas largas antes de «Ver historial completo». */
+const PREVIEW_ROWS = 5
 
 function Section({
   id,
@@ -102,6 +70,14 @@ function Section({
   )
 }
 
+/** Icono y color de marca de cada canal — antes todos usaban el mismo audífono gris y no se
+ *  distinguían entre sí a simple vista. */
+const SUPPORT_CHANNELS: Record<string, { icon: React.ElementType; iconClass: string }> = {
+  WhatsApp: { icon: MessageCircle, iconClass: 'bg-emerald-100 text-emerald-600' },
+  Email: { icon: Mail, iconClass: 'bg-blue-100 text-blue-600' },
+  Teléfono: { icon: Phone, iconClass: 'bg-indigo-100 text-indigo-600' },
+}
+
 function SupportCard({ support }: { support: SupportConfig }) {
   const wa = support.whatsapp?.replace(/\D/g, '')
   const links = [
@@ -115,23 +91,30 @@ function SupportCard({ support }: { support: SupportConfig }) {
   }
 
   return (
-    <ul className="space-y-2">
-      {links.map(l => (
-        <li key={l.label}>
-          <a
-            href={l.href}
-            target={l.label === 'WhatsApp' ? '_blank' : undefined}
-            rel="noreferrer"
-            className="flex items-center gap-2 text-sm text-gray-700 hover:text-blue-600 py-1"
-          >
-            <Headphones size={15} className="shrink-0 text-gray-400" />
-            <span>
-              <span className="font-medium">{l.label}</span>
-              <span className="block text-xs text-gray-500 truncate">{l.text}</span>
-            </span>
-          </a>
-        </li>
-      ))}
+    <ul className="space-y-1">
+      {links.map(l => {
+        const channel = SUPPORT_CHANNELS[l.label]
+        const Icon = channel?.icon ?? Headphones
+        return (
+          <li key={l.label}>
+            <a
+              href={l.href}
+              target={l.label === 'WhatsApp' ? '_blank' : undefined}
+              rel="noreferrer"
+              className="flex items-center gap-3 -mx-2 px-2 py-2 rounded-xl text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              <span className={`p-2 rounded-lg shrink-0 ${channel?.iconClass ?? 'bg-gray-100 text-gray-500'}`}>
+                <Icon size={16} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-medium">{l.label}</span>
+                <span className="block text-xs text-gray-500 truncate">{l.text}</span>
+              </span>
+              <ChevronRight size={14} className="text-gray-300 shrink-0" />
+            </a>
+          </li>
+        )
+      })}
     </ul>
   )
 }
@@ -156,6 +139,9 @@ export default function SubscriptionPage() {
   /** Deuda que se está pagando; null = formulario cerrado. */
   const [payInvoice, setPayInvoice] = useState<BillingInvoice | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
+  /** Listas largas empiezan colapsadas (ver PREVIEW_ROWS): «Ver historial completo» las abre. */
+  const [showAllInvoices, setShowAllInvoices] = useState(false)
+  const [showAllEvents, setShowAllEvents] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -181,10 +167,6 @@ export default function SubscriptionPage() {
     void load()
   }, [load])
 
-  const scrollTo = (id: string) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
-
   /** Abre el formulario ya apuntado a la deuda elegida en la fila. */
   const openPayModal = (inv: BillingInvoice) => {
     setBillingCycleId(String(inv.id))
@@ -196,6 +178,21 @@ export default function SubscriptionPage() {
     setPaymentDate(new Date().toISOString().slice(0, 10))
     setPayInvoice(inv)
   }
+
+  // Deuda cobrable HOY (vencida, o pendiente cuyo plazo ya llegó): es lo que arma la barra de
+  // acción prominente. Un cobro emitido por adelantado para el próximo período no cuenta acá
+  // (ese es "por vencer", su acción es "Renovar ahora" en el resumen del plan, no esta barra).
+  const payableNowInvoices = useMemo(
+    () => hub?.invoices.filter(isInvoicePayableNow) ?? [],
+    [hub],
+  )
+
+  // «Renovar ahora» / «Cambiar de plan» abren el mismo modal: si la suscripción está activa y
+  // el plan sigue en el catálogo, PlanPickerModal lo detecta solo y salta directo a «Adelantar
+  // pago» (sin pasar por la grilla) — es el camino correcto tanto si ya existe un cobro emitido
+  // para el próximo período como si aún no existe ninguno (ahí no hay billing_cycle_id que
+  // pagar: se envía como solicitud de renovación, ver SubmitRenewalRequest en el backend).
+  const handleManagePlan = () => setPickerOpen(true)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -257,25 +254,144 @@ export default function SubscriptionPage() {
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Suscripción</h1>
           <p className="text-sm text-gray-500 mt-0.5">Pagos, plan y documentos electrónicos</p>
         </div>
+        {/* El botón «Gestionar plan» de acá duplicaba, con otro nombre, la misma acción que ya
+            ofrecen «Renovar ahora» (resumen del plan) y «Cambiar de plan» (junto al ciclo, ahí
+            mismo): dos entradas al mismo modal ya alcanzan, una tercera en el encabezado solo
+            sumaba confusión sobre cuál usar. */}
         <button
           type="button"
           onClick={() => {
             void load()
             void refreshGlobal()
           }}
-          className="p-2 rounded-xl border hover:bg-gray-50"
+          className="p-2 rounded-xl border hover:bg-gray-50 shrink-0"
           title="Actualizar"
         >
           <RefreshCw size={18} />
         </button>
       </div>
 
-      <PlanDetailFrame hub={hub} onManagePayment={() => scrollTo('gestionar-pago')} />
+      <PlanDetailFrame hub={hub} onManagePlan={handleManagePlan} />
+
+      {/* Lo más urgente de la página, justo debajo del resumen: si hay deuda cobrable hoy, se
+          ve sin tener que bajar a la tabla. */}
+      <PendingPaymentBanner hub={hub} invoices={payableNowInvoices} onPay={openPayModal} />
 
       {/* La columna de referencia (cómo pagar, soporte) acompaña al contenido en pantallas
           anchas y pasa debajo en las estrechas. */}
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-5 items-start">
         <div className="space-y-5 min-w-0">
+          {/* Primera del contenido: es la sección que el tenant más necesita — saber qué debe
+              y poder pagarlo — no algo a lo que hay que bajar. */}
+          <Section id="mis-pagos" title="Mis pagos y deudas" icon={FileUp}>
+            {/* Esta tabla lista deudas ya emitidas (saas_billing_cycles), no cada intento de
+                pago — una solicitud de renovación anticipada sin ciclo previo (ver
+                PlanPickerModal) no genera una deuda hasta que se aprueba, así que mientras está
+                en revisión no hay fila que mostrar acá. Sin este aviso, un comprobante recién
+                enviado parecía haberse perdido: el banner de arriba avisa "en revisión" pero
+                esta tabla seguía exactamente igual que antes de enviarlo. */}
+            {sub.has_pending_payment_review && (
+              <p className="text-sm text-blue-700 bg-blue-50/70 border border-blue-100 rounded-xl px-3 py-2.5 mb-4 flex items-start gap-2">
+                <Info size={16} className="shrink-0 mt-0.5" />
+                Tu comprobante está en revisión — el nuevo período aparecerá aquí recién cuando se
+                apruebe. Puedes ver el envío en «Historial de pagos», más abajo.
+              </p>
+            )}
+            {hub.invoices.length === 0 ? (
+              <p className="text-sm text-gray-500">Aún no hay períodos registrados.</p>
+            ) : (
+              <div className="overflow-x-auto -mx-1">
+                <table className="w-full text-sm min-w-[520px]">
+                  <thead>
+                    <tr className="text-left text-gray-500 border-b">
+                      <th className="pb-2 pr-3">Período</th>
+                      <th className="pb-2 pr-3">Vence</th>
+                      <th className="pb-2 pr-3">Monto</th>
+                      <th className="pb-2 pr-3">Estado</th>
+                      <th className="pb-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(showAllInvoices ? hub.invoices : hub.invoices.slice(0, PREVIEW_ROWS)).map(inv => {
+                      const payableNow = isInvoicePayableNow(inv)
+                      const ui = invoiceStatusUI(inv)
+                      return (
+                        <tr key={inv.id} className={`border-b border-gray-50 ${payableNow ? 'bg-amber-50/60' : ''}`}>
+                          <td className="py-2.5 pr-3 whitespace-nowrap">
+                            {formatDate(inv.period_start)} → {formatDate(inv.period_end)}
+                          </td>
+                          <td className="py-2.5 pr-3 whitespace-nowrap">{formatDate(inv.due_date)}</td>
+                          <td className="py-2.5 pr-3 font-semibold text-gray-900 tabular-nums">
+                            {formatMoney(billingCyclePaymentTotal(inv, sub))}
+                          </td>
+                          <td className="py-2.5 pr-3">
+                            <span className="inline-flex items-center gap-2">
+                              <span
+                                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${ui.className}`}
+                              >
+                                {ui.label}
+                              </span>
+                              {/* Comprobante del PERÍODO, no del pago: si tuvo un intento
+                                  rechazado antes del que finalmente lo pagó, esto siempre
+                                  apunta al pago que realmente lo saldó. */}
+                              {inv.status === 'paid' && inv.fiscal_doc_url && (
+                                <a
+                                  href={assetUrl(inv.fiscal_doc_url)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-xs text-primary-600 hover:underline font-medium"
+                                  title="Descargar comprobante"
+                                >
+                                  <Download size={12} /> Descargar
+                                </a>
+                              )}
+                            </span>
+                          </td>
+                          <td className="py-2.5 text-right">
+                            {payableNow && sub.can_submit_payment && (
+                              <button
+                                type="button"
+                                onClick={() => openPayModal(inv)}
+                                className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700"
+                              >
+                                <FileUp size={13} /> Pagar ahora
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {hub.invoices.length > PREVIEW_ROWS && (
+              <button
+                type="button"
+                onClick={() => setShowAllInvoices(v => !v)}
+                className="inline-flex items-center gap-1 mt-3 text-sm font-medium text-primary-600 hover:underline"
+              >
+                {showAllInvoices ? 'Ver menos' : 'Ver historial completo'}
+                <ChevronRight size={14} className={showAllInvoices ? '-rotate-90 transition-transform' : 'transition-transform'} />
+              </button>
+            )}
+            {!sub.can_submit_payment && (
+              <p className="text-sm text-red-700 mt-3">
+                {sub.support_message ?? 'No puede enviar nuevos comprobantes.'}
+              </p>
+            )}
+            {portalAlt && (
+              <a
+                href={portalAlt}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 mt-4 text-sm text-blue-600 hover:underline"
+              >
+                <ExternalLink size={14} /> Portal de pago alternativo
+              </a>
+            )}
+          </Section>
+
           {hub.documents && (
             <Section title="Documentos electrónicos" icon={FileText}>
               {hub.documents.is_unlimited ? (
@@ -417,79 +533,6 @@ export default function SubscriptionPage() {
             </Section>
           )}
 
-          <Section id="gestionar-pago" title="Mis pagos y deudas" icon={FileUp}>
-            {hub.invoices.length === 0 ? (
-              <p className="text-sm text-gray-500">Aún no hay períodos registrados.</p>
-            ) : (
-              <div className="overflow-x-auto -mx-1">
-                <table className="w-full text-sm min-w-[520px]">
-                  <thead>
-                    <tr className="text-left text-gray-500 border-b">
-                      <th className="pb-2 pr-3">Período</th>
-                      <th className="pb-2 pr-3">Vence</th>
-                      <th className="pb-2 pr-3">Monto</th>
-                      <th className="pb-2 pr-3">Estado</th>
-                      <th className="pb-2" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {hub.invoices.map(inv => {
-                      const payable = inv.status === 'pending' || inv.status === 'overdue'
-                      const ui = invoiceStatusUI(inv)
-                      return (
-                        <tr key={inv.id} className="border-b border-gray-50">
-                          <td className="py-2.5 pr-3 whitespace-nowrap">
-                            {formatDate(inv.period_start)} → {formatDate(inv.period_end)}
-                          </td>
-                          <td className="py-2.5 pr-3 whitespace-nowrap">{formatDate(inv.due_date)}</td>
-                          <td className="py-2.5 pr-3 font-semibold text-gray-900 tabular-nums">
-                            {formatMoney(billingCyclePaymentTotal(inv, sub))}
-                          </td>
-                          <td className="py-2.5 pr-3">
-                            <span
-                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${ui.className}`}
-                            >
-                              {ui.label}
-                            </span>
-                          </td>
-                          <td className="py-2.5 text-right">
-                            {payable && sub.can_submit_payment && (
-                              <button
-                                type="button"
-                                onClick={() => openPayModal(inv)}
-                                className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-700"
-                              >
-                                <FileUp size={13} /> Pagar
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            {!sub.can_submit_payment && (
-              <p className="text-sm text-red-700 mt-3">
-                {sub.support_message ?? 'No puede enviar nuevos comprobantes.'}
-              </p>
-            )}
-            {portalAlt && (
-              <a
-                href={portalAlt}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 mt-4 text-sm text-blue-600 hover:underline"
-              >
-                <ExternalLink size={14} /> Portal de pago alternativo
-              </a>
-            )}
-          </Section>
-
-          {/* Los dos historiales son consulta, no acción: en pantallas anchas caben lado a
-              lado y evitan una columna larguísima con media pantalla vacía al costado. */}
-          <div className="grid grid-cols-1 2xl:grid-cols-2 gap-5 items-start">
           <Section id="historial-pagos" title="Historial de pagos" icon={CreditCard}>
             {hub.payments.length === 0 ? (
               <p className="text-sm text-gray-500">Sin pagos registrados.</p>
@@ -501,37 +544,22 @@ export default function SubscriptionPage() {
                       <th className="pb-2 pr-3">Fecha</th>
                       <th className="pb-2 pr-3">Monto</th>
                       <th className="pb-2 pr-3">Método</th>
-                      <th className="pb-2 pr-3">Estado</th>
-                      <th className="pb-2">Comprobante</th>
+                      <th className="pb-2">Estado</th>
                     </tr>
                   </thead>
                   <tbody>
+                    {/* El comprobante (boleta/factura) ya no va acá: es del PERÍODO que un pago
+                        saldó, no del intento de pago en sí — un período puede tener varios
+                        intentos (rechazados, anulados) antes del que lo pagó de verdad. Vive en
+                        «Mis pagos y deudas», junto al estado de cada período. */}
                     {hub.payments.map(p => (
                       <tr key={p.id} className="border-b border-gray-50">
                         <td className="py-2 pr-3">{formatDate(p.created_at)}</td>
                         <td className="py-2 pr-3">{formatMoney(p.amount)}</td>
                         <td className="py-2 pr-3">{p.payment_method}</td>
-                        <td className="py-2 pr-3">
+                        <td className="py-2">
                           <span className="font-medium">{STATUS_LABELS[p.status] ?? p.status}</span>
                           {p.reject_reason && <p className="text-xs text-red-600 mt-0.5">{p.reject_reason}</p>}
-                        </td>
-                        {/* Boleta/factura que emiten por el pago. Solo aparece cuando la
-                            adjuntan desde el panel central. */}
-                        <td className="py-2">
-                          {p.fiscal_doc_url ? (
-                            <a
-                              href={assetUrl(p.fiscal_doc_url)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-primary-600 hover:underline font-medium"
-                            >
-                              <Download size={14} /> Descargar
-                            </a>
-                          ) : (
-                            <span className="text-xs text-gray-400">
-                              {p.status === 'approved' ? 'Pendiente de emisión' : '—'}
-                            </span>
-                          )}
                         </td>
                       </tr>
                     ))}
@@ -540,79 +568,69 @@ export default function SubscriptionPage() {
               </div>
             )}
           </Section>
-
-          <Section id="historial-suscripcion" title="Historial de suscripción" icon={History}>
-            {hub.events.length === 0 ? (
-              <p className="text-sm text-gray-500">Sin eventos registrados.</p>
-            ) : (
-              <ul className="space-y-3">
-                {hub.events.map(ev => (
-                  <li key={ev.id} className="flex gap-3 text-sm">
-                    <Clock size={16} className="text-gray-400 shrink-0 mt-0.5" />
-                    <div>
-                      <p className="font-medium text-gray-800">{ev.label}</p>
-                      <p className="text-xs text-gray-500">{formatDate(ev.created_at)}</p>
-                      {ev.reason && <p className="text-xs text-gray-600 mt-0.5">{ev.reason}</p>}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Section>
-          </div>
         </div>
 
         <aside className="space-y-4 xl:sticky xl:top-4">
-          {/* «Acciones rápidas» eran anclas a secciones de esta misma página; con el listado
-              reordenado y más compacto ya se llega a todas sin saltos. Se conserva el portal
-              alternativo (lleva fuera) y se agrega el selector de planes propio de la app. */}
-          <button
-            type="button"
-            onClick={() => setPickerOpen(true)}
-            className="flex w-full items-center justify-center gap-2 px-3 py-2.5 rounded-2xl text-sm font-medium border border-gray-200 bg-white shadow-sm hover:bg-gray-50"
-          >
-            <Package size={16} />
-            Elegir otro plan
-          </button>
-
-          {portalAlt && (
-            <a
-              href={portalAlt}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-2xl text-sm font-medium border border-gray-200 bg-white shadow-sm hover:bg-gray-50"
-            >
-              <ExternalLink size={16} />
-              Cambiar plan / portal
-            </a>
-          )}
-
-          {/* Referencia rápida de qué métodos existen — el QR/cuenta bancaria de cada uno recién
-              se muestra al elegirlo en el formulario de pago (más abajo), no acá: antes este
-              bloque mostraba TODOS los QR y TODAS las cuentas bancarias juntos sin importar el
-              método elegido en el pago. */}
-          {cfg.methods.length > 0 && (
-            <div id="metodos-pago" className="scroll-mt-24 rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-2">
-                <CreditCard size={14} />
-                Métodos de pago
-              </h3>
-              <ul className="flex flex-wrap gap-2">
-                {cfg.methods.map(m => (
-                  <li key={m.key} className="px-2.5 py-1 rounded-lg border border-gray-200 bg-gray-50 text-xs font-semibold text-gray-700">
-                    {m.label}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
+          {/* La lista plana de nombres de métodos no llevaba a ningún lado (ni QR ni cuenta):
+              el QR/cuenta real de cada uno solo aparece al elegirlo en el formulario de pago.
+              Se quitó en vez de arreglarla — ya está esa referencia en el momento en que
+              hace falta, no acá donde no hacía nada. */}
           <div className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-2">
               <Headphones size={14} />
-              Soporte
+              Soporte y ayuda
             </h3>
             <SupportCard support={hub.support} />
+          </div>
+
+          {/* Es auditoría, no algo que se consulte para decidir un pago — por eso va al final
+              de la barra lateral, compacto, en vez de competir por espacio en la columna
+              principal junto a las tablas de pagos. */}
+          <div id="historial-suscripcion" className="rounded-2xl border border-gray-100 bg-white shadow-sm p-4 scroll-mt-24">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-2">
+              <History size={14} />
+              Historial de suscripción
+            </h3>
+            {hub.events.length === 0 ? (
+              <p className="text-sm text-gray-500">Sin eventos registrados.</p>
+            ) : (
+              <>
+                <ul className="space-y-3">
+                  {(showAllEvents ? hub.events : hub.events.slice(0, PREVIEW_ROWS)).map((ev, i) => (
+                    <li key={ev.id} className="flex gap-2.5 text-sm">
+                      <span className="relative shrink-0 mt-0.5">
+                        <Clock size={14} className="text-gray-400" />
+                        {i === 0 && (
+                          <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-white" />
+                        )}
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className="font-medium text-gray-800 text-xs">{ev.label}</p>
+                          {i === 0 && (
+                            <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">
+                              Actual
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-gray-500">{formatDate(ev.created_at)}</p>
+                        {ev.reason && <p className="text-[11px] text-gray-600 mt-0.5">{ev.reason}</p>}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+                {hub.events.length > PREVIEW_ROWS && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllEvents(v => !v)}
+                    className="inline-flex items-center gap-1 mt-3 text-xs font-medium text-primary-600 hover:underline"
+                  >
+                    {showAllEvents ? 'Ver menos' : 'Ver historial completo'}
+                    <ChevronRight size={12} className={showAllEvents ? '-rotate-90 transition-transform' : 'transition-transform'} />
+                  </button>
+                )}
+              </>
+            )}
           </div>
         </aside>
       </div>
