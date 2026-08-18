@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Trash2, X, Package, UserPlus, ScanBarcode, Pencil, Loader2, Wallet, StickyNote } from 'lucide-react'
+import { Plus, Trash2, X, Package, UserPlus, ScanBarcode, Pencil, Loader2, Wallet, StickyNote, AlertTriangle } from 'lucide-react'
+import { clsx } from 'clsx'
 import { salesService, type CreateSaleInput } from '@/services/sales.service'
 import { contactsService, type Contact } from '@/services/contacts.service'
 import { productsService, type Product } from '@/services/products.service'
@@ -718,6 +719,10 @@ function SalesRegisterContent({
       toast.error('La cantidad debe ser mayor a 0')
       return
     }
+    if (!(Number(draft.unit_price) > 0)) {
+      toast.error('El precio unitario debe ser mayor a S/ 0')
+      return
+    }
     const unit = normalizeSunatUnit(draft.unit, 'product')
     setItems(prev => [
       ...prev,
@@ -1191,6 +1196,12 @@ function SalesRegisterContent({
     for (const it of items) {
       if (!it.description.trim()) {
         toast.error('Todos los ítems deben tener descripción')
+        return
+      }
+      // Ninguna línea puede tener precio 0 (ni bonificación — ahí lo que se zerea es el total
+      // cobrado, no el precio de referencia).
+      if (!(Number(it.unit_price) > 0)) {
+        toast.error(`«${it.description.trim()}» no tiene precio de venta. Corrígelo antes de continuar.`)
         return
       }
     }
@@ -2094,10 +2105,22 @@ function SalesRegisterContent({
                   const modifierLines = it.modifiers_json
                     ? formatModifierLines(parseStoredModifiers(it.modifiers_json))
                     : []
+                  const missingPrice = !(Number(it.unit_price) > 0)
                   return (
-                    <tr key={`${saleItemMergeKey(it)}-${idx}`} className="border-b border-gray-50 hover:bg-gray-50/50">
+                    <tr
+                      key={`${saleItemMergeKey(it)}-${idx}`}
+                      className={clsx(
+                        'border-b hover:bg-gray-50/50',
+                        missingPrice ? 'border-red-100 bg-red-50/60' : 'border-gray-50',
+                      )}
+                    >
                       <td className="px-4 py-2.5">
                         <span className="text-gray-800">{it.description || '—'}</span>
+                        {missingPrice && (
+                          <span className="flex items-center gap-1 text-[11px] font-semibold text-red-600 mt-0.5">
+                            <AlertTriangle size={11} /> Sin precio de venta
+                          </span>
+                        )}
                         <button
                           type="button"
                           onClick={() => openItemNoteModal(idx)}
@@ -2147,7 +2170,10 @@ function SalesRegisterContent({
                       </td>
                       <td className="px-4 py-2.5">
                         <MoneyAmountInput
-                          className="w-full max-w-[5.5rem] border border-gray-200 rounded-lg px-2 py-1 text-sm"
+                          className={clsx(
+                            'w-full max-w-[5.5rem] rounded-lg px-2 py-1 text-sm border',
+                            missingPrice ? 'border-red-400 bg-red-50 text-red-700' : 'border-gray-200',
+                          )}
                           value={it.unit_price}
                           onChange={(v) => updateItem(idx, 'unit_price', Math.max(0, v))}
                           clearOnFocus

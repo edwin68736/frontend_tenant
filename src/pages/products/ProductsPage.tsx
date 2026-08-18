@@ -471,6 +471,19 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         payload.presentations = []
       }
     }
+    // Con presentaciones, el precio real vive en cada una — sin ellas (producto simple, servicio
+    // o combo), el precio del producto es el precio de venta real y no puede ser 0.
+    if (!payload.has_variants && !(Number(payload.sale_price) > 0)) {
+      toast.error('El precio de venta debe ser mayor a S/ 0')
+      return
+    }
+    if (payload.has_variants && payload.presentations) {
+      const missingPrice = payload.presentations.find((p) => !(Number(p.sale_price) > 0))
+      if (missingPrice) {
+        toast.error(`La presentación «${missingPrice.name}» debe tener un precio mayor a S/ 0`)
+        return
+      }
+    }
     if (editing) {
       delete payload.initial_stock
     } else if (!payload.manage_stock || !(payload.initial_stock != null && payload.initial_stock > 0)) {

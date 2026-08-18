@@ -58,8 +58,8 @@ export function QuickProductCreateModal({ open, onClose, onCreated }: Props) {
       toast.error('Ingrese el nombre del producto')
       return
     }
-    if (form.sale_price < 0) {
-      toast.error('El precio de venta no puede ser negativo')
+    if (!(Number(form.sale_price) > 0)) {
+      toast.error('El precio de venta debe ser mayor a S/ 0')
       return
     }
     if (form.manage_series && !form.manage_stock) {

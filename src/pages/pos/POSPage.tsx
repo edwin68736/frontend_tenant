@@ -52,7 +52,9 @@ import { roundMoney } from '@/utils/checkoutDiscount'
 import {
   appendCatalogLine,
   applyCatalogLineUnitPrice,
+  cartLineHasMissingPrice,
   cartLineKey,
+  cartLineLabel,
   cartLineUnitPrice,
   catalogLineComboJson,
   catalogLineModifiersJson,
@@ -597,6 +599,13 @@ function POSContent() {
   const handleCheckout = async () => {
     if (branchSeriesMissing) return
     if (cart.length === 0) { toast.error('Carrito vacío'); return }
+    // Última barrera: ninguna línea puede tener precio 0 (ni bonificación — ahí lo que se zerea
+    // es el total cobrado, no el precio de referencia).
+    const missingPriceLine = cart.find((l) => cartLineHasMissingPrice(l))
+    if (missingPriceLine) {
+      toast.error(`«${cartLineLabel(missingPriceLine)}» no tiene precio de venta. Corrígelo antes de continuar.`)
+      return
+    }
     if (!seriesId || !selectedSeries) return
 
     if (!sunatEnabled && isElectronicBillingSunatCode(selectedSeries.sunat_code ?? selectedSunatCode)) {

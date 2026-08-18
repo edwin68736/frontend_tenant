@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
+import { toast } from 'sonner'
 import { PortalModal } from '@/components/ui/PortalModal'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { sunatUnitSelectOptions } from '@/constants/sunatUnits'
@@ -37,7 +38,10 @@ export function ManualProductModal({ open, onClose, onAdd }: Props) {
     const desc = description.trim()
     if (!desc) return
     const price = parseFloat(unitPrice.replace(',', '.'))
-    if (!Number.isFinite(price) || price < 0) return
+    if (!Number.isFinite(price) || price <= 0) {
+      toast.error('El precio unitario debe ser mayor a S/ 0')
+      return
+    }
     onAdd({
       kind: 'manual',
       lineId: `manual-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,

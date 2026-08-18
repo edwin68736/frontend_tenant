@@ -72,6 +72,15 @@ export function cartLineBasePrice(line: PosCartLine): number {
   return Number(line.unit_price) || 0
 }
 
+/**
+ * true si la línea no tiene un precio de venta real. No hay excepción por bonificación: en
+ * afectación '15' lo que se cobra al cliente se fuerza a 0 en el checkout, pero el precio
+ * unitario/de referencia siempre debe ser mayor a 0 — este chequeo aplica a todas las líneas.
+ */
+export function cartLineHasMissingPrice(line: PosCartLine): boolean {
+  return !(cartLineUnitPrice(line) > 0)
+}
+
 export function applyCatalogLineUnitPrice(line: CatalogCartLine, unitPrice: number): CatalogCartLine {
   const price = roundMoney(Math.max(0, unitPrice))
   return {
