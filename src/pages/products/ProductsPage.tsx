@@ -471,12 +471,11 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         payload.presentations = []
       }
     }
-    // Con presentaciones, el precio real vive en cada una — sin ellas (producto simple, servicio
-    // o combo), el precio del producto es el precio de venta real y no puede ser 0.
-    if (!payload.has_variants && !(Number(payload.sale_price) > 0)) {
-      toast.error('El precio de venta debe ser mayor a S/ 0')
-      return
-    }
+    // No se exige sale_price > 0 aquí a propósito: se puede crear un producto "base" sin precio
+    // (contenedor pendiente de presentaciones, o combo a configurar después) y completarlo en una
+    // edición posterior. Lo que nunca se permite es VENDERLO en 0 — eso se bloquea en el POS/
+    // registro de ventas al cobrar, no aquí. Las presentaciones sí exigen precio propio (abajo),
+    // porque ahí ya se está declarando una variante concreta y vendible.
     if (payload.has_variants && payload.presentations) {
       const missingPrice = payload.presentations.find((p) => !(Number(p.sale_price) > 0))
       if (missingPrice) {
