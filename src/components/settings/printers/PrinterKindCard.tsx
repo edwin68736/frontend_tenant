@@ -81,6 +81,25 @@ export function PrinterKindCard({
         {safeConnection === 'bluetooth' && <BluetoothPrinterFields cfg={cfg} onChange={onChange} />}
 
         <TicketGeneralFields cfg={cfg} paperOptions={paperOptions} onChange={onChange} />
+
+        {kind === 'documentos' && (
+          <label className="flex items-start justify-between gap-3 rounded-xl border border-dashed border-stone-200 p-4 cursor-pointer hover:bg-stone-50/60">
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-stone-900">Abrir gaveta de dinero</span>
+              <span className="block text-xs text-stone-500 mt-0.5">
+                Al imprimir boleta, factura o nota de venta, se abre el cajón de dinero conectado a esta
+                impresora. Si está desactivado, solo se imprime el comprobante.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              checked={Boolean(cfg.openDrawerOnPrint)}
+              onChange={(e) => onChange({ openDrawerOnPrint: e.target.checked })}
+              className="h-5 w-5 shrink-0 accent-primary-600"
+              aria-label="Abrir gaveta de dinero"
+            />
+          </label>
+        )}
       </div>
     </section>
   )

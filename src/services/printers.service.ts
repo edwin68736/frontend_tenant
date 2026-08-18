@@ -258,6 +258,11 @@ function escposCutPartial(): number[] {
   return [0x1d, 0x56, 0x41, 0x10]
 }
 
+/** ESC p m t1 t2 — pulso al conector RJ11 (pin 2, m=0) de la impresora para abrir el cajón de dinero. */
+function escposOpenDrawer(): number[] {
+  return [0x1b, 0x70, 0x00, 0x19, 0xfa]
+}
+
 function escposAlign(align: 'left' | 'center' | 'right'): number[] {
   const n = align === 'left' ? 0 : align === 'center' ? 1 : 2
   return [0x1b, 0x61, n]
@@ -552,6 +557,7 @@ async function pushCompanyHeaderEscPos(
 export async function buildSaleDocumentEscPos(
   printData: PrintData,
   paperWidthMm: PrinterPaperWidth,
+  opts?: { openDrawer?: boolean },
 ): Promise<Uint8Array> {
   const cols = columnsForWidth(paperWidthMm)
   const narrow = paperWidthMm === 58
@@ -779,6 +785,7 @@ export async function buildSaleDocumentEscPos(
   escposPushLines(out, footerLines, 'center')
   out.push(...Array.from(textBytes('\n\n')))
   out.push(...escposCutPartial())
+  if (opts?.openDrawer) out.push(...escposOpenDrawer())
   return new Uint8Array(out)
 }
 
@@ -820,6 +827,16 @@ export async function printPrecuentaAuto(input: {
 export async function printDocumentAuto(printData: PrintData): Promise<string> {
   const cfg = getConfiguredPrinter('documentos')
   if (!cfg) return 'Impresora de documentos no configurada'
-  const data = await buildSaleDocumentEscPos(printData, cfg.paperWidthMm)
+  const data = await buildSaleDocumentEscPos(printData, cfg.paperWidthMm, {
+    openDrawer: Boolean(cfg.openDrawerOnPrint),
+  })
   return printRawEscPos({ ...cfg, data, docName: `${TUKIFAC_APP_NAME} - Documento` })
+}
+
+/** Abre el cajón de dinero manualmente (botón en Caja), sin imprimir un comprobante. */
+export async function openCashDrawer(): Promise<string> {
+  const cfg = getConfiguredPrinter('documentos')
+  if (!cfg) return 'Configura la impresora para poder abrir la gaveta'
+  const data = new Uint8Array([...escposInit(), ...escposOpenDrawer()])
+  return printRawEscPos({ ...cfg, data, docName: `${TUKIFAC_APP_NAME} - Abrir gaveta` })
 }

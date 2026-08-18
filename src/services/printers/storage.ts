@@ -33,6 +33,7 @@ export function normalizeSlot(raw: Partial<PrinterConfig> | undefined): PrinterC
     networkPrinterLabel: String(raw?.networkPrinterLabel ?? '').trim(),
     bluetoothName: String(raw?.bluetoothName ?? '').trim(),
     bluetoothMac: String(raw?.bluetoothMac ?? '').trim(),
+    openDrawerOnPrint: raw?.openDrawerOnPrint === true,
   }
   // Corrige connection contra la plataforma y los datos ya cargados (IP/MAC) antes de guardar —
   // ver effectiveConnection en platform.ts para el bug que esto evita.
@@ -50,6 +51,7 @@ function emptySlot(): PrinterConfig {
     networkPrinterLabel: '',
     bluetoothName: '',
     bluetoothMac: '',
+    openDrawerOnPrint: false,
   }
 }
 

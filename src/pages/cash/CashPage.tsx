@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, X, TrendingUp, TrendingDown, Wallet, History, Pencil, Trash2 } from 'lucide-react'
+import { Plus, X, TrendingUp, TrendingDown, Wallet, History, Pencil, Trash2, Unlock } from 'lucide-react'
 import { cashbankService, type CashSession, type CashMovement, type OpenCashSessionRow } from '@/services/cashbank.service'
+import { openCashDrawer } from '@/services/printers.service'
 import { useBranch } from '@/contexts/BranchContext'
 import { useAuth } from '@/contexts/AuthContext'
 import RequireModule from '@/components/ui/RequireModule'
@@ -177,6 +178,7 @@ function CashContent() {
   const [closeWithArqueo, setCloseWithArqueo] = useState(false)
   const [closeArqueo, setCloseArqueo] = useState<Record<string, number>>(emptyArqueo())
   const [saving, setSaving] = useState(false)
+  const [openingDrawer, setOpeningDrawer] = useState(false)
 
   // Modal arqueo (historial: ver o hacer arqueo)
   const [arqueoModalSession, setArqueoModalSession] = useState<CashSession | null>(null)
@@ -336,6 +338,19 @@ function CashContent() {
     }
   }
 
+  const handleOpenDrawer = async () => {
+    setOpeningDrawer(true)
+    try {
+      const msg = await openCashDrawer()
+      toast.success(msg || 'Gaveta abierta')
+    } catch (e) {
+      console.error('[caja] abrir gaveta]', e)
+      toast.error(e instanceof Error ? e.message : 'No se pudo abrir la gaveta')
+    } finally {
+      setOpeningDrawer(false)
+    }
+  }
+
   const totalIncome = movements.filter(m => m.type === 'income').reduce((s, m) => s + m.amount, 0)
   const totalExpense = movements.filter(m => m.type === 'expense').reduce((s, m) => s + m.amount, 0)
   const balance = (session?.opening_balance ?? 0) + totalIncome - totalExpense
@@ -417,6 +432,14 @@ function CashContent() {
               className="flex items-center justify-center gap-1.5 px-3 py-2.5 sm:py-2 border border-gray-300 text-gray-600 rounded-xl text-sm font-medium hover:bg-gray-50"
             >
               <Wallet size={14} /> Arqueo
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleOpenDrawer()}
+              disabled={openingDrawer}
+              className="flex items-center justify-center gap-1.5 px-3 py-2.5 sm:py-2 border border-gray-300 text-gray-600 rounded-xl text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+            >
+              <Unlock size={14} /> {openingDrawer ? 'Abriendo…' : 'Abrir gaveta'}
             </button>
             <button
               onClick={() => { setCloseNotes(''); setCloseArqueo(session?.arqueo_json ? parseArqueoJson(session.arqueo_json) : emptyArqueo()); setCloseWithArqueo(!!session?.arqueo_json); setShowClose(true) }}
