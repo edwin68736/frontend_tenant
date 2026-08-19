@@ -58,7 +58,7 @@ export function ProductKardexModal({
   }, [productId, branchId, dateFrom, dateTo])
 
   return (
-    <Modal open onClose={onClose} contentClassName="max-w-3xl w-full !p-0 !space-y-0 flex flex-col max-h-[85vh] !overflow-hidden">
+    <Modal open onClose={onClose} contentClassName="max-w-6xl w-full !p-0 !space-y-0 flex flex-col max-h-[85vh] !overflow-hidden">
       <div className="flex items-center justify-between p-4 border-b border-gray-100 shrink-0">
         <div>
           <h3 className="text-base font-semibold text-gray-800">Kardex — {productName}</h3>
