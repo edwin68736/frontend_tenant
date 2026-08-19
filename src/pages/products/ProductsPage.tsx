@@ -425,7 +425,9 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       payload.purchase_price = 0
       payload.manage_stock = false
       payload.manage_series = false
-      payload.has_variants = false
+      // has_variants NO se fuerza: un servicio puede tener presentaciones (ej. "Corte simple" /
+      // "Corte + barba"), igual que un producto — ver el bloque de abajo que arma
+      // payload.presentations sin importar pageMode.
       payload.has_modifiers = false
       payload.is_restaurant = false
       payload.min_stock = 0
@@ -453,23 +455,27 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       } else {
         payload.expiry_date = null
       }
-      if (payload.has_variants) {
-        const pres = presentations.filter((p) => p.name.trim())
-        if (pres.length === 0) {
-          toast.error('Agrega al menos una presentación con nombre')
-          return
-        }
-        payload.presentations = pres.map((p) => ({
-          id: p.id,
-          name: p.name.trim(),
-          sale_price: Number(p.sale_price) || 0,
-          // Solo aplica a filas nuevas (sin id); las existentes ya tienen su stock propio y el
-          // backend lo ignora para esas.
-          initial_stock: p.id ? undefined : Math.max(0, Number(p.initial_stock) || 0),
-        }))
-      } else if (editing) {
-        payload.presentations = []
+    }
+    // Presentaciones: sin importar el modo — un servicio también puede tenerlas (ver el
+    // checkbox "Tiene presentaciones" del formulario de servicio). initial_stock nunca aplica
+    // a un servicio (siempre manage_stock=false), así que Math.max(0, …) simplemente queda en 0
+    // y el backend lo ignora igual que ignora cualquier stock inicial cuando manage_stock=false.
+    if (payload.has_variants) {
+      const pres = presentations.filter((p) => p.name.trim())
+      if (pres.length === 0) {
+        toast.error('Agrega al menos una presentación con nombre')
+        return
       }
+      payload.presentations = pres.map((p) => ({
+        id: p.id,
+        name: p.name.trim(),
+        sale_price: Number(p.sale_price) || 0,
+        // Solo aplica a filas nuevas (sin id); las existentes ya tienen su stock propio y el
+        // backend lo ignora para esas.
+        initial_stock: p.id ? undefined : Math.max(0, Number(p.initial_stock) || 0),
+      }))
+    } else if (editing) {
+      payload.presentations = []
     }
     // No se exige sale_price > 0 aquí a propósito: se puede crear un producto "base" sin precio
     // (contenedor pendiente de presentaciones, o combo a configurar después) y completarlo en una
@@ -1536,15 +1542,50 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         )}
 
         {pageMode === 'service' && (
-          <div className="min-w-0">
-            <label className="block text-xs font-medium text-gray-600 mb-1">Descripción (opcional)</label>
-            <textarea
-              className={`${PRODUCT_FORM_INPUT} resize-none min-h-[5rem]`}
-              rows={2}
-              value={form.description ?? ''}
-              onChange={(e) => setF('description', e.target.value)}
-              placeholder="Detalle del servicio"
-            />
+          <div className="space-y-3">
+            <div className="min-w-0">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Descripción (opcional)</label>
+              <textarea
+                className={`${PRODUCT_FORM_INPUT} resize-none min-h-[5rem]`}
+                rows={2}
+                value={form.description ?? ''}
+                onChange={(e) => setF('description', e.target.value)}
+                placeholder="Detalle del servicio"
+              />
+            </div>
+            {/* Un servicio puede tener presentaciones igual que un producto (ej. "Corte
+                simple" / "Corte + barba", "Consulta 30min" / "Consulta 1h") — el checkbox de
+                stock inicial del modal se oculta solo (showInitialStock depende de
+                form.manage_stock, que un servicio nunca tiene en true). */}
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.has_variants ?? false}
+                onChange={e => {
+                  const checked = e.target.checked
+                  setF('has_variants', checked)
+                  if (!checked) setPresentations([])
+                }}
+                className="rounded"
+              />
+              <span className="text-sm text-gray-700">Tiene presentaciones (ej. duración, nivel, tipo)</span>
+            </label>
+            {form.has_variants && (
+              <div className="rounded-xl border border-[rgb(var(--p200))] bg-[rgb(var(--p50))]/40 px-3 py-2.5 space-y-2">
+                <p className="text-xs text-gray-600">
+                  {presentations.filter(p => p.name.trim()).length > 0
+                    ? `${presentations.filter(p => p.name.trim()).length} presentación(es) configurada(s).`
+                    : 'Aún no hay presentaciones. Configúralas antes de guardar.'}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowPresentationsModal(true)}
+                  className="w-full sm:w-auto px-4 py-2 rounded-xl text-sm font-medium border border-[rgb(var(--p300))] text-[rgb(var(--p700))] hover:bg-[rgb(var(--p100))]"
+                >
+                  Gestionar presentaciones
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -1667,7 +1708,10 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
             <p className="text-xs text-gray-500 font-mono">{panelProduct.code || 'Sin código'}</p>
 
             <div className="flex gap-1 border-b border-gray-100 pb-2 overflow-x-auto">
-              {(panelProduct.type === 'service' ? (['datos'] as const) : (['datos', 'modificadores', 'stock'] as const)).map(
+              {(panelProduct.type === 'service'
+                ? (['datos', 'modificadores'] as const)
+                : (['datos', 'modificadores', 'stock'] as const)
+              ).map(
                 (tab) => (
                   <button
                     key={tab}
@@ -1678,7 +1722,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                     }`}
                   >
                     {tab === 'datos' && 'Datos'}
-                    {tab === 'modificadores' && 'Presentaciones y extras'}
+                    {tab === 'modificadores' && (panelProduct.type === 'service' ? 'Presentaciones' : 'Presentaciones y extras')}
                     {tab === 'stock' && 'Stock'}
                   </button>
                 ),
@@ -1757,7 +1801,11 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                         )}
                       </div>
                     ) : !panelDetail.data.has_variants ? (
-                      <p className="text-gray-500">Este producto no usa presentaciones ni extras.</p>
+                      <p className="text-gray-500">
+                        {panelDetail.data.type === 'service'
+                          ? 'Este servicio no usa presentaciones.'
+                          : 'Este producto no usa presentaciones ni extras.'}
+                      </p>
                     ) : null}
                   </div>
                 )}
