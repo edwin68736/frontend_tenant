@@ -80,6 +80,7 @@ function emptyForm(pageMode: ProductCatalogType): CreateProductInput {
       has_variants: false,
       has_modifiers: false,
       modifier_group_ids: [],
+      branch_id: undefined,
     }
   }
   return {
@@ -106,6 +107,7 @@ function emptyForm(pageMode: ProductCatalogType): CreateProductInput {
     has_modifiers: false,
     modifier_group_ids: [],
     initial_stock: undefined,
+    branch_id: undefined,
   }
 }
 
@@ -245,7 +247,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     const stockBranchId = pageMode === 'product' && activeBranchId > 0 ? activeBranchId : undefined
     return productsService
       // Los combos se administran en /products/combos: aquí solo el catálogo suelto.
-      .list(listSearchQuery, catFilter, undefined, !includeInactive, page, perPage, undefined, pageMode, undefined, true)
+      .list(listSearchQuery, catFilter, undefined, !includeInactive, page, perPage, undefined, pageMode, undefined, true, true)
       .then(({ data: p, total: t }) => {
         if (seq !== loadSeqRef.current) return [] as Product[]
         setProducts(p ?? [])
@@ -289,6 +291,12 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     setSelectedIds(new Set())
   }, [listSearchQuery, catFilter, includeInactive, page, perPage, pageMode, activeBranchId])
 
+  // Sucursales para el selector "Catálogo por sucursal" del form de alta/edición. Se cargaban
+  // solo al abrir el panel de detalle; el form de crear/editar las necesita desde el inicio.
+  useEffect(() => {
+    companyService.listBranches().then((b) => setBranches(b ?? [])).catch(() => {})
+  }, [])
+
   // Nota: se removió el refetch automático al volver a la pestaña (visibilitychange).
   // Provocaba recargas y 3-4 peticiones al backend cada vez que se cambiaba de pestaña.
   // La lista se refresca al cambiar filtros/página/sucursal y tras crear/editar/eliminar.
@@ -330,6 +338,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       has_modifiers: p.has_modifiers ?? false,
       modifier_group_ids: [],
       active: p.active,
+      branch_id: p.branch_id ?? undefined,
     })
     setShow(true)
     setShowMoreOptions(false)
@@ -991,6 +1000,11 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                       {p.description && (
                         <p className="text-xs text-gray-500 truncate">{p.description}</p>
                       )}
+                      {!!p.branch_id && (
+                        <span className="inline-block mt-0.5 text-[10px] font-medium bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded">
+                          {p.branch_name || branchName(p.branch_id)}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </td>
@@ -1304,6 +1318,24 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           </div>
         ) : (
           categoryField
+        )}
+        {branches.length > 1 && (
+          <div className="min-w-0">
+            <label className="block text-xs font-medium text-gray-600 mb-1">Sucursal</label>
+            <select
+              className={PRODUCT_FORM_INPUT}
+              value={form.branch_id ?? ''}
+              onChange={(e) => setF('branch_id', e.target.value ? Number(e.target.value) : undefined)}
+            >
+              <option value="">Todas las sucursales</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-400">
+              Si elige una sucursal, {pageMode === 'service' ? 'el servicio' : 'el producto'} solo estará disponible en ella.
+            </p>
+          </div>
         )}
         <div className={PRODUCT_FORM_GRID}>
           <div className="min-w-0">
