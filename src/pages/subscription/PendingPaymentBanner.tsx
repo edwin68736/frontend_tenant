@@ -4,9 +4,10 @@ import { formatMoney } from './subscriptionUx'
 
 /**
  * Barra de acción a todo el ancho: es lo más urgente que puede haber en esta página, así que
- * va justo debajo del resumen del plan, antes que cualquier tabla o historial. Solo se muestra
- * cuando hay deuda real y cobrable HOY (ver isInvoicePayableNow) — un cobro emitido por
- * adelantado para el próximo período no cuenta, ese es el aviso de "Renovar ahora" del resumen.
+ * va justo debajo del resumen del plan, antes que cualquier tabla o historial. Se muestra para
+ * todo cobro `pending`/`overdue` (ver isInvoicePayableNow: el estado real manda, no la cercanía
+ * del vencimiento) — un cobro `pending_review` no cuenta, ya tiene un comprobante esperando
+ * aprobación (ver el aviso "en revisión" del resumen).
  */
 export default function PendingPaymentBanner({
   hub,

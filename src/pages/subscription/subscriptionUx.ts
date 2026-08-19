@@ -135,55 +135,40 @@ export function statusBadgeClass(status: string) {
   return STATUS_BADGE[status] ?? 'bg-gray-100 text-gray-700'
 }
 
-/** Estado de cada período, en lenguaje del cliente (no el del backend). */
+/**
+ * Estado de cada período, en lenguaje del cliente (no el del backend).
+ *
+ * El `status` que manda el backend YA es el estado real del ciclo (fuente de verdad en
+ * `saas_billing_cycles.status`) — ya no hace falta reinterpretarlo por cercanía de fecha: un
+ * `pending` es deuda real aunque venza en meses (antes se disfrazaba de "Por vencer" y
+ * chocaba con el "al día" de la cabecera), y `pending_review` es su propio estado real
+ * (comprobante ya subido, esperando aprobación) — no una variante de "pending".
+ */
 const INVOICE_STATUS_UI: Record<string, { label: string; className: string }> = {
   pending: { label: 'Por pagar', className: 'bg-amber-100 text-amber-800' },
+  pending_review: { label: 'En revisión', className: 'bg-blue-100 text-blue-800' },
   overdue: { label: 'Vencido', className: 'bg-red-100 text-red-700' },
   paid: { label: 'Pagado', className: 'bg-emerald-100 text-emerald-700' },
   rejected: { label: 'Anulado', className: 'bg-gray-100 text-gray-600' },
 }
 
-/** Cobro emitido cuya fecha de pago todavía no llega: no es deuda aún. */
-const NOT_DUE_YET_UI = { label: 'Por vencer', className: 'bg-gray-100 text-gray-600' }
-
-/** ¿La fecha límite ya llegó? Por día de calendario en Lima, como el backend. */
-export function isDueDatePassed(dueDate: string): boolean {
-  const day = (d: Date) =>
-    new Intl.DateTimeFormat('en-CA', {
-      timeZone: 'America/Lima',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(d)
-  try {
-    return day(new Date(dueDate)) <= day(new Date())
-  } catch {
-    return true
-  }
+/** Estado del cobro tal como lo entiende el cliente. */
+export function invoiceStatusUI(inv: { status: string; due_date?: string }) {
+  return (
+    INVOICE_STATUS_UI[inv.status] ?? {
+      label: inv.status,
+      className: 'bg-gray-100 text-gray-600',
+    }
+  )
 }
 
 /**
- * Estado del cobro tal como lo entiende el cliente.
- *
- * El estado guardado no distingue un cobro que ya debía estar pagado de otro emitido por
- * adelantado: los dos son `pending`. Marcar ambos como «Por pagar» hacía que un cobro con
- * vencimiento a semanas se leyera como deuda y chocara con el «al día» de la cabecera.
+ * true si el cobro es deuda cobrable — `pending` u `overdue`. `pending_review` NO cuenta: ya
+ * hay un comprobante subido esperando aprobación; el botón vuelve a aparecer solo si el admin
+ * lo rechaza (ver RejectPayment en el backend, que devuelve el ciclo a pending/overdue).
  */
-export function invoiceStatusUI(inv: { status: string; due_date?: string }) {
-  const base = INVOICE_STATUS_UI[inv.status] ?? {
-    label: inv.status,
-    className: 'bg-gray-100 text-gray-600',
-  }
-  if (inv.status !== 'pending' || !inv.due_date) return base
-  return isDueDatePassed(inv.due_date) ? base : NOT_DUE_YET_UI
-}
-
-/** true si el cobro es deuda real, cobrable HOY (vencido, o pendiente cuyo plazo ya llegó) —
- *  no un cobro emitido por adelantado para el próximo período (ese es "por vencer"). */
-export function isInvoicePayableNow(inv: { status: string; due_date: string }): boolean {
-  if (inv.status === 'overdue') return true
-  if (inv.status === 'pending') return isDueDatePassed(inv.due_date)
-  return false
+export function isInvoicePayableNow(inv: { status: string; due_date?: string }): boolean {
+  return inv.status === 'pending' || inv.status === 'overdue'
 }
 
 /** Monto del período: plan + reconexión solo si el tenant está suspendido por mora. */
