@@ -241,11 +241,14 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const load = () => {
     const seq = ++loadSeqRef.current
     setLoading(true)
-    /** Stock por sucursal se carga aparte; el catálogo lista todos los productos del tenant. */
+    // Un producto con control de stock solo pertenece a las sucursales donde tiene stock
+    // vinculado (alta en esa sucursal, o recibido por una transferencia); sin esto, el mismo
+    // producto aparecía en todas las sucursales aunque nunca se le haya asignado stock ahí.
+    // Los servicios/productos sin control de stock (manage_stock=false) siguen viéndose en todas.
     const stockBranchId = pageMode === 'product' && activeBranchId > 0 ? activeBranchId : undefined
     return productsService
       // Los combos se administran en /products/combos: aquí solo el catálogo suelto.
-      .list(listSearchQuery, catFilter, undefined, !includeInactive, page, perPage, undefined, pageMode, undefined, true)
+      .list(listSearchQuery, catFilter, undefined, !includeInactive, page, perPage, undefined, pageMode, stockBranchId, true)
       .then(({ data: p, total: t }) => {
         if (seq !== loadSeqRef.current) return [] as Product[]
         setProducts(p ?? [])
