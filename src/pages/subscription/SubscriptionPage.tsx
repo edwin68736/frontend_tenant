@@ -326,43 +326,26 @@ export default function SubscriptionPage() {
                             {formatMoney(billingCyclePaymentTotal(inv, sub))}
                           </td>
                           <td className="py-2.5 pr-3">
-                            <span className="inline-flex items-center gap-2">
-                              <span
-                                className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${ui.className}`}
-                              >
-                                {ui.label}
-                              </span>
-                              {/* Boleta/factura del PERÍODO (la emite el admin): si tuvo un
-                                  intento rechazado antes del que finalmente lo pagó, esto
-                                  siempre apunta al pago que realmente lo saldó. */}
-                              {inv.status === 'paid' && inv.fiscal_doc_url && (
-                                <a
-                                  href={assetUrl(inv.fiscal_doc_url)}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="inline-flex items-center gap-1 text-xs text-primary-600 hover:underline font-medium"
-                                  title="Descargar boleta/factura"
-                                >
-                                  <Download size={12} /> Descargar
-                                </a>
-                              )}
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${ui.className}`}
+                            >
+                              {ui.label}
                             </span>
                           </td>
                           <td className="py-2.5 pr-3">
-                            {/* Comprobante que EL TENANT subió (voucher/captura) del intento
-                                más reciente para este período — distinto de la boleta/factura
-                                de arriba. Se muestra sin importar el estado: útil tanto para ver
-                                qué se subió mientras está en revisión como para revisar un
-                                rechazo. */}
-                            {inv.receipt_url ? (
+                            {/* Boleta/factura del PERÍODO, la que sube el admin desde el panel
+                                central (fiscal_doc_url) — no el voucher que el tenant adjuntó al
+                                pagar. Si tuvo un intento rechazado antes del que finalmente lo
+                                pagó, esto siempre apunta al pago que realmente lo saldó. */}
+                            {inv.status === 'paid' && inv.fiscal_doc_url ? (
                               <a
-                                href={assetUrl(inv.receipt_url)}
+                                href={assetUrl(inv.fiscal_doc_url)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-1 text-xs text-primary-600 hover:underline font-medium"
-                                title="Ver comprobante subido por el tenant"
+                                title="Descargar boleta/factura"
                               >
-                                <FileText size={12} /> Ver
+                                <Download size={12} /> Descargar
                               </a>
                             ) : (
                               <span className="text-xs text-gray-400">—</span>
