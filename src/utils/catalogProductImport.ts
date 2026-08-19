@@ -378,6 +378,61 @@ export async function downloadCatalogProductTemplate(): Promise<void> {
   await downloadXlsxBytes(bytes, 'plantilla-productos-catalogo.xlsx')
 }
 
+/** Fila del catálogo a exportar: mismos campos que arma la plantilla de importación. */
+export type CatalogExportRow = {
+  code: string
+  name: string
+  description?: string
+  sale_price: number
+  purchase_price?: number
+  unit: string
+  category_name?: string
+  igv_affectation_type: string
+  price_includes_igv: boolean
+  manage_stock: boolean
+  /** Stock actual en la sucursal activa (si maneja stock). Se exporta como stock_inicial:
+   *  al reimportar, el backend lo trata como ajuste a valor absoluto para productos ya
+   *  existentes (por código), así que reimportar el archivo tal cual no duplica stock. */
+  stock?: number
+  is_restaurant: boolean
+  preparation_area?: string
+  type?: string
+  /** YYYY-MM-DD o vacío/undefined si no tiene vencimiento. */
+  expiry_date?: string | null
+}
+
+/**
+ * Exporta el catálogo con las mismas columnas que la plantilla de importación
+ * (ver CATALOG_IMPORT_COLUMNS), para poder editarlo y volver a importarlo.
+ */
+export async function exportCatalogProductsToExcel(
+  rows: CatalogExportRow[],
+  filename = 'productos-catalogo.xlsx',
+): Promise<void> {
+  const headerRow: CellValue[] = [...CATALOG_IMPORT_COLUMNS]
+  const dataRows: CellValue[][] = rows.map((r) => [
+    r.name,
+    r.code ?? '',
+    r.description ?? '',
+    r.sale_price,
+    r.purchase_price ?? '',
+    r.unit,
+    r.category_name ?? '',
+    r.igv_affectation_type || '10',
+    r.price_includes_igv ? 'si' : 'no',
+    r.manage_stock ? 'si' : 'no',
+    r.manage_stock ? Math.max(0, r.stock ?? 0) : 0,
+    r.is_restaurant ? 'si' : 'no',
+    r.preparation_area ?? '',
+    r.type === 'service' ? 'service' : 'product',
+    r.expiry_date ?? '',
+  ])
+  const bytes = await writeXlsx({
+    sheets: [{ name: 'Productos', rows: [headerRow, ...dataRows] }],
+  })
+  await downloadXlsxBytes(bytes, filename)
+}
+
 /** Columnas numéricas del archivo: son las que pueden traer coma decimal. */
 const NUMERIC_IMPORT_COLUMNS = new Set(['precio_venta', 'precio_compra', 'stock_inicial', 'stock_minimo'])
 

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Settings2, Package, Upload, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Trash2, CheckCircle, Eye, EyeOff, Keyboard } from 'lucide-react'
+import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Settings2, Package, Upload, Download, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Trash2, CheckCircle, Eye, EyeOff, Keyboard, Loader2 } from 'lucide-react'
 import { ProductImportModal } from '@/components/products/ProductImportModal'
 import { BulkDeleteProductsPinModal } from '@/components/products/BulkDeleteProductsPinModal'
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
@@ -34,6 +34,7 @@ import {
   getProductExpiryStatus,
   PRODUCT_EXPIRY_BADGE_CLASS,
 } from '@/utils/productExpiry'
+import { exportCatalogProductsToExcel, type CatalogExportRow } from '@/utils/catalogProductImport'
 
 import {
   PRODUCT_IGV_AFFECTATION_OPTIONS,
@@ -204,6 +205,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const [stockByProductId, setStockByProductId] = useState<Record<string, number>>({})
   const [adjustmentProduct, setAdjustmentProduct] = useState<Product | null>(null)
   const [importModalOpen, setImportModalOpen] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
   const [deletingProduct, setDeletingProduct] = useState(false)
 
@@ -295,6 +297,63 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   // Nota: se removió el refetch automático al volver a la pestaña (visibilitychange).
   // Provocaba recargas y 3-4 peticiones al backend cada vez que se cambiaba de pestaña.
   // La lista se refresca al cambiar filtros/página/sucursal y tras crear/editar/eliminar.
+
+  /**
+   * Exporta el catálogo con las mismas columnas de la plantilla de importación (mismos filtros
+   * que la lista en pantalla: búsqueda, categoría, activos/inactivos, sucursal). Trae TODAS las
+   * filas que calzan, no solo la página actual, paginando el mismo endpoint del listado.
+   */
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      const stockBranchId = pageMode === 'product' && activeBranchId > 0 ? activeBranchId : undefined
+      const all: Product[] = []
+      let p = 1
+      const per = 100
+      for (;;) {
+        const { data, total: t } = await productsService.list(
+          listSearchQuery, catFilter, undefined, !includeInactive, p, per, undefined, pageMode, stockBranchId, true,
+        )
+        if (!data || data.length === 0) break
+        all.push(...data)
+        if (all.length >= (t ?? 0)) break
+        p++
+      }
+      if (all.length === 0) {
+        toast.error('No hay productos para exportar con los filtros actuales')
+        return
+      }
+      const stockedIds = all.filter((x) => x.manage_stock).map((x) => x.id)
+      const stockMap =
+        stockedIds.length > 0
+          ? await inventoryService.getStockSummary(stockedIds, stockBranchId).catch(() => ({}) as Record<string, number>)
+          : ({} as Record<string, number>)
+      const rows: CatalogExportRow[] = all.map((item) => ({
+        code: item.code ?? '',
+        name: item.name,
+        description: item.description ?? '',
+        sale_price: item.sale_price,
+        purchase_price: item.purchase_price,
+        unit: item.unit,
+        category_name: item.category_name ?? categories.find((c) => c.id === item.category_id)?.name ?? '',
+        igv_affectation_type: item.igv_affectation_type,
+        price_includes_igv: item.price_includes_igv,
+        manage_stock: item.manage_stock,
+        stock: stockMap[String(item.id)],
+        is_restaurant: item.is_restaurant,
+        preparation_area: item.preparation_area ?? '',
+        type: item.type,
+        expiry_date: item.expiry_date ?? null,
+      }))
+      const filename = pageMode === 'service' ? 'servicios-catalogo.xlsx' : 'productos-catalogo.xlsx'
+      await exportCatalogProductsToExcel(rows, filename)
+      toast.success(`${rows.length} ${pageMode === 'service' ? 'servicio(s)' : 'producto(s)'} exportado(s)`)
+    } catch {
+      toast.error('Error al exportar el catálogo')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   const openNew = () => {
     clearPendingImage()
@@ -757,6 +816,14 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50"
               >
                 <FileSpreadsheet size={15} /> Importar Excel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleExport()}
+                disabled={exporting}
+                className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+              >
+                {exporting ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Exportar Excel
               </button>
               <button
                 type="button"
