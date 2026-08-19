@@ -104,6 +104,10 @@ export interface BillingInvoice {
   /** Boleta/factura del pago que saldó este período; vacío si aún no está pagado o el admin
    *  todavía no la adjuntó. */
   fiscal_doc_url?: string
+  /** Comprobante que EL TENANT subió (voucher/captura) del intento de pago más reciente para
+   *  este período, sea cual sea su estado — distinto de fiscal_doc_url (la boleta/factura que
+   *  le emite el admin). */
+  receipt_url?: string
 }
 
 export interface SaasPaymentRow {

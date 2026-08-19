@@ -33,13 +33,13 @@ import PlanDetailFrame from './PlanDetailFrame'
 import PendingPaymentBanner from './PendingPaymentBanner'
 import PaymentMethodsPanel from './PaymentMethodsPanel'
 import {
-  STATUS_LABELS,
   billingCyclePaymentTotal,
   docProgressColor,
   formatDate,
   formatMoney,
   invoiceStatusUI,
   isInvoicePayableNow,
+  paymentStatusUI,
 } from './subscriptionUx'
 
 const inputClass =
@@ -308,6 +308,7 @@ export default function SubscriptionPage() {
                       <th className="pb-2 pr-3">Vence</th>
                       <th className="pb-2 pr-3">Monto</th>
                       <th className="pb-2 pr-3">Estado</th>
+                      <th className="pb-2 pr-3">Comprobante</th>
                       <th className="pb-2" />
                     </tr>
                   </thead>
@@ -331,21 +332,41 @@ export default function SubscriptionPage() {
                               >
                                 {ui.label}
                               </span>
-                              {/* Comprobante del PERÍODO, no del pago: si tuvo un intento
-                                  rechazado antes del que finalmente lo pagó, esto siempre
-                                  apunta al pago que realmente lo saldó. */}
+                              {/* Boleta/factura del PERÍODO (la emite el admin): si tuvo un
+                                  intento rechazado antes del que finalmente lo pagó, esto
+                                  siempre apunta al pago que realmente lo saldó. */}
                               {inv.status === 'paid' && inv.fiscal_doc_url && (
                                 <a
                                   href={assetUrl(inv.fiscal_doc_url)}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="inline-flex items-center gap-1 text-xs text-primary-600 hover:underline font-medium"
-                                  title="Descargar comprobante"
+                                  title="Descargar boleta/factura"
                                 >
                                   <Download size={12} /> Descargar
                                 </a>
                               )}
                             </span>
+                          </td>
+                          <td className="py-2.5 pr-3">
+                            {/* Comprobante que EL TENANT subió (voucher/captura) del intento
+                                más reciente para este período — distinto de la boleta/factura
+                                de arriba. Se muestra sin importar el estado: útil tanto para ver
+                                qué se subió mientras está en revisión como para revisar un
+                                rechazo. */}
+                            {inv.receipt_url ? (
+                              <a
+                                href={assetUrl(inv.receipt_url)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-xs text-primary-600 hover:underline font-medium"
+                                title="Ver comprobante subido por el tenant"
+                              >
+                                <FileText size={12} /> Ver
+                              </a>
+                            ) : (
+                              <span className="text-xs text-gray-400">—</span>
+                            )}
                           </td>
                           <td className="py-2.5 text-right">
                             {payableNow && sub.can_submit_payment && (
@@ -558,7 +579,11 @@ export default function SubscriptionPage() {
                         <td className="py-2 pr-3">{formatMoney(p.amount)}</td>
                         <td className="py-2 pr-3">{p.payment_method}</td>
                         <td className="py-2">
-                          <span className="font-medium">{STATUS_LABELS[p.status] ?? p.status}</span>
+                          <span
+                            className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${paymentStatusUI(p.status).className}`}
+                          >
+                            {paymentStatusUI(p.status).label}
+                          </span>
                           {p.reject_reason && <p className="text-xs text-red-600 mt-0.5">{p.reject_reason}</p>}
                         </td>
                       </tr>

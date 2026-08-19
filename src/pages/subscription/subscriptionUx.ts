@@ -78,6 +78,28 @@ export const STATUS_LABELS: Record<string, string> = {
   reversed: 'Anulado',
 }
 
+/**
+ * Estado de cada intento de pago (historial), con color — mismo criterio de badge que
+ * invoiceStatusUI, pero sobre saas_payments.status (pending_review/approved/rejected/reversed/
+ * pending), no sobre el status del ciclo.
+ */
+const PAYMENT_STATUS_UI: Record<string, { label: string; className: string }> = {
+  pending_review: { label: 'En revisión', className: 'bg-blue-100 text-blue-800' },
+  approved: { label: 'Aprobado', className: 'bg-emerald-100 text-emerald-700' },
+  rejected: { label: 'Rechazado', className: 'bg-red-100 text-red-700' },
+  reversed: { label: 'Anulado', className: 'bg-gray-100 text-gray-600' },
+  pending: { label: 'Pendiente', className: 'bg-amber-100 text-amber-800' },
+}
+
+export function paymentStatusUI(status: string) {
+  return (
+    PAYMENT_STATUS_UI[status] ?? {
+      label: STATUS_LABELS[status] ?? status,
+      className: 'bg-gray-100 text-gray-600',
+    }
+  )
+}
+
 export function formatMoney(n: number, c = 'PEN') {
   return `${c === 'PEN' ? 'S/' : `${c} `}${n.toFixed(2)}`
 }
