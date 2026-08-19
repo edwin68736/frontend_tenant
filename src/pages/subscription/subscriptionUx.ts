@@ -166,12 +166,12 @@ export function statusBadgeClass(status: string) {
  * chocaba con el "al día" de la cabecera), y `pending_review` es su propio estado real
  * (comprobante ya subido, esperando aprobación) — no una variante de "pending".
  */
-const INVOICE_STATUS_UI: Record<string, { label: string; className: string }> = {
-  pending: { label: 'Por pagar', className: 'bg-amber-100 text-amber-800' },
-  pending_review: { label: 'En revisión', className: 'bg-blue-100 text-blue-800' },
-  overdue: { label: 'Vencido', className: 'bg-red-100 text-red-700' },
-  paid: { label: 'Pagado', className: 'bg-emerald-100 text-emerald-700' },
-  rejected: { label: 'Anulado', className: 'bg-gray-100 text-gray-600' },
+export const INVOICE_STATUS_UI: Record<string, { label: string; badge: string; stripe: string }> = {
+  pending: { label: 'Por pagar', badge: 'bg-amber-100 text-amber-800', stripe: 'border-l-amber-500' },
+  pending_review: { label: 'En revisión', badge: 'bg-blue-100 text-blue-800', stripe: 'border-l-blue-500' },
+  overdue: { label: 'Vencido', badge: 'bg-red-100 text-red-700', stripe: 'border-l-red-500' },
+  paid: { label: 'Pagado', badge: 'bg-emerald-100 text-emerald-700', stripe: 'border-l-emerald-500' },
+  rejected: { label: 'Anulado', badge: 'bg-gray-100 text-gray-600', stripe: 'border-l-gray-300' },
 }
 
 /** Estado del cobro tal como lo entiende el cliente. */
@@ -179,7 +179,8 @@ export function invoiceStatusUI(inv: { status: string; due_date?: string }) {
   return (
     INVOICE_STATUS_UI[inv.status] ?? {
       label: inv.status,
-      className: 'bg-gray-100 text-gray-600',
+      badge: 'bg-gray-100 text-gray-600',
+      stripe: 'border-l-gray-300',
     }
   )
 }
@@ -216,6 +217,83 @@ export function docProgressColor(percent: number, level: string) {
   if (percent >= 90) return 'bg-amber-500'
   if (percent >= 80) return 'bg-amber-400'
   return 'bg-blue-500'
+}
+
+const CYCLE_LABELS: Record<string, string> = {
+  monthly: 'Mensual',
+  semiannual: 'Semestral',
+  annual: 'Anual',
+  yearly: 'Anual',
+  lifetime: 'Vitalicio',
+}
+
+export function billingCycleLabel(cycle: string) {
+  return CYCLE_LABELS[cycle] ?? cycle
+}
+
+/** Meses de cada ciclo, para saber si lo contratado coincide con el ciclo del plan. */
+const CYCLE_MONTHS: Record<string, number> = {
+  monthly: 1,
+  semiannual: 6,
+  annual: 12,
+  yearly: 12,
+}
+
+/**
+ * Período contratado. billing_cycle es el del PLAN: un plan mensual vendido por 3 meses
+ * decía «Mensual» junto a un período de 3 meses. Si coinciden se usa la etiqueta de
+ * siempre; si no, se dice la duración real, que es la que determina el próximo pago.
+ */
+export function contractedPeriodLabel(sub: {
+  billing_cycle: string
+  contracted_months?: number
+}): string {
+  const cycle = billingCycleLabel(sub.billing_cycle)
+  const months = sub.contracted_months ?? 0
+  if (sub.billing_cycle === 'lifetime' || months <= 0) return cycle
+  if (CYCLE_MONTHS[sub.billing_cycle] === months) return cycle
+  return months === 1 ? '1 mes' : `${months} meses`
+}
+
+export function formatBillingPeriod(periodEnd: string) {
+  try {
+    const d = new Date(periodEnd)
+    const label = new Intl.DateTimeFormat('es-PE', {
+      month: 'long',
+      year: 'numeric',
+      timeZone: 'America/Lima',
+    }).format(d)
+    return label.charAt(0).toUpperCase() + label.slice(1)
+  } catch {
+    return formatDate(periodEnd)
+  }
+}
+
+export function sortInvoicesForBillingList<T extends { status: string; period_end: string }>(invoices: T[]): T[] {
+  const rank = (s: string) => (s === 'overdue' ? 0 : s === 'pending' || s === 'pending_review' ? 1 : 2)
+  return [...invoices].sort((a, b) => {
+    const dr = rank(a.status) - rank(b.status)
+    if (dr !== 0) return dr
+    return new Date(b.period_end).getTime() - new Date(a.period_end).getTime()
+  })
+}
+
+export function portalUrl(hub: BillingHub) {
+  return hub.payment_config.portal_url_override?.trim() || hub.subscription.portal_url?.trim() || ''
+}
+
+/** Color del ícono de cada intento de pago en la línea de tiempo (HistoryTab), según su
+ *  estado real (saas_payments.status) — no una aproximación por el texto del label. */
+const PAYMENT_ICON_TONE: Record<string, string> = {
+  approved: 'bg-emerald-50 text-emerald-600',
+  pending_review: 'bg-blue-50 text-blue-600',
+  rejected: 'bg-red-50 text-red-600',
+  reversed: 'bg-gray-100 text-gray-500',
+  pending: 'bg-amber-50 text-amber-600',
+}
+
+export function paymentIconTone(status: string) {
+  return PAYMENT_ICON_TONE[status] ?? 'bg-gray-100 text-gray-400'
 }
 
 export type BillingContext = BillingContextView
