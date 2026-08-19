@@ -1814,13 +1814,27 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                   <div className="text-sm space-y-4">
                     {panelProduct?.manage_stock && (
                       <div className="overflow-x-auto">
-                        <p className="font-medium text-gray-700 mb-1">Stock por sucursal</p>
+                        <p className="font-medium text-gray-700 mb-1">
+                          {panelProduct?.has_variants ? 'Stock por sucursal y presentación' : 'Stock por sucursal'}
+                        </p>
                         <table className="w-full text-xs">
-                          <thead><tr className="border-b"><th className="text-left py-2">Sucursal</th><th className="text-right py-2">Cantidad</th></tr></thead>
+                          <thead>
+                            <tr className="border-b">
+                              <th className="text-left py-2">Sucursal</th>
+                              {panelProduct?.has_variants && <th className="text-left py-2">Presentación</th>}
+                              <th className="text-right py-2">Cantidad</th>
+                            </tr>
+                          </thead>
                           <tbody>
-                            {stockRows.length === 0 && <tr><td colSpan={2} className="py-4 text-gray-400 text-center">Sin stock registrado</td></tr>}
+                            {stockRows.length === 0 && (
+                              <tr><td colSpan={panelProduct?.has_variants ? 3 : 2} className="py-4 text-gray-400 text-center">Sin stock registrado</td></tr>
+                            )}
                             {stockRows.map((s, i) => (
-                              <tr key={i} className="border-b border-gray-50"><td className="py-2">{branchName(s.branch_id)}</td><td className="text-right py-2 font-mono">{Number(s.quantity)}</td></tr>
+                              <tr key={i} className="border-b border-gray-50">
+                                <td className="py-2">{branchName(s.branch_id)}</td>
+                                {panelProduct?.has_variants && <td className="py-2">{s.presentation_name || '—'}</td>}
+                                <td className="text-right py-2 font-mono">{Number(s.quantity)}</td>
+                              </tr>
                             ))}
                           </tbody>
                         </table>

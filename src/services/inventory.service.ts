@@ -5,6 +5,10 @@ export interface StockByBranch {
   branch_id: number
   quantity: number
   updated_at?: string
+  /** Solo presente cuando el producto/servicio tiene presentaciones (has_variants): una fila
+   *  por cada (presentación, sucursal) en vez de un único total agregado. */
+  presentation_id?: number
+  presentation_name?: string
 }
 
 export interface StockMovement {

@@ -107,6 +107,7 @@ export function ProductKardexModal({
               <tr>
                 <th className="text-left py-2 px-2">Fecha</th>
                 <th className="text-left py-2 px-2">Sucursal</th>
+                <th className="text-left py-2 px-2">Presentación</th>
                 <th className="text-left py-2 px-2">Movimiento</th>
                 <th className="text-left py-2 px-2">Tipo operación</th>
                 <th className="text-left py-2 px-2">Usuario</th>
@@ -124,6 +125,7 @@ export function ProductKardexModal({
                   <tr key={m.id} className="border-b border-gray-50">
                     <td className="py-2 px-2 whitespace-nowrap">{new Date(m.created_at).toLocaleString()}</td>
                     <td className="py-2 px-2">{m.branch_name || `Sucursal ${m.branch_id}`}</td>
+                    <td className="py-2 px-2 text-gray-600">{m.presentation_name || '—'}</td>
                     <td className="py-2 px-2">{movementKindLabel(m.type)}</td>
                     <td className="py-2 px-2">
                       {formatOperationTypeLabel(m)}
@@ -143,7 +145,7 @@ export function ProductKardexModal({
               })}
               {movements.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-gray-400">
+                  <td colSpan={10} className="py-8 text-center text-gray-400">
                     No hay movimientos para los filtros seleccionados.
                   </td>
                 </tr>

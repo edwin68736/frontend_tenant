@@ -66,10 +66,18 @@ export function ProductTransferModal({
   useEffect(() => {
     if (!fromBranchId) { setAvailableStock(null); return }
     inventoryService.getStock(product.id, fromBranchId).then((stocks) => {
-      const row = stocks.find((s) => s.branch_id === fromBranchId)
-      setAvailableStock(row ? row.quantity : 0)
+      const rows = stocks.filter((s) => s.branch_id === fromBranchId)
+      // Con presentaciones, la API ahora devuelve una fila por presentación (antes era un
+      // único total agregado) — filtrar a la elegida en cuanto haya una, y mientras tanto
+      // sumar todas para seguir mostrando el agregado del producto en esa sucursal.
+      if (presentationId) {
+        const row = rows.find((s) => s.presentation_id === presentationId)
+        setAvailableStock(row ? row.quantity : 0)
+      } else {
+        setAvailableStock(rows.reduce((sum, s) => sum + Number(s.quantity), 0))
+      }
     })
-  }, [product.id, fromBranchId])
+  }, [product.id, fromBranchId, presentationId])
 
   const handleSubmit = async () => {
     if (!fromBranchId || !toBranchId) { toast.error('Selecciona sucursal origen y destino'); return }
