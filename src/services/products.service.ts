@@ -72,9 +72,6 @@ export interface Product {
   category_id: number | null
   category_name?: string
   preparation_area?: string
-  /** Sucursal dueña del catálogo (0/ausente = global, visible en todas). */
-  branch_id?: number
-  branch_name?: string
 }
 
 /** Fila enriquecida cuando GET /api/products se llama con report=1 */
@@ -152,8 +149,6 @@ export interface CreateProductInput {
   presentations?: ProductPresentation[]
   /** Solo para edición: enviar para no cambiar el estado activo por defecto */
   active?: boolean
-  /** Catálogo distinto por sucursal (no restaurante). 0/ausente = global (visible en todas). */
-  branch_id?: number
 }
 
 export interface ModifierOptionInput {
@@ -250,9 +245,7 @@ export const productsService = {
     /** Filtra catálogo/stock por sucursal activa. */
     branch_id?: number,
     /** Oculta los combos. Úselo al elegir componentes: un combo no puede contener otro. */
-    exclude_combos?: boolean,
-    /** Catálogo distinto por sucursal: solo productos globales + los asignados a la sucursal activa. */
-    scope_branch?: boolean
+    exclude_combos?: boolean
   ) =>
     api
       .get<{ data: Product[]; total?: number }>('/api/products', {
@@ -267,7 +260,6 @@ export const productsService = {
           type: catalog_type,
           ...(branch_id && branch_id > 0 ? { branch_id } : {}),
           ...(exclude_combos ? { exclude_combos: true } : {}),
-          ...(scope_branch ? { scope_branch: true } : {}),
         },
       })
       .then(r => ({
