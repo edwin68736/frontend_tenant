@@ -107,8 +107,20 @@ const fmtMoneyCell = (v: unknown) => {
   return Number.isFinite(n) ? n.toFixed(2) : ''
 }
 
+/** Fila del reporte con los campos que se calculan en el cliente (no vienen del backend). */
+type ReportSaleRow = Sale & {
+  doc_display?: string
+  /** total en positivo para comprobantes normales; 0 para notas de crédito. La venta que anuló
+   *  ya queda excluida de "no anuladas" (por su propio estado); si la NC además restara su
+   *  monto, la reversión se contaría dos veces y el neto quedaría negativo de más — mismo
+   *  cálculo que sum_active/sum_total en el backend (saleListSummary), para que la fila de
+   *  totales del Excel siempre cuadre con las tarjetas de arriba. "Total factura" sigue
+   *  mostrando el monto tal cual lo declara el documento/SUNAT, sin tocar. */
+  net_effect?: number
+}
+
 /** Columnas PDF (string); Excel puede marcar montos como `excelNumber` para celdas numéricas. */
-const COLS: ExcelExportColumn<Sale & { doc_display?: string }>[] = [
+const COLS: ExcelExportColumn<ReportSaleRow>[] = [
   { key: 'issue_date', label: 'Fecha', format: formatIssueDate },
   { key: 'doc_display', label: 'Comprobante', format: (_, r) => formatSaleComprobante((r as Sale).doc_type, (r as Sale).series, (r as Sale).number) },
   { key: 'contact_name', label: 'Cliente' },
@@ -117,6 +129,7 @@ const COLS: ExcelExportColumn<Sale & { doc_display?: string }>[] = [
   { key: 'subtotal', label: 'Subtotal', format: fmtMoneyCell, excelNumber: true },
   { key: 'tax_amount', label: 'IGV', format: fmtMoneyCell, excelNumber: true },
   { key: 'total', label: 'Total factura', format: fmtMoneyCell, excelNumber: true },
+  { key: 'net_effect', label: 'Efecto neto', format: fmtMoneyCell, excelNumber: true },
   { key: 'detraccion_amount', label: 'Detracción SPOT', format: (v: unknown, r) => (r as Sale).has_detraccion ? fmtMoneyCell(v) : '—', excelNumber: true },
   { key: 'net_payable', label: 'Neto cobrable', format: fmtMoneyCell, excelNumber: true },
   {
@@ -163,7 +176,7 @@ const COLS: ExcelExportColumn<Sale & { doc_display?: string }>[] = [
 export default function SalesReportPage() {
   const [branches, setBranches] = useState<Branch[]>([])
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
-  const [data, setData] = useState<(Sale & { doc_display?: string })[]>([])
+  const [data, setData] = useState<ReportSaleRow[]>([])
   const [summary, setSummary] = useState<SaleListSummary | null>(null)
   const [loading, setLoading] = useState(false)
   const [searchCustomer, setSearchCustomer] = useState('')
@@ -205,16 +218,22 @@ export default function SalesReportPage() {
     page: pageNum,
   })
 
+  /** Campos calculados en cliente, compartidos por la tabla en pantalla y ambas exportaciones
+   *  (así la fila de totales del Excel siempre cuadra con lo que se ve arriba). */
+  const withComputedFields = (sales: Sale[]): ReportSaleRow[] =>
+    (sales ?? []).map((s) => ({
+      ...s,
+      doc_display: formatSaleComprobante(s.doc_type, s.series, s.number),
+      detraccion_amount: s.has_detraccion ? (s.detraccion_amount ?? 0) : 0,
+      net_payable: s.has_detraccion ? (s.net_payable ?? s.total) : s.total,
+      net_effect: s.doc_type === 'NOTA_CREDITO' ? 0 : s.total,
+    }))
+
   const load = async () => {
     setLoading(true)
     try {
       const { data: list, total: t, summary: sum } = await salesService.list(buildListParams(page, perPage))
-      const withDoc = (list ?? []).map((s) => ({
-        ...s,
-        doc_display: formatSaleComprobante(s.doc_type, s.series, s.number),
-        detraccion_amount: s.has_detraccion ? (s.detraccion_amount ?? 0) : 0,
-        net_payable: s.has_detraccion ? (s.net_payable ?? s.total) : s.total,
-      }))
+      const withDoc = withComputedFields(list ?? [])
       setData(withDoc)
       setTotal(t ?? 0)
       setSummary(sum ?? null)
@@ -276,13 +295,8 @@ export default function SalesReportPage() {
     setLoading(true)
     try {
       const { data: rows } = await salesService.list({ ...buildFilterParams(), export_all: '1' })
-      const withDoc = (rows ?? []).map((s) => ({
-        ...s,
-        doc_display: formatSaleComprobante(s.doc_type, s.series, s.number),
-        detraccion_amount: s.has_detraccion ? (s.detraccion_amount ?? 0) : 0,
-        net_payable: s.has_detraccion ? (s.net_payable ?? s.total) : s.total,
-      }))
-      exportTableToPdf<Sale & { doc_display?: string }>('Reporte de ventas', COLS, withDoc, `reporte-ventas-${filters.from || 'todo'}-${filters.to || 'todo'}.pdf`)
+      const withDoc = withComputedFields(rows ?? [])
+      exportTableToPdf<ReportSaleRow>('Reporte de ventas', COLS, withDoc, `reporte-ventas-${filters.from || 'todo'}-${filters.to || 'todo'}.pdf`)
       toast.success('PDF descargado')
     } catch {
       toast.error('Error al exportar')
@@ -294,21 +308,19 @@ export default function SalesReportPage() {
     setLoading(true)
     try {
       const { data: rows } = await salesService.list({ ...buildFilterParams(), export_all: '1' })
-      const withDoc = (rows ?? []).map((s) => ({
-        ...s,
-        doc_display: formatSaleComprobante(s.doc_type, s.series, s.number),
-        detraccion_amount: s.has_detraccion ? (s.detraccion_amount ?? 0) : 0,
-        net_payable: s.has_detraccion ? (s.net_payable ?? s.total) : s.total,
-      }))
+      const withDoc = withComputedFields(rows ?? [])
       // Suma directa sobre las filas que quedaron en el archivo (respeta los filtros aplicados,
       // incluidas o no las anuladas según "Estado venta") — no depende del resumen de tarjetas,
       // así la fila de totales siempre cuadra con lo que el usuario ve en las filas de arriba.
+      // "Total factura" suma el valor tal cual del documento (incluye notas de crédito en
+      // positivo); "Efecto neto" es la que da el neto real, porque net_effect ya excluye las
+      // notas de crédito (su reversión ya está reflejada en que la venta anulada no cuenta).
       const footerRow = COLS.map((col, i) => {
         if (i === 0) return 'TOTAL'
         if (!col.excelNumber) return ''
         return withDoc.reduce((sum, row) => sum + (Number(row[col.key as keyof typeof row]) || 0), 0)
       })
-      await exportTableToExcel<Sale & { doc_display?: string }>(
+      await exportTableToExcel<ReportSaleRow>(
         'Ventas',
         COLS,
         withDoc,
