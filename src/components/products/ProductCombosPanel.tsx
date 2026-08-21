@@ -14,6 +14,7 @@ import { ComboGroupsEditor } from '@/components/products/ComboGroupsEditor'
 import { formatAmountDisplay } from '@/utils/money'
 import { MODAL_FOOTER_SAFE } from '@/utils/safeAreaClasses'
 import { generateLocalProductCode } from '@/utils/productCode'
+import { PRODUCT_IGV_AFFECTATION_OPTIONS, isGravadoIgv } from '@/constants/igvAffectation'
 
 const emptyForm = () => ({
   name: '',
@@ -165,7 +166,7 @@ export function ProductCombosPanel({ branchId, categories = [] }: Props) {
         sale_price: Number(form.sale_price),
         category_id: form.category_id,
         igv_affectation_type: form.igv_affectation_type,
-        price_includes_igv: form.price_includes_igv,
+        price_includes_igv: isGravadoIgv(form.igv_affectation_type) ? form.price_includes_igv : false,
         // El combo no lleva stock propio: lo descuentan sus componentes, cada uno según
         // tenga o no control de inventario.
         manage_stock: false,
@@ -396,6 +397,50 @@ export function ProductCombosPanel({ branchId, categories = [] }: Props) {
                           : 'Sin ahorro frente a comprarlos sueltos'}
                       </span>
                     </div>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-stone-200 p-3 space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-stone-700 mb-1">
+                      Afectación IGV
+                    </label>
+                    <select
+                      value={form.igv_affectation_type}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        setForm((f) => ({
+                          ...f,
+                          igv_affectation_type: v,
+                          price_includes_igv: isGravadoIgv(v) ? f.price_includes_igv : false,
+                        }))
+                      }}
+                      className="w-full px-3 py-2 rounded-lg border border-stone-200 text-sm bg-white"
+                    >
+                      {PRODUCT_IGV_AFFECTATION_OPTIONS.map((t) => (
+                        <option key={t.code} value={t.code}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-xs text-stone-500">
+                      Cómo se declara el combo ante SUNAT (una sola línea, no la de sus componentes).
+                    </p>
+                  </div>
+                  {isGravadoIgv(form.igv_affectation_type) && (
+                    <label className="flex items-center justify-between gap-3 cursor-pointer">
+                      <span className="text-sm text-stone-700">El precio incluye IGV</span>
+                      <div
+                        onClick={() =>
+                          setForm((f) => ({ ...f, price_includes_igv: !f.price_includes_igv }))
+                        }
+                        className={`w-11 h-6 shrink-0 rounded-full transition-colors ${form.price_includes_igv ? 'bg-primary-600' : 'bg-stone-300'}`}
+                      >
+                        <div
+                          className={`w-5 h-5 bg-white rounded-full shadow mt-0.5 transition-transform ${form.price_includes_igv ? 'translate-x-5 ml-0.5' : 'translate-x-0.5'}`}
+                        />
+                      </div>
+                    </label>
                   )}
                 </div>
 
