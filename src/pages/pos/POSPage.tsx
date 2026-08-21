@@ -737,6 +737,8 @@ function POSContent() {
       setPayments([])
       setCheckoutDiscountValue(0)
       setCheckoutDiscountMode('percent')
+      // La cámara del escáner quedaba abierta detrás del recibo tras generar la venta.
+      barcodeScan.closeScanner()
     } catch (e: unknown) {
       toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error procesando venta')
     } finally { setProcessing(false) }
