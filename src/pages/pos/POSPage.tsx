@@ -34,6 +34,7 @@ import { formatMoney, formatSaleDocumentNumber } from '@/utils/format'
 import { docTypeShortLabel } from '@/utils/paymentMethodVisual'
 import { BranchSeriesEmptyState } from '@/components/pos/BranchSeriesEmptyState'
 import { pickVariosContactId, isFacturaDocType, checkoutContactIsValid, isVariosContact } from '@/utils/checkoutContacts'
+import { pickDefaultCheckoutSeries } from '@/utils/posCheckoutSeries'
 import { paidCoversTotal, roundSunat, sumMoney } from '@/utils/money'
 import type { CheckoutDiscountMode } from '@/utils/checkoutDiscount'
 import { buildTaxConfigFromSunat } from '@/constants/tax'
@@ -212,9 +213,7 @@ function POSContent() {
       setSeriesId(0)
       return
     }
-    const def =
-      checkoutSeries.find((s) => docTypeToSunatCode(s.doc_type) === '00' || (s.sunat_code ?? '').trim() === '00') ??
-      checkoutSeries[0]
+    const def = pickDefaultCheckoutSeries(checkoutSeries)
     if (def) {
       setSeriesId(def.id)
       setDocType(String(def.doc_type || '').trim() || 'NOTA DE VENTA')
@@ -543,10 +542,8 @@ function POSContent() {
     [selectedSeries],
   )
 
-  const resetCheckoutToNotaVenta = useCallback(() => {
-    const def =
-      checkoutSeries.find((s) => docTypeToSunatCode(s.doc_type) === '00' || (s.sunat_code ?? '').trim() === '00') ??
-      null
+  const resetCheckoutToDefaultDocType = useCallback(() => {
+    const def = pickDefaultCheckoutSeries(checkoutSeries) ?? null
     if (def) {
       setSeriesId(def.id)
       setDocType(String(def.doc_type || '').trim() || 'NOTA DE VENTA')
@@ -559,7 +556,7 @@ function POSContent() {
   const openCheckout = () => {
     if (branchSeriesMissing) return
     if (cart.length === 0) return
-    resetCheckoutToNotaVenta()
+    resetCheckoutToDefaultDocType()
     const cashCode = defaultOperationalPaymentCode(paymentMethods)
     setPayments([{ method: cashCode, amount: roundSunat(payableTotal), reference: '' }])
     setCheckoutOpen(true)
@@ -735,7 +732,7 @@ function POSContent() {
       const docNum = formatSaleDocumentNumber(sale.series, sale.number)
       toast.success(`${docLabel} ${docNum} registrada`)
       setCheckoutOpen(false)
-      resetCheckoutToNotaVenta()
+      resetCheckoutToDefaultDocType()
       setCart([])
       setPayments([])
       setCheckoutDiscountValue(0)

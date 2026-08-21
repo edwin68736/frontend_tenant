@@ -1,7 +1,7 @@
 ﻿import { useEffect, useMemo } from 'react'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import type { PosSeriesRow } from '@/utils/posCheckoutSeries'
-import { filterPosCheckoutSeriesForModal, resolveSeriesSunatCode } from '@/utils/posCheckoutSeries'
+import { filterPosCheckoutSeriesForModal, resolveSeriesSunatCode, pickDefaultCheckoutSeries } from '@/utils/posCheckoutSeries'
 import { docTypeShortLabel, normalizeDocTypeKey } from '@/utils/paymentMethodVisual'
 import {
   contactOptionLabel,
@@ -109,8 +109,7 @@ export function CheckoutCartBillingFields({
     const groupExists = checkoutSeries.some((s) => normalizeDocTypeKey(s.doc_type) === selectedDocKey)
     const seriesValid = checkoutSeries.some((s) => s.id === seriesId)
     if (groupExists && seriesValid) return
-    const preferred =
-      checkoutSeries.find((s) => resolveSeriesSunatCode(s) === '00') ?? checkoutSeries[0]
+    const preferred = pickDefaultCheckoutSeries(checkoutSeries)
     if (preferred) {
       onSeriesChange(preferred.id, String(preferred.doc_type || '').trim() || 'NOTA DE VENTA')
     }

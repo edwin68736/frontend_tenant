@@ -7,6 +7,8 @@ export type PosSeriesRow = {
   doc_type: string
   sunat_code?: string
   active?: boolean
+  /** Comprobante preferido de la sucursal (Ajustes → Series). A lo sumo una serie lo trae en true. */
+  is_default?: boolean
 }
 
 function docTypeToSunatCode(docType: string): string {
@@ -19,6 +21,19 @@ function docTypeToSunatCode(docType: string): string {
 
 export function resolveSeriesSunatCode(s: PosSeriesRow): string {
   return (s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)
+}
+
+/**
+ * Comprobante inicial al abrir un cobro: el marcado como is_default en Ajustes → Series de esa
+ * sucursal; si ninguno lo trae (tenant sin migrar aún, o sucursal sin default elegido), cae a
+ * Nota de venta ('00') como antes, y por último al primero de la lista.
+ */
+export function pickDefaultCheckoutSeries<T extends PosSeriesRow>(list: T[]): T | undefined {
+  return (
+    list.find((s) => s.is_default) ??
+    list.find((s) => resolveSeriesSunatCode(s) === '00') ??
+    list[0]
+  )
 }
 
 /** Filtra series según facturación electrónica habilitada y régimen (canFactura). */

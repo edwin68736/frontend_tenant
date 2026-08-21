@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Pencil, Trash2, FileText, Lock } from 'lucide-react'
+import { Plus, Pencil, Trash2, FileText, Lock, Star } from 'lucide-react'
 import { companyService, type SeriesDocumentType, type SeriesRow } from '@/services/company.service'
 import { Modal } from '@/components/ui/Modal'
 import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
@@ -17,6 +17,7 @@ import {
   formatDocumentCode,
   groupSeriesByBranch,
   isInternalDocumentOnlySeries,
+  isDefaultEligibleSeries,
 } from '@/utils/seriesDocumentForm'
 
 export default function CompanySeriesPage() {
@@ -33,6 +34,7 @@ export default function CompanySeriesPage() {
   const [form, setForm] = useState<SeriesFormState>(emptySeriesForm())
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [settingDefaultId, setSettingDefaultId] = useState<number | null>(null)
   const [activeBranchId, setActiveBranchId] = useState(0)
 
   const grouped = groupSeriesByBranch(series, branches)
@@ -150,6 +152,22 @@ export default function CompanySeriesPage() {
       toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleSetDefault = async (s: SeriesRow) => {
+    if (s.is_default || settingDefaultId) return
+    setSettingDefaultId(s.id)
+    try {
+      await companyService.setDefaultSeries(s.id)
+      toast.success(`${s.doc_type} marcado como comprobante por defecto`)
+      invalidateCheckoutSeries(s.branch_id)
+      setLoading(true)
+      load()
+    } catch (e: unknown) {
+      toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error al marcar por defecto')
+    } finally {
+      setSettingDefaultId(null)
     }
   }
 
@@ -278,7 +296,7 @@ export default function CompanySeriesPage() {
                 <table className="w-full text-sm min-w-[560px]">
                   <thead className="bg-gray-50 border-b border-gray-100">
                     <tr>
-                      {['Categoría', 'Tipo', 'Serie', 'N° actual', 'Cód. doc.', 'Estado', ''].map((h) => (
+                      {['Categoría', 'Tipo', 'Serie', 'N° actual', 'Cód. doc.', 'Por defecto', 'Estado', ''].map((h) => (
                         <th key={h || 'actions'} className="text-left px-4 py-2 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">
                           {h}
                         </th>
@@ -293,6 +311,27 @@ export default function CompanySeriesPage() {
                         <td className="px-4 py-2 font-mono font-bold text-[rgb(var(--p700))]">{s.series}</td>
                         <td className="px-4 py-2 tabular-nums text-gray-600">{s.current_number}</td>
                         <td className="px-4 py-2 font-mono text-gray-600">{formatDocumentCode(s)}</td>
+                        <td className="px-4 py-2">
+                          {!isDefaultEligibleSeries(s) ? (
+                            <span className="text-xs text-gray-300">—</span>
+                          ) : s.is_default ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-100">
+                              <Star size={11} className="fill-current" />
+                              Por defecto
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={!s.active || settingDefaultId === s.id}
+                              onClick={() => void handleSetDefault(s)}
+                              title={s.active ? 'Marcar como comprobante por defecto de esta sucursal' : 'Active la serie primero'}
+                              className="inline-flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-amber-700 disabled:opacity-40 disabled:hover:text-gray-400"
+                            >
+                              <Star size={13} />
+                              Marcar
+                            </button>
+                          )}
+                        </td>
                         <td className="px-4 py-2">
                           {s.locked ? (
                             <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-100">

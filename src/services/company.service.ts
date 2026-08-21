@@ -121,6 +121,8 @@ export interface SeriesRow {
   category: string
   active?: boolean
   sunat_code?: string
+  /** Comprobante preferido al iniciar una venta en esta sucursal (solo nota de venta/boleta/factura). */
+  is_default?: boolean
   locked?: boolean
   can_delete?: boolean
   usage_table?: string
@@ -284,7 +286,7 @@ export const companyService = {
       types: r.data.data ?? [],
       categoryLabels: r.data.category_labels ?? {},
     })),
-  createSeries: (data: { branch_id: number; doc_type: string; series: string; correlative?: number }) =>
+  createSeries: (data: { branch_id: number; doc_type: string; series: string; correlative?: number; is_default?: boolean }) =>
     api.post('/api/company/series', data).then((r) => r.data),
   updateSeries: (
     id: number,
@@ -293,7 +295,10 @@ export const companyService = {
       active: boolean
       doc_type: string
       correlative?: number
+      is_default?: boolean
     },
   ) => api.put(`/api/company/series/${id}`, data).then((r) => r.data),
+  /** Atajo de un clic: marca esta serie como el comprobante por defecto de su sucursal. */
+  setDefaultSeries: (id: number) => api.put(`/api/company/series/${id}/default`).then((r) => r.data),
   deleteSeries: (id: number) => api.delete(`/api/company/series/${id}`).then((r) => r.data),
 }
