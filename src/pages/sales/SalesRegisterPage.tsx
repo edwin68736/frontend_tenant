@@ -1478,6 +1478,8 @@ function SalesRegisterContent({
       setPrintData(sale.print_data ?? null)
       setLastSale({ id: sale.id, number: sale.number, total: sale.total })
       setReceiptModalOpen(true)
+      // La cámara del escáner quedaba abierta detrás del recibo tras generar la venta.
+      barcodeScan.closeScanner()
     } catch (e: any) {
       toast.error(e.response?.data?.error ?? 'Error al registrar venta')
     } finally {
