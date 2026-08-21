@@ -560,6 +560,8 @@ function POSContent() {
     const cashCode = defaultOperationalPaymentCode(paymentMethods)
     setPayments([{ method: cashCode, amount: roundSunat(payableTotal), reference: '' }])
     setCheckoutOpen(true)
+    // Al pasar a cobrar ya no se va a seguir escaneando: cerrar la cámara si estaba abierta.
+    barcodeScan.closeScanner()
   }
 
   useEffect(() => {
