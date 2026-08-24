@@ -398,11 +398,11 @@ function BillingContent() {
         setPage(1)
         load()
       } else {
-        toast.error('Error al anular')
+        toast.error('Error al generar la nota de crédito')
       }
     } catch (e: unknown) {
       const err = e as { response?: { data?: { error?: string } } }
-      toast.error(err.response?.data?.error ?? 'Error al anular con nota de crédito')
+      toast.error(err.response?.data?.error ?? 'Error al generar la nota de crédito')
     } finally {
       setVoidNcSubmitting(false)
     }
@@ -643,7 +643,7 @@ function BillingContent() {
               ? 'Facturas y boletas de venta.'
               : noteKind === 'debit'
                 ? 'Notas de débito (ajustes que aumentan el valor de un comprobante)'
-                : 'Notas de crédito (anulaciones y ajustes que disminuyen el valor)'}
+                : 'Notas de crédito (ajustes que disminuyen el valor de un comprobante)'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -981,7 +981,7 @@ function BillingContent() {
                         {
                           hidden: !(viewMode === 'invoices' && canVoidWithCreditNote(s)),
                           icon: <FileSignature size={14} className="text-orange-600" />,
-                          label: 'Anular con nota de crédito',
+                          label: 'Emitir nota de crédito',
                           danger: true,
                           disabled: voidNcSubmitting && voidNcTarget?.id === s.id,
                           onClick: () => openVoidNcModal(s),
