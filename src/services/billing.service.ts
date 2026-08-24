@@ -92,9 +92,25 @@ export const billingService = {
       .post(`/api/billing/reissue/${saleId}`, body, { timeout: MANUAL_BILLING_TIMEOUT_MS })
       .then(r => r.data),
 
-  /** Anular la venta generando y enviando una nota de crédito a SUNAT; luego se anula la venta original. */
-  voidWithCreditNote: (saleId: number, reason: string): Promise<{ success: boolean; message?: string; nc_sale?: unknown; invoice?: unknown }> =>
-    api.post(`/api/billing/void-with-credit-note/${saleId}`, { reason }).then(r => r.data),
+  /**
+   * Anular la venta generando y enviando una nota de crédito a SUNAT. reasonCode es el código
+   * del catálogo SUNAT 09 (CREDIT_NOTE_REASONS); solo "01" (anulación de la operación) anula
+   * la venta original al aceptarse — otro motivo registra la nota sin tocar la venta.
+   */
+  voidWithCreditNote: (
+    saleId: number,
+    reason: string,
+    reasonCode: string,
+  ): Promise<{ success: boolean; message?: string; nc_sale?: unknown; invoice?: unknown }> =>
+    api.post(`/api/billing/void-with-credit-note/${saleId}`, { reason, reason_code: reasonCode }).then(r => r.data),
+
+  /** Emite una nota de débito (08) sobre una factura/boleta aceptada. reasonCode: catálogo SUNAT 10. */
+  createDebitNote: (
+    saleId: number,
+    reason: string,
+    reasonCode: string,
+  ): Promise<{ success: boolean; message?: string; nd_sale?: unknown; invoice?: unknown }> =>
+    api.post(`/api/billing/debit-notes/${saleId}`, { reason, reason_code: reasonCode }).then(r => r.data),
 
   getInvoice: (saleId: number): Promise<InvoiceInfo> =>
     api.get(`/api/billing/invoice/${saleId}`).then(r => r.data),

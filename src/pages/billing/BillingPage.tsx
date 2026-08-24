@@ -59,6 +59,7 @@ import {
   canShowXmlGenerated,
   canShowXmlSent,
 } from '@/constants/billingStatus'
+import { CREDIT_NOTE_REASONS, DEBIT_NOTE_REASONS, CREDIT_NOTE_FULL_AMOUNT_ONLY_CODES } from '@/constants/sunatnote'
 
 const STATUS_COLORS = BILLING_STATUS_COLORS
 const STATUS_LABELS = BILLING_STATUS_LABELS
@@ -114,7 +115,15 @@ function BillingContent() {
   const [voidNcOpen, setVoidNcOpen] = useState(false)
   const [voidNcTarget, setVoidNcTarget] = useState<{ id: number; series: string; number: string } | null>(null)
   const [voidNcReason, setVoidNcReason] = useState('')
+  const [voidNcReasonCode, setVoidNcReasonCode] = useState('01')
   const [voidNcSubmitting, setVoidNcSubmitting] = useState(false)
+  const [debitNoteOpen, setDebitNoteOpen] = useState(false)
+  const [debitNoteTarget, setDebitNoteTarget] = useState<{ id: number; series: string; number: string } | null>(null)
+  const [debitNoteReason, setDebitNoteReason] = useState('')
+  const [debitNoteReasonCode, setDebitNoteReasonCode] = useState('02')
+  const [debitNoteSubmitting, setDebitNoteSubmitting] = useState(false)
+  // Dentro de la pestaña "Notas de crédito/débito": cuál de las dos se está listando.
+  const [noteKind, setNoteKind] = useState<'credit' | 'debit'>('credit')
   const [waBusyId, setWaBusyId] = useState<number | null>(null)
   const [waMenu, setWaMenu] = useState<{ saleId: number; top: number; left: number } | null>(null)
   const [detail, setDetail] = useState<SaleDetail | null>(null)
@@ -162,7 +171,7 @@ function BillingContent() {
     setLoading(true)
     if (viewMode === 'credit_notes') {
       return salesService.list({
-        doc_type: 'NOTA_CREDITO',
+        doc_type: noteKind === 'debit' ? 'NOTA_DEBITO' : 'NOTA_CREDITO',
         q: searchTerm.trim() || undefined,
         from: dateRange.from || undefined,
         to: dateRange.to || undefined,
@@ -224,7 +233,7 @@ function BillingContent() {
     if (status && ['pending', 'error', 'rejected', 'sent', 'accepted'].includes(status)) setFilterStatus(status)
   }, [searchParams])
 
-  useEffect(() => { load() }, [viewMode, filterStatus, searchTerm, dateRange.from, dateRange.to, page, perPage])
+  useEffect(() => { load() }, [viewMode, noteKind, filterStatus, searchTerm, dateRange.from, dateRange.to, page, perPage])
 
   useEffect(() => {
     const id = (location.state as { openSaleId?: number } | null)?.openSaleId
@@ -370,24 +379,22 @@ function BillingContent() {
     if (!canVoidWithCreditNote(sale)) return
     setVoidNcTarget({ id: sale.id, series: sale.series, number: sale.number })
     setVoidNcReason('')
+    setVoidNcReasonCode('01')
     setVoidNcOpen(true)
   }
 
   const submitVoidWithCreditNote = async () => {
     if (!voidNcTarget) return
-    if (!voidNcReason.trim()) {
-      toast.error('Indique el motivo de anulación')
-      return
-    }
     setVoidNcSubmitting(true)
     try {
-      const res = await billingService.voidWithCreditNote(voidNcTarget.id, voidNcReason.trim())
+      const res = await billingService.voidWithCreditNote(voidNcTarget.id, voidNcReason.trim(), voidNcReasonCode)
       if (res.success) {
         toast.success(res.message ?? 'Nota de crédito encolada')
         setVoidNcOpen(false)
         setVoidNcTarget(null)
         setDetail((d) => (d?.sale.id === voidNcTarget.id ? null : d))
         setViewMode('credit_notes')
+        setNoteKind('credit')
         setPage(1)
         load()
       } else {
@@ -398,6 +405,38 @@ function BillingContent() {
       toast.error(err.response?.data?.error ?? 'Error al anular con nota de crédito')
     } finally {
       setVoidNcSubmitting(false)
+    }
+  }
+
+  const openDebitNoteModal = (sale: Sale) => {
+    if (!canVoidWithCreditNote(sale)) return
+    setDebitNoteTarget({ id: sale.id, series: sale.series, number: sale.number })
+    setDebitNoteReason('')
+    setDebitNoteReasonCode('02')
+    setDebitNoteOpen(true)
+  }
+
+  const submitCreateDebitNote = async () => {
+    if (!debitNoteTarget) return
+    setDebitNoteSubmitting(true)
+    try {
+      const res = await billingService.createDebitNote(debitNoteTarget.id, debitNoteReason.trim(), debitNoteReasonCode)
+      if (res.success) {
+        toast.success(res.message ?? 'Nota de débito encolada')
+        setDebitNoteOpen(false)
+        setDebitNoteTarget(null)
+        setViewMode('credit_notes')
+        setNoteKind('debit')
+        setPage(1)
+        load()
+      } else {
+        toast.error('Error al generar la nota de débito')
+      }
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { error?: string } } }
+      toast.error(err.response?.data?.error ?? 'Error al generar la nota de débito')
+    } finally {
+      setDebitNoteSubmitting(false)
     }
   }
 
@@ -425,7 +464,7 @@ function BillingContent() {
         toast.error('No hay datos para generar el comprobante (misma base que el PDF).', { id: tid })
         return
       }
-      const label = viewMode === 'credit_notes' ? 'Nota de crédito' : 'Comprobante'
+      const label = viewMode === 'credit_notes' ? `Nota de ${noteKind === 'debit' ? 'débito' : 'crédito'}` : 'Comprobante'
       await shareReceiptPngViaWhatsApp({
         printData: d.print_data,
         format,
@@ -507,7 +546,7 @@ function BillingContent() {
           <h2 className="text-lg font-bold text-gray-800">Resúmenes y comunicaciones de baja</h2>
           <div className="flex items-center gap-2">
             <button onClick={() => { setViewMode('invoices'); setPage(1) }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium bg-white border border-gray-200 text-gray-600 hover:border-[rgb(var(--p300))]">Facturas y boletas</button>
-            <button onClick={() => { setViewMode('credit_notes'); setPage(1) }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium bg-white border border-gray-200 text-gray-600 hover:border-[rgb(var(--p300))]"><FileSignature size={16} /> Notas de crédito</button>
+            <button onClick={() => { setViewMode('credit_notes'); setPage(1) }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium bg-white border border-gray-200 text-gray-600 hover:border-[rgb(var(--p300))]"><FileSignature size={16} /> Notas de crédito/débito</button>
             <button onClick={() => { setViewMode('summaries_voided') }} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium bg-[rgb(var(--p600))] text-white"><FileBarChart size={16} /> Resúmenes y bajas</button>
           </div>
         </div>
@@ -602,7 +641,9 @@ function BillingContent() {
           <p className="text-sm text-gray-500">
             {viewMode === 'invoices'
               ? 'Facturas y boletas de venta.'
-              : 'Notas de crédito (anulaciones)'}
+              : noteKind === 'debit'
+                ? 'Notas de débito (ajustes que aumentan el valor de un comprobante)'
+                : 'Notas de crédito (anulaciones y ajustes que disminuyen el valor)'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -616,7 +657,7 @@ function BillingContent() {
             onClick={() => { setViewMode('credit_notes'); setPage(1) }}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium ${viewMode === 'credit_notes' ? 'bg-[rgb(var(--p600))] text-white' : 'bg-white border border-gray-200 text-gray-600 hover:border-[rgb(var(--p300))]'}`}
           >
-            <FileSignature size={16} /> Notas de crédito
+            <FileSignature size={16} /> Notas de crédito/débito
           </button>
           <button
             onClick={() => { setViewMode('summaries_voided'); setPage(1) }}
@@ -629,6 +670,25 @@ function BillingContent() {
           </button>
         </div>
       </div>
+
+      {viewMode === 'credit_notes' && (
+        <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+          <button
+            type="button"
+            onClick={() => { setNoteKind('credit'); setPage(1) }}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium ${noteKind === 'credit' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            Crédito
+          </button>
+          <button
+            type="button"
+            onClick={() => { setNoteKind('debit'); setPage(1) }}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium ${noteKind === 'debit' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+          >
+            Débito
+          </button>
+        </div>
+      )}
 
       {/* Filtros */}
       <div className="flex gap-2 flex-wrap items-center">
@@ -927,6 +987,13 @@ function BillingContent() {
                           onClick: () => openVoidNcModal(s),
                         },
                         {
+                          hidden: !(viewMode === 'invoices' && canVoidWithCreditNote(s)),
+                          icon: <FileSignature size={14} className="text-blue-600" />,
+                          label: 'Emitir nota de débito',
+                          disabled: debitNoteSubmitting && debitNoteTarget?.id === s.id,
+                          onClick: () => openDebitNoteModal(s),
+                        },
+                        {
                           hidden: !(viewMode === 'invoices' && bs === 'accepted' && !isSaleCancelled(s)),
                           icon: <Truck size={14} className="text-emerald-600" />,
                           label: 'Generar guía de remisión',
@@ -969,7 +1036,9 @@ function BillingContent() {
         </div>
         {!loading && sales.length === 0 && (
           <div className="text-center py-10 text-gray-400 text-sm">
-            {viewMode === 'credit_notes' ? 'Sin notas de crédito para este filtro' : 'Sin comprobantes para este filtro'}
+            {viewMode === 'credit_notes'
+              ? `Sin notas de ${noteKind === 'debit' ? 'débito' : 'crédito'} para este filtro`
+              : 'Sin comprobantes para este filtro'}
           </div>
         )}
       </div>
@@ -978,7 +1047,8 @@ function BillingContent() {
       {total > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 py-2 px-1">
           <p className="text-sm text-gray-600">
-            Mostrando {(page - 1) * perPage + 1}-{Math.min(page * perPage, total)} de {total} {viewMode === 'credit_notes' ? 'notas de crédito' : 'comprobantes'}
+            Mostrando {(page - 1) * perPage + 1}-{Math.min(page * perPage, total)} de {total}{' '}
+            {viewMode === 'credit_notes' ? `notas de ${noteKind === 'debit' ? 'débito' : 'crédito'}` : 'comprobantes'}
           </p>
           <div className="flex items-center gap-2">
             <button
@@ -1278,13 +1348,13 @@ function BillingContent() {
         open={documentViewerOpen}
         onClose={closeDocumentViewer}
         src={documentViewerUrl}
-        title={viewMode === 'credit_notes' ? 'Nota de crédito (PDF)' : 'Comprobante PDF'}
+        title={viewMode === 'credit_notes' ? `Nota de ${noteKind === 'debit' ? 'débito' : 'crédito'} (PDF)` : 'Comprobante PDF'}
         downloadName={documentViewerName ?? undefined}
       />
 
       <Modal open={voidNcOpen} onClose={() => !voidNcSubmitting && setVoidNcOpen(false)} contentClassName="max-w-md">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold text-gray-800">Anular con nota de crédito</h3>
+          <h3 className="font-bold text-gray-800">Generar nota de crédito</h3>
           <button
             type="button"
             onClick={() => setVoidNcOpen(false)}
@@ -1302,15 +1372,33 @@ function BillingContent() {
             </span>
           </p>
         )}
-        <p className="text-sm text-gray-600 mb-3">
-          El sistema tomará los datos del comprobante aceptado por SUNAT y generará la nota de crédito automáticamente.
-        </p>
-        <label className="block text-xs font-medium text-gray-600 mb-1">Motivo de anulación (SUNAT) *</label>
+        <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de nota (SUNAT) *</label>
+        <select
+          value={voidNcReasonCode}
+          onChange={(e) => setVoidNcReasonCode(e.target.value)}
+          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm mb-2"
+          disabled={voidNcSubmitting}
+        >
+          {CREDIT_NOTE_REASONS.map((r) => (
+            <option key={r.code} value={r.code}>{r.code} - {r.label}</option>
+          ))}
+        </select>
+        {voidNcReasonCode === '01' ? (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+            Al aceptarse en SUNAT, este motivo anula el comprobante completo: se repone el 100% del stock y queda una devolución pendiente por el total.
+          </p>
+        ) : (
+          <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-3">
+            Este motivo registra la nota sin anular el comprobante ni tocar el stock — el sistema sigue emitiendo por el 100% del monto (las notas parciales por ítem son una mejora futura).
+            {CREDIT_NOTE_FULL_AMOUNT_ONLY_CODES.has(voidNcReasonCode) && ' Revise que el monto total sea el correcto antes de emitir.'}
+          </p>
+        )}
+        <label className="block text-xs font-medium text-gray-600 mb-1">Motivo (texto para SUNAT)</label>
         <textarea
           value={voidNcReason}
           onChange={(e) => setVoidNcReason(e.target.value)}
-          rows={3}
-          placeholder="Ej. Error en el monto, devolución del producto…"
+          rows={2}
+          placeholder={CREDIT_NOTE_REASONS.find((r) => r.code === voidNcReasonCode)?.label ?? ''}
           className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none mb-4"
           disabled={voidNcSubmitting}
         />
@@ -1321,6 +1409,59 @@ function BillingContent() {
           className="w-full py-2.5 bg-orange-600 text-white rounded-xl text-sm font-semibold hover:bg-orange-700 disabled:opacity-50"
         >
           {voidNcSubmitting ? 'Procesando…' : 'Generar nota de crédito'}
+        </button>
+      </Modal>
+
+      <Modal open={debitNoteOpen} onClose={() => !debitNoteSubmitting && setDebitNoteOpen(false)} contentClassName="max-w-md">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-bold text-gray-800">Generar nota de débito</h3>
+          <button
+            type="button"
+            onClick={() => setDebitNoteOpen(false)}
+            disabled={debitNoteSubmitting}
+            className="p-2 rounded-lg hover:bg-gray-100 disabled:opacity-50"
+          >
+            <X size={20} />
+          </button>
+        </div>
+        {debitNoteTarget && (
+          <p className="text-sm text-gray-600 mb-3">
+            Comprobante{' '}
+            <span className="font-mono font-semibold text-gray-800">
+              {formatSaleDocumentNumber(debitNoteTarget.series, debitNoteTarget.number)}
+            </span>
+          </p>
+        )}
+        <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de nota (SUNAT) *</label>
+        <select
+          value={debitNoteReasonCode}
+          onChange={(e) => setDebitNoteReasonCode(e.target.value)}
+          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm mb-2"
+          disabled={debitNoteSubmitting}
+        >
+          {DEBIT_NOTE_REASONS.map((r) => (
+            <option key={r.code} value={r.code}>{r.code} - {r.label}</option>
+          ))}
+        </select>
+        <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-3">
+          La nota de débito no afecta el stock ni el comprobante original — solo registra el ajuste que aumenta su valor. El sistema toma el mismo monto y los mismos ítems del comprobante original.
+        </p>
+        <label className="block text-xs font-medium text-gray-600 mb-1">Motivo (texto para SUNAT)</label>
+        <textarea
+          value={debitNoteReason}
+          onChange={(e) => setDebitNoteReason(e.target.value)}
+          rows={2}
+          placeholder={DEBIT_NOTE_REASONS.find((r) => r.code === debitNoteReasonCode)?.label ?? ''}
+          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none mb-4"
+          disabled={debitNoteSubmitting}
+        />
+        <button
+          type="button"
+          disabled={debitNoteSubmitting}
+          onClick={() => void submitCreateDebitNote()}
+          className="w-full py-2.5 bg-blue-600 text-white rounded-xl text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
+        >
+          {debitNoteSubmitting ? 'Procesando…' : 'Generar nota de débito'}
         </button>
       </Modal>
 
