@@ -224,7 +224,7 @@ function POSContent() {
     if (!session) return
     setLoadingProducts(true)
     productsService
-      .list(q, selectedCat ?? undefined, undefined, true, 1, POS_PRODUCTS_PER_PAGE)
+      .list(q, selectedCat ?? undefined, undefined, true, 1, POS_PRODUCTS_PER_PAGE, undefined, undefined, activeBranchId)
       .then(({ data, total }) => {
         setProducts(data ?? [])
         setProductsTotal(total ?? 0)
@@ -232,7 +232,7 @@ function POSContent() {
       })
       .catch(() => {})
       .finally(() => setLoadingProducts(false))
-  }, [q, selectedCat, session])
+  }, [q, selectedCat, session, activeBranchId])
 
   // ¿Quedan más productos por cargar? (paginación por scroll)
   const canLoadMoreProducts = products.length < productsTotal
@@ -243,7 +243,7 @@ function POSContent() {
     const next = productPage + 1
     setLoadingMoreProducts(true)
     productsService
-      .list(q, selectedCat ?? undefined, undefined, true, next, POS_PRODUCTS_PER_PAGE)
+      .list(q, selectedCat ?? undefined, undefined, true, next, POS_PRODUCTS_PER_PAGE, undefined, undefined, activeBranchId)
       .then(({ data }) => {
         setProducts((prev) => {
           const seen = new Set(prev.map((p) => p.id))
@@ -253,7 +253,7 @@ function POSContent() {
       })
       .catch(() => {})
       .finally(() => setLoadingMoreProducts(false))
-  }, [q, selectedCat, productPage, products.length, productsTotal, loadingProducts, loadingMoreProducts])
+  }, [q, selectedCat, productPage, products.length, productsTotal, loadingProducts, loadingMoreProducts, activeBranchId])
 
   // Observa un centinela al final de la lista: al acercarse, pide la siguiente página.
   useEffect(() => {

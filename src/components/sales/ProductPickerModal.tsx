@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Search, X } from 'lucide-react'
 import { productsService, getProductImageUrl, type Product } from '@/services/products.service'
+import { useBranch } from '@/contexts/BranchContext'
 import { formatSaleMoney } from '@/utils/formatMoney'
 import {
   productConfigurationBadge,
@@ -39,6 +40,7 @@ export function ProductPickerModal({
   const priceValue = (p: Product) =>
     variant === 'sale' ? Number(p.sale_price ?? 0) : Number(p.purchase_price ?? 0)
 
+  const { activeBranchId } = useBranch()
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [products, setProducts] = useState<Product[]>([])
@@ -48,7 +50,7 @@ export function ProductPickerModal({
   const loadProducts = () => {
     setLoading(true)
     productsService
-      .list(search, undefined, undefined, true, page, PER_PAGE)
+      .list(search, undefined, undefined, true, page, PER_PAGE, undefined, undefined, activeBranchId)
       .then(({ data, total: t }) => {
         setProducts(data ?? [])
         setTotal(t ?? 0)
@@ -59,7 +61,7 @@ export function ProductPickerModal({
 
   useEffect(() => {
     loadProducts()
-  }, [page, search])
+  }, [page, search, activeBranchId])
 
   const totalPages = Math.max(1, Math.ceil(total / PER_PAGE))
   const addedSet = new Set(addedProductIds)

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Plus, Pencil, ToggleLeft, ToggleRight, Search } from 'lucide-react'
 import { productsService, type Product, type Category, type CreateProductInput, type ModifierGroup } from '@/services/products.service'
+import { useBranch } from '@/contexts/BranchContext'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { SearchSelect, MIN_OPTIONS_FOR_SEARCH } from '@/components/ui/SearchSelect'
@@ -33,6 +34,7 @@ export default function RestaurantProductsPage() {
 }
 
 function RestaurantProductsContent() {
+  const { activeBranchId } = useBranch()
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
@@ -54,7 +56,7 @@ function RestaurantProductsContent() {
   const load = () => {
     setLoading(true)
     return Promise.all([
-    productsService.list(listSearchQuery, catFilter, true),
+    productsService.list(listSearchQuery, catFilter, true, undefined, undefined, undefined, undefined, undefined, activeBranchId),
     productsService.listCategories(),
     productsService.listModifierGroups(),
   ])
@@ -67,7 +69,7 @@ function RestaurantProductsContent() {
     .finally(() => setLoading(false))
   }
 
-  useEffect(() => { load() }, [listSearchQuery, catFilter])
+  useEffect(() => { load() }, [listSearchQuery, catFilter, activeBranchId])
 
   const openNew = () => { setEditing(null); setForm(empty()); setShow(true) }
   const openEdit = async (p: Product) => {
