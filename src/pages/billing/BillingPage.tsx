@@ -117,6 +117,9 @@ function BillingContent() {
   const [voidNcReason, setVoidNcReason] = useState('')
   const [voidNcReasonCode, setVoidNcReasonCode] = useState('01')
   const [voidNcSubmitting, setVoidNcSubmitting] = useState(false)
+  // true = acción rápida "Anular" del menú: motivo fijo en "01", sin mostrar el selector.
+  // false = "Nota de crédito": selector completo del catálogo SUNAT.
+  const [voidNcLockedToVoid, setVoidNcLockedToVoid] = useState(false)
   const [debitNoteOpen, setDebitNoteOpen] = useState(false)
   const [debitNoteTarget, setDebitNoteTarget] = useState<{ id: number; series: string; number: string } | null>(null)
   const [debitNoteReason, setDebitNoteReason] = useState('')
@@ -375,11 +378,12 @@ function BillingContent() {
     }
   }
 
-  const openVoidNcModal = (sale: Sale) => {
+  const openVoidNcModal = (sale: Sale, lockToVoid = false) => {
     if (!canVoidWithCreditNote(sale)) return
     setVoidNcTarget({ id: sale.id, series: sale.series, number: sale.number })
     setVoidNcReason('')
     setVoidNcReasonCode('01')
+    setVoidNcLockedToVoid(lockToVoid)
     setVoidNcOpen(true)
   }
 
@@ -980,23 +984,30 @@ function BillingContent() {
                         },
                         {
                           hidden: !(viewMode === 'invoices' && canVoidWithCreditNote(s)),
-                          icon: <FileSignature size={14} className="text-orange-600" />,
-                          label: 'Emitir nota de crédito',
+                          icon: <Ban size={14} className="text-red-600" />,
+                          label: 'Anular',
                           danger: true,
                           disabled: voidNcSubmitting && voidNcTarget?.id === s.id,
-                          onClick: () => openVoidNcModal(s),
+                          onClick: () => openVoidNcModal(s, true),
+                        },
+                        {
+                          hidden: !(viewMode === 'invoices' && canVoidWithCreditNote(s)),
+                          icon: <FileSignature size={14} className="text-orange-600" />,
+                          label: 'Nota de crédito',
+                          disabled: voidNcSubmitting && voidNcTarget?.id === s.id,
+                          onClick: () => openVoidNcModal(s, false),
                         },
                         {
                           hidden: !(viewMode === 'invoices' && canVoidWithCreditNote(s)),
                           icon: <FileSignature size={14} className="text-blue-600" />,
-                          label: 'Emitir nota de débito',
+                          label: 'Nota de débito',
                           disabled: debitNoteSubmitting && debitNoteTarget?.id === s.id,
                           onClick: () => openDebitNoteModal(s),
                         },
                         {
                           hidden: !(viewMode === 'invoices' && bs === 'accepted' && !isSaleCancelled(s)),
                           icon: <Truck size={14} className="text-emerald-600" />,
-                          label: 'Generar guía de remisión',
+                          label: 'Guía de remisión',
                           disabled: guiaLoadingSaleId === s.id,
                           onClick: () => void openGuiaFromSale(s.id),
                         },
@@ -1354,7 +1365,7 @@ function BillingContent() {
 
       <Modal open={voidNcOpen} onClose={() => !voidNcSubmitting && setVoidNcOpen(false)} contentClassName="max-w-md">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-bold text-gray-800">Generar nota de crédito</h3>
+          <h3 className="font-bold text-gray-800">{voidNcLockedToVoid ? 'Anular comprobante' : 'Generar nota de crédito'}</h3>
           <button
             type="button"
             onClick={() => setVoidNcOpen(false)}
@@ -1372,26 +1383,38 @@ function BillingContent() {
             </span>
           </p>
         )}
-        <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de nota (SUNAT) *</label>
-        <select
-          value={voidNcReasonCode}
-          onChange={(e) => setVoidNcReasonCode(e.target.value)}
-          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm mb-2"
-          disabled={voidNcSubmitting}
-        >
-          {CREDIT_NOTE_REASONS.map((r) => (
-            <option key={r.code} value={r.code}>{r.code} - {r.label}</option>
-          ))}
-        </select>
-        {voidNcReasonCode === '01' ? (
-          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
-            Al aceptarse en SUNAT, este motivo anula el comprobante completo: se repone el 100% del stock y queda una devolución pendiente por el total.
-          </p>
+        {voidNcLockedToVoid ? (
+          <>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de nota (SUNAT)</label>
+            <p className="text-sm text-gray-700 bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 mb-2">01 - Anulación de la operación</p>
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+              Al aceptarse en SUNAT, anula el comprobante completo: se repone el 100% del stock y queda una devolución pendiente por el total. Para otro motivo (descuento, ajuste, etc.), use "Nota de crédito" en vez de "Anular".
+            </p>
+          </>
         ) : (
-          <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-3">
-            Este motivo registra la nota sin anular el comprobante ni tocar el stock — el sistema sigue emitiendo por el 100% del monto (las notas parciales por ítem son una mejora futura).
-            {CREDIT_NOTE_FULL_AMOUNT_ONLY_CODES.has(voidNcReasonCode) && ' Revise que el monto total sea el correcto antes de emitir.'}
-          </p>
+          <>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de nota (SUNAT) *</label>
+            <select
+              value={voidNcReasonCode}
+              onChange={(e) => setVoidNcReasonCode(e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm mb-2"
+              disabled={voidNcSubmitting}
+            >
+              {CREDIT_NOTE_REASONS.map((r) => (
+                <option key={r.code} value={r.code}>{r.code} - {r.label}</option>
+              ))}
+            </select>
+            {voidNcReasonCode === '01' ? (
+              <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+                Al aceptarse en SUNAT, este motivo anula el comprobante completo: se repone el 100% del stock y queda una devolución pendiente por el total.
+              </p>
+            ) : (
+              <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-3">
+                Este motivo registra la nota sin anular el comprobante ni tocar el stock — el sistema sigue emitiendo por el 100% del monto (las notas parciales por ítem son una mejora futura).
+                {CREDIT_NOTE_FULL_AMOUNT_ONLY_CODES.has(voidNcReasonCode) && ' Revise que el monto total sea el correcto antes de emitir.'}
+              </p>
+            )}
+          </>
         )}
         <label className="block text-xs font-medium text-gray-600 mb-1">Motivo (texto para SUNAT)</label>
         <textarea
@@ -1406,9 +1429,9 @@ function BillingContent() {
           type="button"
           disabled={voidNcSubmitting}
           onClick={() => void submitVoidWithCreditNote()}
-          className="w-full py-2.5 bg-orange-600 text-white rounded-xl text-sm font-semibold hover:bg-orange-700 disabled:opacity-50"
+          className={`w-full py-2.5 text-white rounded-xl text-sm font-semibold disabled:opacity-50 ${voidNcLockedToVoid ? 'bg-red-600 hover:bg-red-700' : 'bg-orange-600 hover:bg-orange-700'}`}
         >
-          {voidNcSubmitting ? 'Procesando…' : 'Generar nota de crédito'}
+          {voidNcSubmitting ? 'Procesando…' : voidNcLockedToVoid ? 'Anular comprobante' : 'Generar nota de crédito'}
         </button>
       </Modal>
 
