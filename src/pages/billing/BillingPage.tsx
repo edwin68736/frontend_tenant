@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Send, Eye, RefreshCw, X, FileText, FileCode, Archive, Download, FileSignature, FileBarChart, Ban, Search, Ticket, FileDown, ChevronDown, Truck, Receipt, MoreVertical, CalendarClock } from 'lucide-react'
-import { salesService, type Sale, type SaleDetail } from '@/services/sales.service'
+import { salesService, type Sale, type SaleDetail, type SaleItem } from '@/services/sales.service'
 import { PrintDocButton } from '@/components/print/PrintDocButton'
 import { RowMenu } from '@/components/ui/RowMenu'
 import { billingService, type SunatSummary, type SunatVoided, type VoidedDetailInput, type InvoiceStatusResult } from '@/services/billing.service'
@@ -59,7 +59,7 @@ import {
   canShowXmlGenerated,
   canShowXmlSent,
 } from '@/constants/billingStatus'
-import { CREDIT_NOTE_REASONS, DEBIT_NOTE_REASONS, CREDIT_NOTE_FULL_AMOUNT_ONLY_CODES } from '@/constants/sunatnote'
+import { CREDIT_NOTE_REASONS, DEBIT_NOTE_REASONS, CREDIT_NOTE_PARTIAL_REASON_CODES } from '@/constants/sunatnote'
 
 const STATUS_COLORS = BILLING_STATUS_COLORS
 const STATUS_LABELS = BILLING_STATUS_LABELS
@@ -120,6 +120,12 @@ function BillingContent() {
   // true = acción rápida "Anular" del menú: motivo fijo en "01", sin mostrar el selector.
   // false = "Nota de crédito": selector completo del catálogo SUNAT.
   const [voidNcLockedToVoid, setVoidNcLockedToVoid] = useState(false)
+  // Ítems de la venta original y cantidad elegida a devolver por línea (Fase 2 — solo se
+  // pide cuando el motivo mueve bienes, ver CREDIT_NOTE_PARTIAL_REASON_CODES). 0/ausente = no
+  // incluida en la nota.
+  const [voidNcOrigItems, setVoidNcOrigItems] = useState<SaleItem[]>([])
+  const [voidNcItemsLoading, setVoidNcItemsLoading] = useState(false)
+  const [voidNcSelections, setVoidNcSelections] = useState<Record<number, number>>({})
   const [debitNoteOpen, setDebitNoteOpen] = useState(false)
   const [debitNoteTarget, setDebitNoteTarget] = useState<{ id: number; series: string; number: string } | null>(null)
   const [debitNoteReason, setDebitNoteReason] = useState('')
@@ -384,14 +390,48 @@ function BillingContent() {
     setVoidNcReason('')
     setVoidNcReasonCode('01')
     setVoidNcLockedToVoid(lockToVoid)
+    setVoidNcOrigItems([])
+    setVoidNcSelections({})
     setVoidNcOpen(true)
+    if (!lockToVoid) {
+      setVoidNcItemsLoading(true)
+      salesService
+        .get(sale.id)
+        .then((d) => setVoidNcOrigItems(d.items ?? []))
+        .catch(() => setVoidNcOrigItems([]))
+        .finally(() => setVoidNcItemsLoading(false))
+    }
+  }
+
+  const voidNcPartialMode = !voidNcLockedToVoid && CREDIT_NOTE_PARTIAL_REASON_CODES.has(voidNcReasonCode)
+
+  const toggleVoidNcItem = (item: SaleItem, checked: boolean) => {
+    setVoidNcSelections((prev) => {
+      const next = { ...prev }
+      if (checked) next[item.id] = item.quantity
+      else delete next[item.id]
+      return next
+    })
+  }
+
+  const setVoidNcItemQuantity = (itemId: number, qty: number) => {
+    setVoidNcSelections((prev) => ({ ...prev, [itemId]: qty }))
   }
 
   const submitVoidWithCreditNote = async () => {
     if (!voidNcTarget) return
+    const items = voidNcPartialMode
+      ? Object.entries(voidNcSelections)
+          .map(([id, quantity]) => ({ original_item_id: Number(id), quantity }))
+          .filter((s) => s.quantity > 0)
+      : []
+    if (voidNcPartialMode && items.length === 0) {
+      toast.error('Seleccione al menos un ítem para la nota parcial')
+      return
+    }
     setVoidNcSubmitting(true)
     try {
-      const res = await billingService.voidWithCreditNote(voidNcTarget.id, voidNcReason.trim(), voidNcReasonCode)
+      const res = await billingService.voidWithCreditNote(voidNcTarget.id, voidNcReason.trim(), voidNcReasonCode, items)
       if (res.success) {
         toast.success(res.message ?? 'Nota de crédito encolada')
         setVoidNcOpen(false)
@@ -1408,10 +1448,64 @@ function BillingContent() {
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
                 Al aceptarse en SUNAT, este motivo anula el comprobante completo: se repone el 100% del stock y queda una devolución pendiente por el total.
               </p>
+            ) : voidNcPartialMode ? (
+              <>
+                <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-2">
+                  Elija los ítems y cantidades que corresponden a este motivo — la nota se emite solo por esa parte, se repone stock solo de lo elegido y la devolución pendiente queda por ese monto (no el de la venta completa).
+                </p>
+                {voidNcItemsLoading ? (
+                  <p className="text-sm text-gray-500 mb-3">Cargando ítems…</p>
+                ) : voidNcOrigItems.length === 0 ? (
+                  <p className="text-sm text-gray-500 mb-3">No se encontraron ítems en el comprobante.</p>
+                ) : (
+                  <div className="border border-gray-200 rounded-xl overflow-hidden mb-3">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="w-8" />
+                          <th className="text-left px-2 py-1.5 font-semibold text-gray-500">Ítem</th>
+                          <th className="text-right px-2 py-1.5 font-semibold text-gray-500 w-16">Vendido</th>
+                          <th className="text-right px-2 py-1.5 font-semibold text-gray-500 w-20">Devuelve</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {voidNcOrigItems.map((it) => {
+                          const checked = it.id in voidNcSelections
+                          return (
+                            <tr key={it.id} className="border-t border-gray-100">
+                              <td className="px-2 py-1.5">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) => toggleVoidNcItem(it, e.target.checked)}
+                                  disabled={voidNcSubmitting}
+                                />
+                              </td>
+                              <td className="px-2 py-1.5 text-gray-700">{it.description}</td>
+                              <td className="px-2 py-1.5 text-right text-gray-500 tabular-nums">{it.quantity}</td>
+                              <td className="px-2 py-1.5 text-right">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={it.quantity}
+                                  step="any"
+                                  value={voidNcSelections[it.id] ?? ''}
+                                  onChange={(e) => setVoidNcItemQuantity(it.id, Math.min(Number(e.target.value) || 0, it.quantity))}
+                                  disabled={!checked || voidNcSubmitting}
+                                  className="w-16 border border-gray-200 rounded-lg px-1.5 py-1 text-right text-xs disabled:bg-gray-50 tabular-nums"
+                                />
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
             ) : (
               <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-3">
-                Este motivo registra la nota sin anular el comprobante ni tocar el stock — el sistema sigue emitiendo por el 100% del monto (las notas parciales por ítem son una mejora futura).
-                {CREDIT_NOTE_FULL_AMOUNT_ONLY_CODES.has(voidNcReasonCode) && ' Revise que el monto total sea el correcto antes de emitir.'}
+                Este motivo no mueve bienes — la nota registra el ajuste sin tocar la venta ni el stock, por el 100% del monto.
               </p>
             )}
           </>

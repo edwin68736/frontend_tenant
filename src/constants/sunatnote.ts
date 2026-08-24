@@ -33,10 +33,9 @@ export const DEBIT_NOTE_REASONS: NoteReason[] = [
 ]
 
 /**
- * Motivos de nota de crédito que anulan/devuelven la operación completa — hoy el sistema
- * siempre copia el 100% de la venta (ítems parciales es la Fase 2 de la propuesta), así que
- * elegir un motivo de descuento/ajuste parcial (04, 05, 07, 09, 10) emite una nota por el
- * monto total igual, aunque el motivo elegido diga "parcial". Se avisa en el formulario en
- * vez de ocultar esos códigos, para no limitar de más lo que ya está en el catálogo SUNAT.
+ * Motivos que mueven bienes concretos — espejo de partialCreditNoteReasonCodes en el backend
+ * (note_partial.go). Ahí el formulario pide elegir ítems y cantidades (Fase 2) en vez de
+ * copiar el 100% de la venta. El resto (02, 03, 11, 12, 13) no mueve mercadería: sigue
+ * copiando todo, sin selector.
  */
-export const CREDIT_NOTE_FULL_AMOUNT_ONLY_CODES = new Set(['04', '05', '07', '09', '10'])
+export const CREDIT_NOTE_PARTIAL_REASON_CODES = new Set(['04', '05', '06', '07', '08', '09', '10'])

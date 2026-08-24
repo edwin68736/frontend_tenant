@@ -60,6 +60,7 @@ export interface Sale {
 }
 
 export interface SaleItem {
+  id: number
   product_id: number
   code: string
   description: string
@@ -283,14 +284,21 @@ const emptySaleSummary = (): SaleListSummary => ({
   payment_totals: [],
 })
 
-/** Devolución de dinero que quedó sin registrar al anular una venta. */
+/**
+ * Devolución de dinero que quedó sin registrar: al anular una venta completa (source="sale",
+ * se aplica con applyPendingRefund) o el monto de una nota de crédito parcial ya aceptada por
+ * SUNAT (source="credit_note", se aplica con applyPendingNoteRefund).
+ */
 export interface PendingRefund {
-  cash_movement_id: number
+  source: 'sale' | 'credit_note'
+  cash_movement_id?: number
+  note_sale_id?: number
+  note_number?: string
   sale_id: number
   sale_number: string
   amount: number
   payment_method: string
-  original_session_id: number
+  original_session_id?: number
 }
 
 export const salesService = {
@@ -312,6 +320,14 @@ export const salesService = {
   applyPendingRefund: (cashMovementId: number, cashSessionId: number, reason: string) =>
     api.post('/api/sales/pending-refunds/apply', {
       cash_movement_id: cashMovementId,
+      cash_session_id: cashSessionId,
+      reason,
+    }),
+
+  /** Contraparte de applyPendingRefund para devoluciones de nota de crédito parcial. */
+  applyPendingNoteRefund: (noteSaleId: number, cashSessionId: number, reason: string) =>
+    api.post('/api/sales/pending-refunds/apply-note', {
+      note_sale_id: noteSaleId,
       cash_session_id: cashSessionId,
       reason,
     }),

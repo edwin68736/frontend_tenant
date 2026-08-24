@@ -69,18 +69,31 @@ type Props = {
  *
  * Si no hay nada pendiente el panel no se dibuja: no debe ocupar sitio en el día a día.
  */
+/** Clave estable por fila: cash_movement_id (source="sale") o note_sale_id (source="credit_note") — nunca ambos a la vez. */
+function rowKey(row: PendingRefund): string {
+  return `${row.source}-${row.cash_movement_id ?? row.note_sale_id}`
+}
+
 export function PendingRefundsPanel({ sessionId, branchId, onApplied }: Props) {
   const { rows, loading, total, reload: load } = usePendingRefunds(branchId)
-  const [applyingId, setApplyingId] = useState<number | null>(null)
+  const [applyingKey, setApplyingKey] = useState<string | null>(null)
 
   const apply = async (row: PendingRefund) => {
-    setApplyingId(row.cash_movement_id)
+    setApplyingKey(rowKey(row))
     try {
-      await salesService.applyPendingRefund(
-        row.cash_movement_id,
-        sessionId,
-        `Devolución por anulación de ${row.sale_number}`,
-      )
+      if (row.source === 'credit_note') {
+        await salesService.applyPendingNoteRefund(
+          row.note_sale_id ?? 0,
+          sessionId,
+          `Devolución por nota de crédito ${row.note_number ?? row.sale_number}`,
+        )
+      } else {
+        await salesService.applyPendingRefund(
+          row.cash_movement_id ?? 0,
+          sessionId,
+          `Devolución por anulación de ${row.sale_number}`,
+        )
+      }
       toast.success('Devolución registrada en caja')
       load()
       onApplied()
@@ -88,7 +101,7 @@ export function PendingRefundsPanel({ sessionId, branchId, onApplied }: Props) {
       const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error
       toast.error(msg ?? 'No se pudo registrar la devolución')
     } finally {
-      setApplyingId(null)
+      setApplyingKey(null)
     }
   }
 
@@ -110,13 +123,15 @@ export function PendingRefundsPanel({ sessionId, branchId, onApplied }: Props) {
       <ul className="p-3 sm:p-4 space-y-2">
         {rows.map(row => (
           <li
-            key={row.cash_movement_id}
+            key={rowKey(row)}
             className="flex flex-wrap items-center gap-2 bg-white rounded-xl px-3 py-2.5 border border-amber-100"
           >
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium text-gray-800 truncate">{row.sale_number}</p>
               <p className="text-xs text-gray-500">
-                {row.payment_method || 'efectivo'} · caja #{row.original_session_id} (cerrada)
+                {row.source === 'credit_note'
+                  ? `${row.payment_method || 'efectivo'} · nota de crédito parcial`
+                  : `${row.payment_method || 'efectivo'} · caja #${row.original_session_id} (cerrada)`}
               </p>
             </div>
             <span className="font-bold text-gray-900 tabular-nums">
@@ -125,10 +140,10 @@ export function PendingRefundsPanel({ sessionId, branchId, onApplied }: Props) {
             <button
               type="button"
               onClick={() => void apply(row)}
-              disabled={applyingId !== null}
+              disabled={applyingKey !== null}
               className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 disabled:opacity-50"
             >
-              {applyingId === row.cash_movement_id ? (
+              {applyingKey === rowKey(row) ? (
                 <Loader2 size={14} className="animate-spin" />
               ) : (
                 <Undo2 size={14} />
