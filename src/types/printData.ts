@@ -45,6 +45,50 @@ export interface PrintData {
   valid_until?: string
   /** Observaciones comerciales (cotización). */
   notes?: string
+  /** Guía de remisión (sunat_code 09/31): datos de traslado, ausente en el resto de documentos. */
+  despatch?: PrintDespatch
+}
+
+export interface PrintDespatch {
+  destinatario: PrintDespatchParty
+  motivo_traslado: string
+  /** "Transporte público" | "Transporte privado" */
+  modalidad: string
+  fecha_traslado?: string
+  peso_total: number
+  und_peso?: string
+  num_bultos?: number
+  partida: PrintDespatchAddress
+  llegada: PrintDespatchAddress
+  vehiculo?: PrintDespatchVehicle
+  choferes?: PrintDespatchDriver[]
+  transportista?: PrintDespatchParty
+  /** Documento relacionado (p. ej. la factura/boleta que dio origen a la guía). */
+  related_doc_label?: string
+  related_doc_number?: string
+}
+
+export interface PrintDespatchParty {
+  doc_type?: string
+  doc_number?: string
+  name?: string
+  address?: string
+}
+
+export interface PrintDespatchAddress {
+  ubigueo?: string
+  address?: string
+}
+
+export interface PrintDespatchVehicle {
+  placa: string
+}
+
+export interface PrintDespatchDriver {
+  doc_type?: string
+  doc_number?: string
+  name?: string
+  licencia?: string
 }
 
 export interface PrintFiscalContext {

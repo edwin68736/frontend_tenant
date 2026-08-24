@@ -3,7 +3,7 @@ import { getCompanyLogoForPrint } from '@/lib/companyConfig/store'
 import { jsPDF } from 'jspdf'
 import QRCode from 'qrcode'
 import type { PrintData } from '@/types/printData'
-import { getTipoDocIdentidadShortLabel, isElectronicSunatCode } from '@/constants/sunat'
+import { getTipoDocIdentidadShortLabel, isElectronicSunatCode, isGuiaSunatCode } from '@/constants/sunat'
 import {
   prepaymentDeductionDescription,
   receiptDocTypeTitle,
@@ -933,7 +933,184 @@ async function drawFooter(ctx: A4Ctx, data: PrintData, minY: number, opts?: { bo
   ctx.y = y
 }
 
+/** Título de sección en mayúscula, mismo estilo que "CUENTAS BANCARIAS:" en drawBankAccounts. */
+function drawSectionTitle(ctx: A4Ctx, title: string) {
+  const { doc } = ctx
+  ctx.y += 1.5
+  setFont(doc, FONT, 'bold')
+  doc.text(title, MARGIN, ctx.y)
+  ctx.y += LINE_H
+}
+
+/** drawA4Field + avance de línea, para no repetir `ctx.y += LINE_H` en cada campo. */
+function despatchField(ctx: A4Ctx, label: string, value: string, labelW = 46) {
+  drawA4Field(ctx, label, value, MARGIN, { labelW })
+  ctx.y += LINE_H
+}
+
+function drawDespatchInfoBlock(ctx: A4Ctx, data: PrintData) {
+  const d = data.despatch
+  if (!d) return
+
+  despatchField(ctx, 'FECHA DE EMISIÓN', formatDisplayDate(data.issue_date))
+
+  drawSectionTitle(ctx, 'DESTINATARIO')
+  const docLabel = getTipoDocIdentidadShortLabel(d.destinatario.doc_type || '6').toUpperCase()
+  despatchField(ctx, 'RAZÓN SOCIAL', d.destinatario.name || '—', 30)
+  despatchField(ctx, docLabel, d.destinatario.doc_number || '—', 30)
+  despatchField(ctx, 'DIRECCIÓN', d.destinatario.address || '—', 30)
+
+  if (d.related_doc_number) {
+    drawSectionTitle(ctx, 'DOCUMENTO RELACIONADO')
+    despatchField(ctx, d.related_doc_label || 'DOCUMENTO', d.related_doc_number, 30)
+  }
+
+  drawSectionTitle(ctx, 'ENVÍO')
+  despatchField(ctx, 'MOTIVO DE TRASLADO', d.motivo_traslado || '—', 46)
+  despatchField(ctx, 'MODALIDAD', d.modalidad || '—', 46)
+  despatchField(ctx, 'FECHA INICIO TRASLADO', d.fecha_traslado || '—', 46)
+  const peso = d.peso_total ? `${d.peso_total.toFixed(2)} ${d.und_peso || 'KGM'}` : '—'
+  despatchField(ctx, 'PESO BRUTO TOTAL', peso, 46)
+  if (d.num_bultos) despatchField(ctx, 'N° DE BULTOS', String(d.num_bultos), 46)
+  const partida = [d.partida.ubigueo, d.partida.address].filter(Boolean).join(' — ')
+  despatchField(ctx, 'PUNTO DE PARTIDA', partida || '—', 46)
+  const llegada = [d.llegada.ubigueo, d.llegada.address].filter(Boolean).join(' — ')
+  despatchField(ctx, 'PUNTO DE LLEGADA', llegada || '—', 46)
+
+  if (d.vehiculo || d.choferes?.length || d.transportista) {
+    drawSectionTitle(ctx, 'TRANSPORTE')
+    if (d.vehiculo?.placa) despatchField(ctx, 'VEHÍCULO', d.vehiculo.placa, 46)
+    for (const ch of d.choferes ?? []) {
+      const parts = [ch.name, ch.doc_number ? `DNI ${ch.doc_number}` : '', ch.licencia ? `Lic. ${ch.licencia}` : '']
+        .filter(Boolean)
+        .join(' — ')
+      despatchField(ctx, 'CONDUCTOR', parts || '—', 46)
+    }
+    if (d.transportista) {
+      const t = [d.transportista.name, d.transportista.doc_number].filter(Boolean).join(' — ')
+      despatchField(ctx, 'TRANSPORTISTA', t || '—', 46)
+    }
+  }
+
+  ctx.y += 3
+}
+
+/** Misma grilla visual que drawItemsTable, sin columnas de precio — una guía no factura montos. */
+function drawDespatchItemsTable(ctx: A4Ctx, data: PrintData): number {
+  const { doc } = ctx
+  const tableTop = ctx.y
+  const tableX = MARGIN
+  const minBodyRows = 10
+  const rowH = LINE_H + 0.6
+
+  const cols: TableCol[] = [
+    { label: 'CANT.', w: 16, align: 'center' },
+    { label: 'UNIDAD', w: 20, align: 'center' },
+    { label: 'CÓDIGO', w: 32, align: 'left' },
+    { label: 'DESCRIPCIÓN', w: CONTENT_W - 68, align: 'left' },
+  ]
+  const colX: number[] = []
+  let cx = tableX
+  for (const c of cols) {
+    colX.push(cx)
+    cx += c.w
+  }
+
+  const headerH = rowH + 0.8
+  doc.setFillColor(...GRAY)
+  doc.rect(tableX, tableTop, CONTENT_W, headerH, 'F')
+  doc.setDrawColor(0, 0, 0)
+  doc.setLineWidth(0.2)
+  doc.rect(tableX, tableTop, CONTENT_W, headerH)
+
+  setFont(doc, FONT_SM, 'bold')
+  const hy = tableTop + rowH
+  cols.forEach((c, i) => {
+    const tx =
+      c.align === 'right' ? colX[i] + c.w - 1.5 : c.align === 'center' ? colX[i] + c.w / 2 : colX[i] + 1.5
+    doc.text(c.label, tx, hy, { align: c.align ?? 'left', maxWidth: c.w - 2 })
+    if (i > 0) doc.line(colX[i], tableTop, colX[i], tableTop + headerH)
+  })
+  doc.line(tableX + CONTENT_W, tableTop, tableX + CONTENT_W, tableTop + headerH)
+
+  let rowY = tableTop + headerH
+  for (const it of data.items) {
+    const descLines = doc.splitTextToSize(it.description || '—', cols[3].w - 3)
+    const h = rowH * Math.max(1, descLines.length)
+    setFont(doc, FONT_SM, 'normal')
+    const midY = rowY + rowH - 0.5
+    doc.text(String(it.quantity), colX[0] + cols[0].w / 2, midY, { align: 'center' })
+    doc.text((it.unit || 'NIU').slice(0, 8), colX[1] + cols[1].w / 2, midY, { align: 'center' })
+    doc.text((it.code || '—').slice(0, 16), colX[2] + 1.5, midY, { maxWidth: cols[2].w - 2 })
+    for (let i = 0; i < descLines.length; i++) {
+      doc.text(descLines[i], colX[3] + 1.5, rowY + rowH - 0.5 + i * rowH, { maxWidth: cols[3].w - 3 })
+    }
+    rowY += h
+  }
+
+  const filledRows = data.items.length
+  const emptyRows = Math.max(0, minBodyRows - filledRows)
+  rowY += emptyRows * rowH
+
+  doc.line(tableX, tableTop + headerH, tableX + CONTENT_W, tableTop + headerH)
+  doc.line(tableX, tableTop, tableX, rowY)
+  for (let i = 1; i < cols.length; i++) doc.line(colX[i], tableTop, colX[i], rowY)
+  doc.line(tableX + CONTENT_W, tableTop, tableX + CONTENT_W, rowY)
+  doc.line(tableX, rowY, tableX + CONTENT_W, rowY)
+
+  ctx.y = rowY + 5
+  return rowY
+}
+
+/** Guía de remisión (09/31): documento de traslado, no de cobro — layout propio, sin método
+ *  de pago, cuentas bancarias ni QR de billetera. Reusa header/footer del template general. */
+async function renderDespatchA4(doc: jsPDF, data: PrintData): Promise<void> {
+  const ctx: A4Ctx = { doc, y: MARGIN }
+  await drawHeader(ctx, data, null)
+  drawDespatchInfoBlock(ctx, data)
+  const tableBottom = drawDespatchItemsTable(ctx, data)
+
+  // QR SUNAT (mismo patrón que drawElectronicPaymentAndQrRow, sin la caja de pago a la
+  // izquierda): toda guía electrónica lo trae, la plantilla genérica solo lo dibujaba para
+  // factura/boleta (isElectronicSunatCode) y por eso nunca aparecía acá.
+  let qrBottomY = ctx.y
+  if (data.qr_data) {
+    try {
+      const qrSize = 42
+      const qrX = PAGE_W - MARGIN - qrSize
+      const qrY = ctx.y
+      const qrUrl = await qrDataUrl(data.qr_data, qrSize)
+      doc.addImage(qrUrl, 'PNG', qrX, qrY, qrSize, qrSize, undefined, 'NONE')
+      let hy = qrY + qrSize + 2.5
+      if (data.sunat_hash?.trim()) {
+        setFont(doc, FONT_XS, 'normal')
+        const hashLines = doc.splitTextToSize(`Código Hash: ${data.sunat_hash.trim()}`, qrSize + 6)
+        for (const hl of hashLines) {
+          doc.text(hl, qrX + qrSize / 2, hy, { align: 'center', maxWidth: qrSize + 6 })
+          hy += LINE_H - 0.3
+        }
+      }
+      setFont(doc, FONT_XS, 'normal')
+      doc.text('Representación impresa de la guía de remisión electrónica', PAGE_W - MARGIN, hy, {
+        align: 'right',
+        maxWidth: CONTENT_W,
+      })
+      hy += LINE_H - 0.2
+      qrBottomY = hy
+    } catch {
+      /* sin QR */
+    }
+  }
+
+  ctx.y = Math.max(tableBottom + 5, qrBottomY)
+  await drawFooter(ctx, data, ctx.y)
+}
+
 export async function renderReceiptA4(doc: jsPDF, data: PrintData): Promise<void> {
+  if (isGuiaSunatCode(data.sunat_code) && data.despatch) {
+    await renderDespatchA4(doc, data)
+    return
+  }
   const ctx: A4Ctx = { doc, y: MARGIN }
   const nvLayout = getNotaVentaPrintLayout(data.sunat_code)
   const showPaymentCondition = !nvLayout || nvLayout.showPaymentCondition

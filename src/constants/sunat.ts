@@ -118,6 +118,12 @@ export function isElectronicSunatCode(code?: string | null): boolean {
   return c === '01' || c === '03'
 }
 
+/** Guía de remisión remitente (09) o transportista (31). */
+export function isGuiaSunatCode(code?: string | null): boolean {
+  const c = String(code ?? '').trim()
+  return c === '09' || c === '31'
+}
+
 /** Nota de crédito (07) o de débito (08). */
 export function isCreditOrDebitNote(sunatCode?: string | null, docType?: string | null): boolean {
   const c = String(sunatCode ?? '').trim()
