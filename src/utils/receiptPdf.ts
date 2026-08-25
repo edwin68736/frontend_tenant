@@ -536,8 +536,17 @@ export async function generateReceiptPdf(
     addSpace(2)
     addTicketLineCenter(`${TUKIFAC_APP_NAME} - Sistema POS`, FONT_SIZE_SM)
 
+    // TICKET_PAGE_HEIGHT (520mm) es un alto de "hoja de rollo" holgado a propósito, para que
+    // ítems con descripción larga nunca se corten mientras se dibuja el contenido — pero un
+    // ticket normal usa mucho menos que eso, y sin recortar quedaba un espacio en blanco enorme
+    // debajo del contenido real. Acá se recorta la altura real de la página (MediaBox) al punto
+    // donde terminó de dibujarse, con el mismo margen que el encabezado.
+    const finalHeight = Math.max(y + margin, margin * 4)
+    doc.setPage(1)
+    doc.internal.pageSize.height = finalHeight
+
     if (options?.preview) {
-      applyPreviewWatermark(doc, pageW, y + margin)
+      applyPreviewWatermark(doc, pageW, finalHeight)
     }
     return doc
   }
