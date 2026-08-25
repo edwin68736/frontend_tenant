@@ -324,6 +324,10 @@ export interface SunatVoided {
 }
 
 export interface VoidedDetailInput {
+  /** Forma preferida para comunicación de baja: resuelve tipo/serie/correlativo desde la
+   * venta real en el backend — evita que se pueda tipear un comprobante que no existe.
+   * createReversion (retención/percepción) sigue usando tipo_doc/serie/correlativo por texto. */
+  sale_id?: number
   tipo_doc: string
   serie: string
   correlativo: string

@@ -39,6 +39,7 @@ import { DocumentViewerModal } from '@/components/ui/DocumentViewerModal'
 import { useAuth } from '@/contexts/AuthContext'
 import { getTodayPeru, formatDisplayDatePeru } from '@/utils/datesPeru'
 import { formatSaleDocumentNumber } from '@/utils/format'
+import { formatSaleMoney } from '@/utils/formatMoney'
 import { createLocalReceiptPdfObjectUrl, downloadLocalReceiptPdf } from '@/utils/localReceiptPdf'
 import { shareReceiptPngViaWhatsApp } from '@/utils/receiptPng'
 import { WhatsAppGlyph } from '@/components/icons/WhatsAppGlyph'
@@ -166,8 +167,30 @@ function BillingContent() {
   const [summaryStatusLoading, setSummaryStatusLoading] = useState<number | null>(null)
   const [voidedStatusLoading, setVoidedStatusLoading] = useState<number | null>(null)
   const [voidedModalOpen, setVoidedModalOpen] = useState(false)
-  const [voidedDetails, setVoidedDetails] = useState<VoidedDetailInput[]>([{ tipo_doc: '03', serie: 'B001', correlativo: '', des_motivo_baja: '' }])
+  // Cada fila referencia una boleta real por ID — ya no se tipea serie/correlativo a mano.
+  const [voidedRows, setVoidedRows] = useState<{ key: string; saleId: number | ''; reason: string }[]>(
+    [{ key: 'v0', saleId: '', reason: '' }],
+  )
+  // Boletas aceptadas y todavía dentro del plazo de 7 días para dar de baja — se cargan al
+  // abrir el modal; el backend vuelve a validar todo esto de nuevo antes de enviar a SUNAT.
+  const [voidableBoletas, setVoidableBoletas] = useState<Sale[]>([])
+  const [loadingVoidable, setLoadingVoidable] = useState(false)
   const [creatingVoided, setCreatingVoided] = useState(false)
+
+  const openVoidedModal = () => {
+    setVoidedRows([{ key: 'v0', saleId: '', reason: '' }])
+    setVoidedModalOpen(true)
+    setLoadingVoidable(true)
+    salesService
+      .list({ doc_type: 'BOLETA', billing_status: 'accepted', export_all: '1', per_page: 200 })
+      .then(({ data }) => {
+        const now = Date.now()
+        const windowMs = 8 * 24 * 60 * 60 * 1000 // mismo plazo que valida el backend
+        setVoidableBoletas(data.filter((s) => now - new Date(s.issue_date).getTime() <= windowMs))
+      })
+      .catch(() => toast.error('Error al cargar boletas'))
+      .finally(() => setLoadingVoidable(false))
+  }
   const [invoiceStatusQuery, setInvoiceStatusQuery] = useState({ tipo: '03', serie: 'B001', numero: '' })
   const [invoiceStatusResult, setInvoiceStatusResult] = useState<InvoiceStatusResult | null>(null)
   const [invoiceStatusLoading, setInvoiceStatusLoading] = useState(false)
@@ -623,7 +646,7 @@ function BillingContent() {
           <div className="px-4 py-3 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
             <h3 className="font-semibold text-gray-800">Comunicaciones de baja</h3>
             <div className="flex items-center gap-2">
-              <button onClick={() => { setVoidedDetails([{ tipo_doc: '03', serie: 'B001', correlativo: '', des_motivo_baja: '' }]); setVoidedModalOpen(true) }} className="flex items-center gap-1.5 px-4 py-2 bg-orange-600 text-white rounded-xl text-sm font-medium hover:bg-orange-700"><Ban size={14} /> Nueva comunicación de baja</button>
+              <button onClick={openVoidedModal} className="flex items-center gap-1.5 px-4 py-2 bg-orange-600 text-white rounded-xl text-sm font-medium hover:bg-orange-700"><Ban size={14} /> Nueva comunicación de baja</button>
               <button onClick={loadVoided} disabled={voidedLoading} className="p-2 text-gray-500 hover:text-gray-700"><RefreshCw size={16} className={voidedLoading ? 'animate-spin' : ''} /></button>
             </div>
           </div>
@@ -654,22 +677,94 @@ function BillingContent() {
           {invoiceStatusResult && <div className={`rounded-xl p-4 text-sm ${invoiceStatusResult.success ? 'bg-green-50 text-green-900' : 'bg-red-50 text-red-900'}`}><p className="font-medium">{invoiceStatusResult.success ? 'Consulta exitosa' : 'Error o sin CDR'}</p>{invoiceStatusResult.cdrResponse && <><p>Código: {invoiceStatusResult.cdrResponse.code} — {invoiceStatusResult.cdrResponse.description}</p>{invoiceStatusResult.cdrResponse.accepted && <p className="text-green-700">Aceptado por SUNAT.</p>}</>}{invoiceStatusResult.error && <p>{invoiceStatusResult.error.message}</p>}</div>}
         </div>
         <Modal open={voidedModalOpen} onClose={() => setVoidedModalOpen(false)} contentClassName="max-w-2xl">
-          <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-4"><h3 className="font-bold text-gray-800">Nueva comunicación de baja</h3><button onClick={() => setVoidedModalOpen(false)} className="p-1.5 hover:bg-gray-100 rounded-lg"><X size={16} /></button></div>
+          <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-4">
+            <div>
+              <h3 className="font-bold text-gray-800">Nueva comunicación de baja</h3>
+              <p className="text-xs text-gray-500 mt-0.5">Solo boletas aceptadas, dentro de los 7 días calendario que exige SUNAT. Para anular una factura o una nota, emita una nota de crédito.</p>
+            </div>
+            <button onClick={() => setVoidedModalOpen(false)} className="p-1.5 hover:bg-gray-100 rounded-lg"><X size={16} /></button>
+          </div>
           <div className="space-y-3">
-            {voidedDetails.map((d, i) => (
-              <div key={i} className="grid grid-cols-12 gap-2 items-end">
-                <div className="col-span-2"><select value={d.tipo_doc} onChange={e => setVoidedDetails(prev => prev.map((x, j) => j === i ? { ...x, tipo_doc: e.target.value } : x))} className="w-full border rounded-lg px-2 py-1.5 text-sm"><option value="01">01</option><option value="03">03</option><option value="07">07</option><option value="08">08</option></select></div>
-                <div className="col-span-2"><input type="text" value={d.serie} onChange={e => setVoidedDetails(prev => prev.map((x, j) => j === i ? { ...x, serie: e.target.value } : x))} placeholder="Serie" className="w-full border rounded-lg px-2 py-1.5 text-sm" /></div>
-                <div className="col-span-2"><input type="text" value={d.correlativo} onChange={e => setVoidedDetails(prev => prev.map((x, j) => j === i ? { ...x, correlativo: e.target.value } : x))} placeholder="Nro" className="w-full border rounded-lg px-2 py-1.5 text-sm" /></div>
-                <div className="col-span-4"><input type="text" value={d.des_motivo_baja} onChange={e => setVoidedDetails(prev => prev.map((x, j) => j === i ? { ...x, des_motivo_baja: e.target.value } : x))} placeholder="Motivo baja" className="w-full border rounded-lg px-2 py-1.5 text-sm" /></div>
-                <div className="col-span-2"><button type="button" onClick={() => setVoidedDetails(prev => prev.filter((_, j) => j !== i))} className="text-red-600 text-xs">Quitar</button></div>
-              </div>
-            ))}
-            <button type="button" onClick={() => setVoidedDetails(prev => [...prev, { tipo_doc: '03', serie: 'B001', correlativo: '', des_motivo_baja: '' }])} className="text-sm text-[rgb(var(--p600))]">+ Añadir comprobante</button>
+            {loadingVoidable ? (
+              <p className="text-sm text-gray-400 py-4 text-center"><RefreshCw size={16} className="animate-spin inline mr-1.5" /> Cargando boletas...</p>
+            ) : voidableBoletas.length === 0 ? (
+              <p className="text-sm text-gray-400 py-4 text-center">No hay boletas aceptadas dentro del plazo de 7 días para dar de baja.</p>
+            ) : (
+              voidedRows.map((row, i) => (
+                <div key={row.key} className="grid grid-cols-12 gap-2 items-end">
+                  <div className="col-span-6">
+                    <select
+                      value={row.saleId}
+                      onChange={(e) => setVoidedRows(prev => prev.map((x, j) => j === i ? { ...x, saleId: e.target.value ? Number(e.target.value) : '' } : x))}
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm"
+                    >
+                      <option value="">Elija una boleta...</option>
+                      {voidableBoletas.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {formatSaleDocumentNumber(s.series, s.number)} — {s.contact_name || 'Sin cliente'} — {formatSaleMoney(s.total, s.currency)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="col-span-5">
+                    <input
+                      type="text"
+                      value={row.reason}
+                      onChange={(e) => setVoidedRows(prev => prev.map((x, j) => j === i ? { ...x, reason: e.target.value } : x))}
+                      placeholder="Motivo de la baja"
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm"
+                    />
+                  </div>
+                  <div className="col-span-1">
+                    <button
+                      type="button"
+                      onClick={() => setVoidedRows(prev => prev.length > 1 ? prev.filter((_, j) => j !== i) : prev)}
+                      disabled={voidedRows.length <= 1}
+                      className="text-red-600 text-xs disabled:opacity-30"
+                    >
+                      Quitar
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+            {!loadingVoidable && voidableBoletas.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setVoidedRows(prev => [...prev, { key: `v${prev.length}-${Date.now()}`, saleId: '', reason: '' }])}
+                className="text-sm text-[rgb(var(--p600))]"
+              >
+                + Añadir comprobante
+              </button>
+            )}
           </div>
           <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-gray-100">
             <button onClick={() => setVoidedModalOpen(false)} className="px-4 py-2 rounded-xl border border-gray-200 text-sm">Cancelar</button>
-            <button onClick={() => { const valid = voidedDetails.every(d => d.serie.trim() && d.correlativo.trim() && d.des_motivo_baja.trim()); if (!valid) { toast.error('Complete todos los campos'); return; } setCreatingVoided(true); billingService.createVoided(voidedDetails).then(({ voided }) => { toast.success('Enviado'); setVoidedList(prev => [voided, ...prev]); setVoidedModalOpen(false); }).catch((e: any) => toast.error(e.response?.data?.error ?? 'Error')).finally(() => setCreatingVoided(false)); }} disabled={creatingVoided} className="px-4 py-2 bg-orange-600 text-white rounded-xl text-sm font-medium hover:bg-orange-700 disabled:opacity-50">{creatingVoided ? <RefreshCw size={14} className="animate-spin inline" /> : null} Enviar a SUNAT</button>
+            <button
+              onClick={() => {
+                const valid = voidedRows.every(r => r.saleId !== '' && r.reason.trim())
+                if (!valid) { toast.error('Elija la boleta y complete el motivo en cada fila'); return }
+                const details: VoidedDetailInput[] = voidedRows.map(r => {
+                  const sale = voidableBoletas.find(s => s.id === r.saleId)
+                  return {
+                    sale_id: r.saleId as number,
+                    tipo_doc: '03',
+                    serie: sale?.series ?? '',
+                    correlativo: sale?.number ?? '',
+                    des_motivo_baja: r.reason.trim(),
+                  }
+                })
+                setCreatingVoided(true)
+                billingService.createVoided(details)
+                  .then(({ voided }) => { toast.success('Enviado'); setVoidedList(prev => [voided, ...prev]); setVoidedModalOpen(false) })
+                  .catch((e: any) => toast.error(e.response?.data?.error ?? 'Error'))
+                  .finally(() => setCreatingVoided(false))
+              }}
+              disabled={creatingVoided || voidableBoletas.length === 0}
+              className="px-4 py-2 bg-orange-600 text-white rounded-xl text-sm font-medium hover:bg-orange-700 disabled:opacity-50"
+            >
+              {creatingVoided ? <RefreshCw size={14} className="animate-spin inline" /> : null} Enviar a SUNAT
+            </button>
           </div>
         </Modal>
         <div className="flex gap-2"><button onClick={() => setViewMode('invoices')} className="text-sm text-gray-500 hover:text-gray-700">← Volver a facturas y boletas</button></div>
