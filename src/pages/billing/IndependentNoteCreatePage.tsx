@@ -24,9 +24,12 @@ const IGV_TYPES = [
 
 type DraftItem = IndependentNoteItemInput & { key: string; product_id?: number | null }
 
+/** Ítem manual sin código de producto real: SUNAT y el propio catálogo esperan que toda
+ * línea tenga un código, así que el ítem manual arranca con "MANUAL" en vez de vacío. */
 function emptyItem(): DraftItem {
   return {
     key: Math.random().toString(36).slice(2),
+    code: 'MANUAL',
     description: '',
     unit: 'NIU',
     quantity: 1,
@@ -195,7 +198,7 @@ function IndependentNoteCreateContent() {
         affected_number: affectedNumber.trim(),
         contact_id: selectedContact.id,
         items: items.map((it) => ({
-          code: it.code?.trim() || undefined,
+          code: it.code?.trim() || 'MANUAL',
           description: it.description.trim(),
           unit: it.unit || 'NIU',
           quantity: it.quantity,
@@ -524,14 +527,23 @@ function IndependentNoteCreateContent() {
           </div>
         </div>
 
-        <button
-          type="button"
-          disabled={!canSubmit || submitting}
-          onClick={() => void submit()}
-          className="w-full py-2.5 bg-orange-600 text-white rounded-xl text-sm font-semibold hover:bg-orange-700 disabled:opacity-50"
-        >
-          {submitting ? 'Emitiendo…' : docType === '08' ? 'Emitir nota de débito' : 'Emitir nota de crédito'}
-        </button>
+        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-4 border-t border-gray-100">
+          <button
+            type="button"
+            onClick={() => navigate('/billing')}
+            className="inline-flex items-center justify-center px-5 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 sm:min-w-[7.5rem]"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            disabled={!canSubmit || submitting}
+            onClick={() => void submit()}
+            className="inline-flex items-center justify-center px-6 py-2.5 bg-orange-600 text-white rounded-xl text-sm font-semibold hover:bg-orange-700 disabled:opacity-50 sm:min-w-[11rem]"
+          >
+            {submitting ? 'Emitiendo…' : docType === '08' ? 'Emitir nota de débito' : 'Emitir nota de crédito'}
+          </button>
+        </div>
       </div>
 
       <Modal
