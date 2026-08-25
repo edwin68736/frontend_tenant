@@ -89,6 +89,8 @@ function IndependentNoteCreateContent() {
 
   const [items, setItems] = useState<DraftItem[]>([])
   const [showProductPicker, setShowProductPicker] = useState(false)
+  const [showManualModal, setShowManualModal] = useState(false)
+  const [manualDraft, setManualDraft] = useState<DraftItem>(emptyItem())
   const [lastAddedProductId, setLastAddedProductId] = useState<number | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -161,6 +163,16 @@ function IndependentNoteCreateContent() {
     setLastAddedProductId(p.id)
   }
 
+  const openManualModal = () => {
+    setManualDraft(emptyItem())
+    setShowManualModal(true)
+  }
+  const submitManualItem = () => {
+    if (!manualDraft.description.trim() || manualDraft.quantity <= 0) return
+    setItems((prev) => [...prev, { ...manualDraft, key: Math.random().toString(36).slice(2) }])
+    setShowManualModal(false)
+  }
+
   const canSubmit =
     branchId > 0 &&
     affectedSeries.trim() !== '' &&
@@ -212,8 +224,8 @@ function IndependentNoteCreateContent() {
   if (!sunatEnabled) return <SunatRequiredMessage />
 
   return (
-    <div className="max-w-4xl mx-auto p-4 md:p-6">
-      <div className="flex items-center gap-3 mb-5">
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
         <button
           type="button"
           onClick={() => navigate('/billing')}
@@ -229,7 +241,7 @@ function IndependentNoteCreateContent() {
         </div>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-5">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 space-y-5">
         {/* Tipo y motivo */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -382,7 +394,7 @@ function IndependentNoteCreateContent() {
             </button>
             <button
               type="button"
-              onClick={() => setItems((prev) => [...prev, emptyItem()])}
+              onClick={openManualModal}
               className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50"
             >
               <Package size={14} /> Ítem manual
@@ -535,6 +547,122 @@ function IndependentNoteCreateContent() {
           addedProductIds={items.map((it) => it.product_id).filter((id): id is number => id != null)}
           lastAddedProductId={lastAddedProductId}
         />
+      </Modal>
+
+      <Modal
+        open={showManualModal}
+        onClose={() => setShowManualModal(false)}
+        contentClassName="max-w-lg"
+        closeOnBackdropClick={false}
+      >
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="font-bold text-gray-800 text-lg">Ítem manual</h3>
+          <button type="button" onClick={() => setShowManualModal(false)} className="p-1.5 hover:bg-gray-100 rounded-lg">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Descripción *</label>
+            <input
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              value={manualDraft.description}
+              onChange={(e) => setManualDraft((d) => ({ ...d, description: e.target.value }))}
+              placeholder="Nombre o detalle del ítem"
+              autoFocus
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Código</label>
+              <input
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm font-mono"
+                value={manualDraft.code ?? ''}
+                onChange={(e) => setManualDraft((d) => ({ ...d, code: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Unidad</label>
+              <input
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                value={manualDraft.unit ?? ''}
+                onChange={(e) => setManualDraft((d) => ({ ...d, unit: e.target.value }))}
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Cantidad</label>
+              <input
+                type="number"
+                min={0}
+                step="0.001"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                value={manualDraft.quantity}
+                onChange={(e) => setManualDraft((d) => ({ ...d, quantity: Number(e.target.value) }))}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Precio unitario</label>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                value={manualDraft.unit_price}
+                onChange={(e) => setManualDraft((d) => ({ ...d, unit_price: Number(e.target.value) }))}
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Afectación IGV</label>
+            <select
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              value={manualDraft.igv_affectation_type}
+              onChange={(e) => setManualDraft((d) => ({ ...d, igv_affectation_type: e.target.value }))}
+            >
+              {IGV_TYPES.map((t) => (
+                <option key={t.code} value={t.code}>{t.label}</option>
+              ))}
+            </select>
+          </div>
+          {manualDraft.igv_affectation_type === '10' ? (
+            <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={manualDraft.price_includes_igv !== false}
+                onChange={(e) => setManualDraft((d) => ({ ...d, price_includes_igv: e.target.checked }))}
+                className="h-4 w-4 accent-[rgb(var(--p600))]"
+              />
+              Precio incluye IGV
+            </label>
+          ) : (
+            <p className="text-xs text-gray-500">Esta afectación no aplica IGV al total.</p>
+          )}
+          <div className="flex justify-between text-sm text-gray-600 pt-1 border-t border-gray-100">
+            <span>Total estimado</span>
+            <span className="font-semibold text-gray-900 tabular-nums">
+              {formatSaleMoney(calcItemPreview(manualDraft, companyRate).total)}
+            </span>
+          </div>
+        </div>
+        <div className="flex gap-2 pt-3">
+          <button
+            type="button"
+            onClick={() => setShowManualModal(false)}
+            className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={submitManualItem}
+            disabled={!manualDraft.description.trim() || manualDraft.quantity <= 0}
+            className="flex-1 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50"
+          >
+            Agregar
+          </button>
+        </div>
       </Modal>
     </div>
   )
