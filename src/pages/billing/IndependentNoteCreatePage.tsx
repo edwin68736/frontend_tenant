@@ -1,14 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ArrowLeft, Plus, Trash2, Search, X } from 'lucide-react'
+import { ArrowLeft, Plus, Package, Trash2, Search, X } from 'lucide-react'
 import RequireModule from '@/components/ui/RequireModule'
 import SunatRequiredMessage from '@/components/ui/SunatRequiredMessage'
+import { Modal } from '@/components/ui/Modal'
+import { ProductPickerModal } from '@/components/sales/ProductPickerModal'
 import { companyService } from '@/services/company.service'
 import { contactsService, type Contact } from '@/services/contacts.service'
+import { type Product } from '@/services/products.service'
 import { billingService, type IndependentNoteItemInput } from '@/services/billing.service'
 import { useBranch } from '@/contexts/BranchContext'
 import { CREDIT_NOTE_REASONS, DEBIT_NOTE_REASONS } from '@/constants/sunatnote'
+import { normalizeSunatUnit } from '@/constants/sunatUnits'
 import { formatSaleMoney } from '@/utils/formatMoney'
 
 const IGV_TYPES = [
@@ -18,7 +22,7 @@ const IGV_TYPES = [
   { code: '40', label: '40 - Exportación' },
 ]
 
-type DraftItem = IndependentNoteItemInput & { key: string }
+type DraftItem = IndependentNoteItemInput & { key: string; product_id?: number | null }
 
 function emptyItem(): DraftItem {
   return {
@@ -29,6 +33,22 @@ function emptyItem(): DraftItem {
     unit_price: 0,
     igv_affectation_type: '10',
     price_includes_igv: true,
+  }
+}
+
+/** Misma lógica que SalesRegisterPage/DespatchFormModal: producto del catálogo → línea, con
+ * su precio e IGV reales — no queda a que el usuario los tipee de memoria. */
+function itemFromProduct(p: Product): DraftItem {
+  return {
+    key: Math.random().toString(36).slice(2),
+    product_id: p.id,
+    code: p.code ?? '',
+    description: p.name,
+    unit: normalizeSunatUnit(p.unit ?? '', p.type ?? 'product'),
+    quantity: 1,
+    unit_price: p.sale_price ?? 0,
+    igv_affectation_type: p.igv_affectation_type || '10',
+    price_includes_igv: p.price_includes_igv !== false,
   }
 }
 
@@ -67,7 +87,9 @@ function IndependentNoteCreateContent() {
   const [contactOpen, setContactOpen] = useState(false)
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null)
 
-  const [items, setItems] = useState<DraftItem[]>([emptyItem()])
+  const [items, setItems] = useState<DraftItem[]>([])
+  const [showProductPicker, setShowProductPicker] = useState(false)
+  const [lastAddedProductId, setLastAddedProductId] = useState<number | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
   const reasons = docType === '08' ? DEBIT_NOTE_REASONS : CREDIT_NOTE_REASONS
@@ -123,7 +145,20 @@ function IndependentNoteCreateContent() {
     setItems((prev) => prev.map((it) => (it.key === key ? { ...it, ...patch } : it)))
   }
   const removeItem = (key: string) => {
-    setItems((prev) => (prev.length > 1 ? prev.filter((it) => it.key !== key) : prev))
+    setItems((prev) => prev.filter((it) => it.key !== key))
+  }
+  /** Mismo criterio que SalesRegisterPage: el modal queda abierto tras agregar, para poder
+   * seguir sumando ítems sin reabrirlo cada vez; si el producto ya está en la lista, suma
+   * cantidad en vez de duplicar la línea. */
+  const addProductToItems = (p: Product) => {
+    setItems((prev) => {
+      const existing = prev.find((it) => it.product_id === p.id)
+      if (existing) {
+        return prev.map((it) => (it.product_id === p.id ? { ...it, quantity: it.quantity + 1 } : it))
+      }
+      return [...prev, itemFromProduct(p)]
+    })
+    setLastAddedProductId(p.id)
   }
 
   const canSubmit =
@@ -131,6 +166,7 @@ function IndependentNoteCreateContent() {
     affectedSeries.trim() !== '' &&
     affectedNumber.trim() !== '' &&
     selectedContact != null &&
+    items.length > 0 &&
     items.every((it) => it.description.trim() !== '' && it.quantity > 0)
 
   const submit = async () => {
@@ -335,14 +371,21 @@ function IndependentNoteCreateContent() {
 
         {/* Ítems */}
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold text-gray-700">Ítems *</p>
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <p className="text-xs font-semibold text-gray-700 w-full sm:w-auto sm:mr-auto">Ítems *</p>
+            <button
+              type="button"
+              onClick={() => setShowProductPicker(true)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[rgb(var(--p600))] text-white text-sm font-medium hover:opacity-90"
+            >
+              <Plus size={14} /> Agregar producto
+            </button>
             <button
               type="button"
               onClick={() => setItems((prev) => [...prev, emptyItem()])}
-              className="flex items-center gap-1 text-xs font-medium text-orange-600 hover:text-orange-700"
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50"
             >
-              <Plus size={14} /> Agregar ítem
+              <Package size={14} /> Ítem manual
             </button>
           </div>
           <div className="overflow-x-auto border border-gray-200 rounded-xl">
@@ -361,6 +404,13 @@ function IndependentNoteCreateContent() {
                 </tr>
               </thead>
               <tbody>
+                {items.length === 0 && (
+                  <tr>
+                    <td colSpan={9} className="px-2 py-6 text-center text-sm text-gray-400">
+                      Sin ítems. Use <strong>Agregar producto</strong> o <strong>Ítem manual</strong>.
+                    </td>
+                  </tr>
+                )}
                 {items.map((it) => {
                   const preview = calcItemPreview(it, companyRate)
                   return (
@@ -431,8 +481,7 @@ function IndependentNoteCreateContent() {
                         <button
                           type="button"
                           onClick={() => removeItem(it.key)}
-                          disabled={items.length <= 1}
-                          className="text-gray-400 hover:text-red-600 disabled:opacity-30 p-1"
+                          className="text-gray-400 hover:text-red-600 p-1"
                         >
                           <Trash2 size={14} />
                         </button>
@@ -472,6 +521,21 @@ function IndependentNoteCreateContent() {
           {submitting ? 'Emitiendo…' : docType === '08' ? 'Emitir nota de débito' : 'Emitir nota de crédito'}
         </button>
       </div>
+
+      <Modal
+        open={showProductPicker}
+        onClose={() => setShowProductPicker(false)}
+        contentClassName="max-w-2xl"
+        closeOnBackdropClick={false}
+      >
+        <ProductPickerModal
+          variant="sale"
+          onAdd={addProductToItems}
+          onClose={() => setShowProductPicker(false)}
+          addedProductIds={items.map((it) => it.product_id).filter((id): id is number => id != null)}
+          lastAddedProductId={lastAddedProductId}
+        />
+      </Modal>
     </div>
   )
 }
