@@ -110,12 +110,14 @@ const fmtMoneyCell = (v: unknown) => {
 /** Fila del reporte con los campos que se calculan en el cliente (no vienen del backend). */
 type ReportSaleRow = Sale & {
   doc_display?: string
-  /** total en positivo para comprobantes normales; 0 para notas de crédito. La venta que anuló
-   *  ya queda excluida de "no anuladas" (por su propio estado); si la NC además restara su
-   *  monto, la reversión se contaría dos veces y el neto quedaría negativo de más — mismo
-   *  cálculo que sum_active/sum_total en el backend (saleListSummary), para que la fila de
-   *  totales del Excel siempre cuadre con las tarjetas de arriba. "Total factura" sigue
-   *  mostrando el monto tal cual lo declara el documento/SUNAT, sin tocar. */
+  /** total en positivo para comprobantes normales; 0 para ventas anuladas (status='cancelled')
+   *  y para notas de crédito (doc_type='NOTA_CREDITO'). La venta anulada no debe sumar porque
+   *  ya no es un ingreso real, y si además la NC restara su propio monto la reversión se
+   *  contaría dos veces y el neto quedaría negativo de más — mismo cálculo que sum_active en
+   *  el backend (saleListSummary: status != 'cancelled' AND doc_type != 'NOTA_CREDITO'), para
+   *  que la fila de totales del Excel siempre cuadre con las tarjetas de arriba, incluso cuando
+   *  el filtro "Estado venta" muestra anuladas o todas. "Total factura" sigue mostrando el
+   *  monto tal cual lo declara el documento/SUNAT, sin tocar. */
   net_effect?: number
 }
 
@@ -226,7 +228,7 @@ export default function SalesReportPage() {
       doc_display: formatSaleComprobante(s.doc_type, s.series, s.number),
       detraccion_amount: s.has_detraccion ? (s.detraccion_amount ?? 0) : 0,
       net_payable: s.has_detraccion ? (s.net_payable ?? s.total) : s.total,
-      net_effect: s.doc_type === 'NOTA_CREDITO' ? 0 : s.total,
+      net_effect: (String(s.status || '').toLowerCase() === 'cancelled' || s.doc_type === 'NOTA_CREDITO') ? 0 : s.total,
     }))
 
   const load = async () => {
