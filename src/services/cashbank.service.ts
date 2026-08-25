@@ -64,6 +64,19 @@ export interface BankMovement {
   amount: number
   date: string
   created_at: string
+  /** Vínculo tipado al documento de origen (venta/compra), cuando aplica. */
+  sale_id?: number | null
+  purchase_id?: number | null
+  /** Si es la reversión de otro movimiento (anulación/reembolso), el id del movimiento original. */
+  reversal_of_id?: number | null
+  /** true si ALGÚN OTRO movimiento revierte a este (anulación de venta o devolución de NC parcial). */
+  is_reversed?: boolean
+}
+
+/** Totales del período/filtros aplicados (no solo la página actual). */
+export interface BankMovementListSummary {
+  sum_credit: number
+  sum_debit: number
 }
 
 export interface CashSessionReportSession {
@@ -281,8 +294,16 @@ export const cashbankService = {
   updateBankAccount: (id: number, data: Partial<{ name: string; bank_name: string; account_number: string; type: string; payment_method: string; active: boolean }>): Promise<void> =>
     api.put(`/api/cashbank/bank-accounts/${id}`, data).then(r => r.data),
 
-  listBankMovements: (id: number): Promise<BankMovement[]> =>
-    api.get(`/api/cashbank/bank-accounts/${id}/movements`).then(r => r.data.data ?? r.data ?? []),
+  /** Movimientos paginados/filtrados de una cuenta bancaria (from/to YYYY-MM-DD, type credit|debit). */
+  listBankMovements: (
+    id: number,
+    params?: { page?: number; per_page?: number; from?: string; to?: string; type?: 'credit' | 'debit' | '' },
+  ): Promise<{ data: BankMovement[]; total: number; summary: BankMovementListSummary }> =>
+    api.get(`/api/cashbank/bank-accounts/${id}/movements`, { params: params ?? {} }).then(r => ({
+      data: r.data.data ?? [],
+      total: r.data.total ?? 0,
+      summary: r.data.summary ?? { sum_credit: 0, sum_debit: 0 },
+    })),
 
   addBankMovement: (id: number, data: { type: 'credit' | 'debit'; description: string; reference?: string; amount: number; date: string }): Promise<BankMovement> =>
     api.post(`/api/cashbank/bank-accounts/${id}/movements`, data).then(r => r.data.data ?? r.data),

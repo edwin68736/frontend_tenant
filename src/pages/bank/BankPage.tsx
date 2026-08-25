@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Link } from 'react-router-dom'
-import { Plus, X, ArrowUpRight, ArrowDownLeft, Banknote, Pencil } from 'lucide-react'
+import { Plus, X, ArrowUpRight, ArrowDownLeft, Banknote, Pencil, Undo2 } from 'lucide-react'
 import { cashbankService, type BankAccount, type BankMovement } from '@/services/cashbank.service'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
@@ -9,6 +9,25 @@ import { getTodayPeru } from '@/utils/datesPeru'
 
 const emptyAccount = () => ({ name: '', bank_name: '', account_number: '', currency: 'PEN', type: 'bank', initial_balance: 0, active: true })
 const emptyMov = () => ({ type: 'credit' as 'credit' | 'debit', description: '', reference: '', amount: 0, date: getTodayPeru() })
+const MOV_PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
+
+type MovFilters = { from: string; to: string; type: '' | 'credit' | 'debit' }
+const emptyMovFilters = (): MovFilters => ({ from: '', to: '', type: '' })
+
+/**
+ * Origen del movimiento, inferido de reversal_of_id/reference/sale_id/purchase_id — no hay un
+ * campo "origin" en la API, así que se deriva acá para el badge. reversal_of_id manda primero:
+ * una reversión también tiene sale_id (heredado del original), pero lo que importa mostrar es
+ * que ESTE movimiento es la contrapartida de otro, no la venta en sí.
+ */
+function movementOrigin(m: BankMovement): { label: string; className: string } {
+  if (m.reversal_of_id) return { label: 'Reversión', className: 'bg-orange-100 text-orange-700' }
+  const ref = (m.reference || '').toUpperCase()
+  if (ref.startsWith('NC/')) return { label: 'Nota de crédito', className: 'bg-violet-100 text-violet-700' }
+  if (m.purchase_id) return { label: 'Compra', className: 'bg-blue-100 text-blue-700' }
+  if (m.sale_id) return { label: 'Venta', className: 'bg-green-100 text-green-700' }
+  return { label: 'Manual', className: 'bg-gray-100 text-gray-600' }
+}
 
 export default function BankPage() {
   return <RequireModule moduleKey="cashbank"><BankContent /></RequireModule>
@@ -20,6 +39,12 @@ function BankContent() {
   const [movements, setMovements] = useState<BankMovement[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMovs, setLoadingMovs] = useState(false)
+
+  const [movTotal, setMovTotal] = useState(0)
+  const [movPage, setMovPage] = useState(1)
+  const [movPerPage, setMovPerPage] = useState(25)
+  const [movSummary, setMovSummary] = useState({ sum_credit: 0, sum_debit: 0 })
+  const [movFilters, setMovFilters] = useState<MovFilters>(emptyMovFilters())
 
   const [showAccount, setShowAccount] = useState(false)
   const [editingAccount, setEditingAccount] = useState<BankAccount | null>(null)
@@ -36,13 +61,39 @@ function BankContent() {
 
   useEffect(() => { load() }, [])
 
-  const selectAccount = async (acc: BankAccount) => {
-    setSelected(acc)
+  const loadMovements = async (accountId: number, page: number, filters: MovFilters, perPage: number) => {
     setLoadingMovs(true)
-    try { setMovements(await cashbankService.listBankMovements(acc.id)) }
-    catch { toast.error('Error') }
+    try {
+      const { data, total, summary } = await cashbankService.listBankMovements(accountId, {
+        page,
+        per_page: perPage,
+        from: filters.from || undefined,
+        to: filters.to || undefined,
+        type: filters.type || undefined,
+      })
+      setMovements(data)
+      setMovTotal(total)
+      setMovSummary(summary)
+    } catch { toast.error('Error') }
     finally { setLoadingMovs(false) }
   }
+
+  const selectAccount = (acc: BankAccount) => {
+    setSelected(acc)
+    setMovPage(1)
+    setMovFilters(emptyMovFilters())
+  }
+
+  const updateMovFilter = (patch: Partial<MovFilters>) => {
+    setMovPage(1)
+    setMovFilters(f => ({ ...f, ...patch }))
+  }
+
+  useEffect(() => {
+    if (!selected) return
+    void loadMovements(selected.id, movPage, movFilters, movPerPage)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.id, movPage, movPerPage, movFilters])
 
   const handleCreateAccount = async () => {
     if (!accountForm.name) { toast.error('Nombre requerido'); return }
@@ -97,7 +148,12 @@ function BankContent() {
   const handleAddMovement = async () => {
     if (!selected || !movForm.amount) { toast.error('Monto requerido'); return }
     setSaving(true)
-    try { await cashbankService.addBankMovement(selected.id, movForm); toast.success('Movimiento registrado'); setShowMov(false); selectAccount(selected) }
+    try {
+      await cashbankService.addBankMovement(selected.id, movForm)
+      toast.success('Movimiento registrado')
+      setShowMov(false)
+      await loadMovements(selected.id, movPage, movFilters, movPerPage)
+    }
     catch (e: any) { toast.error(e.response?.data?.error ?? 'Error') }
     finally { setSaving(false) }
   }
@@ -162,25 +218,127 @@ function BankContent() {
               <Plus size={12} /> Movimiento
             </button>
           </div>
+
+          {/* Filtros + resumen del período filtrado */}
+          <div className="flex flex-wrap items-end gap-3 px-3 sm:px-4 py-3 border-b border-gray-100 bg-gray-50/50">
+            <div>
+              <label className="block text-[11px] font-medium text-gray-500 mb-1">Desde</label>
+              <input
+                type="date"
+                className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white"
+                value={movFilters.from}
+                onChange={e => updateMovFilter({ from: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-gray-500 mb-1">Hasta</label>
+              <input
+                type="date"
+                className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white"
+                value={movFilters.to}
+                onChange={e => updateMovFilter({ to: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-gray-500 mb-1">Tipo</label>
+              <select
+                className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs bg-white"
+                value={movFilters.type}
+                onChange={e => updateMovFilter({ type: e.target.value as MovFilters['type'] })}
+              >
+                <option value="">Todos</option>
+                <option value="credit">Ingresos</option>
+                <option value="debit">Egresos</option>
+              </select>
+            </div>
+            {(movFilters.from || movFilters.to || movFilters.type) && (
+              <button
+                type="button"
+                onClick={() => updateMovFilter(emptyMovFilters())}
+                className="text-xs text-gray-500 hover:text-gray-700 underline underline-offset-2 pb-1.5"
+              >
+                Limpiar filtros
+              </button>
+            )}
+            <div className="ml-auto flex items-center gap-3 text-xs pb-1">
+              <span className="text-green-700 font-semibold">+ S/ {movSummary.sum_credit.toFixed(2)}</span>
+              <span className="text-red-600 font-semibold">- S/ {movSummary.sum_debit.toFixed(2)}</span>
+            </div>
+          </div>
+
           {loadingMovs ? (
             <div className="flex justify-center py-8"><div className="w-5 h-5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" /></div>
           ) : (
-            <div className="max-h-96 overflow-y-auto overflow-x-auto">
-              {movements.map(m => (
-                <div key={m.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-3 px-3 sm:px-4 py-3 border-b border-gray-50 hover:bg-gray-50 min-w-0">
-                  <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                    {m.type === 'credit' ? <ArrowDownLeft size={14} className="text-green-500 flex-shrink-0" /> : <ArrowUpRight size={14} className="text-red-400 flex-shrink-0" />}
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-700 truncate">{m.description}</p>
-                      <p className="text-xs text-gray-400">{m.reference || '-'} · {new Date(m.date).toLocaleDateString()}</p>
+            <div className="overflow-x-auto">
+              {movements.map(m => {
+                const origin = movementOrigin(m)
+                return (
+                  <div key={m.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-3 px-3 sm:px-4 py-3 border-b border-gray-50 hover:bg-gray-50 min-w-0">
+                    <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                      {m.type === 'credit' ? <ArrowDownLeft size={14} className="text-green-500 flex-shrink-0" /> : <ArrowUpRight size={14} className="text-red-400 flex-shrink-0" />}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <p className={`text-sm font-medium truncate ${m.is_reversed ? 'text-gray-400 line-through' : 'text-gray-700'}`}>
+                            {m.description || origin.label}
+                          </p>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium flex-shrink-0 ${origin.className}`}>{origin.label}</span>
+                          {m.is_reversed && (
+                            <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-gray-100 text-gray-500 flex-shrink-0" title="Este ingreso ya se revirtió — ver el movimiento de egreso con la misma referencia.">
+                              <Undo2 size={10} /> Anulado
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-400">{m.reference || '-'} · {new Date(m.date).toLocaleDateString()}</p>
+                      </div>
                     </div>
+                    <p className={`font-bold text-sm flex-shrink-0 ${m.is_reversed ? 'text-gray-400 line-through' : m.type === 'credit' ? 'text-green-600' : 'text-red-500'}`}>
+                      {m.type === 'credit' ? '+' : '-'} S/ {Number(m.amount).toFixed(2)}
+                    </p>
                   </div>
-                  <p className={`font-bold text-sm flex-shrink-0 ${m.type === 'credit' ? 'text-green-600' : 'text-red-500'}`}>
-                    {m.type === 'credit' ? '+' : '-'} S/ {Number(m.amount).toFixed(2)}
-                  </p>
+                )
+              })}
+              {movements.length === 0 && <div className="text-center py-8 text-gray-400 text-sm">Sin movimientos para los filtros seleccionados</div>}
+            </div>
+          )}
+
+          {movTotal > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-3 sm:px-4 py-3 bg-gray-50/50">
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="text-xs text-gray-600">
+                  Mostrando {(movPage - 1) * movPerPage + 1}-{Math.min(movPage * movPerPage, movTotal)} de {movTotal}
+                </p>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-600 whitespace-nowrap">Mostrar</span>
+                  <select
+                    className="border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white"
+                    value={movPerPage}
+                    onChange={e => { setMovPerPage(Number(e.target.value)); setMovPage(1) }}
+                  >
+                    {MOV_PER_PAGE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
                 </div>
-              ))}
-              {movements.length === 0 && <div className="text-center py-8 text-gray-400 text-sm">Sin movimientos registrados</div>}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMovPage(p => Math.max(1, p - 1))}
+                  disabled={movPage <= 1}
+                  className="px-2.5 py-1 rounded-lg border border-gray-200 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Anterior
+                </button>
+                <span className="text-xs text-gray-600">
+                  Página {movPage} de {Math.max(1, Math.ceil(movTotal / movPerPage))}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setMovPage(p => Math.min(Math.ceil(movTotal / movPerPage), p + 1))}
+                  disabled={movPage >= Math.ceil(movTotal / movPerPage)}
+                  className="px-2.5 py-1 rounded-lg border border-gray-200 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Siguiente
+                </button>
+              </div>
             </div>
           )}
         </div>
