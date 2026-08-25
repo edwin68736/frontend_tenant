@@ -539,11 +539,19 @@ export async function generateReceiptPdf(
     // TICKET_PAGE_HEIGHT (520mm) es un alto de "hoja de rollo" holgado a propósito, para que
     // ítems con descripción larga nunca se corten mientras se dibuja el contenido — pero un
     // ticket normal usa mucho menos que eso, y sin recortar quedaba un espacio en blanco enorme
-    // debajo del contenido real. Acá se recorta la altura real de la página (MediaBox) al punto
-    // donde terminó de dibujarse, con el mismo margen que el encabezado.
+    // debajo del contenido real.
+    //
+    // jsPDF convierte cada coordenada Y a espacio PDF (origen abajo-izquierda) EN EL MOMENTO de
+    // dibujar, usando la altura de página vigente en ese instante — no al exportar. Por eso NO
+    // se puede recortar moviendo el borde superior (pageSize.height/setHeight) después de
+    // dibujar: eso desplaza la ventana visible hacia abajo mientras el contenido ya quedó fijo
+    // arriba, cerca del borde original de 520mm — resultado: página en blanco (bug de un intento
+    // anterior de este mismo fix). El recorte tiene que mover el borde INFERIOR hacia arriba,
+    // dejando el borde superior intacto: ahí es donde está el espacio sobrante, porque el
+    // contenido se dibuja de arriba hacia abajo empezando en y=margin.
     const finalHeight = Math.max(y + margin, margin * 4)
-    doc.setPage(1)
-    doc.internal.pageSize.height = finalHeight
+    const mediaBox = doc.getPageInfo(1).pageContext.mediaBox
+    mediaBox.bottomLeftY = mediaBox.topRightY - finalHeight * doc.internal.scaleFactor
 
     if (options?.preview) {
       applyPreviewWatermark(doc, pageW, finalHeight)
