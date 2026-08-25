@@ -8,7 +8,7 @@ import {
   BookUser, Wallet, Building2, Users, Settings, LogOut,
   Utensils, FileText, X, Grid3x3, Layers, ChefHat, UserCog,
   Shield, MapPin, FileCode, ShieldCheck, ArrowRightLeft, ListOrdered, LayoutGrid, RotateCcw, ShoppingBag,
-  ChevronLeft, ChevronRight, BarChart3, CreditCard, Briefcase, UserCircle, Car, Lock, Send,
+  ChevronLeft, ChevronRight, BarChart3, CreditCard, Briefcase, UserCircle, Car, Lock, Send, FileSignature,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -275,6 +275,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'rep-ventas', to: '/reports/sales', label: 'Reporte de ventas', icon: <Receipt size={14} /> },
       { id: 'rep-productos', to: '/reports/products', label: 'Reporte de productos', icon: <Tag size={14} /> },
       { id: 'rep-ventas-producto', to: '/reports/sales-by-product', label: 'Ventas por producto', icon: <BarChart3 size={14} /> },
+      { id: 'rep-notas', to: '/reports/notes', label: 'Notas de crédito/débito', icon: <FileSignature size={14} /> },
       { id: 'rep-compras', to: '/reports/purchases', label: 'Reporte de compras', icon: <Truck size={14} /> },
       { id: 'rep-kardex', to: '/reports/kardex', label: 'Reporte de kardex', icon: <ListOrdered size={14} /> },
       { id: 'rep-caja', to: '/reports/cash', label: 'Reporte de caja', icon: <Wallet size={14} /> },

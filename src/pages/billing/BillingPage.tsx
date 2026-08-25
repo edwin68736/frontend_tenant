@@ -1069,7 +1069,11 @@ function BillingContent() {
                           onClick: () => void handleResend(s.id),
                         },
                         {
-                          hidden: !(isImpersonated && viewMode === 'invoices' && !isSaleCancelled(s)),
+                          // Antes solo facturas/boletas (viewMode 'invoices') — el backend
+                          // (ReissueSale) ya era genérico, no exigía ese tipo de documento;
+                          // faltaba mostrar el botón también en la pestaña de notas para que
+                          // soporte pueda corregir una NC/ND mal emitida (Fase 4).
+                          hidden: !(isImpersonated && (viewMode === 'invoices' || viewMode === 'credit_notes') && !isSaleCancelled(s)),
                           icon: <CalendarClock size={14} className="text-amber-600" />,
                           label: 'Corregir y reenviar',
                           disabled: reissueSubmitting,

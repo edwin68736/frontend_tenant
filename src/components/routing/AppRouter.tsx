@@ -60,6 +60,7 @@ const ReportsLayout = lazy(() => import('@/pages/reports/ReportsLayout'))
 const SalesReportPage = lazy(() => import('@/pages/reports/SalesReportPage'))
 const ProductsReportPage = lazy(() => import('@/pages/reports/ProductsReportPage'))
 const SalesByProductReportPage = lazy(() => import('@/pages/reports/SalesByProductReportPage'))
+const NotesReportPage = lazy(() => import('@/pages/reports/NotesReportPage'))
 const PurchasesReportPage = lazy(() => import('@/pages/reports/PurchasesReportPage'))
 const KardexReportPage = lazy(() => import('@/pages/reports/KardexReportPage'))
 const CashReportPage = lazy(() => import('@/pages/reports/CashReportPage'))
@@ -195,6 +196,7 @@ function AppRoutes() {
           <Route path="sales" element={<Lazy><SalesReportPage /></Lazy>} />
           <Route path="products" element={<Lazy><ProductsReportPage /></Lazy>} />
           <Route path="sales-by-product" element={<Lazy><SalesByProductReportPage /></Lazy>} />
+          <Route path="notes" element={<Lazy><NotesReportPage /></Lazy>} />
           <Route path="purchases" element={<Lazy><PurchasesReportPage /></Lazy>} />
           <Route path="kardex" element={<Lazy><KardexReportPage /></Lazy>} />
           <Route path="cash" element={<Lazy><CashReportPage /></Lazy>} />
