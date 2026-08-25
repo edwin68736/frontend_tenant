@@ -240,9 +240,12 @@ export interface SalesByProductRow {
   unit: string
   quantity_sold: number
   total_amount: number
+  /** Métricas técnicas de granularidad interna, no se muestran en el reporte del front. */
   lines_count: number
   sales_count: number
   avg_line_amount: number
+  /** total_amount / quantity_sold — precio promedio de venta por unidad. */
+  avg_unit_price: number
 }
 
 export interface SalesByProductSummary {
@@ -367,8 +370,17 @@ export const salesService = {
     })
   },
 
-  /** Reporte: ventas agregadas por producto (from, to, branch_id, category_id) + resumen. */
-  listByProduct: (params?: { from?: string; to?: string; branch_id?: number; category_id?: number }) =>
+  /** Reporte: ventas agregadas por producto (from, to, branch_id, category_id, q, product_type) + resumen. */
+  listByProduct: (params?: {
+    from?: string
+    to?: string
+    branch_id?: number
+    category_id?: number
+    /** Busca por código o nombre de producto. */
+    q?: string
+    /** '' = todos | 'product' | 'service' */
+    product_type?: string
+  }) =>
     api
       .get<{
         data: SalesByProductRow[]

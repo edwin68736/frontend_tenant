@@ -23,16 +23,18 @@ const getCurrentMonthRange = () => {
   return { from: `${year}-${month}-01`, to: today }
 }
 
+// lines_count/avg_line_amount son métricas técnicas de granularidad interna (cuántas filas de
+// detalle tuvo el producto, no cuántas ventas) sin lectura de negocio clara — no se muestran
+// aquí; en su lugar avg_unit_price (precio promedio de venta por unidad) sí es un dato útil.
 const EXPORT_COLS: ExportColumn<SalesByProductRow>[] = [
   { key: 'category_name', label: 'Categoría' },
   { key: 'product_code', label: 'Código' },
   { key: 'product_name', label: 'Producto' },
   { key: 'unit', label: 'Unidad', format: (v: unknown) => String(v || '—') },
   { key: 'quantity_sold', label: 'Cantidad', format: (v: unknown) => Number(v).toFixed(3) },
-  { key: 'lines_count', label: 'Líneas', format: (v: unknown) => String(v ?? '') },
   { key: 'sales_count', label: 'Comprobantes', format: (v: unknown) => String(v ?? '') },
   { key: 'total_amount', label: 'Total (S/)', format: (v: unknown) => Number(v).toFixed(2) },
-  { key: 'avg_line_amount', label: 'Prom. línea (S/)', format: (v: unknown) => Number(v).toFixed(2) },
+  { key: 'avg_unit_price', label: 'Precio prom. (S/)', format: (v: unknown) => Number(v).toFixed(2) },
 ]
 
 function fmtMoney(n: unknown): string {
@@ -59,6 +61,8 @@ export default function SalesByProductReportPage() {
     to: currentMonthRange.to,
     branch_id: '' as number | '',
     category_id: '' as number | '',
+    q: '',
+    product_type: '' as '' | 'product' | 'service',
   })
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(25)
@@ -75,11 +79,11 @@ export default function SalesByProductReportPage() {
 
   useEffect(() => {
     void load()
-  }, [filters.from, filters.to, filters.branch_id, filters.category_id])
+  }, [filters.from, filters.to, filters.branch_id, filters.category_id, filters.q, filters.product_type])
 
   useEffect(() => {
     setPage(1)
-  }, [filters.from, filters.to, filters.branch_id, filters.category_id])
+  }, [filters.from, filters.to, filters.branch_id, filters.category_id, filters.q, filters.product_type])
 
   useEffect(() => {
     const tp = Math.max(1, Math.ceil(data.length / perPage))
@@ -89,11 +93,13 @@ export default function SalesByProductReportPage() {
   const load = async () => {
     setLoading(true)
     try {
-      const params: { from?: string; to?: string; branch_id?: number; category_id?: number } = {}
+      const params: { from?: string; to?: string; branch_id?: number; category_id?: number; q?: string; product_type?: string } = {}
       if (filters.from) params.from = filters.from
       if (filters.to) params.to = filters.to
       if (filters.branch_id) params.branch_id = Number(filters.branch_id)
       if (filters.category_id) params.category_id = Number(filters.category_id)
+      if (filters.q.trim()) params.q = filters.q.trim()
+      if (filters.product_type) params.product_type = filters.product_type
       const { data: list, summary: sm } = await salesService.listByProduct(params)
       setData(list ?? [])
       setSummary(sm ?? null)
@@ -155,12 +161,12 @@ export default function SalesByProductReportPage() {
     }
   }
 
-  const tableCols = 8
+  const tableCols = 7
 
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1">Desde</label>
             <input
@@ -214,6 +220,30 @@ export default function SalesByProductReportPage() {
                   {c.name}
                 </option>
               ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Buscar producto</label>
+            <input
+              type="text"
+              placeholder="Código o nombre..."
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              value={filters.q}
+              onChange={e => setFilters(f => ({ ...f, q: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Tipo</label>
+            <select
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              value={filters.product_type}
+              onChange={e =>
+                setFilters(f => ({ ...f, product_type: e.target.value as '' | 'product' | 'service' }))
+              }
+            >
+              <option value="">Todos</option>
+              <option value="product">Solo productos</option>
+              <option value="service">Solo servicios</option>
             </select>
           </div>
         </div>
@@ -294,10 +324,9 @@ export default function SalesByProductReportPage() {
                   <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Producto</th>
                   <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Und.</th>
                   <th className="text-right px-4 py-2 text-xs font-semibold text-gray-500">Cantidad</th>
-                  <th className="text-right px-4 py-2 text-xs font-semibold text-gray-500">Líneas</th>
                   <th className="text-right px-4 py-2 text-xs font-semibold text-gray-500">Cmpr.</th>
                   <th className="text-right px-4 py-2 text-xs font-semibold text-gray-500">Total</th>
-                  <th className="text-right px-4 py-2 text-xs font-semibold text-gray-500">Prom. línea</th>
+                  <th className="text-right px-4 py-2 text-xs font-semibold text-gray-500">Precio prom.</th>
                 </tr>
               </thead>
               <tbody>
@@ -322,13 +351,12 @@ export default function SalesByProductReportPage() {
                           <td className="px-4 py-2 text-gray-900">{row.product_name}</td>
                           <td className="px-4 py-2 text-gray-600">{row.unit || '—'}</td>
                           <td className="px-4 py-2 text-right tabular-nums">{fmtQty(row.quantity_sold)}</td>
-                          <td className="px-4 py-2 text-right tabular-nums text-gray-700">{row.lines_count ?? 0}</td>
                           <td className="px-4 py-2 text-right tabular-nums text-gray-700">{row.sales_count ?? 0}</td>
                           <td className="px-4 py-2 text-right tabular-nums font-medium text-gray-900">
                             {fmtMoney(row.total_amount)}
                           </td>
                           <td className="px-4 py-2 text-right tabular-nums text-gray-600">
-                            {fmtMoney(row.avg_line_amount)}
+                            {fmtMoney(row.avg_unit_price)}
                           </td>
                         </tr>
                       </Fragment>
