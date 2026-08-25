@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Link } from 'react-router-dom'
-import { Plus, X, ArrowUpRight, ArrowDownLeft, Banknote, Pencil, Undo2 } from 'lucide-react'
+import { Plus, X, ArrowUpRight, ArrowDownLeft, Banknote, Pencil, Undo2, ChevronRight } from 'lucide-react'
 import { cashbankService, type BankAccount, type BankMovement } from '@/services/cashbank.service'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
@@ -175,26 +175,38 @@ function BankContent() {
         </button>
       </div>
 
-      {/* Grid de cuentas */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {accounts.map(acc => (
-          <div key={acc.id} onClick={() => selectAccount(acc)}
-            className={`text-left bg-white rounded-2xl shadow-sm p-4 border-2 transition-all hover:shadow-md cursor-pointer ${selected?.id === acc.id ? 'border-[rgb(var(--p400))]' : 'border-transparent'}`}>
-            <div className="flex items-start justify-between">
-              <div className="w-10 h-10 bg-[rgb(var(--p50))] rounded-xl flex items-center justify-center"><Banknote size={18} className="text-[rgb(var(--p500))]" /></div>
-              <div className="flex items-center gap-1">
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${acc.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{acc.active ? 'Activa' : 'Inactiva'}</span>
-                <button onClick={e => openEdit(acc, e)} className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Editar"><Pencil size={14} /></button>
+      {/* Grid de cuentas — compacto: la lista de movimientos de abajo es lo que más se usa */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5">
+        {accounts.map(acc => {
+          const isSelected = selected?.id === acc.id
+          return (
+            <div
+              key={acc.id}
+              onClick={() => selectAccount(acc)}
+              className={`group text-left bg-white rounded-xl shadow-sm p-3 border-2 transition-all hover:shadow-md cursor-pointer ${isSelected ? 'border-[rgb(var(--p400))] bg-[rgb(var(--p50))]/40' : 'border-transparent'}`}
+            >
+              <div className="flex items-start justify-between gap-1">
+                <div className="w-7 h-7 bg-[rgb(var(--p50))] rounded-lg flex items-center justify-center flex-shrink-0"><Banknote size={14} className="text-[rgb(var(--p500))]" /></div>
+                <div className="flex items-center gap-0.5 flex-shrink-0">
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${acc.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{acc.active ? 'Activa' : 'Inactiva'}</span>
+                  <button onClick={e => openEdit(acc, e)} className="p-1 rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Editar"><Pencil size={12} /></button>
+                </div>
+              </div>
+              <p className="font-semibold text-sm text-gray-800 mt-1.5 truncate">{acc.name}</p>
+              <p className="text-[11px] text-gray-400 truncate">
+                {acc.type === 'wallet' ? 'Billetera' : acc.type === 'cash' ? 'Caja' : acc.bank_name}
+                {acc.account_number ? ` · ${acc.account_number}` : ''}
+              </p>
+              <div className="flex items-end justify-between mt-1">
+                <p className="text-base font-bold text-[rgb(var(--p600))]">{acc.currency} {Number(acc.balance).toFixed(2)}</p>
+                <span className={`flex items-center gap-0.5 text-[10px] font-medium flex-shrink-0 transition-colors ${isSelected ? 'text-[rgb(var(--p600))]' : 'text-gray-300 group-hover:text-[rgb(var(--p500))]'}`}>
+                  Ver
+                  <ChevronRight size={11} />
+                </span>
               </div>
             </div>
-            <p className="font-bold text-gray-800 mt-3">{acc.name}</p>
-            <p className="text-xs text-gray-500">
-              {acc.type === 'wallet' ? 'Billetera' : acc.type === 'cash' ? 'Caja' : acc.bank_name}
-              {acc.account_number ? ` · ${acc.account_number}` : ''}
-            </p>
-            <p className="text-xl font-bold text-[rgb(var(--p600))] mt-2">{acc.currency} {Number(acc.balance).toFixed(2)}</p>
-          </div>
-        ))}
+          )
+        })}
         {accounts.length === 0 && (
           <div className="sm:col-span-2 lg:col-span-3 bg-white rounded-2xl shadow-sm flex flex-col items-center justify-center py-16 text-center">
             <Banknote size={32} className="text-gray-300 mb-3" />
