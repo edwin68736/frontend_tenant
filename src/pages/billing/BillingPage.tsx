@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Send, Eye, RefreshCw, X, FileText, FileCode, Archive, Download, FileSignature, FileBarChart, Ban, Search, Ticket, FileDown, ChevronDown, Truck, Receipt, MoreVertical, CalendarClock } from 'lucide-react'
+import { Send, Eye, RefreshCw, X, FileText, FileCode, Archive, Download, FileSignature, FileBarChart, Ban, Search, Ticket, FileDown, ChevronDown, Truck, Receipt, MoreVertical, CalendarClock, Plus } from 'lucide-react'
 import { salesService, type Sale, type SaleDetail, type SaleItem } from '@/services/sales.service'
 import { PrintDocButton } from '@/components/print/PrintDocButton'
 import { RowMenu } from '@/components/ui/RowMenu'
@@ -716,20 +716,30 @@ function BillingContent() {
       </div>
 
       {viewMode === 'credit_notes' && (
-        <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+            <button
+              type="button"
+              onClick={() => { setNoteKind('credit'); setPage(1) }}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium ${noteKind === 'credit' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              Crédito
+            </button>
+            <button
+              type="button"
+              onClick={() => { setNoteKind('debit'); setPage(1) }}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium ${noteKind === 'debit' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            >
+              Débito
+            </button>
+          </div>
           <button
             type="button"
-            onClick={() => { setNoteKind('credit'); setPage(1) }}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium ${noteKind === 'credit' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+            onClick={() => navigate('/billing/notes/new')}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium border border-dashed border-gray-300 text-gray-600 hover:border-[rgb(var(--p300))] hover:text-[rgb(var(--p600))]"
+            title="Para un comprobante que no está registrado como venta en Tukifac"
           >
-            Crédito
-          </button>
-          <button
-            type="button"
-            onClick={() => { setNoteKind('debit'); setPage(1) }}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium ${noteKind === 'debit' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-          >
-            Débito
+            <Plus size={14} /> Nota independiente
           </button>
         </div>
       )}

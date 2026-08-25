@@ -63,6 +63,32 @@ export interface InvoiceInfo {
 /** Envío manual síncrono: el backend puede esperar hasta ~90s la respuesta SUNAT. */
 const MANUAL_BILLING_TIMEOUT_MS = 120_000
 
+/** Ítem de una nota independiente (Fase 3): no viene de una venta, trae todo su propio cálculo. */
+export interface IndependentNoteItemInput {
+  code?: string
+  description: string
+  unit?: string
+  quantity: number
+  unit_price: number
+  igv_affectation_type?: string
+  /** Si el precio unitario ya trae IGV. Default true si se omite. */
+  price_includes_igv?: boolean
+}
+
+/** Payload de POST /api/billing/notes/independent. */
+export interface IndependentNoteInput {
+  branch_id: number
+  doc_type: '07' | '08'
+  reason_code: string
+  reason?: string
+  affected_doc_type: '01' | '03'
+  affected_series: string
+  affected_number: string
+  contact_id: number
+  currency?: string
+  items: IndependentNoteItemInput[]
+}
+
 export const billingService = {
   send: (saleId: number): Promise<BillingResult> =>
     api.post(`/api/billing/send/${saleId}`, undefined, { timeout: MANUAL_BILLING_TIMEOUT_MS }).then(r => r.data),
@@ -114,6 +140,15 @@ export const billingService = {
     reasonCode: string,
   ): Promise<{ success: boolean; message?: string; nd_sale?: unknown; invoice?: unknown }> =>
     api.post(`/api/billing/debit-notes/${saleId}`, { reason, reason_code: reasonCode }).then(r => r.data),
+
+  /**
+   * Emite una NC/ND que no nace de una venta de Tukifac (Fase 3) — el comprobante afectado
+   * se declara a mano (tipo, serie, número), en vez de exigir que exista localmente.
+   */
+  createIndependentNote: (
+    body: IndependentNoteInput,
+  ): Promise<{ success: boolean; message?: string; nc_sale?: unknown; invoice?: unknown }> =>
+    api.post('/api/billing/notes/independent', body).then(r => r.data),
 
   getInvoice: (saleId: number): Promise<InvoiceInfo> =>
     api.get(`/api/billing/invoice/${saleId}`).then(r => r.data),

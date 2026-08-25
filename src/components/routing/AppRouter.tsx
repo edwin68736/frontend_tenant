@@ -49,6 +49,7 @@ const BillingPage = lazy(() => import('@/pages/billing/BillingPage'))
 const SunatDocsPage = lazy(() => import('@/pages/billing/SunatDocsPage'))
 const GuiaRemisionCreatePage = lazy(() => import('@/pages/billing/GuiaRemisionCreatePage'))
 const GuiaListPage = lazy(() => import('@/pages/billing/GuiaListPage'))
+const IndependentNoteCreatePage = lazy(() => import('@/pages/billing/IndependentNoteCreatePage'))
 const TransportistasPage = lazy(() => import('@/pages/fleet/TransportistasPage'))
 const ConductoresPage = lazy(() => import('@/pages/fleet/ConductoresPage'))
 const VehiculosPage = lazy(() => import('@/pages/fleet/VehiculosPage'))
@@ -173,6 +174,8 @@ function AppRoutes() {
         <Route path="cashbank/bank" element={<Lazy><BankPage /></Lazy>} />
         <Route path="cashbank/payment-methods" element={<Lazy><PaymentMethodsPage /></Lazy>} />
         <Route path="billing" element={<Lazy><BillingPage /></Lazy>} />
+        {/* Nota de crédito/débito independiente (Fase 3): sin venta local, documento afectado a mano. */}
+        <Route path="billing/notes/new" element={<Lazy><IndependentNoteCreatePage /></Lazy>} />
         {/* Guías de remisión: vistas independientes por tipo (remitente 09 / transportista 31). */}
         <Route path="billing/docs/despatches/:guiaTipo/new" element={<Lazy><GuiaRemisionCreatePage /></Lazy>} />
         <Route path="billing/docs/despatches/:guiaTipo" element={<Lazy><GuiaListPage /></Lazy>} />
