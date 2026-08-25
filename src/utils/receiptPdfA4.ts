@@ -375,12 +375,22 @@ function drawCustomerBlock(
 
 type TableCol = { label: string; w: number; align?: 'left' | 'right' | 'center' }
 
+/**
+ * Tabla de ítems con salto de página real: antes asumía que todo entraba en `minBodyRows`
+ * (14) filas fijas — con más ítems, seguía dibujando filas de todos modos pero el marco y
+ * el `ctx.y` de salida quedaban calculados para esas 14 filas nomás, así que el total, el
+ * "SON:" y el pie terminaban dibujados encima de las filas de más en vez de debajo. Ahora
+ * cada fila chequea si entra en lo que queda de la página (mismo margen que
+ * drawLineWithPageBreak) y si no, cierra el recuadro de esa página, salta, y repite la
+ * cabecera de columnas en la nueva — igual que ya se hacía con textos largos (términos,
+ * observaciones), solo que acá nunca se había aplicado a la tabla.
+ */
 function drawItemsTable(ctx: A4Ctx, data: PrintData): number {
   const { doc } = ctx
-  const tableTop = ctx.y
   const tableX = MARGIN
   const minBodyRows = 14
   const rowH = LINE_H + 0.6
+  const maxRowBottom = PAGE_H - MARGIN
 
   const cols: TableCol[] = [
     { label: 'CANT.', w: 11, align: 'center' },
@@ -404,29 +414,46 @@ function drawItemsTable(ctx: A4Ctx, data: PrintData): number {
   }
 
   const headerH = rowH + 0.8
-  doc.setFillColor(...GRAY)
-  doc.rect(tableX, tableTop, CONTENT_W, headerH, 'F')
-  doc.setDrawColor(0, 0, 0)
-  doc.setLineWidth(0.2)
-  doc.rect(tableX, tableTop, CONTENT_W, headerH)
-
-  setFont(doc, FONT_SM, 'bold')
-  const hy = tableTop + rowH
-  cols.forEach((c, i) => {
-    const tx =
-      c.align === 'right' ? colX[i] + c.w - 1.5 : c.align === 'center' ? colX[i] + c.w / 2 : colX[i] + 1.5
-    doc.text(c.label, tx, hy, { align: c.align ?? 'left', maxWidth: c.w - 2 })
-    if (i > 0) doc.line(colX[i], tableTop, colX[i], tableTop + headerH)
-  })
-  doc.line(tableX + CONTENT_W, tableTop, tableX + CONTENT_W, tableTop + headerH)
-
-  let rowY = tableTop + headerH
-  const bodyBottom = rowY + rowH * minBodyRows
-
   const drawVerticalGrid = (y0: number, y1: number) => {
     doc.line(tableX, y0, tableX, y1)
     for (let i = 1; i < cols.length; i++) doc.line(colX[i], y0, colX[i], y1)
     doc.line(tableX + CONTENT_W, y0, tableX + CONTENT_W, y1)
+  }
+
+  /** Dibuja la cabecera de columnas en `top` y devuelve el Y donde arranca el cuerpo. */
+  const drawHeader = (top: number): number => {
+    doc.setFillColor(...GRAY)
+    doc.rect(tableX, top, CONTENT_W, headerH, 'F')
+    doc.setDrawColor(0, 0, 0)
+    doc.setLineWidth(0.2)
+    doc.rect(tableX, top, CONTENT_W, headerH)
+    setFont(doc, FONT_SM, 'bold')
+    const hy = top + rowH
+    cols.forEach((c, i) => {
+      const tx =
+        c.align === 'right' ? colX[i] + c.w - 1.5 : c.align === 'center' ? colX[i] + c.w / 2 : colX[i] + 1.5
+      doc.text(c.label, tx, hy, { align: c.align ?? 'left', maxWidth: c.w - 2 })
+      if (i > 0) doc.line(colX[i], top, colX[i], top + headerH)
+    })
+    doc.line(tableX + CONTENT_W, top, tableX + CONTENT_W, top + headerH)
+    doc.line(tableX, top + headerH, tableX + CONTENT_W, top + headerH)
+    return top + headerH
+  }
+
+  let tableTop = ctx.y
+  let bodyStart = drawHeader(tableTop)
+  let rowY = bodyStart
+
+  /** Si `h` no entra en lo que queda de la página, cierra el recuadro actual, salta de
+   * página y arranca una tabla nueva ahí (con su propia cabecera de columnas). */
+  const ensureSpace = (h: number) => {
+    if (rowY + h <= maxRowBottom) return
+    drawVerticalGrid(tableTop, rowY)
+    doc.line(tableX, rowY, tableX + CONTENT_W, rowY)
+    doc.addPage()
+    tableTop = MARGIN
+    bodyStart = drawHeader(tableTop)
+    rowY = bodyStart
   }
 
   const renderItemRow = (it: PrintData['items'][0]) => {
@@ -436,6 +463,7 @@ function drawItemsTable(ctx: A4Ctx, data: PrintData): number {
     }
     const descLines = doc.splitTextToSize(desc, cols[3].w - 3)
     const h = rowH * Math.max(1, descLines.length)
+    ensureSpace(h)
     setFont(doc, FONT_SM, 'normal')
     const midY = rowY + rowH - 0.5
     doc.text(String(it.quantity), colX[0] + cols[0].w / 2, midY, { align: 'center' })
@@ -459,6 +487,7 @@ function drawItemsTable(ctx: A4Ctx, data: PrintData): number {
     const desc = prepaymentDeductionDescription(p.related_doc_type, p.document_number)
     const descLines = doc.splitTextToSize(desc, cols[3].w - 3)
     const h = rowH * Math.max(1, descLines.length)
+    ensureSpace(h)
     setFont(doc, FONT_SM, 'normal')
     const midY = rowY + rowH - 0.5
     doc.text('1', colX[0] + cols[0].w / 2, midY, { align: 'center' })
@@ -474,16 +503,20 @@ function drawItemsTable(ctx: A4Ctx, data: PrintData): number {
     rowY += h
   }
 
+  // Filas vacías de relleno hasta el mínimo visual (14) — solo tiene sentido si el
+  // contenido real todavía no llegó a esa altura; con más ítems no se agrega nada.
   const filledRows = data.items.length + prepDeductions.length
   const emptyRows = Math.max(0, minBodyRows - filledRows)
-  rowY += emptyRows * rowH
+  for (let i = 0; i < emptyRows; i++) {
+    ensureSpace(rowH)
+    rowY += rowH
+  }
 
-  doc.line(tableX, tableTop + headerH, tableX + CONTENT_W, tableTop + headerH)
-  drawVerticalGrid(tableTop, bodyBottom)
-  doc.line(tableX, bodyBottom, tableX + CONTENT_W, bodyBottom)
+  drawVerticalGrid(tableTop, rowY)
+  doc.line(tableX, rowY, tableX + CONTENT_W, rowY)
 
-  ctx.y = bodyBottom + 5
-  return bodyBottom
+  ctx.y = rowY + 5
+  return rowY
 }
 
 function drawTotalsRight(ctx: A4Ctx, data: PrintData, startY: number): number {
