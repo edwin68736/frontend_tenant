@@ -519,6 +519,47 @@ function drawItemsTable(ctx: A4Ctx, data: PrintData): number {
   return rowY
 }
 
+/** Alto estimado del bloque que sigue a la tabla de ítems (totales, "SON:", condición de pago
+ *  + QR SUNAT, cuotas, cuentas bancarias, vendedor) — a diferencia de drawLegendAndNotes/
+ *  drawFooter, ninguna de las funciones de este bloque tiene salto de página propio, así que
+ *  si la tabla de ítems termina cerca del fondo de la hoja (comprobante con muchos ítems) el
+ *  QR SUNAT queda cortado a la mitad y el resto (cuentas bancarias, vendedor) termina
+ *  dibujado fuera de la página, invisible — bug real reportado con comprobantes largos.
+ *  Sobreestimar es preferible a quedarse corto: en el peor caso salta una hoja de más, nunca
+ *  corta contenido. */
+function estimateA4PostTableBlockHeight(data: PrintData, showPaymentCondition: boolean): number {
+  let h = buildReceiptTotalLines(data).length * (LINE_H + 0.4) + 2
+  const f = data.fiscal
+  if (f?.retention_applied) h += 2 * (LINE_H + 0.4)
+  if (f?.has_detraccion) h += (f.detraccion_bank_account ? 3 : 2) * (LINE_H + 0.4)
+  if (f?.has_prepayment_emit) h += LINE_H + 0.4
+
+  if (data.legend_text?.trim()) h += 2 * LINE_H + 1
+
+  if (showPaymentCondition) {
+    if (isElectronicSunatCode(data.sunat_code)) {
+      // El QR (42mm) es el elemento más alto y el que peor se ve cortado a la mitad.
+      h += 42 + (data.sunat_hash?.trim() ? 2 * (LINE_H - 0.3) + 2.5 : 0)
+    } else {
+      h += LINE_H + 2 * 2.5 + 5
+    }
+  }
+
+  const installments = data.credit_installments ?? []
+  if (installments.length > 0) {
+    h += LINE_H + 1 + (LINE_H + 0.6) * (1 + installments.length) + 4
+  }
+
+  const bankLines =
+    (data.bank_accounts ?? []).length +
+    (data.payment_wallet?.provider && data.payment_wallet?.phone ? 1 : 0)
+  if (bankLines > 0) h += LINE_H + 1 + bankLines * LINE_H + 2
+
+  if (data.seller_name?.trim()) h += 2 * LINE_H + 3
+
+  return h
+}
+
 function drawTotalsRight(ctx: A4Ctx, data: PrintData, startY: number): number {
   const { doc } = ctx
   let y = startY
@@ -1228,6 +1269,14 @@ export async function renderReceiptA4(doc: jsPDF, data: PrintData): Promise<void
   await drawHeader(ctx, data, nvLayout)
   drawCustomerBlock(ctx, data, nvLayout)
   drawItemsTable(ctx, data)
+
+  // Ver estimateA4PostTableBlockHeight: si el bloque de totales/QR/cuentas bancarias no
+  // entra completo en lo que queda de esta página, arrancarlo en una hoja nueva.
+  const postTableH = estimateA4PostTableBlockHeight(data, showPaymentCondition)
+  if (ctx.y + postTableH > PAGE_H - MARGIN) {
+    doc.addPage()
+    ctx.y = MARGIN
+  }
 
   const sectionY = ctx.y
   const isElectronic = isElectronicSunatCode(data.sunat_code)
