@@ -1,26 +1,376 @@
-import { Award } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { toast } from 'sonner'
+import { Award, Plus, Pencil, Trash2, Search } from 'lucide-react'
 import RequireModule from '@/components/ui/RequireModule'
+import { Modal } from '@/components/ui/Modal'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { useAuth } from '@/contexts/AuthContext'
+import {
+  productsService,
+  type Brand,
+  type CreateBrandInput,
+} from '@/services/products.service'
 
-/** Placeholder hasta que el backend exponga marcas como entidad propia. */
+const FORM_INPUT =
+  'w-full min-w-0 border border-gray-200 rounded-xl px-3 py-2.5 sm:py-2 text-base sm:text-sm outline-none focus:ring-2 focus:ring-[rgb(var(--p200))] focus:border-[rgb(var(--p400))]'
+
+const MODAL_CLASS =
+  'w-full max-w-none sm:max-w-lg max-h-[min(92dvh,640px)] !overflow-hidden flex flex-col gap-0 !p-0'
+
+type BrandFormState = {
+  name: string
+  description: string
+  sort_order: string
+}
+
+function emptyForm(): BrandFormState {
+  return { name: '', description: '', sort_order: '' }
+}
+
+function formFromBrand(b: Brand): BrandFormState {
+  return {
+    name: b.name,
+    description: b.description ?? '',
+    sort_order: b.sort_order != null ? String(b.sort_order) : '',
+  }
+}
+
 export default function BrandsPage() {
   return (
     <RequireModule moduleKey="products">
-      <div className="space-y-4 max-w-xl">
+      <BrandsContent />
+    </RequireModule>
+  )
+}
+
+function BrandsContent() {
+  const { hasPermission } = useAuth()
+  const canCreate = hasPermission('products.create')
+  const canEdit = hasPermission('products.edit')
+  const canDelete = hasPermission('products.delete')
+
+  const [brands, setBrands] = useState<Brand[]>([])
+  const [loading, setLoading] = useState(true)
+  const [q, setQ] = useState('')
+  const [modalOpen, setModalOpen] = useState(false)
+  const [editing, setEditing] = useState<Brand | null>(null)
+  const [form, setForm] = useState<BrandFormState>(emptyForm)
+  const [saving, setSaving] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<Brand | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  const load = useCallback(() => {
+    setLoading(true)
+    productsService
+      .listBrands({ withCounts: true })
+      .then((list) => setBrands(Array.isArray(list) ? list : []))
+      .catch(() => toast.error('Error al cargar marcas'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const filtered = useMemo(() => {
+    const term = q.trim().toLowerCase()
+    if (!term) return brands
+    return brands.filter(
+      (b) =>
+        b.name.toLowerCase().includes(term) ||
+        (b.description ?? '').toLowerCase().includes(term),
+    )
+  }, [brands, q])
+
+  const openCreate = () => {
+    setEditing(null)
+    setForm(emptyForm())
+    setModalOpen(true)
+  }
+
+  const openEdit = (b: Brand) => {
+    setEditing(b)
+    setForm(formFromBrand(b))
+    setModalOpen(true)
+  }
+
+  const closeModal = () => {
+    if (saving) return
+    setModalOpen(false)
+    setEditing(null)
+    setForm(emptyForm())
+  }
+
+  const handleSave = async () => {
+    const name = form.name.trim()
+    if (!name) {
+      toast.error('Ingresa un nombre')
+      return
+    }
+    const sortRaw = form.sort_order.trim()
+    let sort_order: number | undefined
+    if (sortRaw !== '') {
+      const n = Number(sortRaw)
+      if (!Number.isFinite(n) || n < 0) {
+        toast.error('El orden debe ser un número válido')
+        return
+      }
+      sort_order = Math.floor(n)
+    }
+
+    const payload: CreateBrandInput = {
+      name,
+      description: form.description.trim(),
+      ...(sort_order != null ? { sort_order } : {}),
+    }
+
+    setSaving(true)
+    try {
+      if (editing) {
+        await productsService.updateBrand(editing.id, {
+          name: payload.name,
+          description: payload.description,
+          sort_order: sort_order ?? editing.sort_order ?? 0,
+        })
+        toast.success('Marca actualizada')
+      } else {
+        await productsService.createBrand(payload)
+        toast.success('Marca creada')
+      }
+      closeModal()
+      load()
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { error?: string } } }
+      toast.error(err.response?.data?.error ?? 'Error al guardar marca')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await productsService.deleteBrand(deleteTarget.id)
+      toast.success('Marca eliminada')
+      if (editing?.id === deleteTarget.id) closeModal()
+      setDeleteTarget(null)
+      load()
+    } catch (e: unknown) {
+      const err = e as { response?: { data?: { error?: string } } }
+      toast.error(err.response?.data?.error ?? 'No se pudo eliminar la marca')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-            <Award size={20} className="text-primary-600" />
+            <Award size={20} className="text-[rgb(var(--p600))]" />
             Marcas
           </h2>
-          <p className="text-sm text-gray-500">Gestión de marcas del catálogo.</p>
-        </div>
-        <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/80 px-6 py-10 text-center">
-          <Award size={32} className="mx-auto text-gray-300 mb-3" />
-          <p className="text-sm text-gray-600 font-medium">Próximamente</p>
-          <p className="text-xs text-gray-500 mt-1">
-            La administración de marcas estará disponible en una próxima actualización del sistema.
+          <p className="text-sm text-gray-500">
+            Gestión de marcas del catálogo.
           </p>
         </div>
+        {canCreate && (
+          <button
+            type="button"
+            onClick={openCreate}
+            className="flex items-center gap-1.5 px-4 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90"
+          >
+            <Plus size={15} />
+            Nueva marca
+          </button>
+        )}
       </div>
-    </RequireModule>
+
+      <div className="relative flex-1 min-w-52 max-w-md">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <input
+          className="w-full border border-gray-200 rounded-xl pl-8 pr-3 py-2 text-sm"
+          placeholder="Buscar marca…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+      </div>
+
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden relative min-h-[200px]">
+        {loading && (
+          <div
+            className="absolute inset-0 z-10 bg-white/70 flex items-center justify-center"
+            aria-busy="true"
+          >
+            <div className="w-8 h-8 border-2 border-gray-300 border-t-[rgb(var(--p600))] rounded-full animate-spin" />
+          </div>
+        )}
+        <div className="w-full overflow-x-auto">
+          <table className="w-full min-w-[560px] text-sm">
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr>
+                {['Orden', 'Nombre', 'Descripción', 'Productos', ''].map((h) => (
+                  <th
+                    key={h || 'actions'}
+                    className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase"
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-12 text-center text-gray-400 text-sm">
+                    {loading
+                      ? 'Cargando…'
+                      : q.trim()
+                        ? 'No hay marcas que coincidan con la búsqueda'
+                        : 'No hay marcas registradas'}
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((b) => (
+                  <tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50">
+                    <td className="px-4 py-3 text-gray-500 tabular-nums w-20">
+                      {b.sort_order ?? 0}
+                    </td>
+                    <td className="px-4 py-3 font-medium text-gray-800">{b.name}</td>
+                    <td className="px-4 py-3 text-gray-600 max-w-xs truncate">
+                      {b.description?.trim() || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 tabular-nums w-24">
+                      {b.product_count ?? 0}
+                    </td>
+                    <td className="px-4 py-3 w-24">
+                      <div className="flex items-center justify-end gap-1">
+                        {canEdit && (
+                          <button
+                            type="button"
+                            onClick={() => openEdit(b)}
+                            className="p-1.5 text-gray-500 hover:text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] rounded-lg"
+                            aria-label={`Editar ${b.name}`}
+                          >
+                            <Pencil size={15} />
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if ((b.product_count ?? 0) > 0) {
+                                toast.error(
+                                  `No se puede eliminar: hay ${b.product_count} producto(s) vinculados`,
+                                )
+                                return
+                              }
+                              setDeleteTarget(b)
+                            }}
+                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                            aria-label={`Eliminar ${b.name}`}
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <Modal open={modalOpen} onClose={closeModal} contentClassName={MODAL_CLASS} closeOnBackdropClick={!saving}>
+        <div className="shrink-0 px-4 sm:px-6 pt-5 pb-3 border-b border-gray-100">
+          <h3 className="font-bold text-gray-800">
+            {editing ? 'Editar marca' : 'Nueva marca'}
+          </h3>
+          <p className="text-xs text-gray-500 mt-1">
+            Las marcas agrupan productos en listados, filtros y reportes.
+          </p>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-4 space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Nombre *</label>
+            <input
+              className={FORM_INPUT}
+              placeholder="Ej. Samsung, LG…"
+              value={form.name}
+              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+              onKeyDown={(e) => e.key === 'Enter' && void handleSave()}
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Descripción (opcional)</label>
+            <textarea
+              className={`${FORM_INPUT} resize-none min-h-[4.5rem]`}
+              rows={2}
+              placeholder="Detalle breve de la marca"
+              value={form.description}
+              onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Orden (opcional)</label>
+            <input
+              className={FORM_INPUT}
+              type="number"
+              min={0}
+              step={1}
+              placeholder="Automático si se deja vacío"
+              value={form.sort_order}
+              onChange={(e) => setForm((f) => ({ ...f, sort_order: e.target.value }))}
+            />
+            <p className="text-xs text-gray-400 mt-1">Menor número = aparece primero en listados.</p>
+          </div>
+        </div>
+        <div className="shrink-0 border-t border-gray-100 px-4 sm:px-6 py-3 bg-white flex flex-col-reverse sm:flex-row gap-2">
+          <button
+            type="button"
+            onClick={closeModal}
+            disabled={saving}
+            className="flex-1 py-2.5 sm:py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 font-medium disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleSave()}
+            disabled={saving || !form.name.trim()}
+            className="flex-1 py-2.5 sm:py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50"
+          >
+            {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Crear marca'}
+          </button>
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => !deleting && setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        title="Eliminar marca"
+        message={
+          deleteTarget ? (
+            <>
+              ¿Eliminar la marca <strong>{deleteTarget.name}</strong>?
+              {(deleteTarget.product_count ?? 0) > 0 && (
+                <span className="block mt-2 text-red-700 text-sm">
+                  Tiene {deleteTarget.product_count} producto(s) vinculados. Debes reasignarlos antes de eliminar.
+                </span>
+              )}
+            </>
+          ) : null
+        }
+        confirmLabel="Eliminar"
+        variant="danger"
+        loading={deleting}
+      />
+    </div>
   )
 }

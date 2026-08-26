@@ -71,6 +71,8 @@ export interface Product {
   active: boolean
   category_id: number | null
   category_name?: string
+  brand_id: number | null
+  brand_name?: string
   preparation_area?: string
 }
 
@@ -99,6 +101,27 @@ export interface CreateCategoryInput {
 }
 
 export interface UpdateCategoryInput {
+  name: string
+  description?: string
+  sort_order?: number
+}
+
+export interface Brand {
+  id: number
+  name: string
+  description?: string
+  sort_order?: number
+  product_count?: number
+  active?: boolean
+}
+
+export interface CreateBrandInput {
+  name: string
+  description?: string
+  sort_order?: number
+}
+
+export interface UpdateBrandInput {
   name: string
   description?: string
   sort_order?: number
@@ -145,6 +168,7 @@ export interface CreateProductInput {
   /** Solo en alta: cantidad inicial de inventario (requiere manage_stock). */
   initial_stock?: number
   category_id?: number | null
+  brand_id?: number | null
   modifier_group_ids?: number[]
   presentations?: ProductPresentation[]
   /** Solo para edición: enviar para no cambiar el estado activo por defecto */
@@ -245,7 +269,8 @@ export const productsService = {
     /** Filtra catálogo/stock por sucursal activa. */
     branch_id?: number,
     /** Oculta los combos. Úselo al elegir componentes: un combo no puede contener otro. */
-    exclude_combos?: boolean
+    exclude_combos?: boolean,
+    brand_id?: number
   ) =>
     api
       .get<{ data: Product[]; total?: number }>('/api/products', {
@@ -260,6 +285,7 @@ export const productsService = {
           type: catalog_type,
           ...(branch_id && branch_id > 0 ? { branch_id } : {}),
           ...(exclude_combos ? { exclude_combos: true } : {}),
+          ...(brand_id ? { brand_id } : {}),
         },
       })
       .then(r => ({
@@ -389,6 +415,36 @@ export const productsService = {
       .then((r) => r.data.data),
 
   deleteCategory: (id: number) => api.delete(`/api/categories/${id}`).then((r) => r.data),
+
+  listBrands: (opts?: { withCounts?: boolean }) =>
+    api
+      .get<{ data: Brand[] }>('/api/brands', {
+        params: opts?.withCounts ? { with_counts: 'true' } : undefined,
+      })
+      .then((r) => r.data.data ?? []),
+
+  createBrand: (nameOrInput: string | CreateBrandInput) => {
+    const body: CreateBrandInput =
+      typeof nameOrInput === 'string' ? { name: nameOrInput } : nameOrInput
+    return api
+      .post<{ data: Brand }>('/api/brands', {
+        name: body.name,
+        description: body.description ?? '',
+        ...(body.sort_order != null ? { sort_order: body.sort_order } : {}),
+      })
+      .then((r) => r.data.data)
+  },
+
+  updateBrand: (id: number, input: UpdateBrandInput) =>
+    api
+      .put<{ data: Brand }>(`/api/brands/${id}`, {
+        name: input.name,
+        description: input.description ?? '',
+        sort_order: input.sort_order ?? 0,
+      })
+      .then((r) => r.data.data),
+
+  deleteBrand: (id: number) => api.delete(`/api/brands/${id}`).then((r) => r.data),
 
   listModifierGroups: () =>
     api.get<{ data: ModifierGroup[] }>('/api/modifier-groups').then(r => r.data.data ?? []),

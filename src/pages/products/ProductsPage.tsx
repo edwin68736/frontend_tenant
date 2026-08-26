@@ -7,7 +7,7 @@ import { BulkDeleteProductsPinModal } from '@/components/products/BulkDeleteProd
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { ProductPresentationsModal } from '@/components/products/ProductPresentationsModal'
 import { ModifierOptionsEditor } from '@/components/modifiers/ModifierOptionsEditor'
-import { productsService, getProductImageUrl, type Product, type Category, type CreateProductInput, type ModifierGroup, type ProductCatalogType, type ProductPresentation, type BulkDeleteProductsResult } from '@/services/products.service'
+import { productsService, getProductImageUrl, type Product, type Category, type Brand, type CreateProductInput, type ModifierGroup, type ProductCatalogType, type ProductPresentation, type BulkDeleteProductsResult } from '@/services/products.service'
 import { createEmptyOptionDraft, draftsFromApiOptions, optionDraftsToPayload, validateOptionDrafts, type ModifierOptionDraft } from '@/utils/modifierOptionText'
 import {
   PRODUCT_UNIT_FORM_OPTIONS,
@@ -74,6 +74,7 @@ function emptyForm(pageMode: ProductCatalogType): CreateProductInput {
       is_restaurant: false,
       show_in_digital_catalog: false,
       category_id: null,
+      brand_id: null,
       code: '',
       description: '',
       image_url: '',
@@ -99,6 +100,7 @@ function emptyForm(pageMode: ProductCatalogType): CreateProductInput {
     show_in_digital_catalog: false,
     preparation_area: '',
     category_id: null,
+    brand_id: null,
     code: '',
     description: '',
     image_url: '',
@@ -144,6 +146,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const canDeleteProducts = hasPermission('products.delete')
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  const [brands, setBrands] = useState<Brand[]>([])
   const [modifierGroups, setModifierGroups] = useState<ModifierGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
@@ -160,6 +163,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     return t.length < 2 ? '' : t
   }, [q])
   const [catFilter, setCatFilter] = useState<number | undefined>()
+  const [brandFilter, setBrandFilter] = useState<number | undefined>()
   const [includeInactive, setIncludeInactive] = useState(false)
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(10)
@@ -171,6 +175,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const [saving, setSaving] = useState(false)
   const [newCatName, setNewCatName] = useState('')
   const [addingCat, setAddingCat] = useState(false)
+  const [newBrandName, setNewBrandName] = useState('')
+  const [addingBrand, setAddingBrand] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [pendingImageFile, setPendingImageFile] = useState<File | null>(null)
   const [pendingImagePreview, setPendingImagePreview] = useState<string | null>(null)
@@ -179,6 +185,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const listImageTargetIdRef = useRef<number | null>(null)
   const [listUploadingImageId, setListUploadingImageId] = useState<number | null>(null)
   const catInputRef = useRef<HTMLInputElement>(null)
+  const brandInputRef = useRef<HTMLInputElement>(null)
   const loadSeqRef = useRef(0)
 
   // Modal grupos de modificadores
@@ -250,7 +257,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     const stockBranchId = pageMode === 'product' && activeBranchId > 0 ? activeBranchId : undefined
     return productsService
       // Los combos se administran en /products/combos: aquí solo el catálogo suelto.
-      .list(listSearchQuery, catFilter, undefined, !includeInactive, page, perPage, undefined, pageMode, stockBranchId, true)
+      .list(listSearchQuery, catFilter, undefined, !includeInactive, page, perPage, undefined, pageMode, stockBranchId, true, brandFilter)
       .then(({ data: p, total: t }) => {
         if (seq !== loadSeqRef.current) return [] as Product[]
         setProducts(p ?? [])
@@ -260,6 +267,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       .then(productsList =>
         Promise.all([
           productsService.listCategories(),
+          productsService.listBrands(),
           productsService.listModifierGroups(),
           productsList.filter(x => x.manage_stock).length > 0
             ? inventoryService
@@ -269,11 +277,12 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 )
                 .catch(() => ({}))
             : Promise.resolve({} as Record<string, number>),
-        ]) as Promise<[Category[], ModifierGroup[], Record<string, number>]>
+        ]) as Promise<[Category[], Brand[], ModifierGroup[], Record<string, number>]>
       )
-      .then(([categoriesList, modifierGroupsList, summary]) => {
+      .then(([categoriesList, brandsList, modifierGroupsList, summary]) => {
         if (seq !== loadSeqRef.current) return
         setCategories(categoriesList ?? [])
+        setBrands(brandsList ?? [])
         setModifierGroups(modifierGroupsList ?? [])
         setStockByProductId(summary ?? {})
       })
@@ -292,7 +301,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   useEffect(() => {
     void load()
     setSelectedIds(new Set())
-  }, [listSearchQuery, catFilter, includeInactive, page, perPage, pageMode, activeBranchId])
+  }, [listSearchQuery, catFilter, brandFilter, includeInactive, page, perPage, pageMode, activeBranchId])
 
   // Nota: se removió el refetch automático al volver a la pestaña (visibilitychange).
   // Provocaba recargas y 3-4 peticiones al backend cada vez que se cambiaba de pestaña.
@@ -312,7 +321,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       const per = 100
       for (;;) {
         const { data, total: t } = await productsService.list(
-          listSearchQuery, catFilter, undefined, !includeInactive, p, per, undefined, pageMode, stockBranchId, true,
+          listSearchQuery, catFilter, undefined, !includeInactive, p, per, undefined, pageMode, stockBranchId, true, brandFilter,
         )
         if (!data || data.length === 0) break
         all.push(...data)
@@ -385,6 +394,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       show_in_digital_catalog: p.show_in_digital_catalog ?? false,
       preparation_area: p.preparation_area ?? '',
       category_id: p.category_id,
+      brand_id: p.brand_id,
       description: p.description ?? '',
       image_url: p.image_url ?? '',
       manage_series: p.manage_series ?? false,
@@ -422,6 +432,19 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       setAddingCat(false)
       toast.success('Categoría creada')
     } catch { toast.error('Error creando categoría') }
+  }
+
+  const handleAddBrand = async () => {
+    if (!newBrandName.trim()) return
+    try {
+      const brand = await productsService.createBrand(newBrandName.trim())
+      if (!brand?.id) { toast.error('Error creando marca'); return }
+      setBrands(b => [...b, brand])
+      setF('brand_id', brand.id)
+      setNewBrandName('')
+      setAddingBrand(false)
+      toast.success('Marca creada')
+    } catch { toast.error('Error creando marca') }
   }
 
   const formImagePreview =
@@ -793,6 +816,33 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     </div>
   )
 
+  const brandField = (
+    <div className="min-w-0">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <label className="text-xs font-medium text-gray-600">Marca</label>
+        <button type="button" onClick={() => { setAddingBrand(true); setTimeout(() => brandInputRef.current?.focus(), 50) }} className="text-xs text-[rgb(var(--p600))] hover:underline shrink-0">+ Nueva</button>
+      </div>
+      {addingBrand ? (
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-1">
+          <input ref={brandInputRef} className={`flex-1 ${PRODUCT_FORM_INPUT}`} placeholder="Nombre marca" value={newBrandName} onChange={e => setNewBrandName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleAddBrand(); if (e.key === 'Escape') setAddingBrand(false) }} />
+          <button type="button" onClick={handleAddBrand} className="touch-target sm:min-h-0 sm:min-w-0 px-4 py-2.5 sm:px-2 sm:py-1.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm sm:text-xs font-medium shrink-0">OK</button>
+        </div>
+      ) : brands.filter(Boolean).length >= MIN_OPTIONS_FOR_SEARCH ? (
+        <SearchSelect
+          options={brands.filter(Boolean).map(b => ({ value: String(b.id), label: b.name }))}
+          value={String(form.brand_id ?? '')}
+          onChange={(v) => setF('brand_id', v ? Number(v) : null)}
+          placeholder="Sin marca"
+        />
+      ) : (
+        <select className={PRODUCT_FORM_INPUT} value={form.brand_id ?? ''} onChange={e => setF('brand_id', e.target.value ? Number(e.target.value) : null)}>
+          <option value="">Sin marca</option>
+          {brands.filter(Boolean).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+        </select>
+      )}
+    </div>
+  )
+
   return (
     <div className="space-y-4">
       {pageMode === 'product' && <PlanLimitBanner resource="products" />}
@@ -864,6 +914,20 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
             value={catFilter ?? ''} onChange={e => setCatFilter(e.target.value ? Number(e.target.value) : undefined)}>
             <option value="">Todas las categorías</option>
             {categories.filter(Boolean).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        )}
+        {brands.filter(Boolean).length >= MIN_OPTIONS_FOR_SEARCH ? (
+          <SearchSelect
+            options={brands.filter(Boolean).map(b => ({ value: String(b.id), label: b.name }))}
+            value={String(brandFilter ?? '')}
+            onChange={(v) => setBrandFilter(v ? Number(v) : undefined)}
+            placeholder="Todas las marcas"
+          />
+        ) : (
+          <select className="border border-gray-200 rounded-xl px-3 py-2 text-sm"
+            value={brandFilter ?? ''} onChange={e => setBrandFilter(e.target.value ? Number(e.target.value) : undefined)}>
+            <option value="">Todas las marcas</option>
+            {brands.filter(Boolean).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
         )}
         <label className="flex items-center gap-2 cursor-pointer px-3 py-2 text-sm text-gray-700">
@@ -1376,6 +1440,9 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           categoryField
         )}
         <div className={PRODUCT_FORM_GRID}>
+          {brandField}
+        </div>
+        <div className={PRODUCT_FORM_GRID}>
           <div className="min-w-0">
             <label className="block text-xs font-medium text-gray-600 mb-1">Precio venta *</label>
             {/* MoneyAmountInput: permite vaciar y teclear libre; el input number crudo con
@@ -1806,6 +1873,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 {panelTab === 'datos' && panelDetail && (
                   <div className="space-y-2 text-sm">
                     <p><span className="text-gray-500">Categoría:</span> {panelDetail.data.category_id ? categories.find(c => c.id === panelDetail.data.category_id)?.name ?? panelDetail.data.category_id : '—'}</p>
+                    <p><span className="text-gray-500">Marca:</span> {panelDetail.data.brand_id ? brands.find(b => b.id === panelDetail.data.brand_id)?.name ?? panelDetail.data.brand_id : '—'}</p>
                     <p>
                       <span className="text-gray-500">Unidad:</span>{' '}
                       {productUnitFormDisplayName(panelDetail.data.unit)}
