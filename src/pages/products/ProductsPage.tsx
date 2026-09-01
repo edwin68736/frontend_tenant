@@ -857,13 +857,13 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               : 'Catálogo de bienes; los servicios se administran en Inventario → Servicios.'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {pageMode === 'product' && (
             <>
               <button
                 type="button"
                 onClick={() => setImportModalOpen(true)}
-                className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50"
+                className="touch-target sm:min-h-0 flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50"
               >
                 <FileSpreadsheet size={15} /> Importar Excel
               </button>
@@ -871,14 +871,14 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 type="button"
                 onClick={() => void handleExport()}
                 disabled={exporting}
-                className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+                className="touch-target sm:min-h-0 flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
               >
                 {exporting ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Exportar Excel
               </button>
               <button
                 type="button"
                 onClick={() => setShowModifierGroups(true)}
-                className="flex items-center gap-1.5 px-4 py-2 border border-[rgb(var(--p300))] text-[rgb(var(--p700))] rounded-xl text-sm font-medium hover:bg-[rgb(var(--p50))]"
+                className="touch-target sm:min-h-0 flex items-center gap-1.5 px-4 py-2 border border-[rgb(var(--p300))] text-[rgb(var(--p700))] rounded-xl text-sm font-medium hover:bg-[rgb(var(--p50))]"
               >
                 <Layers size={15} /> Grupos de extras
               </button>
@@ -1727,7 +1727,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         )}
 
         </div>
-        <div className="shrink-0 border-t border-gray-100 px-4 sm:px-6 md:px-7 py-3 bg-white flex flex-col-reverse sm:flex-row gap-2">
+        <div className="modal-footer-safe shrink-0 border-t border-gray-100 px-4 sm:px-6 md:px-7 pt-3 bg-white flex flex-col-reverse sm:flex-row gap-2">
           <button type="button" onClick={closeProductModal} disabled={saving || uploadingImage} className="touch-target sm:min-h-0 flex-1 py-2.5 sm:py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 font-medium disabled:opacity-50">Cancelar</button>
           <button type="button" onClick={handleSave} disabled={saving || uploadingImage} className="touch-target sm:min-h-0 flex-1 py-2.5 sm:py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50">
             {saving || uploadingImage ? 'Guardando...' : 'Guardar'}
