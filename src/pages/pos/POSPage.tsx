@@ -7,7 +7,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
-import { Plus, Search, ShoppingCart, Trash2, X, ChevronRight, UserPlus, Package, ScanBarcode, LayoutGrid, Keyboard } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Trash2, X, ChevronRight, UserPlus, Package, ScanBarcode, LayoutGrid, Keyboard, Boxes, History, Tag } from 'lucide-react'
 import { clsx } from 'clsx'
 import { productsService, getProductImageUrl, type Product, type Category } from '@/services/products.service'
 import { contactsService, type Contact } from '@/services/contacts.service'
@@ -43,6 +43,7 @@ import { defaultOperationalPaymentCode, filterOperationalPaymentMethods } from '
 import { BILLING_NOT_ENABLED_MESSAGE, isElectronicBillingSunatCode } from '@/utils/posCheckoutSeries'
 import { PosMobileCartDrawer } from '@/components/pos/PosMobileCartDrawer'
 import { ManualProductModal } from '@/components/pos/ManualProductModal'
+import { PosProductInfoModal, type PosProductInfoMode } from '@/components/pos/PosProductInfoModal'
 import { PosCategoriesModal } from '@/components/pos/PosCategoriesModal'
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { isTabletCapacitorDevice } from '@/lib/platform/detect'
@@ -125,6 +126,8 @@ function POSContent() {
     savePosProductViewMode(mode)
   }, [])
   const [manualProductOpen, setManualProductOpen] = useState(false)
+  // Info rápida de producto desde su tarjeta (stock por sucursal / precio de compra / precio).
+  const [productInfo, setProductInfo] = useState<{ mode: PosProductInfoMode; product: Product } | null>(null)
 
   // Cobro (modal)
   const [checkoutOpen, setCheckoutOpen] = useState(false)
@@ -971,12 +974,16 @@ function POSContent() {
             ) : (
               // 3 columnas en móvil: `sm` son 390px (ver tailwind.config), así que subir a 4
               // ahí dejaba las tarjetas apretadas en cualquier teléfono.
+              // Bug reportado: saltar directo de 5 (md, 768px) a 6 columnas (lg, 1024px) dejaba
+              // las tarjetas amontonadas en pantallas medianas (~1024-1280px, laptop típico) —
+              // 6 no entraba cómodo todavía a esa altura. Se agrega un escalón en lg (5
+              // columnas) y 6 recién arranca en xl (1280px+), con más gap en cada salto.
               <div
                 className={clsx(
                   'w-full max-w-full',
                   productViewMode === 'list'
                     ? 'flex flex-col gap-1.5'
-                    : 'grid grid-cols-3 gap-2 md:grid-cols-5 md:gap-2.5 lg:grid-cols-6 justify-items-stretch',
+                    : 'grid grid-cols-3 gap-2 md:grid-cols-4 md:gap-2.5 lg:grid-cols-5 lg:gap-3 xl:grid-cols-6 justify-items-stretch',
                 )}
               >
                 {products.filter(p => p.active).map(p => {
@@ -1036,42 +1043,80 @@ function POSContent() {
                     )
                   }
 
+                  // Botones de info rápida (stock/compra/precio): stopPropagation porque viven
+                  // dentro de la misma tarjeta que agrega al carrito con un click — sin esto,
+                  // tocarlos también metería el producto al carrito.
+                  const openInfo = (mode: PosProductInfoMode) => (e: React.MouseEvent) => {
+                    e.stopPropagation()
+                    setProductInfo({ mode, product: p })
+                  }
+
                   return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={onPick}
-                      className={clsx(shell, 'rounded-xl overflow-hidden active:scale-[0.98]')}
-                    >
-                      <div data-product-visual className="aspect-square bg-stone-200/80 relative overflow-hidden">
-                        {imgUrl ? (
-                          <img
-                            src={imgUrl}
-                            alt={p.name}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                            loading="lazy"
-                            decoding="async"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-stone-400">
-                            <Package className="w-8 h-8" aria-hidden />
-                          </div>
-                        )}
-                      </div>
-                      <div className="p-2">
-                        <p className="font-medium text-stone-800 text-xs leading-tight line-clamp-2 min-h-[2rem]">
-                          {p.name}
-                        </p>
-                        {configBadge ? (
-                          <p className="text-[9px] text-[rgb(var(--p700))] leading-tight mt-0.5 line-clamp-1">
-                            {configBadge}
+                    <div key={p.id} className={clsx(shell, 'rounded-xl overflow-hidden flex flex-col')}>
+                      <button
+                        type="button"
+                        onClick={onPick}
+                        className="text-left active:scale-[0.98] flex-1 flex flex-col focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400/50 rounded-t-xl"
+                      >
+                        <div data-product-visual className="aspect-square bg-stone-200/80 relative overflow-hidden">
+                          {imgUrl ? (
+                            <img
+                              src={imgUrl}
+                              alt={p.name}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                              loading="lazy"
+                              decoding="async"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-stone-400">
+                              <Package className="w-8 h-8" aria-hidden />
+                            </div>
+                          )}
+                        </div>
+                        <div className="p-2 flex-1">
+                          <p className="font-medium text-stone-800 text-xs leading-tight line-clamp-2 min-h-[2rem]">
+                            {p.name}
                           </p>
-                        ) : null}
-                        <p className="text-primary-600 font-semibold text-xs mt-1 tabular-nums">
-                          {priceLabel}
-                        </p>
+                          {configBadge ? (
+                            <p className="text-[9px] text-[rgb(var(--p700))] leading-tight mt-0.5 line-clamp-1">
+                              {configBadge}
+                            </p>
+                          ) : null}
+                          <p className="text-primary-600 font-semibold text-xs mt-1 tabular-nums">
+                            {priceLabel}
+                          </p>
+                        </div>
+                      </button>
+                      <div className="flex border-t border-stone-200 divide-x divide-stone-200">
+                        <button
+                          type="button"
+                          onClick={openInfo('stock')}
+                          title="Stock por sucursal"
+                          aria-label="Ver stock por sucursal"
+                          className="flex-1 flex items-center justify-center py-1.5 text-stone-500 hover:text-primary-600 hover:bg-primary-50"
+                        >
+                          <Boxes size={13} aria-hidden />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={openInfo('purchase')}
+                          title="Historial de compras"
+                          aria-label="Ver historial de compras"
+                          className="flex-1 flex items-center justify-center py-1.5 text-stone-500 hover:text-primary-600 hover:bg-primary-50"
+                        >
+                          <History size={13} aria-hidden />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={openInfo('price')}
+                          title="Precios"
+                          aria-label="Ver precios"
+                          className="flex-1 flex items-center justify-center py-1.5 text-stone-500 hover:text-primary-600 hover:bg-primary-50"
+                        >
+                          <Tag size={13} aria-hidden />
+                        </button>
                       </div>
-                    </button>
+                    </div>
                   )
                 })}
               </div>
@@ -1329,6 +1374,13 @@ function POSContent() {
         open={manualProductOpen}
         onClose={() => setManualProductOpen(false)}
         onAdd={addManualToCart}
+      />
+
+      <PosProductInfoModal
+        open={productInfo != null}
+        onClose={() => setProductInfo(null)}
+        mode={productInfo?.mode ?? null}
+        product={productInfo?.product ?? null}
       />
 
       <BarcodeScannerModal
