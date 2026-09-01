@@ -43,6 +43,9 @@ const GRAY: [number, number, number] = [214, 214, 214]
 const GREEN: [number, number, number] = [0, 128, 0]
 /** Ancho fijo de etiquetas cliente (alineación tipo factura referencia) */
 const CLIENT_LABEL_W = 46
+/** Radio de esquina de los recuadros informativos (RUC/tipo doc., condición de pago,
+ *  Información Adicional) — look más prolijo, mismo estilo que el PDF del facturador. */
+const BOX_RADIUS = 2
 
 const FOOTER_BOTTOM_MARGIN = 8
 
@@ -156,7 +159,7 @@ function drawDottedRect(doc: jsPDF, x: number, y: number, w: number, h: number) 
   doc.setDrawColor(0, 0, 0)
   doc.setLineWidth(0.25)
   doc.setLineDashPattern([0.8, 0.8], 0)
-  doc.rect(x, y, w, h)
+  doc.roundedRect(x, y, w, h, BOX_RADIUS, BOX_RADIUS)
   doc.setLineDashPattern([], 0)
 }
 
@@ -259,7 +262,7 @@ async function drawHeader(
   if (showDocBox) {
     doc.setDrawColor(0, 0, 0)
     doc.setLineWidth(0.25)
-    doc.rect(boxX, top, boxW, boxH)
+    doc.roundedRect(boxX, top, boxW, boxH, BOX_RADIUS, BOX_RADIUS)
 
     setFont(doc, FONT, 'bold')
     doc.text(`RUC:  ${data.company.ruc}`, boxX + boxW / 2, top + 5.5, { align: 'center' })
@@ -394,7 +397,7 @@ function drawItemsTable(ctx: A4Ctx, data: PrintData): number {
   // bancarias (bug reportado: comprobante con 1 ítem no debería partirse en 2 páginas). El
   // salto de página real (ensureSpace, más abajo) sigue intacto para cuando SÍ hay muchos
   // ítems — esto solo reduce el relleno cosmético cuando sobran filas vacías.
-  const minBodyRows = 5
+  const minBodyRows = 3
   const rowH = LINE_H + 0.6
   const maxRowBottom = PAGE_H - MARGIN
 
@@ -537,16 +540,10 @@ function estimateA4PostTableBlockHeight(data: PrintData, showPaymentCondition: b
   let h = buildReceiptTotalLines(data).length * (LINE_H + 0.4) + 2
   const f = data.fiscal
   if (f?.retention_applied) h += 2 * (LINE_H + 0.4)
-  if (f?.has_detraccion) {
-    // DETRACCIÓN (%) + NETO A COBRAR (drawRow, LINE_H+0.4 cada una) más la "Información
-    // Adicional" (leyenda 2006, bien/servicio, medio de pago, CTA. BN — LINE_H cada una,
-    // sobreestimando 2 líneas para las que pueden envolver en la columna angosta de 58mm).
-    h += 2 * (LINE_H + 0.4)
-    if (f.detraccion_legend_text) h += LINE_H
-    if (f.detraccion_good_code) h += 2 * LINE_H
-    if (f.detraccion_payment_method_code) h += 2 * LINE_H
-    if (f.detraccion_bank_account) h += LINE_H
-  }
+  // DETRACCIÓN (%) + NETO A COBRAR en la columna de totales (drawRow, LINE_H+0.4 cada una).
+  // El recuadro "Información Adicional" (leyenda, bien/servicio, medio de pago, CTA. BN) se
+  // dibuja aparte en la columna izquierda — ver drawDetraccionInfoBoxHeight más abajo.
+  if (f?.has_detraccion) h += 2 * (LINE_H + 0.4)
   if (f?.has_prepayment_emit) h += LINE_H + 0.4
 
   if (data.legend_text?.trim()) h += 2 * LINE_H + 1
@@ -558,6 +555,20 @@ function estimateA4PostTableBlockHeight(data: PrintData, showPaymentCondition: b
     } else {
       h += LINE_H + 2 * 2.5 + 5
     }
+  }
+
+  // Recuadro "Información Adicional" de detracción (columna izquierda, debajo de condición
+  // de pago/QR). La leyenda (texto fijo corto) y la cuenta BN (numérica) nunca envuelven en
+  // los 93mm de ancho de columna; solo el bien/servicio y el medio de pago pueden ser largos
+  // y ocupar 2 líneas — sobreestimar los 4 igual a 2 líneas hacía saltar a página 2
+  // comprobantes que en realidad sí entraban en 1 sola hoja.
+  if (f?.has_detraccion) {
+    let infoLines = 0
+    if (f.detraccion_legend_text) infoLines += 1
+    if (f.detraccion_good_code) infoLines += 2
+    if (f.detraccion_payment_method_code) infoLines += 2
+    if (f.detraccion_bank_account) infoLines += 1
+    h += infoLines * (LINE_H - 0.6) + 9
   }
 
   const installments = data.credit_installments ?? []
@@ -605,32 +616,10 @@ function drawTotalsRight(ctx: A4Ctx, data: PrintData, startY: number): number {
   if (f?.has_detraccion) {
     const pct = f.detraccion_rate_percent ?? 0
     drawRow(`DETRACCIÓN (${pct}%):`, formatPlainAmount(f.detraccion_amount ?? 0))
-    // Misma "Información Adicional" que el PDF del facturador (leyenda 2006, bien/servicio
-    // y medio de pago) — el PDF local solo mostraba el monto y la cuenta BN, sin este
-    // detalle (bug reportado: la factura se veía "incompleta" frente al PDF del facturador).
-    const drawWrappedSmall = (text: string) => {
-      setFont(doc, FONT_XS, 'normal')
-      for (const line of doc.splitTextToSize(text, 58)) {
-        doc.text(line, labelX, y)
-        y += LINE_H
-      }
-    }
-    if (f.detraccion_legend_text) drawWrappedSmall(f.detraccion_legend_text)
-    if (f.detraccion_good_code) {
-      const good = f.detraccion_good_label
-        ? `${f.detraccion_good_code} - ${f.detraccion_good_label}`
-        : f.detraccion_good_code
-      drawWrappedSmall(`BIEN/SERV.: ${good}`)
-    }
-    if (f.detraccion_payment_method_code) {
-      const method = f.detraccion_payment_method_label
-        ? `${f.detraccion_payment_method_code} - ${f.detraccion_payment_method_label}`
-        : f.detraccion_payment_method_code
-      drawWrappedSmall(`MEDIO DE PAGO: ${method}`)
-    }
-    if (f.detraccion_bank_account) {
-      drawWrappedSmall(`CTA. BN: ${f.detraccion_bank_account}`)
-    }
+    // Leyenda, bien/servicio, medio de pago y cuenta BN ahora van en su propio recuadro
+    // "Información Adicional" en la columna izquierda (drawDetraccionInfoBox) — igual que
+    // el PDF del facturador — en vez de apretados como texto de 7pt en esta columna angosta
+    // de 58mm, donde quedaban difíciles de leer y mal organizados.
     drawRow(`NETO A COBRAR: ${sym}`, formatPlainAmount(f.detraccion_net_payable ?? data.total), true)
   }
   if (f?.has_prepayment_emit) {
@@ -690,7 +679,7 @@ async function drawElectronicPaymentAndQrRow(
   const boxH = pad * 2 + payLines.length * (LINE_H + 0.2) + 1
   doc.setLineWidth(0.25)
   doc.setDrawColor(0, 0, 0)
-  doc.rect(leftX, boxStartY, leftW, boxH)
+  doc.roundedRect(leftX, boxStartY, leftW, boxH, BOX_RADIUS, BOX_RADIUS)
 
   let ly = boxStartY + pad + LINE_H - 0.3
   for (const line of payLines) {
@@ -760,6 +749,78 @@ function drawPaymentMethodBox(ctx: A4Ctx, data: PrintData, startY: number): numb
   doc.text(` ${method}`, boxX + padX + labelW, y)
 
   return boxY + boxH + 5
+}
+
+/**
+ * Recuadro "Información Adicional" de detracción — mismo lugar (columna izquierda, debajo
+ * de condición/método de pago) y las mismas etiquetas (LEYENDA / TIPO DE DETRACCIÓN / MEDIO
+ * DE PAGO / N° CTA. BANCO NAC.) que el PDF del facturador. Antes esta información iba
+ * apretada como texto de 7pt en la columna angosta de totales (58mm) — bug reportado: se
+ * veía menos organizada que el PDF del facturador, y además incompleta (ver commit de
+ * backend_principal que agrega detraccion_legend_text/detraccion_payment_method_label).
+ */
+function drawDetraccionInfoBox(ctx: A4Ctx, data: PrintData, startY: number): number {
+  const f = data.fiscal
+  if (!f?.has_detraccion) return startY
+  const { doc } = ctx
+  const boxW = CONTENT_W * 0.5
+  const boxX = MARGIN
+  const pad = 2.5
+  const labelW = 38
+
+  type Row = { label: string; value: string }
+  const rows: Row[] = []
+  if (f.detraccion_legend_text) rows.push({ label: 'LEYENDA:', value: f.detraccion_legend_text })
+  if (f.detraccion_good_code) {
+    rows.push({
+      label: 'TIPO DE DETRACCIÓN:',
+      value: f.detraccion_good_label
+        ? `${f.detraccion_good_code} - ${f.detraccion_good_label}`
+        : f.detraccion_good_code,
+    })
+  }
+  if (f.detraccion_payment_method_code) {
+    rows.push({
+      label: 'MEDIO DE PAGO:',
+      value: f.detraccion_payment_method_label
+        ? `${f.detraccion_payment_method_code} - ${f.detraccion_payment_method_label}`
+        : f.detraccion_payment_method_code,
+    })
+  }
+  if (f.detraccion_bank_account) {
+    rows.push({ label: 'N° CTA. BANCO NAC.:', value: f.detraccion_bank_account })
+  }
+  if (!rows.length) return startY
+
+  const valueW = boxW - pad * 2 - labelW
+  setFont(doc, FONT_XS, 'normal')
+  const rowLineCounts = rows.map((r) => Math.max(1, doc.splitTextToSize(r.value, valueW).length))
+  const rowH = LINE_H - 0.6
+  const titleH = LINE_H - 0.4
+  const boxH = pad * 2 + titleH + rowLineCounts.reduce((sum, n) => sum + n * rowH, 0)
+
+  const boxY = startY
+  doc.setLineWidth(0.25)
+  doc.setDrawColor(0, 0, 0)
+  doc.roundedRect(boxX, boxY, boxW, boxH, BOX_RADIUS, BOX_RADIUS)
+
+  let y = boxY + pad + LINE_H - 1.4
+  setFont(doc, FONT_SM, 'bold')
+  doc.text('Información Adicional', boxX + pad, y)
+  y += titleH
+
+  rows.forEach((r, i) => {
+    setFont(doc, FONT_XS, 'bold')
+    doc.text(r.label, boxX + pad, y)
+    setFont(doc, FONT_XS, 'normal')
+    const lines = doc.splitTextToSize(r.value, valueW)
+    lines.forEach((line: string, li: number) => {
+      doc.text(line, boxX + pad + labelW, y + li * rowH)
+    })
+    y += rowLineCounts[i] * rowH
+  })
+
+  return boxY + boxH + 3
 }
 
 function installmentStatusLabel(status?: string): string {
@@ -1340,6 +1401,9 @@ export async function renderReceiptA4(doc: jsPDF, data: PrintData): Promise<void
   } else {
     leftY = sectionY
   }
+  // Recuadro "Información Adicional" de detracción, justo debajo de condición/método de pago
+  // (mismo lugar y estilo que en el PDF del facturador).
+  leftY = drawDetraccionInfoBox(ctx, data, leftY)
   // Cuotas de venta a crédito, justo debajo de la condición/método de pago.
   leftY = drawCreditInstallmentsTable(ctx, data, leftY)
   // Las cuentas bancarias no dependen de este ajuste: se eligen en Empresa → Comprobantes.
