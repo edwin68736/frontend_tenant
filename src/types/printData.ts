@@ -108,7 +108,10 @@ export interface PrintFiscalContext {
   detraccion_amount?: number
   detraccion_bank_account?: string
   detraccion_payment_method_code?: string
+  detraccion_payment_method_label?: string
   detraccion_net_payable?: number
+  /** Leyenda SUNAT (catálogo 2006) exigida en todo comprobante sujeto a detracción. */
+  detraccion_legend_text?: string
   has_prepayment_emit?: boolean
   prepayment_label?: string
   prepayment_affectation_group?: string

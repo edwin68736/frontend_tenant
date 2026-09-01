@@ -388,7 +388,13 @@ type TableCol = { label: string; w: number; align?: 'left' | 'right' | 'center' 
 function drawItemsTable(ctx: A4Ctx, data: PrintData): number {
   const { doc } = ctx
   const tableX = MARGIN
-  const minBodyRows = 14
+  // Relleno visual mínimo cuando hay pocos ítems — antes era fijo en 14 filas sin importar
+  // cuántos ítems reales tuviera el comprobante: con 1 ítem, eso solo de relleno ocupaba
+  // ~65mm y era justo lo que empujaba a página 2 el bloque de totales/detracción/cuentas
+  // bancarias (bug reportado: comprobante con 1 ítem no debería partirse en 2 páginas). El
+  // salto de página real (ensureSpace, más abajo) sigue intacto para cuando SÍ hay muchos
+  // ítems — esto solo reduce el relleno cosmético cuando sobran filas vacías.
+  const minBodyRows = 5
   const rowH = LINE_H + 0.6
   const maxRowBottom = PAGE_H - MARGIN
 
@@ -531,7 +537,16 @@ function estimateA4PostTableBlockHeight(data: PrintData, showPaymentCondition: b
   let h = buildReceiptTotalLines(data).length * (LINE_H + 0.4) + 2
   const f = data.fiscal
   if (f?.retention_applied) h += 2 * (LINE_H + 0.4)
-  if (f?.has_detraccion) h += (f.detraccion_bank_account ? 3 : 2) * (LINE_H + 0.4)
+  if (f?.has_detraccion) {
+    // DETRACCIÓN (%) + NETO A COBRAR (drawRow, LINE_H+0.4 cada una) más la "Información
+    // Adicional" (leyenda 2006, bien/servicio, medio de pago, CTA. BN — LINE_H cada una,
+    // sobreestimando 2 líneas para las que pueden envolver en la columna angosta de 58mm).
+    h += 2 * (LINE_H + 0.4)
+    if (f.detraccion_legend_text) h += LINE_H
+    if (f.detraccion_good_code) h += 2 * LINE_H
+    if (f.detraccion_payment_method_code) h += 2 * LINE_H
+    if (f.detraccion_bank_account) h += LINE_H
+  }
   if (f?.has_prepayment_emit) h += LINE_H + 0.4
 
   if (data.legend_text?.trim()) h += 2 * LINE_H + 1
@@ -590,10 +605,31 @@ function drawTotalsRight(ctx: A4Ctx, data: PrintData, startY: number): number {
   if (f?.has_detraccion) {
     const pct = f.detraccion_rate_percent ?? 0
     drawRow(`DETRACCIÓN (${pct}%):`, formatPlainAmount(f.detraccion_amount ?? 0))
+    // Misma "Información Adicional" que el PDF del facturador (leyenda 2006, bien/servicio
+    // y medio de pago) — el PDF local solo mostraba el monto y la cuenta BN, sin este
+    // detalle (bug reportado: la factura se veía "incompleta" frente al PDF del facturador).
+    const drawWrappedSmall = (text: string) => {
+      setFont(doc, FONT_XS, 'normal')
+      for (const line of doc.splitTextToSize(text, 58)) {
+        doc.text(line, labelX, y)
+        y += LINE_H
+      }
+    }
+    if (f.detraccion_legend_text) drawWrappedSmall(f.detraccion_legend_text)
+    if (f.detraccion_good_code) {
+      const good = f.detraccion_good_label
+        ? `${f.detraccion_good_code} - ${f.detraccion_good_label}`
+        : f.detraccion_good_code
+      drawWrappedSmall(`BIEN/SERV.: ${good}`)
+    }
+    if (f.detraccion_payment_method_code) {
+      const method = f.detraccion_payment_method_label
+        ? `${f.detraccion_payment_method_code} - ${f.detraccion_payment_method_label}`
+        : f.detraccion_payment_method_code
+      drawWrappedSmall(`MEDIO DE PAGO: ${method}`)
+    }
     if (f.detraccion_bank_account) {
-      setFont(doc, FONT_XS)
-      doc.text(`CTA. BN: ${f.detraccion_bank_account}`, labelX, y, { maxWidth: 58 })
-      y += LINE_H
+      drawWrappedSmall(`CTA. BN: ${f.detraccion_bank_account}`)
     }
     drawRow(`NETO A COBRAR: ${sym}`, formatPlainAmount(f.detraccion_net_payable ?? data.total), true)
   }

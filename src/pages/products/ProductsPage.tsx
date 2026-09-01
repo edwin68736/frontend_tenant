@@ -1410,7 +1410,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               </p>
             )}
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 sm:col-span-2 lg:col-span-1">
             <label className="block text-xs font-medium text-gray-600 mb-1">Nombre *</label>
             <input className={PRODUCT_FORM_INPUT} value={form.name} onChange={e => setF('name', e.target.value)} />
           </div>
@@ -1439,9 +1439,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         ) : (
           categoryField
         )}
-        <div className={PRODUCT_FORM_GRID}>
-          {brandField}
-        </div>
+        {brandField}
         <div className={PRODUCT_FORM_GRID}>
           <div className="min-w-0">
             <label className="block text-xs font-medium text-gray-600 mb-1">Precio venta *</label>

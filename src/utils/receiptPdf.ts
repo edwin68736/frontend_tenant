@@ -116,6 +116,23 @@ function renderFiscalTotals(
   if (f.has_detraccion) {
     const pct = f.detraccion_rate_percent ?? 0
     emitAmountRow(`DETRACCIÓN (${pct}%):`, formatMoney(f.detraccion_amount ?? 0, 'PEN'))
+    // Misma "Información Adicional" del PDF del facturador (leyenda 2006, bien/servicio y
+    // medio de pago) — antes el ticket solo mostraba el monto y la cuenta BN.
+    if (f.detraccion_legend_text) {
+      emitAmountRow(f.detraccion_legend_text, '')
+    }
+    if (f.detraccion_good_code) {
+      const good = f.detraccion_good_label
+        ? `${f.detraccion_good_code} - ${f.detraccion_good_label}`
+        : f.detraccion_good_code
+      emitAmountRow(`Bien/serv.: ${good}`, '')
+    }
+    if (f.detraccion_payment_method_code) {
+      const method = f.detraccion_payment_method_label
+        ? `${f.detraccion_payment_method_code} - ${f.detraccion_payment_method_label}`
+        : f.detraccion_payment_method_code
+      emitAmountRow(`Medio de pago: ${method}`, '')
+    }
     if (f.detraccion_bank_account) {
       emitAmountRow('CTA. BN:', f.detraccion_bank_account)
     }
