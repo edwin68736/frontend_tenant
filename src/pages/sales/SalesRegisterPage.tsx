@@ -2106,18 +2106,25 @@ function SalesRegisterContent({
           )}
 
           <div className="overflow-x-auto rounded-xl border border-gray-200">
-            <table className="w-full text-sm min-w-[720px] table-fixed">
+            {/* Anchos en px (no %) para las columnas con inputs: en table-fixed, un % de un
+                contenedor de ~850-900px (pantallas medianas, con sidebar) le dejaba a Cant./
+                P.unit./Desc. menos ancho real que el propio input+padding necesitaban — se
+                veían recortados/en blanco y no se podía escribir (bug reportado). Con ancho
+                fijo, esas columnas siempre tienen el espacio que necesitan; Descripción (la
+                única sin ancho fijo) absorbe el resto, y si no entra todo, el scroll
+                horizontal del contenedor (arriba) hace su trabajo en vez de apretar inputs. */}
+            <table className="w-full text-sm min-w-[1100px] table-fixed">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[30%]">Descripción</th>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[14%]">Código</th>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[7%]">Unid.</th>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[9%]">Cant.</th>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[11%]">P. unit.</th>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[13%]">Afectación</th>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[9%]">IGV incl.</th>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[9%]">Desc.</th>
-                  <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[10%]">Total</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase">Descripción</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[100px]">Código</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-14">Unid.</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-24">Cant.</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-28">P. unit.</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[130px]">Afectación</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-16">IGV incl.</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-32">Desc.</th>
+                  <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[84px]">Total</th>
                   <th className="w-20" />
                 </tr>
               </thead>
@@ -2183,14 +2190,14 @@ function SalesRegisterContent({
                       <td className="px-4 py-2.5">
                         <span className="text-gray-700 block truncate">{it.unit}</span>
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td className="px-2 py-2.5">
                         <UnitQuantityInput
                           value={it.quantity}
                           unit={it.unit}
                           onChange={(v) => updateItem(idx, 'quantity', v)}
                         />
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td className="px-2 py-2.5">
                         <MoneyAmountInput
                           className={clsx(
                             'w-full max-w-[5.5rem] rounded-lg px-2 py-1 text-sm border',
