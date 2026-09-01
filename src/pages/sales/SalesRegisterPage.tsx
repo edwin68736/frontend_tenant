@@ -2113,12 +2113,12 @@ function SalesRegisterContent({
                 fijo, esas columnas siempre tienen el espacio que necesitan; Descripción (la
                 única sin ancho fijo) absorbe el resto, y si no entra todo, el scroll
                 horizontal del contenedor (arriba) hace su trabajo en vez de apretar inputs. */}
-            <table className="w-full text-sm min-w-[1100px] table-fixed">
+            <table className="w-full text-sm min-w-[1200px] table-fixed">
               <thead className="bg-gray-50 border-b border-gray-100">
                 <tr>
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase">Descripción</th>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[100px]">Código</th>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-14">Unid.</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[160px]">Código</th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-20">Unid.</th>
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-24">Cant.</th>
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-28">P. unit.</th>
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[130px]">Afectación</th>
@@ -2179,7 +2179,7 @@ function SalesRegisterContent({
                       </td>
                       {/* Los códigos internos son cadenas largas sin espacios: en una tabla
                           table-fixed se desbordaban encima de la columna Unid. */}
-                      <td className="px-4 py-2.5 overflow-hidden">
+                      <td className="px-2 py-2.5 overflow-hidden">
                         <span
                           className="font-mono text-gray-600 block truncate"
                           title={it.code || undefined}
@@ -2187,7 +2187,7 @@ function SalesRegisterContent({
                           {it.code || '—'}
                         </span>
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td className="px-2 py-2.5">
                         <span className="text-gray-700 block truncate">{it.unit}</span>
                       </td>
                       <td className="px-2 py-2.5">
