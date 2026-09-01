@@ -1,5 +1,6 @@
 import type { CreditInstallmentDraft, CreditInstallmentMode, PaymentConditionCode } from '@/utils/saleCreditPayment'
 import { paymentConditionLabel, sumInstallmentAmounts } from '@/utils/saleCreditPayment'
+import { addDaysToDateString } from '@/utils/datesPeru'
 
 type Props = {
   conditionCode: PaymentConditionCode
@@ -18,6 +19,11 @@ type Props = {
   disabled?: boolean
   payableAmount?: number
   disableCredit?: boolean
+  /** Fecha de emisión (YYYY-MM-DD) de la venta — SUNAT exige que toda cuota venza
+   *  estrictamente DESPUÉS de esta fecha (código 3267 si es igual o anterior). Se usa como
+   *  `min` de los inputs de vencimiento; bug reportado: no había ningún límite y se pudo
+   *  emitir una factura con la cuota en la misma fecha que la emisión. */
+  issueDate: string
 }
 
 export function SalePaymentConditionSection({
@@ -37,9 +43,11 @@ export function SalePaymentConditionSection({
   disabled,
   payableAmount = 0,
   disableCredit,
+  issueDate,
 }: Props) {
   const instSum = sumInstallmentAmounts(installments)
   const creditDiff = round2(creditAmount - instSum)
+  const minDueDate = issueDate ? addDaysToDateString(issueDate, 1) : undefined
 
   return (
     <div className="border border-gray-200 rounded-xl p-4 space-y-3 bg-white">
@@ -108,6 +116,7 @@ export function SalePaymentConditionSection({
                 className="border border-gray-200 rounded-xl px-3 py-2 text-sm"
                 value={firstDueDate}
                 onChange={e => onFirstDueDateChange(e.target.value)}
+                min={minDueDate}
                 disabled={disabled}
               />
             </div>
@@ -137,6 +146,7 @@ export function SalePaymentConditionSection({
                               installments.map((r, i) => (i === idx ? { ...r, due_date: e.target.value } : r)),
                             )
                           }
+                          min={minDueDate}
                           disabled={disabled || creditMode === 'monthly'}
                         />
                       </td>

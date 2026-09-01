@@ -67,7 +67,7 @@ import { SUNAT_MAX_MONTO_CLIENTE_SIN_RUC, SUNAT_RUC_LENGTH } from '@/constants/s
 import { cashbankService, type BankAccount, type CashSession, type PaymentMethodRecord } from '@/services/cashbank.service'
 import { calcSaleCheckout } from '@/utils/saleEngine'
 import { calcItem, calcItemWithSubtotalDiscount, getAfectacionGroup, type SunatAfectacionGroup } from '@/utils/taxCalc'
-import { clampIssueDatePeru, getMaxIssueDatePeru, getMinIssueDatePeru, getTodayPeru, isIssueDateAllowed } from '@/utils/datesPeru'
+import { addDaysToDateString, clampIssueDatePeru, getMaxIssueDatePeru, getMinIssueDatePeru, getTodayPeru, isIssueDateAllowed } from '@/utils/datesPeru'
 import {
   normalizeQuantityForUnit,
   normalizeSunatUnit,
@@ -999,6 +999,19 @@ function SalesRegisterContent({
     [directPayableTarget, paymentsTotalPaid],
   )
 
+  // SUNAT rechaza (código 3267) si el vencimiento de una cuota es igual o anterior a la
+  // fecha de emisión. `creditFirstDueDate` arrancaba en "hoy" y nunca se resincronizaba al
+  // cambiar `form.issue_date` (p. ej. al emitir con fecha atrasada) — bug reportado: F001-75
+  // salió con la cuota en la misma fecha que la emisión y SUNAT la rechazó. Si la fecha
+  // elegida deja de ser válida (igual o anterior a la emisión), se ajusta al mínimo permitido.
+  useEffect(() => {
+    if (paymentConditionCode !== 'credit') return
+    if (!form.issue_date) return
+    if (!creditFirstDueDate || creditFirstDueDate <= form.issue_date) {
+      setCreditFirstDueDate(addDaysToDateString(form.issue_date, 1))
+    }
+  }, [paymentConditionCode, form.issue_date])
+
   useEffect(() => {
     if (paymentConditionCode !== 'credit') return
     if (creditAmount <= 0) {
@@ -1338,6 +1351,13 @@ function SalesRegisterContent({
       for (const row of creditInstallments) {
         if (!row.due_date?.trim()) {
           toast.error('Todas las cuotas deben tener fecha de vencimiento')
+          return
+        }
+        // SUNAT rechaza (código 3267) si una cuota vence el mismo día que la emisión o
+        // antes — bug reportado (F001-75). Se valida acá además de en el backend para dar
+        // feedback inmediato en vez de un rechazo SUNAT recién al procesar la venta.
+        if (row.due_date <= form.issue_date) {
+          toast.error('El vencimiento de cada cuota debe ser posterior a la fecha de emisión')
           return
         }
       }
@@ -2619,6 +2639,7 @@ function SalesRegisterContent({
                   fmt={fmt}
                   payableAmount={directPayableTarget}
                   disableCredit={prepaymentCoversAll}
+                  issueDate={form.issue_date}
                 />
               </div>
             )}

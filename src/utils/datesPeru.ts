@@ -46,6 +46,19 @@ export function clampIssueDatePeru(issueDate: string, daysBack: number = ISSUE_D
 }
 
 /**
+ * Suma días a una fecha YYYY-MM-DD dada (no a "hoy") — para derivar el vencimiento mínimo
+ * permitido de una cuota a partir de la fecha de emisión ya elegida (que puede estar
+ * adelantada/atrasada respecto a hoy). Aritmética en UTC puro sobre el calendario, sin
+ * conversión de huso horario: no hay hora de por medio, solo día/mes/año.
+ */
+export function addDaysToDateString(dateStr: string, days: number): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(dateStr ?? ''))
+  if (!m) return dateStr
+  const utc = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + days))
+  return utc.toISOString().slice(0, 10)
+}
+
+/**
  * Devuelve una fecha en Perú sumando días a hoy (p. ej. vencimiento +8 días).
  */
 export function getTodayPlusDaysPeru(days: number): string {
