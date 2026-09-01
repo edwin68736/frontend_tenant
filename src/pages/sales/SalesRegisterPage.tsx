@@ -1059,9 +1059,15 @@ function SalesRegisterContent({
     return SALES_OPERATION_TYPE_OPTIONS.filter((o) => o.code === SUNAT_TIPO_OPERACION_VENTA_INTERNA)
   }, [form.sunat_code])
 
+  // Bug reportado: con detracción activa, "Observaciones" (y O/C, vendedor, guías, términos)
+  // quedaba sin efecto en el PDF — el submit mandaba fiscal_context COMPLETO como undefined
+  // cada vez que isDetraccion era true (ver el llamado más abajo), no solo los campos de
+  // retención. Retención IGV y detracción sí son mutuamente excluyentes para SUNAT, así que
+  // esos dos campos se fuerzan a false acá — pero el resto (observaciones, O/C, vendedor,
+  // guías, términos) no tiene ninguna razón para depender de si la venta es con detracción.
   const buildFiscalPayload = () => ({
-    has_igv_retention: fiscalForm.has_igv_retention,
-    igv_retention_manual_override: fiscalForm.igv_retention_manual_override,
+    has_igv_retention: isDetraccion ? false : fiscalForm.has_igv_retention,
+    igv_retention_manual_override: isDetraccion ? false : fiscalForm.igv_retention_manual_override,
     show_terms_conditions: fiscalForm.show_terms_conditions,
     fiscal_observations: fiscalForm.fiscal_observations.trim() || undefined,
     purchase_order_number: fiscalForm.purchase_order_number.trim() || undefined,
@@ -1459,7 +1465,7 @@ function SalesRegisterContent({
         })),
         notes: notes || undefined,
         from_quotation_id: linkQuotationId ?? undefined,
-        fiscal_context: !isDetraccion && hasFiscalContextContent(fiscalForm) ? buildFiscalPayload() : undefined,
+        fiscal_context: hasFiscalContextContent(fiscalForm) ? buildFiscalPayload() : undefined,
         detraccion: isDetraccion && detraccionGoodCode
           ? { good_code: detraccionGoodCode }
           : undefined,
