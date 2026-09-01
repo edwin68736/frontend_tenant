@@ -972,19 +972,29 @@ function POSContent() {
                 <div className="inline-block w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
               </div>
             ) : (
-              // 3 columnas en móvil: `sm` son 390px (ver tailwind.config), así que subir a 4
-              // ahí dejaba las tarjetas apretadas en cualquier teléfono.
-              // Bug reportado: saltar directo de 5 (md, 768px) a 6 columnas (lg, 1024px) dejaba
-              // las tarjetas amontonadas en pantallas medianas (~1024-1280px, laptop típico) —
-              // 6 no entraba cómodo todavía a esa altura. Se agrega un escalón en lg (5
-              // columnas) y 6 recién arranca en xl (1280px+), con más gap en cada salto.
+              // grid-template-columns con auto-fill (CSS puro, sin JS/ResizeObserver): el
+              // layout tiene sidebar + grilla + carrito lado a lado, así que el ancho REAL
+              // disponible para la grilla no tiene relación directa con el ancho del viewport
+              // (con el carrito desktop abierto, por ejemplo, queda mucho más angosto) — con
+              // breakpoints de Tailwind (atados al viewport) las tarjetas seguían viéndose
+              // amontonadas en pantallas medianas aunque el viewport ya fuera "grande". Con
+              // auto-fill, el navegador mismo calcula cuántas columnas de ≥100px entran en el
+              // espacio real, sin depender de medir nada en JS (evita también carreras de
+              // ResizeObserver/layout inicial — se probó esa vía primero y no era confiable).
+              // max-width tope (680px, con margen sobre el cálculo exacto de 6×100+5×10=650
+              // para que el redondeo del navegador no lo deje en 5 columnas): a partir de eso
+              // no crecen más columnas — pidieron explícitamente no amontonar en pantallas
+              // grandes tampoco, tope de 6.
               <div
                 className={clsx(
-                  'w-full max-w-full',
-                  productViewMode === 'list'
-                    ? 'flex flex-col gap-1.5'
-                    : 'grid grid-cols-3 gap-2 md:grid-cols-4 md:gap-2.5 lg:grid-cols-5 lg:gap-3 xl:grid-cols-6 justify-items-stretch',
+                  'w-full',
+                  productViewMode === 'list' ? 'flex flex-col gap-1.5 max-w-full' : 'grid gap-2.5 justify-items-stretch max-w-[680px]',
                 )}
+                style={
+                  productViewMode === 'list'
+                    ? undefined
+                    : { gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))' }
+                }
               >
                 {products.filter(p => p.active).map(p => {
                   const imgUrl = getProductImageUrl(p.image_url)
