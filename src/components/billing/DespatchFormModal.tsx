@@ -1145,7 +1145,7 @@ export function DespatchFormModal({
             <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Destinatario</p>
             <div className={isPageLayout ? 'grid grid-cols-1 lg:grid-cols-6 gap-3' : 'space-y-3'}>
               {isStandalone && !customerLocked ? (
-                <div className={fieldCol3 || undefined}>
+                <div className={isPageLayout ? 'lg:col-span-6' : undefined}>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Cliente *</label>
                   <div className="flex gap-2 items-stretch">
                     <div className="flex-1 min-w-0">
@@ -1190,7 +1190,9 @@ export function DespatchFormModal({
                   )}
                 </div>
               ) : (
-                <div className={`rounded-xl border border-gray-100 bg-gray-50/80 px-3 py-2.5 space-y-1 ${fieldCol3}`}>
+                <div
+                  className={`rounded-xl border border-gray-100 bg-gray-50/80 px-3 py-2.5 space-y-1 ${isPageLayout ? 'lg:col-span-6' : ''}`}
+                >
                   <p className="font-medium text-gray-800">{form.destinatario?.rzn_social || '—'}</p>
                   <p className="text-xs text-gray-600 font-mono">
                     {formatTipoDocIdentidadDisplay(
@@ -1201,15 +1203,6 @@ export function DespatchFormModal({
                   <p className="text-xs text-gray-600">{form.destinatario?.address || '—'}</p>
                 </div>
               )}
-              <div className={fieldCol3 || undefined}>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Ubigeo destinatario *</label>
-                <UbigeoSelects
-                  regionId={destUbigeo.regionId}
-                  provinciaId={destUbigeo.provinciaId}
-                  distritoId={destUbigeo.distritoId}
-                  onChange={(r, p, d) => syncUbigeo('dest', r, p, d)}
-                />
-              </div>
             </div>
           </section>
 
