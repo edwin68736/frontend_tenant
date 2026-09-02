@@ -57,6 +57,16 @@ export function isGravadoOperacionNoOnerosa(code: string): boolean {
   }
 }
 
+/**
+ * Quita el prefijo "NN - " de un label de PRODUCT_IGV_AFFECTATION_OPTIONS /
+ * POS_MANUAL_IGV_OPTIONS (ej. "10 - Gravado IGV" → "Gravado IGV"). Para
+ * mostrar en vistas de solo lectura donde el código SUNAT no aporta —
+ * el <select> de edición sí debe seguir mostrando el código completo.
+ */
+export function stripAffectationCodePrefix(label: string): string {
+  return String(label || '').replace(/^\d+\s*-\s*/, '').trim()
+}
+
 export function igvAffectationLabel(code: string): string {
   const c = String(code || '10').trim()
   return SUNAT_IGV_AFFECTATION_LABELS[c] ?? c

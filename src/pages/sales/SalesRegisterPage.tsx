@@ -74,7 +74,7 @@ import {
   sunatUnitSelectOptions,
 } from '@/constants/sunatUnits'
 import { UnitQuantityInput } from '@/components/ui/UnitQuantityInput'
-import { PRODUCT_IGV_AFFECTATION_OPTIONS } from '@/constants/igvAffectation'
+import { PRODUCT_IGV_AFFECTATION_OPTIONS, stripAffectationCodePrefix } from '@/constants/igvAffectation'
 import type { CheckoutDiscountMode } from '@/utils/checkoutDiscount'
 import { roundSunat, calcPaymentChange, sumMoney } from '@/utils/money'
 import { quotationsService } from '@/services/quotations.service'
@@ -2130,7 +2130,7 @@ function SalesRegisterContent({
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[130px]">Afectación</th>
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-16">IGV incl.</th>
                   <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-32">Desc.</th>
-                  <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[84px]">Total</th>
+                  <th className="text-right px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[110px]">Total</th>
                   <th className="w-20" />
                 </tr>
               </thead>
@@ -2150,7 +2150,12 @@ function SalesRegisterContent({
                       )}
                     >
                       <td className="px-4 py-2.5">
-                        <span className="text-gray-800">{it.description || '—'}</span>
+                        <span
+                          className="text-gray-800 inline-block align-middle truncate max-w-[380px]"
+                          title={it.description || undefined}
+                        >
+                          {it.description || '—'}
+                        </span>
                         {missingPrice && (
                           <span className="flex items-center gap-1 text-[11px] font-semibold text-red-600 mt-0.5">
                             <AlertTriangle size={11} /> Sin precio de venta
@@ -2217,7 +2222,9 @@ function SalesRegisterContent({
                       </td>
                       <td className="px-4 py-2.5">
                         <span className="text-gray-700">
-                          {IGV_AFFECTATION_OPTIONS.find(o => o.code === it.igv_affectation_type)?.label ?? it.igv_affectation_type}
+                          {stripAffectationCodePrefix(
+                            IGV_AFFECTATION_OPTIONS.find(o => o.code === it.igv_affectation_type)?.label ?? it.igv_affectation_type,
+                          )}
                         </span>
                       </td>
                       <td className="px-4 py-2.5">
@@ -2255,7 +2262,7 @@ function SalesRegisterContent({
                           />
                         </div>
                       </td>
-                      <td className="px-3 py-2.5 font-medium text-gray-700 text-right tabular-nums">{fmt(total)}</td>
+                      <td className="px-3 py-2.5 font-medium text-gray-700 text-right tabular-nums whitespace-nowrap">{fmt(total)}</td>
                       <td className="px-2 py-2.5">
                         <div className="flex items-center gap-0.5">
                           <button
