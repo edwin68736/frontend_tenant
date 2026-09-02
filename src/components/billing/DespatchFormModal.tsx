@@ -1259,6 +1259,114 @@ export function DespatchFormModal({
             </div>
           </section>
 
+          <section className={isPageLayout ? 'border-t border-gray-100 pt-5' : 'border-t border-gray-100 pt-4'}>
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              {!itemsLocked && (
+                <button
+                  type="button"
+                  onClick={() => setShowProductPicker(true)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[rgb(var(--p600))] text-white text-sm font-medium hover:opacity-90"
+                >
+                  <Plus size={14} /> Agregar producto
+                </button>
+              )}
+              <p className="text-xs text-gray-500 ml-auto">Total de ítems: {lineItems.length}</p>
+            </div>
+            <div className="overflow-x-auto rounded-xl border border-gray-200">
+              <table className="w-full text-sm min-w-[640px]">
+                <thead className="bg-gray-50 border-b border-gray-100">
+                  <tr>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase">
+                      Descripción
+                    </th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[12%]">
+                      Código
+                    </th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[10%]">
+                      Unid.
+                    </th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[10%]">
+                      Cant.
+                    </th>
+                    {!itemsLocked && <th className="w-10" />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {lineItems.length === 0 ? (
+                    <tr>
+                      <td colSpan={itemsLocked ? 4 : 5} className="text-center py-8 text-gray-400 text-xs">
+                        {itemsLocked
+                          ? 'Seleccione un comprobante para cargar los productos'
+                          : 'Agregue productos con el botón superior'}
+                      </td>
+                    </tr>
+                  ) : (
+                    lineItems.map((it, idx) => (
+                      <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50/50">
+                        <td className="px-3 py-2">
+                          {itemsLocked ? (
+                            <span className="text-gray-800">{it.descripcion}</span>
+                          ) : (
+                            <input
+                              className="w-full border border-gray-200 rounded-lg px-2 py-1 text-sm"
+                              value={it.descripcion}
+                              onChange={(ev) => updateLineItem(idx, { descripcion: ev.target.value })}
+                            />
+                          )}
+                        </td>
+                        <td className="px-3 py-2 font-mono text-gray-600">{it.codigo || '—'}</td>
+                        <td className="px-3 py-2">
+                          {itemsLocked ? (
+                            <span>{it.unidad}</span>
+                          ) : (
+                            <div className="min-w-[7rem]">
+                              <SearchableSelect
+                                className="w-full border border-gray-200 rounded-lg px-2 py-1 text-sm bg-white text-left flex items-center justify-between gap-1 min-h-[30px]"
+                                value={it.unidad}
+                                onChange={(v) => updateLineItem(idx, { unidad: v == null ? it.unidad : String(v) })}
+                                options={[
+                                  ...(it.unidad && !isSunatUnitCode(it.unidad)
+                                    ? [{ value: it.unidad, label: sunatUnitDisplayName(it.unidad) }]
+                                    : []),
+                                  ...SUNAT_UNITS.map((u) => ({ value: u.code, label: u.label })),
+                                ]}
+                              />
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="number"
+                            min={0.001}
+                            step={0.01}
+                            readOnly={itemsLocked}
+                            className={`w-full max-w-[5rem] border border-gray-200 rounded-lg px-2 py-1 text-sm ${itemsLocked ? 'bg-gray-50' : ''}`}
+                            value={it.cantidad}
+                            onChange={(ev) =>
+                              updateLineItem(idx, { cantidad: Number(ev.target.value) || 0 })
+                            }
+                          />
+                        </td>
+                        {!itemsLocked && (
+                          <td className="px-2 py-2">
+                            <button
+                              type="button"
+                              onClick={() => removeLineItem(idx)}
+                              className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"
+                              title="Quitar"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
           <section className={routesGrid}>
             <div className="space-y-2">
               <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Partida</p>
@@ -1771,114 +1879,6 @@ export function DespatchFormModal({
               </div>
             </section>
           )}
-
-          <section className={isPageLayout ? 'border-t border-gray-100 pt-5' : 'border-t border-gray-100 pt-4'}>
-            <div className="flex flex-wrap items-center gap-2 mb-3">
-              {!itemsLocked && (
-                <button
-                  type="button"
-                  onClick={() => setShowProductPicker(true)}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[rgb(var(--p600))] text-white text-sm font-medium hover:opacity-90"
-                >
-                  <Plus size={14} /> Agregar producto
-                </button>
-              )}
-              <p className="text-xs text-gray-500 ml-auto">Total de ítems: {lineItems.length}</p>
-            </div>
-            <div className="overflow-x-auto rounded-xl border border-gray-200">
-              <table className="w-full text-sm min-w-[640px]">
-                <thead className="bg-gray-50 border-b border-gray-100">
-                  <tr>
-                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase">
-                      Descripción
-                    </th>
-                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[12%]">
-                      Código
-                    </th>
-                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[10%]">
-                      Unid.
-                    </th>
-                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase w-[10%]">
-                      Cant.
-                    </th>
-                    {!itemsLocked && <th className="w-10" />}
-                  </tr>
-                </thead>
-                <tbody>
-                  {lineItems.length === 0 ? (
-                    <tr>
-                      <td colSpan={itemsLocked ? 4 : 5} className="text-center py-8 text-gray-400 text-xs">
-                        {itemsLocked
-                          ? 'Seleccione un comprobante para cargar los productos'
-                          : 'Agregue productos con el botón superior'}
-                      </td>
-                    </tr>
-                  ) : (
-                    lineItems.map((it, idx) => (
-                      <tr key={idx} className="border-b border-gray-50 hover:bg-gray-50/50">
-                        <td className="px-3 py-2">
-                          {itemsLocked ? (
-                            <span className="text-gray-800">{it.descripcion}</span>
-                          ) : (
-                            <input
-                              className="w-full border border-gray-200 rounded-lg px-2 py-1 text-sm"
-                              value={it.descripcion}
-                              onChange={(ev) => updateLineItem(idx, { descripcion: ev.target.value })}
-                            />
-                          )}
-                        </td>
-                        <td className="px-3 py-2 font-mono text-gray-600">{it.codigo || '—'}</td>
-                        <td className="px-3 py-2">
-                          {itemsLocked ? (
-                            <span>{it.unidad}</span>
-                          ) : (
-                            <div className="min-w-[7rem]">
-                              <SearchableSelect
-                                className="w-full border border-gray-200 rounded-lg px-2 py-1 text-sm bg-white text-left flex items-center justify-between gap-1 min-h-[30px]"
-                                value={it.unidad}
-                                onChange={(v) => updateLineItem(idx, { unidad: v == null ? it.unidad : String(v) })}
-                                options={[
-                                  ...(it.unidad && !isSunatUnitCode(it.unidad)
-                                    ? [{ value: it.unidad, label: sunatUnitDisplayName(it.unidad) }]
-                                    : []),
-                                  ...SUNAT_UNITS.map((u) => ({ value: u.code, label: u.label })),
-                                ]}
-                              />
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          <input
-                            type="number"
-                            min={0.001}
-                            step={0.01}
-                            readOnly={itemsLocked}
-                            className={`w-full max-w-[5rem] border border-gray-200 rounded-lg px-2 py-1 text-sm ${itemsLocked ? 'bg-gray-50' : ''}`}
-                            value={it.cantidad}
-                            onChange={(ev) =>
-                              updateLineItem(idx, { cantidad: Number(ev.target.value) || 0 })
-                            }
-                          />
-                        </td>
-                        {!itemsLocked && (
-                          <td className="px-2 py-2">
-                            <button
-                              type="button"
-                              onClick={() => removeLineItem(idx)}
-                              className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg"
-                              title="Quitar"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </td>
-                        )}
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
     </div>
   )
 
