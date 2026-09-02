@@ -12,7 +12,7 @@ import { QuickDriverCreateModal } from '@/components/billing/QuickDriverCreateMo
 import { QuickVehicleCreateModal } from '@/components/billing/QuickVehicleCreateModal'
 import { ProductPickerModal } from '@/components/sales/ProductPickerModal'
 import { ubigeoToIds } from '@/services/ubigeo.service'
-import { companyService } from '@/services/company.service'
+import { companyService, type BranchRow } from '@/services/company.service'
 import { contactsService, type Contact } from '@/services/contacts.service'
 import { type Product } from '@/services/products.service'
 import { salesService, type Sale, type SaleDetail } from '@/services/sales.service'
@@ -227,6 +227,14 @@ export function DespatchFormModal({
   const [sourceDocLabel, setSourceDocLabel] = useState('')
   const [form, setForm] = useState<Partial<CreateDespatchInput>>(() => emptyForm(mainBranchId, 0))
   const [lineItems, setLineItems] = useState<DespatchLineItem[]>([])
+  // Dirección/ubigeo por sucursal, para resincronizar Partida cuando cambian de sucursal a
+  // mitad de llenado (antes se quedaba con la dirección de la sucursal con la que abrió el
+  // formulario, aunque después eligieran otra).
+  const [branchDetails, setBranchDetails] = useState<BranchRow[]>([])
+  // Nº de bultos: se sugiere sumando las cantidades de los ítems (igual que el facturador
+  // anterior), pero deja de tocarlo apenas el usuario lo edita a mano — así no le pisa un
+  // ajuste real (p. ej. varios ítems empacados en menos bultos de los que suman las cantidades).
+  const [bultosTouched, setBultosTouched] = useState(false)
   const [customers, setCustomers] = useState<Contact[]>([])
   const [contactId, setContactId] = useState<number | null>(null)
   const [addClientOpen, setAddClientOpen] = useState(false)
@@ -305,7 +313,18 @@ export function DespatchFormModal({
     if (p.source_doc_label) setSourceDocLabel(p.source_doc_label)
     if (p.mode) setCreateMode(p.mode)
     if (p.locked) setSourceLocked(true)
+    setBultosTouched(false)
   }
+
+  // Sugerencia de Nº de bultos = suma de las cantidades de los ítems (mismo criterio que el
+  // facturador anterior, packages_number = Σ quantity) — se recalcula mientras el usuario no
+  // haya tocado el campo a mano.
+  useEffect(() => {
+    if (bultosTouched) return
+    const sum = lineItems.reduce((s, it) => s + (Number(it.cantidad) || 0), 0)
+    if (sum <= 0) return
+    setForm((f) => ({ ...f, envio: { ...f.envio!, num_bultos: Math.max(1, Math.ceil(sum)) } }))
+  }, [lineItems, bultosTouched])
 
   useEffect(() => {
     if (!open) return
@@ -326,6 +345,7 @@ export function DespatchFormModal({
       const base = emptyForm(mainBranchId, firstSeriesId, guiaSunatCode)
       setForm(base)
       setLineItems([])
+      setBultosTouched(false)
       setContactId(null)
       setDestUbigeo(ubigeoToIds(''))
       setPartidaUbigeo(ubigeoToIds(''))
@@ -342,6 +362,10 @@ export function DespatchFormModal({
     contactsService
       .list('', 'customer')
       .then((data) => setCustomers(Array.isArray(data) ? data : []))
+      .catch(() => {})
+    companyService
+      .listBranches()
+      .then((rows) => setBranchDetails(Array.isArray(rows) ? rows : []))
       .catch(() => {})
     companyService
       .getConfig()
@@ -583,6 +607,26 @@ export function DespatchFormModal({
     }))
   }
 
+  // Al cambiar de sucursal, la dirección de partida debe ser la de ESA sucursal — antes se
+  // quedaba pegada a la sucursal con la que se abrió el formulario (bug: el facturador
+  // anterior sí la resincroniza en su changeEstablishment(), Tukifac no lo hacía).
+  const handleBranchChange = (branchId: number) => {
+    setForm((f) => ({ ...f, branch_id: branchId }))
+    const b = branchDetails.find((row) => row.id === branchId)
+    if (!b) return
+    setForm((f) => ({
+      ...f,
+      envio: {
+        ...f.envio!,
+        partida_direccion: b.address?.trim() || f.envio?.partida_direccion || '',
+        partida_ubigueo: b.fiscal_domicile_code?.trim() || f.envio?.partida_ubigueo || '',
+      },
+    }))
+    if (b.fiscal_domicile_code?.trim()) {
+      setPartidaUbigeo(ubigeoToIds(b.fiscal_domicile_code.trim()))
+    }
+  }
+
   const handleMotivoChange = (code: string) => {
     const label = SUNAT_MOTIVO_TRASLADO.find((m) => m.code === code)?.label ?? code
     setForm((f) => ({ ...f, envio: { ...f.envio!, cod_traslado: code, des_traslado: label } }))
@@ -593,6 +637,7 @@ export function DespatchFormModal({
     setCreateMode(mode)
     setSourceDocLabel('')
     setForm((f) => ({ ...f, source_sale_id: undefined }))
+    setBultosTouched(false)
     if (mode === 'standalone') {
       setLineItems([])
       setContactId(null)
@@ -1085,7 +1130,10 @@ export function DespatchFormModal({
               <SearchableSelect
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2 min-h-[42px]"
                 value={form.branch_id ?? ''}
-                onChange={(v) => setForm((f) => ({ ...f, branch_id: v == null ? f.branch_id : Number(v) }))}
+                onChange={(v) => {
+                  if (v == null) return
+                  handleBranchChange(Number(v))
+                }}
                 options={branches.map((b) => ({ value: b.id, label: b.name }))}
                 placeholder="Seleccionar sucursal…"
                 searchable={branches.length > 5}
@@ -1232,12 +1280,13 @@ export function DespatchFormModal({
                   min={1}
                   className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
                   value={form.envio?.num_bultos ?? 1}
-                  onChange={(ev) =>
+                  onChange={(ev) => {
+                    setBultosTouched(true)
                     setForm((f) => ({
                       ...f,
                       envio: { ...f.envio!, num_bultos: Number(ev.target.value) || 1 },
                     }))
-                  }
+                  }}
                 />
               </div>
               <div className={fieldCol2}>
