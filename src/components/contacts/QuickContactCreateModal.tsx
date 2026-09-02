@@ -17,6 +17,19 @@ import {
   sanitizeContactDocNumber,
 } from '@/utils/contactDocTypes'
 
+/**
+ * Orden del <select> de este modal: RUC primero (el más común al registrar un cliente desde
+ * ventas/compras), luego DNI, luego el resto tal cual están en SUNAT_TIPO_DOC_IDENTIDAD_LIST.
+ * Es un reorden local — no se toca la lista compartida porque otras pantallas (Conductores,
+ * Transportistas) sí prefieren DNI primero por ser personas naturales.
+ */
+const DOC_TYPE_OPTIONS_ORDERED = (() => {
+  const byCode = (code: string) => SUNAT_TIPO_DOC_IDENTIDAD_LIST.find(d => d.code === code)
+  const first = ['6', '1'].map(byCode).filter((d): d is NonNullable<typeof d> => !!d)
+  const rest = SUNAT_TIPO_DOC_IDENTIDAD_LIST.filter(d => d.code !== '6' && d.code !== '1')
+  return [...first, ...rest]
+})()
+
 type QuickContactForm = {
   doc_type: string
   doc_number: string
@@ -31,7 +44,7 @@ type QuickContactForm = {
   es_buen_contribuyente: boolean
 }
 
-const emptyForm = (defaultDocType = '1'): QuickContactForm => ({
+const emptyForm = (defaultDocType = '6'): QuickContactForm => ({
   doc_type: defaultDocType,
   doc_number: '',
   business_name: '',
@@ -69,7 +82,7 @@ export function QuickContactCreateModal({
   open,
   onClose,
   onCreated,
-  defaultDocType = '1',
+  defaultDocType = '6',
   contactType = 'customer',
   stacked = false,
   defaultDocNumber,
@@ -239,7 +252,7 @@ export function QuickContactCreateModal({
                 })
               }
             >
-              {SUNAT_TIPO_DOC_IDENTIDAD_LIST.map((d) => (
+              {DOC_TYPE_OPTIONS_ORDERED.map((d) => (
                 <option key={d.code} value={d.code}>
                   {d.shortLabel}
                 </option>
