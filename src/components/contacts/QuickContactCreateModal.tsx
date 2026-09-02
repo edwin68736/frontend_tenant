@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { SearchCheck } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
@@ -79,9 +79,14 @@ export function QuickContactCreateModal({
   const [tenantRuc, setTenantRuc] = useState('')
   const [consultando, setConsultando] = useState(false)
   const [saving, setSaving] = useState(false)
+  /** Evita reconsultar en cada render mientras el modal sigue abierto; se resetea al cerrar. */
+  const autoConsultedRef = useRef(false)
 
   useEffect(() => {
-    if (!open) return
+    if (!open) {
+      autoConsultedRef.current = false
+      return
+    }
     setForm({
       ...emptyForm(defaultDocType),
       doc_number: defaultDocNumber?.trim() || '',
@@ -101,10 +106,10 @@ export function QuickContactCreateModal({
 
   const patch = (patch: Partial<QuickContactForm>) => setForm((f) => ({ ...f, ...patch }))
 
-  const handleConsulta = async () => {
-    const num = form.doc_number.trim().replace(/-/g, '')
-    const isRUC = docType === '6'
-    const isDNI = docType === '1'
+  const runConsulta = async (targetDocType: string, rawNum: string) => {
+    const num = rawNum.trim().replace(/-/g, '')
+    const isRUC = targetDocType === '6'
+    const isDNI = targetDocType === '1'
     if (isRUC && num.length !== 11) {
       toast.error('Ingrese un RUC de 11 dígitos')
       return
@@ -150,6 +155,28 @@ export function QuickContactCreateModal({
       setConsultando(false)
     }
   }
+
+  const handleConsulta = () => runConsulta(docType, form.doc_number)
+
+  /**
+   * Auto-consulta cuando el modal se abre con un documento precargado (ej. desde
+   * "+ Agregar «lo que se tecleó en el buscador»") y ya cumple el largo esperado para su
+   * tipo (11 RUC / 8 DNI) — evita el clic extra en "Consultar" para el caso feliz. Depende de
+   * `tenantRuc` porque puede no haber cargado todavía cuando se abre el modal (efecto aparte,
+   * en el montaje); en ese caso este efecto no hace nada y se reintenta solo cuando llegue.
+   */
+  useEffect(() => {
+    if (!open || autoConsultedRef.current) return
+    const type = toTipoDocIdentidadCode(defaultDocType)
+    const num = (defaultDocNumber ?? '').trim()
+    const isRUC = type === '6' && num.length === 11
+    const isDNI = type === '1' && num.length === 8
+    if (!isRUC && !isDNI) return
+    if (!tenantRuc || tenantRuc.length !== 11) return
+    autoConsultedRef.current = true
+    void runConsulta(type, num)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, defaultDocType, defaultDocNumber, tenantRuc])
 
   const handleSave = async () => {
     const num = sanitizeContactDocNumber(docType, form.doc_number)
