@@ -310,6 +310,8 @@ function SalesRegisterContent({
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
   const [lastSale, setLastSale] = useState<{ id: number; number: string; total: number } | null>(null)
   const [addClientOpen, setAddClientOpen] = useState(false)
+  /** Texto tecleado en el buscador de cliente cuando no hubo match — precarga el modal de nuevo cliente. */
+  const [newClientQuery, setNewClientQuery] = useState('')
   /** Índice de la línea cuya nota se está editando; null = modal cerrado. */
   const [itemNoteIdx, setItemNoteIdx] = useState<number | null>(null)
   const [itemNoteDraft, setItemNoteDraft] = useState('')
@@ -921,11 +923,19 @@ function SalesRegisterContent({
             searchable
             searchPlaceholder="Buscar por nombre o RUC/DNI..."
             allowClear
+            onCreateNew={q => {
+              setNewClientQuery(q)
+              setAddClientOpen(true)
+            }}
+            createNewLabel={q => `Agregar cliente "${q}"`}
           />
         </div>
         <button
           type="button"
-          onClick={() => setAddClientOpen(true)}
+          onClick={() => {
+            setNewClientQuery('')
+            setAddClientOpen(true)
+          }}
           className="shrink-0 inline-flex items-center justify-center rounded-xl border border-gray-200 px-3 py-2 text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] min-h-[42px]"
           title="Nuevo cliente"
           aria-label="Nuevo cliente"
@@ -2833,11 +2843,27 @@ function SalesRegisterContent({
 
       <QuickContactCreateModal
         open={addClientOpen}
-        onClose={() => setAddClientOpen(false)}
-        defaultDocType={form.sunat_code === '01' ? '6' : '1'}
+        onClose={() => {
+          setAddClientOpen(false)
+          setNewClientQuery('')
+        }}
+        defaultDocType={
+          /^\d{11}$/.test(newClientQuery.trim())
+            ? '6'
+            : /^\d{8}$/.test(newClientQuery.trim())
+              ? '1'
+              : form.sunat_code === '01' ? '6' : '1'
+        }
+        defaultDocNumber={/^\d{8}$|^\d{11}$/.test(newClientQuery.trim()) ? newClientQuery.trim() : undefined}
+        defaultBusinessName={
+          newClientQuery.trim() && !/^\d{8}$|^\d{11}$/.test(newClientQuery.trim())
+            ? newClientQuery.trim()
+            : undefined
+        }
         onCreated={(contact) => {
           setCustomers((prev) => [...prev, contact])
           setForm((f) => ({ ...f, contact_id: contact.id }))
+          setNewClientQuery('')
         }}
       />
 

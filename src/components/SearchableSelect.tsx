@@ -1,6 +1,6 @@
 ﻿import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, Search, X } from 'lucide-react'
+import { ChevronDown, Plus, Search, X } from 'lucide-react'
 import { clsx } from 'clsx'
 import { DROPDOWN_Z_INDEX } from '@/utils/uiLayers'
 
@@ -27,6 +27,8 @@ export function SearchableSelect({
   searchable = true,
   searchPlaceholder = 'Buscar...',
   allowClear = false,
+  onCreateNew,
+  createNewLabel,
 }: {
   value: string | number | null | undefined
   onChange: (value: string | number | null) => void
@@ -38,6 +40,14 @@ export function SearchableSelect({
   searchable?: boolean
   searchPlaceholder?: string
   allowClear?: boolean
+  /**
+   * Si se pasa, y la búsqueda no encuentra ningún resultado, se muestra una fila "+ Agregar
+   * «texto buscado»" al fondo de la lista — para no obligar a ir a buscar un botón aparte
+   * cuando el cliente/proveedor/etc. que se busca todavía no existe.
+   */
+  onCreateNew?: (query: string) => void
+  /** Texto de esa fila; por defecto `Agregar "«query»"`. */
+  createNewLabel?: (query: string) => string
 }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -177,7 +187,26 @@ export function SearchableSelect({
         style={{ maxHeight: listMaxHeight }}
         role="listbox"
       >
-        {filtered.length === 0 && <div className="px-3 py-3 text-sm text-stone-500">Sin resultados</div>}
+        {filtered.length === 0 && (
+          <div className="px-1 py-2">
+            <p className="px-2 py-1 text-sm text-stone-500">Sin resultados</p>
+            {onCreateNew && query.trim() && (
+              <button
+                type="button"
+                onClick={() => {
+                  onCreateNew(query.trim())
+                  setOpen(false)
+                }}
+                className="flex w-full items-center gap-1.5 rounded-lg px-2 py-2.5 text-left text-sm font-medium text-primary-600 hover:bg-primary-50"
+              >
+                <Plus size={15} className="shrink-0" />
+                <span className="truncate">
+                  {createNewLabel ? createNewLabel(query.trim()) : `Agregar "${query.trim()}"`}
+                </span>
+              </button>
+            )}
+          </div>
+        )}
         {filtered.map((opt) => {
           const isSelected = selected != null && String(selected.value) === String(opt.value)
           return (

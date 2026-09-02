@@ -55,6 +55,14 @@ type Props = {
   contactType?: 'customer' | 'supplier'
   /** Capa superior (p. ej. sobre modal de cobro en POS). */
   stacked?: boolean
+  /**
+   * Precarga el número de documento — p. ej. cuando el usuario ya lo escribió en un buscador
+   * de cliente que no encontró resultados y abrió este modal desde ahí ("+ Agregar"), para no
+   * hacerlo escribirlo de nuevo. Se limpia junto con el resto del formulario en cada apertura.
+   */
+  defaultDocNumber?: string
+  /** Igual que `defaultDocNumber`, pero cuando lo escrito no parece un RUC/DNI (búsqueda por nombre). */
+  defaultBusinessName?: string
 }
 
 export function QuickContactCreateModal({
@@ -64,6 +72,8 @@ export function QuickContactCreateModal({
   defaultDocType = '1',
   contactType = 'customer',
   stacked = false,
+  defaultDocNumber,
+  defaultBusinessName,
 }: Props) {
   const [form, setForm] = useState<QuickContactForm>(() => emptyForm(defaultDocType))
   const [tenantRuc, setTenantRuc] = useState('')
@@ -72,8 +82,13 @@ export function QuickContactCreateModal({
 
   useEffect(() => {
     if (!open) return
-    setForm(emptyForm(defaultDocType))
-  }, [open, defaultDocType])
+    setForm({
+      ...emptyForm(defaultDocType),
+      doc_number: defaultDocNumber?.trim() || '',
+      business_name: defaultBusinessName?.trim() || '',
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, defaultDocType, defaultDocNumber, defaultBusinessName])
 
   useEffect(() => {
     companyService.getConfig().then((c) => setTenantRuc(c?.ruc ?? '')).catch(() => setTenantRuc(''))

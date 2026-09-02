@@ -238,6 +238,9 @@ export function DespatchFormModal({
   const [customers, setCustomers] = useState<Contact[]>([])
   const [contactId, setContactId] = useState<number | null>(null)
   const [addClientOpen, setAddClientOpen] = useState(false)
+  // Texto que el usuario tecleó en el buscador de Cliente cuando no hubo resultados y tocó
+  // "+ Agregar" — se precarga en el modal de alta rápida para no hacerlo escribirlo de nuevo.
+  const [newClientQuery, setNewClientQuery] = useState('')
   const [showProductPicker, setShowProductPicker] = useState(false)
   const [destUbigeo, setDestUbigeo] = useState({ regionId: '', provinciaId: '', distritoId: '' })
   const [partidaUbigeo, setPartidaUbigeo] = useState({ regionId: '', provinciaId: '', distritoId: '' })
@@ -941,11 +944,18 @@ export function DespatchFormModal({
 
       <QuickContactCreateModal
         open={addClientOpen}
-        onClose={() => setAddClientOpen(false)}
+        onClose={() => {
+          setAddClientOpen(false)
+          setNewClientQuery('')
+        }}
         stacked
+        defaultDocType={/^\d{11}$/.test(newClientQuery.trim()) ? '6' : /^\d{8}$/.test(newClientQuery.trim()) ? '1' : undefined}
+        defaultDocNumber={/^\d{8}$|^\d{11}$/.test(newClientQuery.trim()) ? newClientQuery.trim() : undefined}
+        defaultBusinessName={/^\d{8}$|^\d{11}$/.test(newClientQuery.trim()) ? undefined : newClientQuery.trim()}
         onCreated={(contact) => {
           setCustomers((prev) => [...prev, contact])
           setContactId(contact.id)
+          setNewClientQuery('')
         }}
       />
 
@@ -1163,6 +1173,11 @@ export function DespatchFormModal({
                         placeholder="Seleccionar cliente…"
                         searchPlaceholder="Buscar por nombre o RUC/DNI..."
                         allowClear
+                        onCreateNew={(q) => {
+                          setNewClientQuery(q)
+                          setAddClientOpen(true)
+                        }}
+                        createNewLabel={(q) => `Agregar cliente "${q}"`}
                       />
                     </div>
                     <button
