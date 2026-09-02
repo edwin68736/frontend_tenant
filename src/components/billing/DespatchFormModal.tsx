@@ -984,52 +984,71 @@ export function DespatchFormModal({
 
           {!isStandalone && !sourceLocked && (
             <section className="space-y-2">
-              <label className="block text-xs font-medium text-gray-600">
-                Buscar {createMode === 'from_invoice' ? 'factura' : 'boleta'} aceptada por SUNAT
-              </label>
-              <div className="relative">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  className="w-full border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-sm"
-                  placeholder="Serie, número o cliente..."
-                  value={saleSearch}
-                  onChange={(ev) => setSaleSearch(ev.target.value)}
-                />
-              </div>
-              <div className="max-h-40 overflow-y-auto rounded-xl border border-gray-200 divide-y divide-gray-50">
-                {saleSearchLoading ? (
-                  <p className="text-center py-6 text-gray-400 text-xs">Buscando…</p>
-                ) : saleResults.length === 0 ? (
-                  <p className="text-center py-6 text-gray-400 text-xs">No hay comprobantes aceptados</p>
-                ) : (
-                  saleResults.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      disabled={salePickLoading === s.id}
-                      onClick={() => pickSaleForGuia(s.id)}
-                      className={`w-full text-left px-3 py-2.5 hover:bg-gray-50 flex items-center justify-between gap-2 ${
-                        form.source_sale_id === s.id ? 'bg-[rgb(var(--p50))]' : ''
-                      }`}
-                    >
-                      <span>
-                        <span className="font-mono font-medium text-gray-800">
-                          {formatSaleDocumentNumber(s.series, s.number)}
-                        </span>
-                        <span className="text-gray-500 ml-2">{s.contact_name ?? 'Sin cliente'}</span>
-                      </span>
-                      <span className="text-xs text-gray-400 shrink-0">
-                        {salePickLoading === s.id ? 'Cargando…' : 'Usar'}
-                      </span>
-                    </button>
-                  ))
-                )}
-              </div>
-              {sourceDocLabel && !sourceLocked && (
-                <p className="text-xs text-emerald-700">
-                  Comprobante seleccionado: <strong className="font-mono">{sourceDocLabel}</strong>
-                </p>
+              {form.source_sale_id ? (
+                // Bug reportado: con muchas facturas, la lista de resultados quedaba abierta
+                // (y larga) después de elegir una — hay que cerrarla en vez de dejarla visible.
+                // Se colapsa a este resumen; "Cambiar" reabre la búsqueda para elegir otra.
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 flex items-center justify-between gap-2 text-sm text-emerald-800">
+                  <span className="flex items-center gap-2 min-w-0">
+                    <FileText size={14} className="shrink-0" />
+                    <span className="truncate">
+                      Comprobante seleccionado: <strong className="font-mono">{sourceDocLabel}</strong>
+                    </span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForm((f) => ({ ...f, source_sale_id: undefined }))
+                      setSourceDocLabel('')
+                    }}
+                    className="shrink-0 text-xs font-medium text-emerald-700 hover:underline"
+                  >
+                    Cambiar
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <label className="block text-xs font-medium text-gray-600">
+                    Buscar {createMode === 'from_invoice' ? 'factura' : 'boleta'} aceptada por SUNAT
+                  </label>
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      className="w-full border border-gray-200 rounded-xl pl-9 pr-3 py-2 text-sm"
+                      placeholder="Serie, número o cliente..."
+                      value={saleSearch}
+                      onChange={(ev) => setSaleSearch(ev.target.value)}
+                    />
+                  </div>
+                  <div className="max-h-40 overflow-y-auto rounded-xl border border-gray-200 divide-y divide-gray-50">
+                    {saleSearchLoading ? (
+                      <p className="text-center py-6 text-gray-400 text-xs">Buscando…</p>
+                    ) : saleResults.length === 0 ? (
+                      <p className="text-center py-6 text-gray-400 text-xs">No hay comprobantes aceptados</p>
+                    ) : (
+                      saleResults.map((s) => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          disabled={salePickLoading === s.id}
+                          onClick={() => pickSaleForGuia(s.id)}
+                          className="w-full text-left px-3 py-2.5 hover:bg-gray-50 flex items-center justify-between gap-2"
+                        >
+                          <span>
+                            <span className="font-mono font-medium text-gray-800">
+                              {formatSaleDocumentNumber(s.series, s.number)}
+                            </span>
+                            <span className="text-gray-500 ml-2">{s.contact_name ?? 'Sin cliente'}</span>
+                          </span>
+                          <span className="text-xs text-gray-400 shrink-0">
+                            {salePickLoading === s.id ? 'Cargando…' : 'Usar'}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </>
               )}
             </section>
           )}
