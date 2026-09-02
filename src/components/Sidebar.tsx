@@ -253,15 +253,22 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    id: 'doc-avanzados',
-    label: 'Documentos avanzados',
-    icon: <Layers size={16} />,
+    id: 'guias-remision',
+    label: 'Guías de remisión',
+    icon: <Send size={16} />,
     children: [
       { id: 'doc-guias-remitente', to: '/billing/docs/despatches/remitente', label: 'G.R. Remitente', icon: <Send size={14} />, module: 'billing', permission: 'billing.send' },
       { id: 'doc-guias-transportista', to: '/billing/docs/despatches/transportista', label: 'G.R. Transportista', icon: <Truck size={14} />, module: 'billing', permission: 'billing.send' },
       { id: 'doc-transportistas', to: '/fleet/carriers', label: 'Transportistas', icon: <Truck size={14} />, module: 'billing', permission: 'billing.send' },
       { id: 'doc-conductores', to: '/fleet/drivers', label: 'Conductores', icon: <UserCircle size={14} />, module: 'billing', permission: 'billing.send' },
       { id: 'doc-vehiculos', to: '/fleet/vehicles', label: 'Vehículos', icon: <Car size={14} />, module: 'billing', permission: 'billing.send' },
+    ],
+  },
+  {
+    id: 'doc-avanzados',
+    label: 'Documentos avanzados',
+    icon: <Layers size={16} />,
+    children: [
       { id: 'doc-retenciones', to: '/billing/docs/retentions', label: 'Retenciones', icon: <Receipt size={14} />, module: 'billing', permission: 'billing.send' },
       { id: 'doc-percepciones', to: '/billing/docs/perceptions', label: 'Percepciones', icon: <Receipt size={14} />, module: 'billing', permission: 'billing.send' },
       { id: 'doc-reversiones', to: '/billing/docs/reversions', label: 'Reversiones', icon: <FileCode size={14} />, module: 'billing', permission: 'billing.send' },
@@ -307,6 +314,7 @@ function pathMatches(currentPath: string, to: string, exact?: boolean): boolean 
   if (exact) return currentPath === pathOnly
   return currentPath === pathOnly || currentPath.startsWith(pathOnly + '/')
 }
+
 
 export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onToggleCollapsed }: Props) {
   const { user, logout, modules, hasPermission, isAuthenticated } = useAuth()
@@ -510,7 +518,7 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
       <nav className="flex-1 px-2 py-3 overflow-y-auto overflow-x-visible space-y-2">
         <SidebarTutorialsLink collapsed={isCollapsed} onNavigate={onClose} />
 
-        {['home', 'dashboard', 'preventa', 'ventas', 'tienda-virtual', 'compras', 'contacts', 'productos', 'inventario', 'finanzas', 'doc-avanzados', 'reportes', 'administracion', 'empresa', 'modules'].map(
+        {['home', 'dashboard', 'preventa', 'ventas', 'tienda-virtual', 'compras', 'contacts', 'productos', 'inventario', 'finanzas', 'guias-remision', 'doc-avanzados', 'reportes', 'administracion', 'empresa', 'modules'].map(
           (entryId) => {
             const item = visibleSimpleItems.find(i => i.id === entryId)
             if (item) {
