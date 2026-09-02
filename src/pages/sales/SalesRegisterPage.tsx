@@ -2852,7 +2852,7 @@ function SalesRegisterContent({
             ? '6'
             : /^\d{8}$/.test(newClientQuery.trim())
               ? '1'
-              : form.sunat_code === '01' ? '6' : '1'
+              : '6'
         }
         defaultDocNumber={/^\d{8}$|^\d{11}$/.test(newClientQuery.trim()) ? newClientQuery.trim() : undefined}
         defaultBusinessName={
