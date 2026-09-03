@@ -534,33 +534,57 @@ function drawItemsTable(ctx: A4Ctx, data: PrintData): number {
  *  si la tabla de ítems termina cerca del fondo de la hoja (comprobante con muchos ítems) el
  *  QR SUNAT queda cortado a la mitad y el resto (cuentas bancarias, vendedor) termina
  *  dibujado fuera de la página, invisible — bug real reportado con comprobantes largos.
- *  Sobreestimar es preferible a quedarse corto: en el peor caso salta una hoja de más, nunca
- *  corta contenido. */
+ *
+ *  El bloque se dibuja en DOS COLUMNAS en paralelo, no una lista serial: a la derecha van
+ *  los totales (+ el QR SUNAT debajo, si es electrónico); a la izquierda van "SON:",
+ *  condición/método de pago, el recuadro de detracción, cuotas, cuentas bancarias y
+ *  vendedor. Sumar el alto de todos esos elementos como si fueran uno debajo del otro (como
+ *  se hacía antes) contaba dos veces el alto real: un comprobante con detracción + cuotas +
+ *  cuentas bancarias en la izquierda y el QR en la derecha "necesitaba" en la estimación casi
+ *  el doble de lo que en verdad ocupaba, saltando a una página 2 con la hoja 1 casi vacía
+ *  (bug reportado con F001-86: factura de 1 solo ítem con detracción). El alto real que hace
+ *  falta es el máximo de las dos columnas, no la suma. Sobreestimar cada columna por
+ *  separado sigue siendo preferible a quedarse corto: en el peor caso salta una hoja de más,
+ *  nunca corta contenido. */
 function estimateA4PostTableBlockHeight(data: PrintData, showPaymentCondition: boolean): number {
-  let h = buildReceiptTotalLines(data).length * (LINE_H + 0.4) + 2
   const f = data.fiscal
-  if (f?.retention_applied) h += 2 * (LINE_H + 0.4)
+  const isElectronic = isElectronicSunatCode(data.sunat_code)
+
+  // Columna derecha: totales (+ retención/detracción/anticipo) y, si es electrónico, el QR
+  // SUNAT justo debajo (drawElectronicPaymentAndQrRow lo engancha después de esta columna).
+  let rightH = buildReceiptTotalLines(data).length * (LINE_H + 0.4) + 2
+  if (f?.retention_applied) rightH += 2 * (LINE_H + 0.4)
   // DETRACCIÓN (%) + NETO A COBRAR en la columna de totales (drawRow, LINE_H+0.4 cada una).
   // El recuadro "Información Adicional" (leyenda, bien/servicio, medio de pago, CTA. BN) se
-  // dibuja aparte en la columna izquierda — ver drawDetraccionInfoBoxHeight más abajo.
-  if (f?.has_detraccion) h += 2 * (LINE_H + 0.4)
-  if (f?.has_prepayment_emit) h += LINE_H + 0.4
+  // dibuja aparte en la columna izquierda — ver más abajo.
+  if (f?.has_detraccion) rightH += 2 * (LINE_H + 0.4)
+  if (f?.has_prepayment_emit) rightH += LINE_H + 0.4
+  if (showPaymentCondition && isElectronic) {
+    // El QR (42mm) es el elemento más alto y el que peor se ve cortado a la mitad.
+    rightH += 3 + 42 + (data.sunat_hash?.trim() ? 2 * (LINE_H - 0.3) + 2.5 : 0)
+  }
 
-  if (data.legend_text?.trim()) h += 2 * LINE_H + 1
+  // Columna izquierda: "SON:", condición/método de pago, recuadro de detracción, cuotas,
+  // cuentas bancarias y vendedor — todos en paralelo a la columna derecha, uno debajo del
+  // otro entre ellos sí (ese orden sí es serial).
+  let leftH = 0
+  if (data.legend_text?.trim()) leftH += 2 * LINE_H + 1
 
   if (showPaymentCondition) {
-    if (isElectronicSunatCode(data.sunat_code)) {
-      // El QR (42mm) es el elemento más alto y el que peor se ve cortado a la mitad.
-      h += 42 + (data.sunat_hash?.trim() ? 2 * (LINE_H - 0.3) + 2.5 : 0)
+    if (isElectronic) {
+      // drawElectronicPaymentAndQrRow: boxH = pad*2 + payLines.length*(LINE_H+0.2) + 1,
+      // más el hueco de 5 con el que sigue el resto de la columna izquierda.
+      const payLines = 2 + Math.max(1, data.payments.length)
+      leftH += 2 * 3 + payLines * (LINE_H + 0.2) + 1 + 5
     } else {
-      h += LINE_H + 2 * 2.5 + 5
+      leftH += LINE_H + 2 * 2.5 + 5
     }
   }
 
   // Recuadro "Información Adicional" de detracción (columna izquierda, debajo de condición
-  // de pago/QR). La leyenda (texto fijo corto) y la cuenta BN (numérica) nunca envuelven en
-  // los 93mm de ancho de columna; solo el bien/servicio y el medio de pago pueden ser largos
-  // y ocupar 2 líneas — sobreestimar los 4 igual a 2 líneas hacía saltar a página 2
+  // de pago). La leyenda (texto fijo corto) y la cuenta BN (numérica) nunca envuelven en los
+  // 93mm de ancho de columna; solo el bien/servicio y el medio de pago pueden ser largos y
+  // ocupar 2 líneas — sobreestimar los 4 igual a 2 líneas hacía saltar a página 2
   // comprobantes que en realidad sí entraban en 1 sola hoja.
   if (f?.has_detraccion) {
     let infoLines = 0
@@ -568,22 +592,22 @@ function estimateA4PostTableBlockHeight(data: PrintData, showPaymentCondition: b
     if (f.detraccion_good_code) infoLines += 2
     if (f.detraccion_payment_method_code) infoLines += 2
     if (f.detraccion_bank_account) infoLines += 1
-    h += infoLines * (LINE_H - 0.6) + 9
+    leftH += infoLines * (LINE_H - 0.6) + 12
   }
 
   const installments = data.credit_installments ?? []
   if (installments.length > 0) {
-    h += LINE_H + 1 + (LINE_H + 0.6) * (1 + installments.length) + 4
+    leftH += LINE_H + 1 + (LINE_H + 0.6) * (1 + installments.length) + 4
   }
 
   const bankLines =
     (data.bank_accounts ?? []).length +
     (data.payment_wallet?.provider && data.payment_wallet?.phone ? 1 : 0)
-  if (bankLines > 0) h += LINE_H + 1 + bankLines * LINE_H + 2
+  if (bankLines > 0) leftH += LINE_H + 1 + bankLines * LINE_H + 2
 
-  if (data.seller_name?.trim()) h += 2 * LINE_H + 3
+  if (data.seller_name?.trim()) leftH += 2 * LINE_H + 3
 
-  return h
+  return Math.max(leftH, rightH) + 4
 }
 
 function drawTotalsRight(ctx: A4Ctx, data: PrintData, startY: number): number {
