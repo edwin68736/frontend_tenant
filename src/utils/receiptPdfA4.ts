@@ -1033,20 +1033,31 @@ async function drawFooter(ctx: A4Ctx, data: PrintData, minY: number, opts?: { bo
 
   const contentH = estimateA4FooterContentHeight(data)
   const maxStart = PAGE_H - FOOTER_BOTTOM_MARGIN - contentH
-  const afterContent = minY + 6
+  // Gap "ideal" (look habitual, pie separado del contenido) vs. gap mínimo aceptable
+  // pegado al contenido. Usar el gap ideal para decidir si el pie "no entra" mandaba a una
+  // página nueva casos que sí entraban de sobra con un margen más ajustado — p. ej. cuando
+  // estimateA4PostTableBlockHeight se queda corta por un par de mm (un texto que envuelve
+  // una línea más de lo estimado), el contenido real termina un poco más abajo de lo
+  // previsto y el pie entero saltaba a una hoja 2 casi vacía por esos pocos mm, dejando la
+  // hoja 1 con un espacio en blanco enorme. Con el gap mínimo, ese mismo comprobante sigue
+  // entrando en una sola página.
+  const MIN_GAP = 2
+  const IDEAL_GAP = 6
   let y: number
-  if (afterContent + contentH > PAGE_H - FOOTER_BOTTOM_MARGIN) {
-    // El pie ni siquiera cabe pegado al contenido en esta página: página nueva para él
-    // (una hoja en blanco siempre tiene de sobra para ~15-28mm de pie).
+  if (minY + MIN_GAP > maxStart) {
+    // Ni con el espacio mínimo entra: página nueva para el pie (una hoja en blanco
+    // siempre tiene de sobra para ~15-28mm de pie).
     doc.addPage()
     y = MARGIN
-  } else if (bottomAnchor && afterContent <= maxStart) {
-    y = maxStart // contenido corto en la página normal: pie al fondo (look habitual)
+  } else if (bottomAnchor) {
+    // Ya sabemos que cabe (aunque sea con el gap mínimo): ancla al fondo, look habitual.
+    y = maxStart
   } else {
-    // No corresponde anclar al fondo (página de continuación) o no cabe con margen ideal:
-    // pegar el pie justo debajo del contenido. Nunca usar maxStart aquí sin más — retroceder
-    // encima de texto ya dibujado (términos, QR, etc.) es lo que causaba el overlap original.
-    y = afterContent
+    // Página de continuación (términos/observaciones largos que ya saltaron de página):
+    // pegar el pie justo debajo del contenido, con el gap ideal si cabe o el mínimo que
+    // sí quepa. Nunca ancla al fondo aquí — eso es lo que dejaba el hueco enorme entre el
+    // fin del texto y el pie en una página de continuación.
+    y = Math.min(maxStart, minY + IDEAL_GAP)
   }
 
   setFont(doc, FONT, 'normal')
