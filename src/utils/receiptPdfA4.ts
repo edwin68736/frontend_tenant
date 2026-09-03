@@ -46,6 +46,12 @@ const CLIENT_LABEL_W = 46
 /** Radio de esquina de los recuadros informativos (RUC/tipo doc., condición de pago,
  *  Información Adicional) — look más prolijo, mismo estilo que el PDF del facturador. */
 const BOX_RADIUS = 2
+/** Tamaño del QR SUNAT en la factura/boleta A4 (antes 42mm, se pidió más chico). Un solo
+ *  valor usado tanto al dibujarlo (drawElectronicPaymentAndQrRow) como al estimar el alto
+ *  del bloque de totales (estimateA4PostTableBlockHeight) — que ambos lean de la misma
+ *  constante evita que se desincronicen, que es justo el bug que causaba el salto de
+ *  página de más. */
+const SUNAT_QR_SIZE = 34
 
 const FOOTER_BOTTOM_MARGIN = 8
 
@@ -560,8 +566,8 @@ function estimateA4PostTableBlockHeight(data: PrintData, showPaymentCondition: b
   if (f?.has_detraccion) rightH += 2 * (LINE_H + 0.4)
   if (f?.has_prepayment_emit) rightH += LINE_H + 0.4
   if (showPaymentCondition && isElectronic) {
-    // El QR (42mm) es el elemento más alto y el que peor se ve cortado a la mitad.
-    rightH += 3 + 42 + (data.sunat_hash?.trim() ? 2 * (LINE_H - 0.3) + 2.5 : 0)
+    // El QR es el elemento más alto de esta columna y el que peor se ve cortado a la mitad.
+    rightH += 3 + SUNAT_QR_SIZE + (data.sunat_hash?.trim() ? 2 * (LINE_H - 0.3) + 2.5 : 0)
   }
 
   // Columna izquierda: "SON:", condición/método de pago, recuadro de detracción, cuotas,
@@ -717,7 +723,7 @@ async function drawElectronicPaymentAndQrRow(
     ly += LINE_H + 0.2
   }
 
-  const qrSize = 42
+  const qrSize = SUNAT_QR_SIZE
   const qrX = PAGE_W - MARGIN - qrSize
   let qrBottomY: number | null = null
   const qrPage = doc.getNumberOfPages()
