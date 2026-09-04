@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, X, TrendingUp, TrendingDown, Wallet, History, Pencil, Trash2, Unlock } from 'lucide-react'
-import { cashbankService, type CashSession, type CashMovement, type OpenCashSessionRow, type SessionBalanceSummary } from '@/services/cashbank.service'
+import { Plus, X, TrendingUp, TrendingDown, Wallet, History, Pencil, Trash2, Unlock, RotateCcw, Eye } from 'lucide-react'
+import { cashbankService, type CashSession, type CashMovement, type OpenCashSessionRow, type SessionBalanceSummary, type MethodBalance } from '@/services/cashbank.service'
 import { openCashDrawer } from '@/services/printers.service'
 import { useBranch } from '@/contexts/BranchContext'
 import { useAuth } from '@/contexts/AuthContext'
@@ -149,13 +149,93 @@ function ArqueoTable({
   )
 }
 
+/** Saldos por método de pago — Efectivo, Yape, Plin, Transferencia, Tarjeta, otros. Efectivo
+ *  se distingue con un badge "arqueo" (es el único que lo requiere), pero es una tarjeta más:
+ *  no hay jerarquía visual de "la caja de verdad es efectivo, el resto es secundario". */
+function MethodBalanceGrid({ byMethod }: { byMethod: MethodBalance[] }) {
+  if (byMethod.length === 0) return null
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+      {byMethod.map(m => (
+        <div key={m.method} className={`rounded-2xl shadow-sm p-3 sm:p-4 ${m.is_cash ? 'bg-[rgb(var(--p50))]' : 'bg-white border border-gray-100'}`}>
+          <p className="text-xs text-gray-500 flex items-center gap-1.5">
+            {m.label}
+            {m.is_cash && <span className="text-[10px] leading-none px-1.5 py-0.5 rounded-full bg-[rgb(var(--p100))] text-[rgb(var(--p700))]">arqueo</span>}
+          </p>
+          <p className={`text-lg sm:text-xl font-bold mt-1 truncate ${m.net < 0 ? 'text-red-600' : 'text-gray-800'}`}>S/ {m.net.toFixed(2)}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** Lista de movimientos — usada tanto para la sesión actual (con acción de revertir) como para
+ *  el detalle de una sesión histórica (solo lectura, `onReverse` ausente). */
+function MovementsList({
+  movements,
+  methodLabelFor,
+  onReverse,
+  reversingId,
+}: {
+  movements: CashMovement[]
+  methodLabelFor: (method?: string) => string
+  onReverse?: (m: CashMovement) => void
+  reversingId?: number | null
+}) {
+  const reversedIds = new Set(movements.filter(m => m.reversal_of_id != null).map(m => m.reversal_of_id as number))
+  return (
+    <div className="max-h-80 overflow-y-auto">
+      {movements.map(m => {
+        const isReversal = m.reversal_of_id != null
+        const isReversed = reversedIds.has(m.id)
+        const canReverse = !!onReverse && !isReversal && !isReversed && !m.sale_id && !m.purchase_id
+        return (
+          <div key={m.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 px-3 sm:px-4 py-3 border-b border-gray-50 hover:bg-gray-50">
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+              {m.type === 'income' ? <TrendingUp size={14} className="text-green-500 flex-shrink-0" /> : <TrendingDown size={14} className="text-red-400 flex-shrink-0" />}
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-700 truncate flex items-center gap-1.5">
+                  {categoryLabel(m.category) || m.type}
+                  {isReversal && <span className="text-[10px] leading-none px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">Reversión</span>}
+                  {isReversed && <span className="text-[10px] leading-none px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">Revertido</span>}
+                </p>
+                <p className="text-xs text-gray-400 truncate">
+                  {methodLabelFor(m.payment_method)} · {m.sale_id || m.purchase_id ? 'Doc.' : 'Ref.'} {m.reference || 'sin referencia'} · {new Date(m.created_at).toLocaleTimeString()}
+                  {m.user_id ? ` · Usuario #${m.user_id}` : ''}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 flex-shrink-0 self-end sm:self-auto">
+              <p className={`font-bold text-sm ${m.type === 'income' ? 'text-green-600' : 'text-red-500'}`}>
+                {m.type === 'income' ? '+' : '-'} S/ {Number(m.amount).toFixed(2)}
+              </p>
+              {canReverse && (
+                <button
+                  type="button"
+                  title="Revertir movimiento"
+                  onClick={() => onReverse?.(m)}
+                  disabled={reversingId === m.id}
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50"
+                >
+                  <RotateCcw size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+        )
+      })}
+      {movements.length === 0 && <div className="text-center py-8 text-gray-400 text-sm">Sin movimientos en esta sesión</div>}
+    </div>
+  )
+}
+
 export default function CashPage() {
   return <RequireModule moduleKey="cashbank"><CashContent /></RequireModule>
 }
 
 function CashContent() {
-  const { activeBranchId } = useBranch()
-  const { hasPermission } = useAuth()
+  const { activeBranchId, activeBranch } = useBranch()
+  const { hasPermission, user } = useAuth()
   const [session, setSession] = useState<CashSession | null | undefined>(undefined)
   const [openInBranch, setOpenInBranch] = useState<OpenCashSessionRow[]>([])
   const [movements, setMovements] = useState<CashMovement[]>([])
@@ -203,6 +283,14 @@ function CashContent() {
   // Corregir el monto de apertura es de quien abre la caja; borrarla, de quien la administra.
   const canAdjustOpening = hasPermission('cashbank.open')
   const canDeleteSession = hasPermission('cashbank.manage')
+
+  // Revertir movimiento manual (Fase 5)
+  const [reverseTarget, setReverseTarget] = useState<CashMovement | null>(null)
+  const [reversingId, setReversingId] = useState<number | null>(null)
+
+  // Detalle de una sesión histórica: saldos por método + movimientos, solo lectura.
+  const [sessionDetail, setSessionDetail] = useState<{ session: CashSession; balance: SessionBalanceSummary; movements: CashMovement[] } | null>(null)
+  const [loadingDetail, setLoadingDetail] = useState(false)
 
   const load = async () => {
     try {
@@ -365,6 +453,36 @@ function CashContent() {
     }
   }
 
+  const handleReverseMovement = async () => {
+    if (!reverseTarget) return
+    setReversingId(reverseTarget.id)
+    try {
+      await cashbankService.reverseMovement(reverseTarget.id)
+      toast.success('Movimiento revertido')
+      setReverseTarget(null)
+      load()
+    } catch (e: any) {
+      toast.error(e.response?.data?.error ?? 'No se pudo revertir el movimiento')
+    } finally {
+      setReversingId(null)
+    }
+  }
+
+  const openSessionDetail = async (s: CashSession) => {
+    setLoadingDetail(true)
+    try {
+      const [balance, movs] = await Promise.all([
+        cashbankService.getSessionBalance(s.id),
+        cashbankService.listMovements(s.id),
+      ])
+      setSessionDetail({ session: s, balance, movements: movs ?? [] })
+    } catch {
+      toast.error('No se pudo cargar el detalle de la sesión')
+    } finally {
+      setLoadingDetail(false)
+    }
+  }
+
   // `balance` = saldo de la sesión con TODOS los métodos de pago (lo que se muestra como
   // "Balance actual"). `cashExpected` = SOLO efectivo — el número contra el que debe compararse
   // cualquier arqueo físico, idéntico al que persiste el backend al cerrar la caja. Nunca deben
@@ -375,6 +493,12 @@ function CashContent() {
   const cashExpected = balanceSummary?.cash_expected ?? balance
   const totalIncome = balanceSummary?.by_method.reduce((s, m) => s + m.income, 0) ?? 0
   const totalExpense = balanceSummary?.by_method.reduce((s, m) => s + m.expense, 0) ?? 0
+  const methodLabelFor = (method?: string): string => {
+    if (!method) return '—'
+    const found = balanceSummary?.by_method.find(m => m.method === method.toLowerCase())
+    if (found) return found.label
+    return method.charAt(0).toUpperCase() + method.slice(1)
+  }
 
   if (loading) return <div className="flex justify-center py-16"><div className="w-6 h-6 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" /></div>
 
@@ -383,9 +507,37 @@ function CashContent() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-gray-800">Caja</h2>
-          <p className="text-sm text-gray-500">Mi caja — una sesión abierta por usuario en la sucursal</p>
+          <p className="text-sm text-gray-500">Sesión de operaciones — agrupa todo movimiento de dinero, sin importar el método de pago</p>
         </div>
       </div>
+
+      {/* Sesión actual: quién, dónde, cuándo, en qué estado. */}
+      {session && (
+        <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
+          <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+            <div>
+              <p className="text-xs text-gray-400">Sesión</p>
+              <p className="font-semibold text-gray-800">#{session.id}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Usuario</p>
+              <p className="font-semibold text-gray-800">{user?.name ?? `#${session.opened_by}`}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Sucursal</p>
+              <p className="font-semibold text-gray-800">{activeBranch?.name ?? `#${session.branch_id}`}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Apertura</p>
+              <p className="font-semibold text-gray-800">{new Date(session.opened_at).toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-400">Estado</p>
+              <span className="inline-block text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700">Abierta</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {openInBranch.length > 0 && (
         <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
@@ -418,19 +570,48 @@ function CashContent() {
 
       {session ? (
         <>
-          {/* Cards de resumen */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {[
-              { label: 'Apertura', val: session.opening_balance, color: 'text-gray-800', bg: 'bg-white' },
-              { label: 'Ingresos', val: totalIncome, color: 'text-green-600', bg: 'bg-green-50' },
-              { label: 'Egresos', val: totalExpense, color: 'text-red-500', bg: 'bg-red-50' },
-              { label: 'Balance actual', val: balance, color: 'text-[rgb(var(--p700))]', bg: 'bg-[rgb(var(--p50))]' },
-            ].map(card => (
-              <div key={card.label} className={`${card.bg} rounded-2xl shadow-sm p-3 sm:p-4`}>
-                <p className="text-xs text-gray-500">{card.label}</p>
-                <p className={`text-lg sm:text-xl font-bold mt-1 truncate ${card.color}`}>S/ {Number(card.val).toFixed(2)}</p>
+          {/* Saldos por método de pago — cada método (efectivo, Yape, Plin, transferencia,
+              tarjeta, otros) con su propio saldo, sin importar si requiere arqueo físico. */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Saldos por método</p>
+            <MethodBalanceGrid byMethod={balanceSummary?.by_method ?? []} />
+          </div>
+
+          {/* TOTAL de la sesión (todos los métodos) — a propósito separado y con otro estilo
+              del bloque de efectivo/arqueo de abajo: son dos números distintos, nunca el mismo. */}
+          <div className="bg-[rgb(var(--p50))] rounded-2xl shadow-sm p-3 sm:p-4 flex items-center justify-between">
+            <p className="text-sm font-semibold text-[rgb(var(--p800))]">Total de la sesión</p>
+            <p className="text-xl font-bold text-[rgb(var(--p700))]">S/ {balance.toFixed(2)}</p>
+          </div>
+
+          {/* Efectivo / Arqueo — exclusivamente físico, nunca el total. */}
+          <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Efectivo / Arqueo</p>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">Solo efectivo físico</span>
+            </div>
+            <div className="grid grid-cols-3 gap-3 text-sm">
+              <div>
+                <p className="text-xs text-gray-400">Efectivo esperado</p>
+                <p className="font-bold text-gray-800">S/ {cashExpected.toFixed(2)}</p>
               </div>
-            ))}
+              <div>
+                <p className="text-xs text-gray-400">Efectivo contado</p>
+                <p className="font-bold text-gray-800">
+                  {session.arqueo_json ? `S/ ${sumArqueo(parseArqueoJson(session.arqueo_json)).toFixed(2)}` : '— (sin arqueo aún)'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400">Diferencia</p>
+                {session.arqueo_json ? (
+                  <p className={arqueoSumColorClass(sumArqueo(parseArqueoJson(session.arqueo_json)), cashExpected)}>
+                    S/ {(sumArqueo(parseArqueoJson(session.arqueo_json)) - cashExpected).toFixed(2)}
+                  </p>
+                ) : (
+                  <p className="font-bold text-gray-400">—</p>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Acciones: en móvil 2x2 para que no se corte "Cerrar caja" */}
@@ -483,23 +664,12 @@ function CashContent() {
               <p className="text-sm font-semibold text-gray-700">Movimientos de la sesión</p>
               <span className="text-xs text-gray-400">{movements.length} registros</span>
             </div>
-            <div className="max-h-80 overflow-y-auto">
-              {movements.map(m => (
-                <div key={m.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 px-3 sm:px-4 py-3 border-b border-gray-50 hover:bg-gray-50">
-                  <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                    {m.type === 'income' ? <TrendingUp size={14} className="text-green-500 flex-shrink-0" /> : <TrendingDown size={14} className="text-red-400 flex-shrink-0" />}
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-700 truncate">{categoryLabel(m.category) || m.type}</p>
-                      <p className="text-xs text-gray-400">{m.reference || '-'} · {new Date(m.created_at).toLocaleTimeString()}</p>
-                    </div>
-                  </div>
-                  <p className={`font-bold text-sm flex-shrink-0 ${m.type === 'income' ? 'text-green-600' : 'text-red-500'}`}>
-                    {m.type === 'income' ? '+' : '-'} S/ {Number(m.amount).toFixed(2)}
-                  </p>
-                </div>
-              ))}
-              {movements.length === 0 && <div className="text-center py-8 text-gray-400 text-sm">Sin movimientos en esta sesión</div>}
-            </div>
+            <MovementsList
+              movements={movements}
+              methodLabelFor={methodLabelFor}
+              onReverse={setReverseTarget}
+              reversingId={reversingId}
+            />
           </div>
         </>
       ) : (
@@ -525,10 +695,11 @@ function CashContent() {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[640px]">
-              <thead className="bg-gray-50"><tr>{['Apertura','Cierre','Balance apert.','Balance cierre','Estado','Arqueo','Acciones'].map(h => <th key={h} className="text-left px-3 sm:px-4 py-2 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">{h}</th>)}</tr></thead>
+              <thead className="bg-gray-50"><tr>{['Usuario','Apertura','Cierre','Balance apert.','Balance cierre','Estado','Arqueo','Acciones'].map(h => <th key={h} className="text-left px-3 sm:px-4 py-2 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">{h}</th>)}</tr></thead>
               <tbody>
                 {history.map(s => (
                   <tr key={s.id} className="border-b border-gray-50">
+                    <td className="px-3 sm:px-4 py-2 text-xs whitespace-nowrap">{s.opened_by_name || `#${s.opened_by}`}</td>
                     <td className="px-3 sm:px-4 py-2 text-xs whitespace-nowrap">{new Date(s.opened_at).toLocaleString()}</td>
                     <td className="px-3 sm:px-4 py-2 text-xs whitespace-nowrap">{s.closed_at ? new Date(s.closed_at).toLocaleString() : '-'}</td>
                     <td className="px-3 sm:px-4 py-2 font-medium whitespace-nowrap">S/ {Number(s.opening_balance).toFixed(2)}</td>
@@ -545,6 +716,14 @@ function CashContent() {
                     </td>
                     <td className="px-3 sm:px-4 py-2">
                       <div className="flex items-center gap-2 whitespace-nowrap">
+                        <button
+                          type="button"
+                          title="Ver saldos y movimientos de esta sesión"
+                          onClick={() => void openSessionDetail(s)}
+                          className="inline-flex items-center gap-1 text-xs text-gray-600 hover:underline"
+                        >
+                          <Eye size={13} /> Detalle
+                        </button>
                         {canAdjustOpening && (
                           <button
                             type="button"
@@ -880,6 +1059,106 @@ function CashContent() {
               </div>
             )}
           </>
+        )}
+      </Modal>
+
+      {/* Confirmar reversión de movimiento manual */}
+      <Modal open={!!reverseTarget} onClose={() => setReverseTarget(null)} contentClassName="max-w-md w-full mx-2 sm:mx-0">
+        <h3 className="font-bold text-gray-800 text-base sm:text-lg">Revertir movimiento</h3>
+        {reverseTarget && (
+          <p className="text-sm text-gray-600">
+            Se creará un movimiento compensatorio de <span className="font-semibold">{methodLabelFor(reverseTarget.payment_method)}</span> por{' '}
+            <span className="font-semibold">S/ {Number(reverseTarget.amount).toFixed(2)}</span> ({categoryLabel(reverseTarget.category) || reverseTarget.type}).
+            El movimiento original no se borra — queda en el historial, referenciado desde la reversión.
+          </p>
+        )}
+        <div className="flex flex-col-reverse sm:flex-row gap-2">
+          <button
+            onClick={() => setReverseTarget(null)}
+            className="flex-1 py-2.5 sm:py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleReverseMovement}
+            disabled={reversingId != null}
+            className="flex-1 py-2.5 sm:py-2 bg-red-600 text-white rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50"
+          >
+            {reversingId != null ? 'Revirtiendo…' : 'Revertir'}
+          </button>
+        </div>
+      </Modal>
+
+      {/* Detalle de una sesión histórica: saldos por método + movimientos, solo lectura. */}
+      <Modal open={!!sessionDetail || loadingDetail} onClose={() => setSessionDetail(null)} contentClassName="max-w-2xl w-full mx-2 sm:mx-0 max-h-[90vh] overflow-y-auto">
+        <h3 className="font-bold text-gray-800 text-base sm:text-lg">Detalle de sesión</h3>
+        {loadingDetail && !sessionDetail && (
+          <div className="flex justify-center py-10"><div className="w-5 h-5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" /></div>
+        )}
+        {sessionDetail && (
+          <div className="space-y-4">
+            <div className="bg-gray-50 rounded-xl p-3 flex flex-wrap gap-x-6 gap-y-2 text-sm">
+              <div>
+                <p className="text-xs text-gray-400">Sesión</p>
+                <p className="font-semibold text-gray-800">#{sessionDetail.session.id}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400">Usuario</p>
+                <p className="font-semibold text-gray-800">{sessionDetail.session.opened_by_name || `#${sessionDetail.session.opened_by}`}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400">Apertura</p>
+                <p className="font-semibold text-gray-800">{new Date(sessionDetail.session.opened_at).toLocaleString()}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400">Cierre</p>
+                <p className="font-semibold text-gray-800">{sessionDetail.session.closed_at ? new Date(sessionDetail.session.closed_at).toLocaleString() : '—'}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400">Estado</p>
+                <span className={`inline-block text-xs px-2 py-0.5 rounded-full font-medium ${sessionDetail.session.status === 'open' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                  {sessionDetail.session.status === 'open' ? 'Abierta' : 'Cerrada'}
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Saldos por método</p>
+              <MethodBalanceGrid byMethod={sessionDetail.balance.by_method} />
+            </div>
+
+            <div className="bg-[rgb(var(--p50))] rounded-xl p-3 flex items-center justify-between text-sm">
+              <span className="font-semibold text-[rgb(var(--p800))]">Total de la sesión</span>
+              <span className="text-lg font-bold text-[rgb(var(--p700))]">S/ {sessionDetail.balance.total.toFixed(2)}</span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 text-sm bg-white border border-gray-100 rounded-xl p-3">
+              <div>
+                <p className="text-xs text-gray-400">Efectivo esperado</p>
+                <p className="font-bold text-gray-800">S/ {sessionDetail.balance.cash_expected.toFixed(2)}</p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400">Efectivo contado</p>
+                <p className="font-bold text-gray-800">
+                  {sessionDetail.session.closing_balance != null ? `S/ ${Number(sessionDetail.session.closing_balance).toFixed(2)}` : '—'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-gray-400">Diferencia</p>
+                {/* difference ya es el delta persistido por el backend al cerrar — colorear contra 0, no reconstruirlo con cash_expected recalculado ahora. */}
+                <p className={sessionDetail.session.difference != null ? arqueoSumColorClass(sessionDetail.session.difference, 0) : 'text-gray-400 font-bold'}>
+                  {sessionDetail.session.difference != null ? `S/ ${Number(sessionDetail.session.difference).toFixed(2)}` : '—'}
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Movimientos ({sessionDetail.movements.length})</p>
+              <div className="border border-gray-100 rounded-xl overflow-hidden">
+                <MovementsList movements={sessionDetail.movements} methodLabelFor={methodLabelFor} />
+              </div>
+            </div>
+          </div>
         )}
       </Modal>
     </div>

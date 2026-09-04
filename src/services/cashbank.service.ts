@@ -19,6 +19,7 @@ export interface CashSession {
   register_name?: string | null
   branch_name?: string
   opened_by: number
+  user_id?: number
   opening_balance: number
   closing_balance: number | null
   expected_balance: number | null
@@ -30,6 +31,11 @@ export interface CashSession {
   notes?: string
   /** Sin movimientos ni ventas: se puede eliminar sin perder nada. */
   empty?: boolean
+  /** Solo presentes en el listado de historial (GET /cashbank/sessions, ListSessionsEnriched). */
+  opened_by_name?: string
+  closed_by_name?: string
+  total_income?: number
+  total_expense?: number
 }
 
 export interface CashMovement {
@@ -41,6 +47,12 @@ export interface CashMovement {
   amount: number
   notes?: string
   created_at: string
+  payment_method?: string
+  user_id?: number
+  sale_id?: number | null
+  purchase_id?: number | null
+  /** Si ESTE movimiento es la reversión de otro, el id del original. */
+  reversal_of_id?: number | null
 }
 
 export interface BankAccount {
@@ -272,6 +284,11 @@ export const cashbankService = {
 
   addMovement: (sessionId: number, data: { type: 'income' | 'expense'; category: string; reference?: string; payment_method?: string; amount: number; notes?: string }): Promise<CashMovement> =>
     api.post(`/api/cashbank/sessions/${sessionId}/movements`, data).then(r => r.data.data ?? r.data),
+
+  /** Revierte un movimiento MANUAL (ingreso/egreso sin venta/compra asociada). El original
+   *  nunca se borra — se crea uno nuevo de signo opuesto, trazable vía reversal_of_id. */
+  reverseMovement: (movementId: number, notes?: string): Promise<void> =>
+    api.post(`/api/cashbank/movements/${movementId}/reverse`, { notes }).then(() => undefined),
 
   getSessionReport: (sessionId: number): Promise<CashSessionReport> =>
     api.get(`/api/cashbank/sessions/${sessionId}/report`).then(r => r.data.data ?? r.data),
