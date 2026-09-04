@@ -116,6 +116,27 @@ export interface MethodTotal {
   total: number
 }
 
+/** Saldo de un método de pago dentro de una sesión (fuente única, GetSessionBalanceSummary). */
+export interface MethodBalance {
+  method: string
+  label: string
+  /** true solo para "efectivo" — el único método con arqueo físico. */
+  is_cash: boolean
+  income: number
+  expense: number
+  net: number
+}
+
+/** Resumen de saldo de una sesión, desglosado por método de pago. `total` incluye TODOS los
+ *  métodos; `cash_expected` es exclusivamente efectivo (mismo cálculo que usa el cierre/arqueo,
+ *  nunca deben mezclarse: uno es "cuánta plata hay en total", el otro es "cuánto efectivo físico
+ *  debería haber en la gaveta"). */
+export interface SessionBalanceSummary {
+  by_method: MethodBalance[]
+  total: number
+  cash_expected: number
+}
+
 export interface CashSessionReport {
   session: CashSessionReportSession
   income_detail: IncomeDetailRow[]
@@ -240,6 +261,11 @@ export const cashbankService = {
   /** Borra una caja sin movimientos ni ventas (requiere cashbank.manage). */
   deleteSession: (id: number): Promise<void> =>
     api.delete(`/api/cashbank/sessions/${id}`).then(() => undefined),
+
+  /** Fuente única de saldo: totales por método de pago + total de la sesión + efectivo esperado
+   *  (arqueo). El frontend NO debe volver a sumar movimientos por su cuenta — solo pintar esto. */
+  getSessionBalance: (sessionId: number): Promise<SessionBalanceSummary> =>
+    api.get(`/api/cashbank/sessions/${sessionId}/balance`).then(r => r.data.data ?? r.data),
 
   listMovements: (sessionId: number): Promise<CashMovement[]> =>
     api.get(`/api/cashbank/sessions/${sessionId}/movements`).then(r => r.data.data ?? r.data ?? []),

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Plus, X, TrendingUp, TrendingDown, Wallet, History, Pencil, Trash2, Unlock } from 'lucide-react'
-import { cashbankService, type CashSession, type CashMovement, type OpenCashSessionRow } from '@/services/cashbank.service'
+import { cashbankService, type CashSession, type CashMovement, type OpenCashSessionRow, type SessionBalanceSummary } from '@/services/cashbank.service'
 import { openCashDrawer } from '@/services/printers.service'
 import { useBranch } from '@/contexts/BranchContext'
 import { useAuth } from '@/contexts/AuthContext'
@@ -159,6 +159,11 @@ function CashContent() {
   const [session, setSession] = useState<CashSession | null | undefined>(undefined)
   const [openInBranch, setOpenInBranch] = useState<OpenCashSessionRow[]>([])
   const [movements, setMovements] = useState<CashMovement[]>([])
+  // Fuente única de saldo (backend): totales por método + total + efectivo esperado. Ya NO se
+  // recalcula "a mano" sumando `movements` en TypeScript — ese cálculo paralelo era exactamente
+  // el bug reportado (el "Balance actual" en pantalla no coincidía con lo que el backend usa
+  // para el arqueo al cerrar, porque sumaba todos los métodos en vez de solo efectivo).
+  const [balanceSummary, setBalanceSummary] = useState<SessionBalanceSummary | null>(null)
   const [history, setHistory] = useState<CashSession[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -215,10 +220,15 @@ function CashContent() {
       setSession(sess ?? null)
       setHistory(hist ?? [])
       if (sess?.id != null) {
-        const movs = await cashbankService.listMovements(sess.id)
+        const [movs, summary] = await Promise.all([
+          cashbankService.listMovements(sess.id),
+          cashbankService.getSessionBalance(sess.id),
+        ])
         setMovements(movs ?? [])
+        setBalanceSummary(summary)
       } else {
         setMovements([])
+        setBalanceSummary(null)
       }
     } catch { toast.error('Error') }
     finally { setLoading(false) }
@@ -257,8 +267,12 @@ function CashContent() {
     if (!session) return
     setSaving(true)
     try {
+      // closing_balance representa el EFECTIVO con el que se cierra la caja (contra eso el
+      // backend calcula `difference`) — nunca el total con todos los métodos. Si se hace arqueo,
+      // el backend igual lo sobreescribe con la suma de denominaciones; esto es el valor por
+      // defecto cuando el cajero cierra sin contar el efectivo físico.
       const payload: { closing_balance: number; notes: string; arqueo?: Record<string, number> } = {
-        closing_balance: balance,
+        closing_balance: cashExpected,
         notes: closeNotes,
       }
       if (closeWithArqueo) {
@@ -351,9 +365,16 @@ function CashContent() {
     }
   }
 
-  const totalIncome = movements.filter(m => m.type === 'income').reduce((s, m) => s + m.amount, 0)
-  const totalExpense = movements.filter(m => m.type === 'expense').reduce((s, m) => s + m.amount, 0)
-  const balance = (session?.opening_balance ?? 0) + totalIncome - totalExpense
+  // `balance` = saldo de la sesión con TODOS los métodos de pago (lo que se muestra como
+  // "Balance actual"). `cashExpected` = SOLO efectivo — el número contra el que debe compararse
+  // cualquier arqueo físico, idéntico al que persiste el backend al cerrar la caja. Nunca deben
+  // mezclarse: antes de este fix, el arqueo comparaba contra `balance` (todos los métodos), así
+  // que un egreso por Yape/transferencia hacía que "la diferencia con el esperado" en pantalla
+  // no coincidiera con la diferencia real que el sistema guardaba.
+  const balance = balanceSummary?.total ?? (session?.opening_balance ?? 0)
+  const cashExpected = balanceSummary?.cash_expected ?? balance
+  const totalIncome = balanceSummary?.by_method.reduce((s, m) => s + m.income, 0) ?? 0
+  const totalExpense = balanceSummary?.by_method.reduce((s, m) => s + m.expense, 0) ?? 0
 
   if (loading) return <div className="flex justify-center py-16"><div className="w-6 h-6 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" /></div>
 
@@ -771,15 +792,18 @@ function CashContent() {
         </div>
         {closeWithArqueo && (
           <div className="space-y-2">
+            <p className="text-xs text-gray-500">
+              El arqueo cuenta solo efectivo físico — efectivo esperado: <span className="font-semibold">S/ {cashExpected.toFixed(2)}</span> (Yape/Plin/transferencia/tarjeta no llevan arqueo).
+            </p>
             <ArqueoTable
               arqueo={closeArqueo}
               editable
               onChange={setCloseArqueo}
-              totalColorClass={arqueoSumColorClass(sumArqueo(closeArqueo), balance)}
+              totalColorClass={arqueoSumColorClass(sumArqueo(closeArqueo), cashExpected)}
             />
-            {Math.abs(sumArqueo(closeArqueo) - balance) > 0.01 && (
-              <p className={`text-xs ${sumArqueo(closeArqueo) > balance ? 'text-orange-600' : 'text-red-600'}`}>
-                Diferencia con balance esperado: S/ {(sumArqueo(closeArqueo) - balance).toFixed(2)}
+            {Math.abs(sumArqueo(closeArqueo) - cashExpected) > 0.01 && (
+              <p className={`text-xs ${sumArqueo(closeArqueo) > cashExpected ? 'text-orange-600' : 'text-red-600'}`}>
+                Diferencia con efectivo esperado: S/ {(sumArqueo(closeArqueo) - cashExpected).toFixed(2)}
               </p>
             )}
           </div>
@@ -813,11 +837,12 @@ function CashContent() {
       <Modal open={showArqueoModal && !!session} onClose={() => setShowArqueoModal(false)} contentClassName="max-w-xl w-full mx-2 sm:mx-0 max-h-[90vh] overflow-y-auto">
         <h3 className="font-bold text-gray-800">Arqueo de caja</h3>
         <p className="text-xs text-gray-500 mb-3">Actualiza las cantidades por denominación. Al cerrar la caja podrás registrar el arqueo de forma opcional.</p>
+        <p className="text-xs text-gray-500 mb-2">Efectivo esperado: <span className="font-semibold">S/ {cashExpected.toFixed(2)}</span></p>
         <ArqueoTable
           arqueo={arqueoDraft}
           editable
           onChange={setArqueoDraft}
-          totalColorClass={arqueoSumColorClass(sumArqueo(arqueoDraft), balance)}
+          totalColorClass={arqueoSumColorClass(sumArqueo(arqueoDraft), cashExpected)}
         />
         <div className="flex flex-col-reverse sm:flex-row gap-2 mt-4">
           <button type="button" onClick={() => setShowArqueoModal(false)} className="flex-1 py-2.5 sm:py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cerrar</button>
@@ -838,7 +863,7 @@ function CashContent() {
         {arqueoModalSession && (
           <>
             <p className="text-xs text-gray-500 mb-2">
-              Sesión cerrada {arqueoModalSession.closed_at ? new Date(arqueoModalSession.closed_at).toLocaleString() : ''}. Balance esperado: S/ {(arqueoModalSession.expected_balance ?? 0).toFixed(2)}
+              Sesión cerrada {arqueoModalSession.closed_at ? new Date(arqueoModalSession.closed_at).toLocaleString() : ''}. Efectivo esperado: S/ {(arqueoModalSession.expected_balance ?? 0).toFixed(2)}
             </p>
             <ArqueoTable
               arqueo={arqueoForm}
