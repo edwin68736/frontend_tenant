@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, X, TrendingUp, TrendingDown, Wallet, History, Pencil, Trash2, Unlock, RotateCcw, Eye } from 'lucide-react'
-import { cashbankService, type CashSession, type CashMovement, type OpenCashSessionRow, type SessionBalanceSummary, type MethodBalance } from '@/services/cashbank.service'
+import { X, TrendingUp, TrendingDown, Wallet, History, Pencil, Trash2, Unlock, Eye } from 'lucide-react'
+import { cashbankService, type CashSession, type SessionBalanceSummary } from '@/services/cashbank.service'
 import { openCashDrawer } from '@/services/printers.service'
 import { useBranch } from '@/contexts/BranchContext'
 import { useAuth } from '@/contexts/AuthContext'
@@ -9,258 +10,36 @@ import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { PendingRefundsPanel, PendingRefundsNotice } from '@/components/cash/PendingRefundsPanel'
+import {
+  ArqueoTable,
+  sumArqueo,
+  arqueoSumColorClass,
+  emptyArqueo,
+  parseArqueoJson,
+} from '@/components/cash/ArqueoTable'
+import { INCOME_CATEGORIES, EXPENSE_CATEGORIES } from '@/utils/cashMovementCategories'
 
-// Categorías preestablecidas para movimientos de caja
-const INCOME_CATEGORIES = [
-  { value: 'ingreso_manual', label: 'Ingreso manual' },
-  { value: 'venta_efectivo', label: 'Venta (efectivo manual)' },
-  { value: 'devolucion', label: 'Devolución' },
-  { value: 'prestamo_cobro', label: 'Cobro de préstamo' },
-  { value: 'otro_ingreso', label: 'Otro ingreso' },
-]
-const EXPENSE_CATEGORIES = [
-  { value: 'egreso_manual', label: 'Egreso manual' },
-  { value: 'gasto', label: 'Gasto' },
-  { value: 'retiro', label: 'Retiro' },
-  { value: 'pago_proveedor', label: 'Pago a proveedor' },
-  { value: 'prestamo_entrega', label: 'Préstamo entregado' },
-  { value: 'otro_egreso', label: 'Otro egreso' },
-]
-
-const ALL_CATEGORIES = [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES]
-function categoryLabel(value: string): string {
-  if (!value) return ''
-  const found = ALL_CATEGORIES.find(c => c.value === value)
-  return found ? found.label : value
-}
-
-// Denominaciones para arqueo (PEN): centavos con dos decimales (0.50 … 0.01)
-const ARQUEO_DENOMINATIONS: { value: string; label: string }[] = [
-  { value: '200', label: 'S/ 200' },
-  { value: '100', label: 'S/ 100' },
-  { value: '50', label: 'S/ 50' },
-  { value: '20', label: 'S/ 20' },
-  { value: '10', label: 'S/ 10' },
-  { value: '5', label: 'S/ 5' },
-  { value: '2', label: 'S/ 2' },
-  { value: '1', label: 'S/ 1' },
-  { value: '0.5', label: 'S/ 0.50' },
-  { value: '0.2', label: 'S/ 0.20' },
-  { value: '0.1', label: 'S/ 0.10' },
-  { value: '0.05', label: 'S/ 0.05' },
-  { value: '0.01', label: 'S/ 0.01' },
-]
-
-function sumArqueo(arqueo: Record<string, number>): number {
-  return ARQUEO_DENOMINATIONS.reduce((s, d) => s + Number(d.value) * (arqueo[d.value] ?? 0), 0)
-}
-
-/** Clase de color para la suma del arqueo según el saldo esperado: verde = igual, naranja = mayor, rojo = menor */
-function arqueoSumColorClass(sum: number, expectedBalance: number): string {
-  const diff = sum - expectedBalance
-  if (Math.abs(diff) < 0.01) return 'text-green-600 font-semibold'
-  if (diff > 0) return 'text-orange-600 font-semibold'
-  return 'text-red-600 font-semibold'
-}
-
-function emptyArqueo(): Record<string, number> {
-  return ARQUEO_DENOMINATIONS.reduce((acc, d) => ({ ...acc, [d.value]: 0 }), {} as Record<string, number>)
-}
-
-function parseArqueoJson(json: string | null | undefined): Record<string, number> {
-  if (!json) return emptyArqueo()
-  try {
-    const o = JSON.parse(json) as Record<string, number>
-    const out = emptyArqueo()
-    ARQUEO_DENOMINATIONS.forEach(d => { out[d.value] = Number(o[d.value]) || 0 })
-    return out
-  } catch {
-    return emptyArqueo()
-  }
-}
-
-/** Tabla de arqueo: I- EFECTIVO ARQUEADO con columnas Descripción, Cantidad, Denominación (S/), Importe */
-function ArqueoTable({
-  arqueo,
-  editable,
-  onChange,
-  totalColorClass,
-}: {
-  arqueo: Record<string, number>
-  editable: boolean
-  onChange?: (arqueo: Record<string, number>) => void
-  totalColorClass?: string
-}) {
-  const total = sumArqueo(arqueo)
-  const cellClass = 'px-2 py-1.5 text-sm border-b border-gray-100'
-  const headerClass = 'px-2 py-2 text-xs font-semibold text-gray-700 uppercase bg-amber-50/80 border-b border-amber-100'
-
-  const renderRow = (d: { value: string; label: string }) => {
-    const qty = arqueo[d.value] ?? 0
-    const denom = Number(d.value)
-    const importe = qty * denom
-    const denomDisplay = denom < 1 ? denom.toFixed(2) : d.value
-    return (
-      <tr key={d.value}>
-        <td className={`${cellClass} text-gray-600`}>{d.label}</td>
-        <td className={cellClass}>
-          {editable && onChange ? (
-            <input
-              type="number"
-              inputMode="numeric"
-              min={0}
-              step={1}
-              className="w-16 border border-gray-200 rounded px-1.5 py-0.5 text-sm text-right"
-              value={qty === 0 ? '' : qty}
-              placeholder="0"
-              onChange={e => onChange({ ...arqueo, [d.value]: Math.max(0, Math.floor(Number(e.target.value) || 0)) })}
-            />
-          ) : (
-            <span className="text-right block">{qty}</span>
-          )}
-        </td>
-        <td className={`${cellClass} text-gray-600`}>{denomDisplay}</td>
-        <td className={`${cellClass} text-right font-medium`}>{importe.toFixed(2)}</td>
-      </tr>
-    )
-  }
-
-  return (
-    <div className="overflow-x-auto rounded-xl border border-gray-200">
-      <p className="text-sm font-semibold text-gray-800 mb-2 text-center">I- EFECTIVO ARQUEADO</p>
-      <table className="w-full text-sm">
-        <thead>
-          <tr>
-            <th className={`${headerClass} text-left`}>Descripción</th>
-            <th className={`${headerClass} text-right w-24`}>Cantidad</th>
-            <th className={`${headerClass} text-left`}>Denominación (S/)</th>
-            <th className={`${headerClass} text-right`}>Importe</th>
-          </tr>
-        </thead>
-        <tbody>
-          {ARQUEO_DENOMINATIONS.map(renderRow)}
-          <tr>
-            <td colSpan={3} className="px-2 py-2 font-semibold border-t border-gray-200 bg-amber-50/80 text-gray-800">TOTAL EFECTIVO</td>
-            <td className={`px-2 py-2 text-right border-t border-gray-200 bg-amber-50/80 font-semibold ${totalColorClass ?? 'text-gray-800'}`}>{total.toFixed(2)}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-/** Saldos por método de pago — Efectivo, Yape, Plin, Transferencia, Tarjeta, otros. Efectivo
- *  se distingue con un badge "arqueo" (es el único que lo requiere), pero es una tarjeta más:
- *  no hay jerarquía visual de "la caja de verdad es efectivo, el resto es secundario".
- *
- *  Cada tarjeta muestra ingreso/egreso además del neto: un neto solo puede ocultar que, por
- *  ejemplo, Yape tuvo S/500 de ingresos y S/200 de egresos (reversiones) — mostrar ambos evita
- *  esa ambigüedad sin cambiar el dato (MethodBalance ya trae income/expense, antes sin usar aquí). */
-function MethodBalanceGrid({ byMethod }: { byMethod: MethodBalance[] }) {
-  if (byMethod.length === 0) return null
-  return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-      {byMethod.map(m => (
-        <div key={m.method} className={`rounded-2xl shadow-sm p-3 sm:p-4 ${m.is_cash ? 'bg-[rgb(var(--p50))]' : 'bg-white border border-gray-100'}`}>
-          <p className="text-xs text-gray-500 flex items-center gap-1.5">
-            {m.label}
-            {m.is_cash && <span className="text-[10px] leading-none px-1.5 py-0.5 rounded-full bg-[rgb(var(--p100))] text-[rgb(var(--p700))]">arqueo</span>}
-          </p>
-          <p className={`text-lg sm:text-xl font-bold mt-1 truncate ${m.net < 0 ? 'text-red-600' : 'text-gray-800'}`}>S/ {m.net.toFixed(2)}</p>
-          <p className="text-[11px] text-gray-400 mt-0.5 flex gap-2">
-            <span className="text-emerald-600">+S/ {m.income.toFixed(2)}</span>
-            <span className="text-red-500">-S/ {m.expense.toFixed(2)}</span>
-          </p>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-/** Lista de movimientos — usada tanto para la sesión actual (con acción de revertir) como para
- *  el detalle de una sesión histórica (solo lectura, `onReverse` ausente). */
-function MovementsList({
-  movements,
-  methodLabelFor,
-  onReverse,
-  reversingId,
-}: {
-  movements: CashMovement[]
-  methodLabelFor: (method?: string) => string
-  onReverse?: (m: CashMovement) => void
-  reversingId?: string | null
-}) {
-  // Clave compuesta "kind-id": tenant_cash_movements y tenant_bank_movements (manual no
-  // efectivo) tienen cada una su propia secuencia de IDs — un mismo número puede existir en las
-  // dos, así que comparar solo por id confundiría el estado "revertido"/"revirtiendo" de una fila
-  // con el de otra.
-  const rowKey = (m: CashMovement) => `${m.kind}-${m.id}`
-  const reversedKeys = new Set(
-    movements.filter(m => m.reversal_of_id != null).map(m => `${m.kind}-${m.reversal_of_id}`),
-  )
-  return (
-    <div className="max-h-80 overflow-y-auto">
-      {movements.map(m => {
-        const isReversal = m.reversal_of_id != null
-        const isReversed = reversedKeys.has(rowKey(m))
-        const canReverse = !!onReverse && !isReversal && !isReversed && !m.sale_id && !m.purchase_id
-        return (
-          <div key={rowKey(m)} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 px-3 sm:px-4 py-3 border-b border-gray-50 hover:bg-gray-50">
-            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-              {m.type === 'income' ? <TrendingUp size={14} className="text-green-500 flex-shrink-0" /> : <TrendingDown size={14} className="text-red-400 flex-shrink-0" />}
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-gray-700 truncate flex items-center gap-1.5">
-                  {categoryLabel(m.category) || m.type}
-                  {isReversal && <span className="text-[10px] leading-none px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">Reversión</span>}
-                  {isReversed && <span className="text-[10px] leading-none px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">Revertido</span>}
-                </p>
-                <p className="text-xs text-gray-400 truncate">
-                  {methodLabelFor(m.payment_method)} · {m.sale_id || m.purchase_id ? 'Doc.' : 'Ref.'} {m.reference || 'sin referencia'} · {new Date(m.created_at).toLocaleTimeString()}
-                  {m.user_id ? ` · Usuario #${m.user_id}` : ''}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5 flex-shrink-0 self-end sm:self-auto">
-              <p className={`font-bold text-sm ${m.type === 'income' ? 'text-green-600' : 'text-red-500'}`}>
-                {m.type === 'income' ? '+' : '-'} S/ {Number(m.amount).toFixed(2)}
-              </p>
-              {canReverse && (
-                <button
-                  type="button"
-                  title="Revertir movimiento"
-                  onClick={() => onReverse?.(m)}
-                  disabled={reversingId === rowKey(m)}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50"
-                >
-                  <RotateCcw size={14} />
-                </button>
-              )}
-            </div>
-          </div>
-        )
-      })}
-      {movements.length === 0 && <div className="text-center py-8 text-gray-400 text-sm">Sin movimientos en esta sesión</div>}
-    </div>
-  )
-}
+const HISTORY_PER_PAGE_OPTIONS = [20, 50, 100] as const
 
 export default function CashPage() {
   return <RequireModule moduleKey="cashbank"><CashContent /></RequireModule>
 }
 
 function CashContent() {
-  const { activeBranchId, activeBranch } = useBranch()
-  const { hasPermission, user } = useAuth()
+  const { activeBranchId } = useBranch()
+  const { hasPermission } = useAuth()
   const [session, setSession] = useState<CashSession | null | undefined>(undefined)
-  const [openInBranch, setOpenInBranch] = useState<OpenCashSessionRow[]>([])
-  const [movements, setMovements] = useState<CashMovement[]>([])
-  // Fuente única de saldo (backend): totales por método + total + efectivo esperado. Ya NO se
-  // recalcula "a mano" sumando `movements` en TypeScript — ese cálculo paralelo era exactamente
-  // el bug reportado (el "Balance actual" en pantalla no coincidía con lo que el backend usa
-  // para el arqueo al cerrar, porque sumaba todos los métodos en vez de solo efectivo).
+  // Fuente única de saldo (backend): totales por método + total + efectivo esperado — necesaria
+  // aquí solo para los modales de Cerrar caja / Arqueo de MI sesión abierta (el resto de tarjetas
+  // que antes la usaban se movieron a CashSessionDetailPage.tsx, la vista de detalle).
   const [balanceSummary, setBalanceSummary] = useState<SessionBalanceSummary | null>(null)
   const [history, setHistory] = useState<CashSession[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Paginación del historial — 20 por página por defecto.
+  const [historyPage, setHistoryPage] = useState(1)
+  const [historyPerPage, setHistoryPerPage] = useState<number>(20)
+  const [historyTotal, setHistoryTotal] = useState(0)
 
   // Modal abrir caja
   const [showOpen, setShowOpen] = useState(false)
@@ -299,40 +78,20 @@ function CashContent() {
   const canAdjustOpening = hasPermission('cashbank.open')
   const canDeleteSession = hasPermission('cashbank.manage')
 
-  // Revertir movimiento manual (Fase 5). reversingId es "kind-id": tenant_cash_movements y
-  // tenant_bank_movements tienen cada una su propia secuencia de IDs, así que un `id` numérico
-  // solo no basta para identificar la fila en curso sin ambigüedad entre ambas tablas.
-  const [reverseTarget, setReverseTarget] = useState<CashMovement | null>(null)
-  const [reversingId, setReversingId] = useState<string | null>(null)
-
-  // Detalle de una sesión histórica: saldos por método + movimientos, solo lectura.
-  const [sessionDetail, setSessionDetail] = useState<{ session: CashSession; balance: SessionBalanceSummary; movements: CashMovement[] } | null>(null)
-  const [loadingDetail, setLoadingDetail] = useState(false)
-
   const load = async () => {
     try {
       const branchId = activeBranchId || session?.branch_id
       const [sess, hist] = await Promise.all([
         cashbankService.getOpenSession(branchId || undefined),
-        cashbankService.listSessions(branchId || undefined),
+        cashbankService.listSessionsPaged({ branch_id: branchId || undefined, page: historyPage, per_page: historyPerPage }),
       ])
-      if (branchId) {
-        const openList = await cashbankService.listOpenSessionsInBranch(branchId)
-        setOpenInBranch(openList)
-      } else {
-        setOpenInBranch([])
-      }
       setSession(sess ?? null)
-      setHistory(hist ?? [])
+      setHistory(hist.data)
+      setHistoryTotal(hist.total)
       if (sess?.id != null) {
-        const [movs, summary] = await Promise.all([
-          cashbankService.listMovements(sess.id),
-          cashbankService.getSessionBalance(sess.id),
-        ])
-        setMovements(movs ?? [])
+        const summary = await cashbankService.getSessionBalance(sess.id)
         setBalanceSummary(summary)
       } else {
-        setMovements([])
         setBalanceSummary(null)
       }
     } catch { toast.error('Error') }
@@ -341,6 +100,12 @@ function CashContent() {
 
   useEffect(() => {
     if (activeBranchId) load()
+  }, [activeBranchId, historyPage, historyPerPage])
+
+  // Cambiar de sucursal vuelve a la página 1 (una página que existía en la sucursal anterior
+  // puede no existir en la nueva, con menos sesiones).
+  useEffect(() => {
+    setHistoryPage(1)
   }, [activeBranchId])
 
   useEffect(() => {
@@ -381,7 +146,7 @@ function CashContent() {
         notes: closeNotes,
       }
       if (closeWithArqueo) {
-        const hasAny = ARQUEO_DENOMINATIONS.some(d => (closeArqueo[d.value] ?? 0) > 0)
+        const hasAny = Object.values(closeArqueo).some(v => (v ?? 0) > 0)
         if (hasAny) payload.arqueo = closeArqueo
       }
       await cashbankService.closeSession(session.id, payload)
@@ -470,52 +235,16 @@ function CashContent() {
     }
   }
 
-  const handleReverseMovement = async () => {
-    if (!reverseTarget) return
-    setReversingId(`${reverseTarget.kind}-${reverseTarget.id}`)
-    try {
-      await cashbankService.reverseMovement(reverseTarget.id, reverseTarget.kind)
-      toast.success('Movimiento revertido')
-      setReverseTarget(null)
-      load()
-    } catch (e: any) {
-      toast.error(e.response?.data?.error ?? 'No se pudo revertir el movimiento')
-    } finally {
-      setReversingId(null)
-    }
-  }
-
-  const openSessionDetail = async (s: CashSession) => {
-    setLoadingDetail(true)
-    try {
-      const [balance, movs] = await Promise.all([
-        cashbankService.getSessionBalance(s.id),
-        cashbankService.listMovements(s.id),
-      ])
-      setSessionDetail({ session: s, balance, movements: movs ?? [] })
-    } catch {
-      toast.error('No se pudo cargar el detalle de la sesión')
-    } finally {
-      setLoadingDetail(false)
-    }
-  }
-
-  // `balance` = saldo de la sesión con TODOS los métodos de pago (lo que se muestra como
-  // "Balance actual"). `cashExpected` = SOLO efectivo — el número contra el que debe compararse
-  // cualquier arqueo físico, idéntico al que persiste el backend al cerrar la caja. Nunca deben
-  // mezclarse: antes de este fix, el arqueo comparaba contra `balance` (todos los métodos), así
-  // que un egreso por Yape/transferencia hacía que "la diferencia con el esperado" en pantalla
-  // no coincidiera con la diferencia real que el sistema guardaba.
+  // `balance` = saldo de la sesión con TODOS los métodos de pago. `cashExpected` = SOLO efectivo —
+  // el número contra el que debe compararse cualquier arqueo físico, idéntico al que persiste el
+  // backend al cerrar la caja. Nunca deben mezclarse: antes de este fix, el arqueo comparaba
+  // contra `balance` (todos los métodos), así que un egreso por Yape/transferencia hacía que "la
+  // diferencia con el esperado" en pantalla no coincidiera con la diferencia real que el sistema
+  // guardaba.
   const balance = balanceSummary?.total ?? (session?.opening_balance ?? 0)
   const cashExpected = balanceSummary?.cash_expected ?? balance
   const totalIncome = balanceSummary?.by_method.reduce((s, m) => s + m.income, 0) ?? 0
   const totalExpense = balanceSummary?.by_method.reduce((s, m) => s + m.expense, 0) ?? 0
-  const methodLabelFor = (method?: string): string => {
-    if (!method) return '—'
-    const found = balanceSummary?.by_method.find(m => m.method === method.toLowerCase())
-    if (found) return found.label
-    return method.charAt(0).toUpperCase() + method.slice(1)
-  }
 
   if (loading) return <div className="flex justify-center py-16"><div className="w-6 h-6 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" /></div>
 
@@ -524,223 +253,121 @@ function CashContent() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-gray-800">Caja</h2>
-          <p className="text-sm text-gray-500">Sesión de operaciones — agrupa todo movimiento de dinero, sin importar el método de pago</p>
+          <p className="text-sm text-gray-500">Sesiones de operaciones — abre, cierra y revisa el detalle de cada una</p>
         </div>
-      </div>
-
-      {/* Sesión actual: quién, dónde, cuándo, en qué estado. */}
-      {session && (
-        <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
-          <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
-            <div>
-              <p className="text-xs text-gray-400">Sesión</p>
-              <p className="font-semibold text-gray-800">#{session.id}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400">Usuario</p>
-              <p className="font-semibold text-gray-800">{user?.name ?? `#${session.opened_by}`}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400">Sucursal</p>
-              <p className="font-semibold text-gray-800">{activeBranch?.name ?? `#${session.branch_id}`}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400">Apertura</p>
-              <p className="font-semibold text-gray-800">{new Date(session.opened_at).toLocaleString()}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-400">Estado</p>
-              <span className="inline-block text-xs px-2 py-0.5 rounded-full font-medium bg-green-100 text-green-700">Abierta</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {openInBranch.length > 0 && (
-        <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
-          <h3 className="text-sm font-semibold text-gray-700 mb-2">Cajas abiertas en sucursal</h3>
-          <p className="text-xs text-gray-500 mb-3">Solo lectura — cada cajero gestiona su propia caja.</p>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-left text-gray-500 border-b">
-                  <th className="py-2 pr-3">Usuario</th>
-                  <th className="py-2 pr-3">Apertura</th>
-                  <th className="py-2 pr-3 text-right">Saldo</th>
-                </tr>
-              </thead>
-              <tbody>
-                {openInBranch.map((row) => (
-                  <tr key={row.id} className="border-b border-gray-50">
-                    <td className="py-2 pr-3 font-medium text-gray-800">{row.user_name || `#${row.user_id}`}</td>
-                    <td className="py-2 pr-3 text-gray-600">
-                      {row.opened_at ? new Date(row.opened_at).toLocaleString() : '—'}
-                    </td>
-                    <td className="py-2 text-right font-medium">S/ {Number(row.current_balance).toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {session ? (
-        <>
-          {/* Saldos por método de pago — cada método (efectivo, Yape, Plin, transferencia,
-              tarjeta, otros) con su propio saldo, sin importar si requiere arqueo físico. */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Saldos por método</p>
-            <MethodBalanceGrid byMethod={balanceSummary?.by_method ?? []} />
-          </div>
-
-          {/* TOTAL de la sesión (todos los métodos) — a propósito separado y con otro estilo
-              del bloque de efectivo/arqueo de abajo: son dos números distintos, nunca el mismo. */}
-          <div className="bg-[rgb(var(--p50))] rounded-2xl shadow-sm p-3 sm:p-4 flex items-center justify-between">
-            <p className="text-sm font-semibold text-[rgb(var(--p800))]">Total de la sesión</p>
-            <p className="text-xl font-bold text-[rgb(var(--p700))]">S/ {balance.toFixed(2)}</p>
-          </div>
-
-          {/* Efectivo / Arqueo — exclusivamente físico, nunca el total. */}
-          <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Efectivo / Arqueo</p>
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">Solo efectivo físico</span>
-            </div>
-            <div className="grid grid-cols-3 gap-3 text-sm">
-              <div>
-                <p className="text-xs text-gray-400">Efectivo esperado</p>
-                <p className="font-bold text-gray-800">S/ {cashExpected.toFixed(2)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">Efectivo contado</p>
-                <p className="font-bold text-gray-800">
-                  {session.arqueo_json ? `S/ ${sumArqueo(parseArqueoJson(session.arqueo_json)).toFixed(2)}` : '— (sin arqueo aún)'}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">Diferencia</p>
-                {session.arqueo_json ? (
-                  <p className={arqueoSumColorClass(sumArqueo(parseArqueoJson(session.arqueo_json)), cashExpected)}>
-                    S/ {(sumArqueo(parseArqueoJson(session.arqueo_json)) - cashExpected).toFixed(2)}
-                  </p>
-                ) : (
-                  <p className="font-bold text-gray-400">—</p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Acciones: en móvil 2x2 para que no se corte "Cerrar caja" */}
-          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
-            <button
-              onClick={() => { setMovType('income'); setMovForm({ category: 'ingreso_manual', reference: '', amount: 0, notes: '', payment_method: 'efectivo' }); setShowMov(true) }}
-              className="flex items-center justify-center gap-1.5 px-3 py-2.5 sm:py-2 bg-green-600 text-white rounded-xl text-sm font-medium hover:opacity-90"
-            >
-              <TrendingUp size={14} /> Ingreso
-            </button>
-            <button
-              onClick={() => { setMovType('expense'); setMovForm({ category: 'egreso_manual', reference: '', amount: 0, notes: '', payment_method: 'efectivo' }); setShowMov(true) }}
-              className="flex items-center justify-center gap-1.5 px-3 py-2.5 sm:py-2 bg-red-500 text-white rounded-xl text-sm font-medium hover:opacity-90"
-            >
-              <TrendingDown size={14} /> Egreso
-            </button>
-            <button
-              type="button"
-              onClick={() => { setArqueoDraft(session?.arqueo_json ? parseArqueoJson(session.arqueo_json) : emptyArqueo()); setShowArqueoModal(true) }}
-              className="flex items-center justify-center gap-1.5 px-3 py-2.5 sm:py-2 border border-gray-300 text-gray-600 rounded-xl text-sm font-medium hover:bg-gray-50"
-            >
-              <Wallet size={14} /> Arqueo
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleOpenDrawer()}
-              disabled={openingDrawer}
-              className="flex items-center justify-center gap-1.5 px-3 py-2.5 sm:py-2 border border-gray-300 text-gray-600 rounded-xl text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
-            >
-              <Unlock size={14} /> {openingDrawer ? 'Abriendo…' : 'Abrir gaveta'}
-            </button>
-            <button
-              onClick={() => { setCloseNotes(''); setCloseArqueo(session?.arqueo_json ? parseArqueoJson(session.arqueo_json) : emptyArqueo()); setCloseWithArqueo(!!session?.arqueo_json); setShowClose(true) }}
-              className="flex items-center justify-center gap-1.5 px-3 py-2.5 sm:py-2 border border-gray-300 text-gray-600 rounded-xl text-sm font-medium hover:bg-gray-50 sm:ml-auto"
-            >
-              Cerrar caja
-            </button>
-          </div>
-
-          {/* Devoluciones que quedaron esperando una caja abierta. Se oculta si no hay. */}
-          <PendingRefundsPanel
-            sessionId={session.id}
-            branchId={activeBranchId || session.branch_id}
-            onApplied={load}
-          />
-
-          {/* Movimientos */}
-          <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-            <div className="px-3 sm:px-4 py-3 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-              <p className="text-sm font-semibold text-gray-700">Movimientos de la sesión</p>
-              <span className="text-xs text-gray-400">{movements.length} registros</span>
-            </div>
-            <MovementsList
-              movements={movements}
-              methodLabelFor={methodLabelFor}
-              onReverse={setReverseTarget}
-              reversingId={reversingId}
-            />
-          </div>
-        </>
-      ) : (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <Wallet size={40} className="text-gray-300 mb-4" />
-          <h3 className="text-xl font-bold text-gray-700">Caja cerrada</h3>
-          <p className="text-gray-400 text-sm mt-1 mb-6">Abre la caja para comenzar a registrar movimientos</p>
-          {/* Avisa antes de abrir: la salida solo puede registrarse con una caja abierta. */}
-          <PendingRefundsNotice branchId={activeBranchId} />
-          <button onClick={() => setShowOpen(true)} className="px-6 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90">
+        {/* Sin caja abierta para mí en esta sucursal: la única acción posible antes de operar. */}
+        {session === null && (
+          <button onClick={() => setShowOpen(true)} className="px-4 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90 whitespace-nowrap">
             Abrir caja
           </button>
-        </div>
+        )}
+      </div>
+
+      {/* Avisa de devoluciones esperando una caja: con sesión abierta, el panel completo (puede
+          aplicarlas ahí mismo); sin ella, solo el aviso de que existen (para no abrir "a ciegas"). */}
+      {session ? (
+        <PendingRefundsPanel sessionId={session.id} branchId={activeBranchId || session.branch_id} onApplied={load} />
+      ) : (
+        <PendingRefundsNotice branchId={activeBranchId} />
       )}
 
-      {/* Historial: siempre visible, como en Tukichef. Escondido detrás de un botón se
-          confundía con «no hay sesiones anteriores». */}
+      {/* Historial de sesiones: única vista de /cashbank/cash — abrir/ingreso/egreso/arqueo/cerrar
+          se operan por fila (columna Acciones), sobre la fila que es MI sesión abierta. El detalle
+          completo de cualquier sesión (mía o no, abierta o cerrada) y su reporte/PDF están en la
+          vista aparte (CashSessionDetailPage, enlace "Detalle"). */}
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
           <div className="px-3 sm:px-4 py-3 border-b border-gray-100 flex items-center gap-2">
             <History size={14} className="text-gray-400" />
             <p className="text-sm font-semibold text-gray-700">Historial de sesiones</p>
-            <span className="ml-auto text-xs text-gray-400">{history.length} sesiones</span>
+            <span className="ml-auto text-xs text-gray-400">{historyTotal} sesiones</span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[640px]">
-              <thead className="bg-gray-50"><tr>{['Usuario','Apertura','Cierre','Balance apert.','Balance cierre','Estado','Arqueo','Acciones'].map(h => <th key={h} className="text-left px-3 sm:px-4 py-2 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">{h}</th>)}</tr></thead>
+            <table className="w-full text-sm min-w-[760px]">
+              <thead className="bg-gray-50"><tr>{['Usuario','Apertura','Cierre','Balance apert.','Balance cierre','Saldo actual','Estado','Arqueo','Acciones'].map(h => <th key={h} className="text-left px-3 sm:px-4 py-2 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">{h}</th>)}</tr></thead>
               <tbody>
-                {history.map(s => (
+                {history.map(s => {
+                  // Mi propia sesión abierta (GetOpenSession la resuelve por usuario, no solo por
+                  // sucursal): solo en esa fila tiene sentido operar (ingreso/egreso/arqueo/
+                  // cerrar/gaveta) — otra fila "Abierta" puede ser la caja de otro cajero, que
+                  // este usuario no debe poder cerrar ni modificar desde aquí.
+                  const isMine = session != null && s.id === session.id
+                  return (
                   <tr key={s.id} className="border-b border-gray-50">
                     <td className="px-3 sm:px-4 py-2 text-xs whitespace-nowrap">{s.opened_by_name || `#${s.opened_by}`}</td>
                     <td className="px-3 sm:px-4 py-2 text-xs whitespace-nowrap">{new Date(s.opened_at).toLocaleString()}</td>
                     <td className="px-3 sm:px-4 py-2 text-xs whitespace-nowrap">{s.closed_at ? new Date(s.closed_at).toLocaleString() : '-'}</td>
                     <td className="px-3 sm:px-4 py-2 font-medium whitespace-nowrap">S/ {Number(s.opening_balance).toFixed(2)}</td>
                     <td className="px-3 sm:px-4 py-2 font-medium">{s.closing_balance != null ? `S/ ${Number(s.closing_balance).toFixed(2)}` : '-'}</td>
+                    {/* Saldo con TODOS los métodos de pago (efectivo + Yape/Plin/transferencia/
+                        tarjeta) — "Balance cierre" es solo lo declarado en el arqueo (solo
+                        efectivo), no alcanza para ver de un vistazo el total real de una sesión
+                        con ventas electrónicas. */}
+                    <td className="px-3 sm:px-4 py-2 font-medium whitespace-nowrap">S/ {Number(s.total ?? 0).toFixed(2)}</td>
                     <td className="px-3 sm:px-4 py-2"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.status === 'open' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>{s.status === 'open' ? 'Abierta' : 'Cerrada'}</span></td>
-                    <td className="px-3 sm:px-4 py-2">
-                      {s.status === 'closed' && (
+                    <td className="px-3 sm:px-4 py-2 whitespace-nowrap">
+                      {s.status === 'closed' ? (
                         s.arqueo_json ? (
                           <button type="button" onClick={() => { setArqueoModalSession(s); setArqueoModalMode('view'); setArqueoForm(parseArqueoJson(s.arqueo_json)) }} className="text-xs text-[rgb(var(--p600))] hover:underline">Ver arqueo</button>
                         ) : (
                           <button type="button" onClick={() => { setArqueoModalSession(s); setArqueoModalMode('add'); setArqueoForm(emptyArqueo()) }} className="text-xs text-amber-600 hover:underline">Hacer arqueo</button>
                         )
-                      )}
+                      ) : isMine ? (
+                        <button
+                          type="button"
+                          title="Contar el efectivo de mi caja abierta"
+                          onClick={() => { setArqueoDraft(session?.arqueo_json ? parseArqueoJson(session.arqueo_json) : emptyArqueo()); setShowArqueoModal(true) }}
+                          className="text-xs text-[rgb(var(--p600))] hover:underline"
+                        >
+                          Arqueo
+                        </button>
+                      ) : null}
                     </td>
                     <td className="px-3 sm:px-4 py-2">
                       <div className="flex items-center gap-2 whitespace-nowrap">
-                        <button
-                          type="button"
-                          title="Ver saldos y movimientos de esta sesión"
-                          onClick={() => void openSessionDetail(s)}
+                        {isMine && (
+                          <>
+                            <button
+                              type="button"
+                              title="Registrar ingreso"
+                              onClick={() => { setMovType('income'); setMovForm({ category: 'ingreso_manual', reference: '', amount: 0, notes: '', payment_method: 'efectivo' }); setShowMov(true) }}
+                              className="p-1.5 rounded-lg text-green-600 hover:bg-green-50"
+                            >
+                              <TrendingUp size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              title="Registrar egreso"
+                              onClick={() => { setMovType('expense'); setMovForm({ category: 'egreso_manual', reference: '', amount: 0, notes: '', payment_method: 'efectivo' }); setShowMov(true) }}
+                              className="p-1.5 rounded-lg text-red-500 hover:bg-red-50"
+                            >
+                              <TrendingDown size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              title="Abrir gaveta"
+                              onClick={() => void handleOpenDrawer()}
+                              disabled={openingDrawer}
+                              className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-50"
+                            >
+                              <Unlock size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              title="Cerrar caja"
+                              onClick={() => { setCloseNotes(''); setCloseArqueo(session?.arqueo_json ? parseArqueoJson(session.arqueo_json) : emptyArqueo()); setCloseWithArqueo(!!session?.arqueo_json); setShowClose(true) }}
+                              className="inline-flex items-center gap-1 text-xs text-gray-600 hover:underline"
+                            >
+                              <Wallet size={13} /> Cerrar
+                            </button>
+                          </>
+                        )}
+                        <Link
+                          to={`/cashbank/cash/${s.id}`}
+                          title="Ver el detalle completo de esta sesión y exportar su reporte"
                           className="inline-flex items-center gap-1 text-xs text-gray-600 hover:underline"
                         >
                           <Eye size={13} /> Detalle
-                        </button>
+                        </Link>
                         {canAdjustOpening && (
                           <button
                             type="button"
@@ -765,13 +392,54 @@ function CashContent() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
             {history.length === 0 && (
               <p className="text-center text-gray-400 text-sm py-8">Sin sesiones anteriores</p>
             )}
           </div>
+          {historyTotal > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 px-3 sm:px-4 py-3 bg-gray-50/50">
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="text-xs text-gray-600">
+                  Mostrando {(historyPage - 1) * historyPerPage + 1}-{Math.min(historyPage * historyPerPage, historyTotal)} de {historyTotal}
+                </p>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-600 whitespace-nowrap">Mostrar</span>
+                  <select
+                    className="border border-gray-200 rounded-lg px-2 py-1 text-xs bg-white"
+                    value={historyPerPage}
+                    onChange={e => { setHistoryPerPage(Number(e.target.value)); setHistoryPage(1) }}
+                  >
+                    {HISTORY_PER_PAGE_OPTIONS.map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setHistoryPage(p => Math.max(1, p - 1))}
+                  disabled={historyPage <= 1}
+                  className="px-2.5 py-1 rounded-lg border border-gray-200 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Anterior
+                </button>
+                <span className="text-xs text-gray-600">
+                  Página {historyPage} de {Math.max(1, Math.ceil(historyTotal / historyPerPage))}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setHistoryPage(p => Math.min(Math.ceil(historyTotal / historyPerPage), p + 1))}
+                  disabled={historyPage >= Math.ceil(historyTotal / historyPerPage)}
+                  className="px-2.5 py-1 rounded-lg border border-gray-200 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Siguiente
+                </button>
+              </div>
+            </div>
+          )}
       </div>
 
       {/* Modal corregir monto de apertura */}
@@ -1076,106 +744,6 @@ function CashContent() {
               </div>
             )}
           </>
-        )}
-      </Modal>
-
-      {/* Confirmar reversión de movimiento manual */}
-      <Modal open={!!reverseTarget} onClose={() => setReverseTarget(null)} contentClassName="max-w-md w-full mx-2 sm:mx-0">
-        <h3 className="font-bold text-gray-800 text-base sm:text-lg">Revertir movimiento</h3>
-        {reverseTarget && (
-          <p className="text-sm text-gray-600">
-            Se creará un movimiento compensatorio de <span className="font-semibold">{methodLabelFor(reverseTarget.payment_method)}</span> por{' '}
-            <span className="font-semibold">S/ {Number(reverseTarget.amount).toFixed(2)}</span> ({categoryLabel(reverseTarget.category) || reverseTarget.type}).
-            El movimiento original no se borra — queda en el historial, referenciado desde la reversión.
-          </p>
-        )}
-        <div className="flex flex-col-reverse sm:flex-row gap-2">
-          <button
-            onClick={() => setReverseTarget(null)}
-            className="flex-1 py-2.5 sm:py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={handleReverseMovement}
-            disabled={reversingId != null}
-            className="flex-1 py-2.5 sm:py-2 bg-red-600 text-white rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50"
-          >
-            {reversingId != null ? 'Revirtiendo…' : 'Revertir'}
-          </button>
-        </div>
-      </Modal>
-
-      {/* Detalle de una sesión histórica: saldos por método + movimientos, solo lectura. */}
-      <Modal open={!!sessionDetail || loadingDetail} onClose={() => setSessionDetail(null)} contentClassName="max-w-2xl w-full mx-2 sm:mx-0 max-h-[90vh] overflow-y-auto">
-        <h3 className="font-bold text-gray-800 text-base sm:text-lg">Detalle de sesión</h3>
-        {loadingDetail && !sessionDetail && (
-          <div className="flex justify-center py-10"><div className="w-5 h-5 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" /></div>
-        )}
-        {sessionDetail && (
-          <div className="space-y-4">
-            <div className="bg-gray-50 rounded-xl p-3 flex flex-wrap gap-x-6 gap-y-2 text-sm">
-              <div>
-                <p className="text-xs text-gray-400">Sesión</p>
-                <p className="font-semibold text-gray-800">#{sessionDetail.session.id}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">Usuario</p>
-                <p className="font-semibold text-gray-800">{sessionDetail.session.opened_by_name || `#${sessionDetail.session.opened_by}`}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">Apertura</p>
-                <p className="font-semibold text-gray-800">{new Date(sessionDetail.session.opened_at).toLocaleString()}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">Cierre</p>
-                <p className="font-semibold text-gray-800">{sessionDetail.session.closed_at ? new Date(sessionDetail.session.closed_at).toLocaleString() : '—'}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">Estado</p>
-                <span className={`inline-block text-xs px-2 py-0.5 rounded-full font-medium ${sessionDetail.session.status === 'open' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                  {sessionDetail.session.status === 'open' ? 'Abierta' : 'Cerrada'}
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Saldos por método</p>
-              <MethodBalanceGrid byMethod={sessionDetail.balance.by_method} />
-            </div>
-
-            <div className="bg-[rgb(var(--p50))] rounded-xl p-3 flex items-center justify-between text-sm">
-              <span className="font-semibold text-[rgb(var(--p800))]">Total de la sesión</span>
-              <span className="text-lg font-bold text-[rgb(var(--p700))]">S/ {sessionDetail.balance.total.toFixed(2)}</span>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3 text-sm bg-white border border-gray-100 rounded-xl p-3">
-              <div>
-                <p className="text-xs text-gray-400">Efectivo esperado</p>
-                <p className="font-bold text-gray-800">S/ {sessionDetail.balance.cash_expected.toFixed(2)}</p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">Efectivo contado</p>
-                <p className="font-bold text-gray-800">
-                  {sessionDetail.session.closing_balance != null ? `S/ ${Number(sessionDetail.session.closing_balance).toFixed(2)}` : '—'}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-gray-400">Diferencia</p>
-                {/* difference ya es el delta persistido por el backend al cerrar — colorear contra 0, no reconstruirlo con cash_expected recalculado ahora. */}
-                <p className={sessionDetail.session.difference != null ? arqueoSumColorClass(sessionDetail.session.difference, 0) : 'text-gray-400 font-bold'}>
-                  {sessionDetail.session.difference != null ? `S/ ${Number(sessionDetail.session.difference).toFixed(2)}` : '—'}
-                </p>
-              </div>
-            </div>
-
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Movimientos ({sessionDetail.movements.length})</p>
-              <div className="border border-gray-100 rounded-xl overflow-hidden">
-                <MovementsList movements={sessionDetail.movements} methodLabelFor={methodLabelFor} />
-              </div>
-            </div>
-          </div>
         )}
       </Modal>
     </div>

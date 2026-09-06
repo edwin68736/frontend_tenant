@@ -36,6 +36,9 @@ export interface CashSession {
   closed_by_name?: string
   total_income?: number
   total_expense?: number
+  /** Saldo con TODOS los métodos de pago (no solo efectivo como total_income/total_expense) —
+   *  mismo número que SessionBalanceSummary.total / la tarjeta "Total de la sesión" en pantalla. */
+  total?: number
 }
 
 export interface CashMovement {
@@ -263,6 +266,13 @@ export const cashbankService = {
   // Caja
   listSessions: (branch_id?: number): Promise<CashSession[]> =>
     api.get('/api/cashbank/sessions', { params: { branch_id } }).then(r => r.data.data ?? []),
+
+  /** Historial de sesiones paginado — usado por CashPage.tsx (Historial de sesiones). Función
+   *  aparte de listSessions (que sigue trayendo hasta 50 sin paginar, sin `total`) para no
+   *  cambiarle la forma de respuesta a quien ya la consume así (p. ej. el filtro "Sesión de
+   *  caja" de CashReportsPage.tsx). */
+  listSessionsPaged: (params: { branch_id?: number; page?: number; per_page?: number }): Promise<{ data: CashSession[]; total: number }> =>
+    api.get('/api/cashbank/sessions', { params }).then(r => ({ data: r.data.data ?? [], total: r.data.total ?? 0 })),
 
   getOpenSession: (branch_id?: number): Promise<CashSession | null> =>
     api.get('/api/cashbank/sessions/open', { params: { branch_id } })
