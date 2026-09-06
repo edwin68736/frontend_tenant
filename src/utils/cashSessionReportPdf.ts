@@ -220,11 +220,6 @@ function drawSummaryBoxes(
   y.v += boxH + 6
 }
 
-function isEfectivo(m: string): boolean {
-  const c = (m || '').toLowerCase()
-  return c === 'efectivo' || c === 'cash'
-}
-
 function mapIncomeRows(rows: IncomeDetailRow[]): string[][] {
   return (rows ?? []).map(r => [
     fmtDate(r.date),
@@ -258,8 +253,12 @@ export function generateCashSessionReportPdf(report: CashSessionReport, opts?: {
   const spotTotal = report.detraction?.total_spot ?? report.totals.total_detraccion_spot ?? 0
   const directSalesTotal = report.totals.total_sales_direct ?? report.totals.total_sales ?? 0
   const commercialTotal = report.totals.total_sales_commercial ?? directSalesTotal + spotTotal
+  // "cobro_cxc" (cobro de una venta a crédito registrada en OTRA sesión) es tan "cobrado
+  // directo" como una "venta" al contado — mismo criterio que ya usa CashReportsPage.tsx y
+  // CashSessionDetailPage.tsx en pantalla. Antes solo se incluía "venta": una sesión con cobros
+  // CxC mostraba menos filas y un total distinto aquí que en pantalla.
   const directIncomeRows = (report.income_detail ?? []).filter(
-    row => row.type === 'venta' && !isDetractionPaymentMethod(row.payment_method),
+    row => (row.type === 'venta' || row.type === 'cobro_cxc') && !isDetractionPaymentMethod(row.payment_method),
   )
 
   drawSectionTitle(doc, y, 'Datos de la sesión')
@@ -388,18 +387,18 @@ export function generateCashSessionReportPdf(report: CashSessionReport, opts?: {
     }
   }
 
-  let ingEfe = 0
-  let egreEfe = 0
-  directIncomeRows.forEach(row => {
-    if (isEfectivo(row.payment_method)) ingEfe += row.amount
-  })
-  report.expense_detail?.forEach(row => {
-    if (isEfectivo(row.payment_method)) egreEfe += row.amount
-  })
-  report.cash_physical?.manual_income?.forEach(row => {
-    if (isEfectivo(row.payment_method)) ingEfe += row.amount
-  })
-  const saldoEfe = ingEfe - egreEfe
+  // report.cash_physical ya trae ingresos/egresos/saldo físico calculados por el backend
+  // (GetSessionReport) — el mismo número que usa el cierre/arqueo real y que ya muestra
+  // CashSessionDetailPage.tsx en pantalla. Antes este bloque los recalculaba aquí mismo a partir
+  // de directIncomeRows/expense_detail/manual_income, y ese recálculo nunca sumaba el saldo de
+  // apertura (physical_balance = opening_balance + total_income - total_expense): el PDF mostraba
+  // un "Saldo efectivo" distinto al de la pantalla en cualquier sesión con apertura != 0 (p. ej.
+  // sesión #10: PDF mostraba S/65.00 — solo ingresos-egresos — mientras pantalla/backend
+  // mostraban S/115.00, con S/50 de apertura). cashReportExcel.ts nunca tuvo este bug: ya usaba
+  // cash.physical_balance directo.
+  const ingEfe = report.cash_physical?.total_income ?? 0
+  const egreEfe = report.cash_physical?.total_expense ?? 0
+  const saldoEfe = report.cash_physical?.physical_balance ?? ingEfe - egreEfe
 
   drawSectionTitle(doc, y, 'Efectivo en caja (para arqueo)')
   ensureSpace(doc, y, 8)
@@ -424,12 +423,17 @@ export function generateCashSessionReportPdf(report: CashSessionReport, opts?: {
     ensureSpace(doc, y, 8)
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(8)
-    doc.setTextColor(...C_MUTED)
+    // C_TEXT (oscuro), no C_MUTED: un subtítulo en negrita con el gris apagado de las etiquetas
+    // pequeñas ("Cobrado directo", etc.) se leía casi invisible — ese gris está pensado para ir
+    // junto a un valor oscuro más grande, no solo.
+    doc.setTextColor(...C_TEXT)
     doc.text(sec.title, MARGIN, y.v)
     y.v += 4
     if (sec.rows.length === 0) {
       doc.setFont('helvetica', 'normal')
+      doc.setTextColor(...C_MUTED)
       doc.text('Sin datos', MARGIN, y.v)
+      doc.setTextColor(...C_TEXT)
       y.v += 6
     } else {
       drawDataTable(
