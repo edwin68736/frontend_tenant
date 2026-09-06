@@ -40,7 +40,12 @@ export interface CashSession {
 
 export interface CashMovement {
   id: number
-  session_id: number
+  /** "cash" (tenant_cash_movements) o "bank" (tenant_bank_movements, manual no efectivo — Yape/
+   *  Plin/transferencia/tarjeta). Ambas tablas tienen su propia secuencia de IDs, así que este
+   *  dato es obligatorio para reverseMovement: sin él, el mismo `id` podría referirse a dos
+   *  movimientos distintos. */
+  kind: 'cash' | 'bank'
+  cash_session_id: number
   type: 'income' | 'expense'
   category: string
   reference: string
@@ -51,7 +56,7 @@ export interface CashMovement {
   user_id?: number
   sale_id?: number | null
   purchase_id?: number | null
-  /** Si ESTE movimiento es la reversión de otro, el id del original. */
+  /** Si ESTE movimiento es la reversión de otro, el id del original (del mismo kind). */
   reversal_of_id?: number | null
 }
 
@@ -303,9 +308,10 @@ export const cashbankService = {
     api.post(`/api/cashbank/sessions/${sessionId}/movements`, data).then(r => r.data.data ?? r.data),
 
   /** Revierte un movimiento MANUAL (ingreso/egreso sin venta/compra asociada). El original
-   *  nunca se borra — se crea uno nuevo de signo opuesto, trazable vía reversal_of_id. */
-  reverseMovement: (movementId: number, notes?: string): Promise<void> =>
-    api.post(`/api/cashbank/movements/${movementId}/reverse`, { notes }).then(() => undefined),
+   *  nunca se borra — se crea uno nuevo de signo opuesto, trazable vía reversal_of_id. `kind`
+   *  viene tal cual del CashMovement que se está revirtiendo (listMovements) — nunca se adivina. */
+  reverseMovement: (movementId: number, kind: 'cash' | 'bank', notes?: string): Promise<void> =>
+    api.post(`/api/cashbank/movements/${movementId}/reverse`, { notes, kind }).then(() => undefined),
 
   getSessionReport: (sessionId: number): Promise<CashSessionReport> =>
     api.get(`/api/cashbank/sessions/${sessionId}/report`).then(r => r.data.data ?? r.data),

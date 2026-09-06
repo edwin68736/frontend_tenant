@@ -188,17 +188,24 @@ function MovementsList({
   movements: CashMovement[]
   methodLabelFor: (method?: string) => string
   onReverse?: (m: CashMovement) => void
-  reversingId?: number | null
+  reversingId?: string | null
 }) {
-  const reversedIds = new Set(movements.filter(m => m.reversal_of_id != null).map(m => m.reversal_of_id as number))
+  // Clave compuesta "kind-id": tenant_cash_movements y tenant_bank_movements (manual no
+  // efectivo) tienen cada una su propia secuencia de IDs — un mismo número puede existir en las
+  // dos, así que comparar solo por id confundiría el estado "revertido"/"revirtiendo" de una fila
+  // con el de otra.
+  const rowKey = (m: CashMovement) => `${m.kind}-${m.id}`
+  const reversedKeys = new Set(
+    movements.filter(m => m.reversal_of_id != null).map(m => `${m.kind}-${m.reversal_of_id}`),
+  )
   return (
     <div className="max-h-80 overflow-y-auto">
       {movements.map(m => {
         const isReversal = m.reversal_of_id != null
-        const isReversed = reversedIds.has(m.id)
+        const isReversed = reversedKeys.has(rowKey(m))
         const canReverse = !!onReverse && !isReversal && !isReversed && !m.sale_id && !m.purchase_id
         return (
-          <div key={m.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 px-3 sm:px-4 py-3 border-b border-gray-50 hover:bg-gray-50">
+          <div key={rowKey(m)} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 px-3 sm:px-4 py-3 border-b border-gray-50 hover:bg-gray-50">
             <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               {m.type === 'income' ? <TrendingUp size={14} className="text-green-500 flex-shrink-0" /> : <TrendingDown size={14} className="text-red-400 flex-shrink-0" />}
               <div className="min-w-0">
@@ -222,7 +229,7 @@ function MovementsList({
                   type="button"
                   title="Revertir movimiento"
                   onClick={() => onReverse?.(m)}
-                  disabled={reversingId === m.id}
+                  disabled={reversingId === rowKey(m)}
                   className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-50"
                 >
                   <RotateCcw size={14} />
@@ -292,9 +299,11 @@ function CashContent() {
   const canAdjustOpening = hasPermission('cashbank.open')
   const canDeleteSession = hasPermission('cashbank.manage')
 
-  // Revertir movimiento manual (Fase 5)
+  // Revertir movimiento manual (Fase 5). reversingId es "kind-id": tenant_cash_movements y
+  // tenant_bank_movements tienen cada una su propia secuencia de IDs, así que un `id` numérico
+  // solo no basta para identificar la fila en curso sin ambigüedad entre ambas tablas.
   const [reverseTarget, setReverseTarget] = useState<CashMovement | null>(null)
-  const [reversingId, setReversingId] = useState<number | null>(null)
+  const [reversingId, setReversingId] = useState<string | null>(null)
 
   // Detalle de una sesión histórica: saldos por método + movimientos, solo lectura.
   const [sessionDetail, setSessionDetail] = useState<{ session: CashSession; balance: SessionBalanceSummary; movements: CashMovement[] } | null>(null)
@@ -463,9 +472,9 @@ function CashContent() {
 
   const handleReverseMovement = async () => {
     if (!reverseTarget) return
-    setReversingId(reverseTarget.id)
+    setReversingId(`${reverseTarget.kind}-${reverseTarget.id}`)
     try {
-      await cashbankService.reverseMovement(reverseTarget.id)
+      await cashbankService.reverseMovement(reverseTarget.id, reverseTarget.kind)
       toast.success('Movimiento revertido')
       setReverseTarget(null)
       load()
