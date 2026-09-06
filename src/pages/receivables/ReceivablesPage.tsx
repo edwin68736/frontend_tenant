@@ -289,6 +289,7 @@ function ReceivablesContent() {
                   <tr>
                     <th className="text-left py-2">Fecha</th>
                     <th className="text-left py-2">Descripción</th>
+                    <th className="text-left py-2">Caja</th>
                     <th className="text-right py-2">Cargo</th>
                     <th className="text-right py-2">Abono</th>
                     <th className="text-right py-2">Saldo</th>
@@ -299,6 +300,9 @@ function ReceivablesContent() {
                     <tr key={i} className="border-t border-gray-50">
                       <td className="py-2 text-xs">{formatDisplayDatePeru(line.date)}</td>
                       <td className="py-2">{line.description}</td>
+                      <td className="py-2 text-xs text-gray-500">
+                        {line.type === 'payment' && line.cash_session_id ? `#${line.cash_session_id}` : '—'}
+                      </td>
                       <td className="py-2 text-right">{line.debit > 0 ? line.debit.toFixed(2) : ''}</td>
                       <td className="py-2 text-right">{line.credit > 0 ? line.credit.toFixed(2) : ''}</td>
                       <td className="py-2 text-right font-medium">{line.balance.toFixed(2)}</td>

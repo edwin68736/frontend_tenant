@@ -37,6 +37,7 @@ const InventoryImportAdjustmentPage = lazy(() => import('@/pages/inventory/Inven
 const CashPage = lazy(() => import('@/pages/cash/CashPage'))
 const CashReportsPage = lazy(() => import('@/pages/cash/CashReportsPage'))
 const ReceivablesPage = lazy(() => import('@/pages/receivables/ReceivablesPage'))
+const PayablesPage = lazy(() => import('@/pages/payables/PayablesPage'))
 const BankPage = lazy(() => import('@/pages/bank/BankPage'))
 const PaymentMethodsPage = lazy(() => import('@/pages/cashbank/PaymentMethodsPage'))
 const UsersPage = lazy(() => import('@/pages/users/UsersPage'))
@@ -150,6 +151,7 @@ function AppRoutes() {
         <Route path="quotations/:id/edit" element={<Lazy><QuotationRegisterPage /></Lazy>} />
         <Route path="purchases/register" element={<Lazy><PurchaseRegisterPage /></Lazy>} />
         <Route path="purchases/suppliers" element={<Lazy><SuppliersPage /></Lazy>} />
+        <Route path="purchases/payables" element={<Lazy><PayablesPage /></Lazy>} />
         <Route path="purchases" element={<Lazy><PurchasesPage /></Lazy>} />
         <Route path="products" element={<Lazy><ProductsPage /></Lazy>} />
         <Route path="products/combos" element={<Lazy><CombosPage /></Lazy>} />

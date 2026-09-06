@@ -112,6 +112,9 @@ export interface IncomeDetailRow {
   reference: string
   amount: number
   payment_method: string
+  /** Solo en type="cobro_cxc": Caja donde se REGISTRÓ la venta (distinta de esta sesión, que es
+   *  donde ocurrió el cobro). */
+  sale_cash_session_id?: number | null
 }
 
 export interface ExpenseDetailRow {
@@ -188,6 +191,20 @@ export interface CashSessionReport {
   detraction?: {
     total_spot: number
     sales: IncomeDetailRow[]
+  }
+  /** Ventas a crédito REGISTRADAS en esta sesión, sin cobrar todavía (P0) — no es dinero
+   *  recibido, ya está excluido de totals.total_sales/electronic. Informativo, sin impacto en
+   *  arqueo; el saldo pendiente real se consulta en CxC (receivablesService). */
+  credit_generated?: {
+    total: number
+    sales: IncomeDetailRow[]
+  }
+  /** Compras a crédito REGISTRADAS en esta sesión, sin pagar todavía (Fase 2 CxP) — no es
+   *  dinero pagado, ya está excluido de totals.total_purchases. Informativo, sin impacto en
+   *  arqueo; el saldo pendiente real se consulta en CxP (payablesService). */
+  payable_generated?: {
+    total: number
+    purchases: ExpenseDetailRow[]
   }
 }
 

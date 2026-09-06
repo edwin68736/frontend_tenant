@@ -67,7 +67,12 @@ export function SalePaymentsBreakdown({
           <p className="text-[10px] uppercase tracking-wide text-gray-500">Pagos directos</p>
           {direct.map((p) => (
             <div key={p.id ?? `${p.method}-${p.amount}`} className="flex justify-between text-sm">
-              <span>{formatPaymentMethodLabel(p.method)}</span>
+              <span>
+                {formatPaymentMethodLabel(p.method)}
+                {p.cash_session_id ? (
+                  <span className="text-[10px] text-gray-400 ml-1.5">Caja #{p.cash_session_id}</span>
+                ) : null}
+              </span>
               <span className="tabular-nums font-medium">{fmt(Number(p.amount), currency)}</span>
             </div>
           ))}

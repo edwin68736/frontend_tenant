@@ -55,6 +55,8 @@ export interface StatementLine {
   credit: number
   balance: number
   sale_id?: number
+  /** Caja/sesión donde ocurrió el cobro — solo presente en líneas type="payment". */
+  cash_session_id?: number | null
 }
 
 export interface AccountStatement {

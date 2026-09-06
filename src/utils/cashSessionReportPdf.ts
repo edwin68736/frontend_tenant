@@ -10,6 +10,25 @@ const INNER_W = PAGE_W - MARGIN * 2
 const PAGE_BOTTOM = 272
 const FOOTER_Y = 287
 
+// expenseTypeLabel etiqueta legible para expense_detail.type — mismo mapeo que
+// CashReportsPage.tsx (pantalla), para que el PDF muestre "Pago a proveedor" y no el código
+// crudo "pago_proveedor". Un tipo desconocido muestra el texto crudo (nunca una etiqueta
+// incorrecta como "Egreso manual").
+function expenseTypeLabel(type: string): string {
+  switch (type) {
+    case 'compra':
+      return 'Compra'
+    case 'gasto':
+      return 'Gasto'
+    case 'egreso_manual':
+      return 'Egreso manual'
+    case 'pago_proveedor':
+      return 'Pago a proveedor'
+    default:
+      return type || 'Egreso'
+  }
+}
+
 const C_HEADER = [30, 41, 59] as const
 const C_HEADER_TEXT = [255, 255, 255] as const
 const C_MUTED = [100, 116, 139] as const
@@ -325,6 +344,50 @@ export function generateCashSessionReportPdf(report: CashSessionReport, opts?: {
     }
   }
 
+  const creditGeneratedTotal = report.credit_generated?.total ?? 0
+  if (creditGeneratedTotal > 0) {
+    drawSectionTitle(doc, y, 'Crédito generado (CxC)')
+    ensureSpace(doc, y, 8)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7.5)
+    doc.setTextColor(...C_MUTED)
+    doc.text('Ventas a crédito registradas en esta sesión, sin cobrar. No entran al arqueo de caja.', MARGIN, y.v)
+    y.v += 5
+    const creditRows = (report.credit_generated?.sales ?? []).map(r => [
+      fmtDate(r.date),
+      r.doc_number || '—',
+      money(r.amount),
+    ])
+    if (creditRows.length === 0) {
+      doc.text('Sin ventas a crédito registradas.', MARGIN, y.v)
+      y.v += 8
+    } else {
+      drawDataTable(doc, y, ['Fecha', 'Comprobante', 'Monto'], creditRows, [58, 78, 38])
+    }
+  }
+
+  const payableGeneratedTotal = report.payable_generated?.total ?? 0
+  if (payableGeneratedTotal > 0) {
+    drawSectionTitle(doc, y, 'Cuenta por pagar generada (CxP)')
+    ensureSpace(doc, y, 8)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7.5)
+    doc.setTextColor(...C_MUTED)
+    doc.text('Compras a crédito registradas en esta sesión, sin pagar al proveedor. No entran al arqueo de caja.', MARGIN, y.v)
+    y.v += 5
+    const payableRows = (report.payable_generated?.purchases ?? []).map(r => [
+      fmtDate(r.date),
+      r.doc_number || '—',
+      money(r.amount),
+    ])
+    if (payableRows.length === 0) {
+      doc.text('Sin compras a crédito registradas.', MARGIN, y.v)
+      y.v += 8
+    } else {
+      drawDataTable(doc, y, ['Fecha', 'Comprobante', 'Monto'], payableRows, [58, 78, 38])
+    }
+  }
+
   let ingEfe = 0
   let egreEfe = 0
   directIncomeRows.forEach(row => {
@@ -430,7 +493,7 @@ export function generateCashSessionReportPdf(report: CashSessionReport, opts?: {
   const expenseSource = cash?.expenses ?? report.expense_detail ?? []
   const expenseRows = expenseSource.map(r => [
     fmtDate(r.date),
-    r.type,
+    expenseTypeLabel(r.type),
     r.doc_number || '—',
     r.reference || '—',
     formatPaymentMethodLabel(r.payment_method),

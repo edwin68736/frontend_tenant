@@ -28,6 +28,44 @@ function isEfectivo(m: string): boolean {
   return c === 'efectivo' || c === 'cash'
 }
 
+// expenseTypeLabel — etiqueta legible para expense_detail.type. Debe cubrir TODOS los valores que
+// el backend puede emitir (cashbank_report_service.go): 'compra' (compra al contado, incl. CxP
+// pagada en efectivo — el backend aún no las distingue, ver informe), 'gasto', 'egreso_manual' y
+// 'pago_proveedor' (pago de CxP por medio no-efectivo — Fase 2). Un tipo desconocido NO debe caer
+// silenciosamente en "Egreso manual" (eso fue exactamente el bug: un pago real a proveedor se
+// mostraba como si fuera un retiro discrecional de caja) — se muestra el texto crudo en su lugar.
+function expenseTypeLabel(type: string): string {
+  switch (type) {
+    case 'compra':
+      return 'Compra'
+    case 'gasto':
+      return 'Gasto'
+    case 'egreso_manual':
+      return 'Egreso manual'
+    case 'pago_proveedor':
+      return 'Pago a proveedor'
+    default:
+      return type || 'Egreso'
+  }
+}
+
+// incomeTypeLabel — mismo criterio que expenseTypeLabel: 'venta' (contado, misma Caja que el
+// registro) y 'cobro_cxc' (cobro posterior de una venta a crédito registrada en OTRA Caja —
+// separación documento/pago) son ambos "dinero recibido" pero conceptualmente distintos, y deben
+// distinguirse igual que ya se distingue "compra" de "pago_proveedor" del lado de egresos.
+function incomeTypeLabel(type: string): string {
+  switch (type) {
+    case 'venta':
+      return 'Venta'
+    case 'cobro_cxc':
+      return 'Cobro CxC'
+    case 'ingreso_manual':
+      return 'Ingreso manual'
+    default:
+      return type || 'Ingreso'
+  }
+}
+
 function computeMovTotals(movements: MovementReportRow[]) {
   let ingEfe = 0
   let egreEfe = 0
@@ -137,7 +175,7 @@ function CashReportsContent() {
   const formatMoney = (n: number) => `S/ ${Number(n).toFixed(2)}`
   const methodLabel = (m: string) => formatPaymentMethodLabel(m)
   const directIncomeRows = (report?.income_detail ?? []).filter(
-    (row) => row.type === 'venta' && !isDetractionPaymentMethod(row.payment_method),
+    (row) => (row.type === 'venta' || row.type === 'cobro_cxc') && !isDetractionPaymentMethod(row.payment_method),
   )
   const spotTotal = report?.detraction?.total_spot ?? report?.totals.total_detraccion_spot ?? 0
   const directSalesTotal = report?.totals.total_sales_direct ?? report?.totals.total_sales ?? 0
@@ -456,6 +494,74 @@ function CashReportsContent() {
             </div>
           )}
 
+          {(report.credit_generated?.total ?? 0) > 0 && (
+            <div className="bg-blue-50 rounded-2xl shadow-sm p-4 border border-blue-100">
+              <h3 className="text-sm font-semibold text-blue-900 mb-2">Crédito generado (CxC)</h3>
+              <p className="text-xs text-blue-800 mb-3">
+                Ventas a crédito registradas en esta sesión, todavía sin cobrar. No es dinero recibido: no entra
+                a "Cobrado directo" ni al arqueo. El saldo pendiente se cobra desde Cuentas por cobrar.
+              </p>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-blue-800">Total generado</span>
+                <span className="text-sm font-bold text-blue-900">{formatMoney(report.credit_generated?.total ?? 0)}</span>
+              </div>
+              <div className="max-h-48 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-blue-100/50 sticky top-0">
+                    <tr>
+                      {['Fecha', 'Comprobante', 'Monto'].map(h => (
+                        <th key={h} className="text-left px-3 py-2 text-xs font-semibold text-blue-900">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(report.credit_generated?.sales ?? []).map((row, i) => (
+                      <tr key={i} className="border-b border-blue-100/80">
+                        <td className="px-3 py-2 text-xs">{new Date(row.date).toLocaleString()}</td>
+                        <td className="px-3 py-2">{row.doc_number || '—'}</td>
+                        <td className="px-3 py-2 font-semibold text-blue-900">{formatMoney(row.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {(report.payable_generated?.total ?? 0) > 0 && (
+            <div className="bg-orange-50 rounded-2xl shadow-sm p-4 border border-orange-100">
+              <h3 className="text-sm font-semibold text-orange-900 mb-2">Cuenta por pagar generada (CxP)</h3>
+              <p className="text-xs text-orange-800 mb-3">
+                Compras a crédito registradas en esta sesión, todavía sin pagar al proveedor. No es dinero pagado:
+                no entra a "Total egresos" ni al arqueo. El saldo pendiente se paga desde Cuentas por pagar.
+              </p>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-orange-800">Total generado</span>
+                <span className="text-sm font-bold text-orange-900">{formatMoney(report.payable_generated?.total ?? 0)}</span>
+              </div>
+              <div className="max-h-48 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-orange-100/50 sticky top-0">
+                    <tr>
+                      {['Fecha', 'Comprobante', 'Monto'].map(h => (
+                        <th key={h} className="text-left px-3 py-2 text-xs font-semibold text-orange-900">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(report.payable_generated?.purchases ?? []).map((row, i) => (
+                      <tr key={i} className="border-b border-orange-100/80">
+                        <td className="px-3 py-2 text-xs">{new Date(row.date).toLocaleString()}</td>
+                        <td className="px-3 py-2">{row.doc_number || '—'}</td>
+                        <td className="px-3 py-2 font-semibold text-orange-900">{formatMoney(row.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {/* Efectivo (para arqueo de caja) */}
           {(() => {
             let ingEfe = 0, egreEfe = 0
@@ -518,18 +624,21 @@ function CashReportsContent() {
             <h3 className="px-4 py-3 border-b border-gray-100 text-sm font-semibold text-gray-700">Detalle de ingresos (cobro directo)</h3>
             <div className="max-h-60 overflow-y-auto">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 sticky top-0"><tr>{['Fecha', 'Tipo', 'Documento', 'Referencia', 'Método', 'Monto'].map(h => <th key={h} className="text-left px-4 py-2 text-xs font-semibold text-gray-500">{h}</th>)}</tr></thead>
+                <thead className="bg-gray-50 sticky top-0"><tr>{['Fecha', 'Tipo', 'Documento', 'Referencia', 'Método', 'Caja origen', 'Monto'].map(h => <th key={h} className="text-left px-4 py-2 text-xs font-semibold text-gray-500">{h}</th>)}</tr></thead>
                 <tbody>
                   {directIncomeRows.length ? directIncomeRows.map((row, i) => (
                     <tr key={i} className="border-b border-gray-50">
                       <td className="px-4 py-2 text-xs">{new Date(row.date).toLocaleString()}</td>
-                      <td className="px-4 py-2">{row.type === 'venta' ? 'Venta' : row.type === 'ingreso_manual' ? 'Ingreso manual' : 'Otro'}</td>
+                      <td className="px-4 py-2">{incomeTypeLabel(row.type)}</td>
                       <td className="px-4 py-2">{row.doc_number || '-'}</td>
                       <td className="px-4 py-2">{row.reference || '-'}</td>
                       <td className="px-4 py-2">{methodLabel(row.payment_method)}</td>
+                      <td className="px-4 py-2 text-xs text-gray-500">
+                        {row.type === 'cobro_cxc' && row.sale_cash_session_id ? `#${row.sale_cash_session_id}` : '—'}
+                      </td>
                       <td className="px-4 py-2 font-medium text-green-600">{formatMoney(row.amount)}</td>
                     </tr>
-                  )) : <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-400">Sin ingresos</td></tr>}
+                  )) : <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-400">Sin ingresos</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -545,7 +654,7 @@ function CashReportsContent() {
                   {report.expense_detail?.length ? report.expense_detail.map((row, i) => (
                     <tr key={i} className="border-b border-gray-50">
                       <td className="px-4 py-2 text-xs">{new Date(row.date).toLocaleString()}</td>
-                      <td className="px-4 py-2">{row.type === 'compra' ? 'Compra' : row.type === 'gasto' ? 'Gasto' : 'Egreso manual'}</td>
+                      <td className="px-4 py-2">{expenseTypeLabel(row.type)}</td>
                       <td className="px-4 py-2">{row.doc_number || '-'}</td>
                       <td className="px-4 py-2">{row.reference || '-'}</td>
                       <td className="px-4 py-2">{methodLabel(row.payment_method)}</td>

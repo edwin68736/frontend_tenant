@@ -372,14 +372,18 @@ function PurchaseRegisterContent() {
               value={form.payment_method ?? ''}
               onChange={e => setForm(f => ({ ...f, payment_method: e.target.value || undefined }))}
             >
-              <option value="">Sin asignar</option>
+              <option value="">Crédito (sin pago inmediato)</option>
               <option value="efectivo">Efectivo</option>
               <option value="yape">Yape</option>
               <option value="plin">Plin</option>
               <option value="transferencia">Transferencia</option>
               <option value="tarjeta">Tarjeta</option>
             </select>
-            <p className="text-xs text-gray-400 mt-0.5">El monto se descontará de la cuenta asociada.</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {form.payment_method
+                ? 'El monto se descontará de la cuenta asociada.'
+                : 'Se registrará como cuenta por pagar al proveedor (CxP): no se descuenta nada ahora, se paga después desde Cuentas por pagar.'}
+            </p>
           </div>
 
           <div className="sm:col-span-2 lg:col-span-3">

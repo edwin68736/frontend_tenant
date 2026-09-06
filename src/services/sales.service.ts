@@ -79,6 +79,10 @@ export interface SalePayment {
   method: string
   amount: number
   reference: string
+  /** Caja/sesión donde OCURRIÓ este pago (no necesariamente la misma en que se registró la
+   *  venta) — el backend ya la devuelve (TenantSalePayment.cash_session_id); null en pagos
+   *  anteriores a esa columna. */
+  cash_session_id?: number | null
 }
 
 export interface SaleDetraccionDetail {

@@ -24,6 +24,39 @@ type MovementDetailRow = {
   payment_method: string
 }
 
+// movementTypeLabel — etiqueta legible para el campo `type` de cualquier fila de detalle
+// (ingresos, egresos, anuladas, crédito/CxP generados). Mismo mapeo que CashReportsPage.tsx
+// (pantalla) y cashSessionReportPdf.ts, para que las 3 vistas del mismo reporte digan lo mismo.
+// Un tipo desconocido muestra el texto crudo, nunca una etiqueta incorrecta.
+function movementTypeLabel(type: string): string {
+  switch (type) {
+    case 'venta':
+      return 'Venta'
+    case 'cobro_cxc':
+      return 'Cobro CxC'
+    case 'compra':
+      return 'Compra'
+    case 'gasto':
+      return 'Gasto'
+    case 'ingreso_manual':
+      return 'Ingreso manual'
+    case 'egreso_manual':
+      return 'Egreso manual'
+    case 'otro':
+      return 'Otro'
+    case 'pago_proveedor':
+      return 'Pago a proveedor'
+    case 'credito_generado':
+      return 'Crédito generado (CxC)'
+    case 'cxp_generada':
+      return 'Cuenta por pagar generada (CxP)'
+    case 'anulacion_venta':
+      return 'Anulación de venta'
+    default:
+      return type || ''
+  }
+}
+
 function detailSheet(
   title: string,
   rows: MovementDetailRow[],
@@ -37,7 +70,7 @@ function detailSheet(
   for (const r of rows) {
     out.push([
       r.date ?? '',
-      r.type ?? '',
+      movementTypeLabel(r.type ?? ''),
       r.doc_number ?? '',
       r.reference ?? '',
       methodLabel(r.payment_method ?? ''),
@@ -78,6 +111,12 @@ export function downloadCashSessionReportExcel(
   if (t?.total_detraccion_spot) {
     resumen.push(['Detracción SPOT', money(t.total_detraccion_spot)])
   }
+  if (report.credit_generated?.total) {
+    resumen.push(['Crédito generado (CxC, sin cobrar)', money(report.credit_generated.total)])
+  }
+  if (report.payable_generated?.total) {
+    resumen.push(['Cuenta por pagar generada (CxP, sin pagar)', money(report.payable_generated.total)])
+  }
 
   const cash = report.cash_physical
   if (cash) {
@@ -114,6 +153,14 @@ export function downloadCashSessionReportExcel(
   const anuladas = report.cancelled_sales_detail ?? []
   if (anuladas.length > 0) {
     sheets.push({ name: 'Anuladas', rows: detailSheet('VENTAS ANULADAS', anuladas, methodLabel) })
+  }
+  const creditoGenerado = report.credit_generated?.sales ?? []
+  if (creditoGenerado.length > 0) {
+    sheets.push({ name: 'Crédito generado', rows: detailSheet('CRÉDITO GENERADO (CxC, SIN COBRAR)', creditoGenerado, methodLabel) })
+  }
+  const cxpGenerada = report.payable_generated?.purchases ?? []
+  if (cxpGenerada.length > 0) {
+    sheets.push({ name: 'CxP generada', rows: detailSheet('CUENTA POR PAGAR GENERADA (CxP, SIN PAGAR)', cxpGenerada, methodLabel) })
   }
 
   return writeXlsx({ sheets }).then((bytes) => downloadXlsxBytes(bytes, `reporte-caja-sesion-${s?.id ?? ''}.xlsx`))

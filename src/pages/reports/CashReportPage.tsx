@@ -75,6 +75,7 @@ function buildExportCols(): ExportColumn<MovementReportRow>[] {
     { key: 'contact_name', label: 'Cliente / proveedor / detalle' },
     { key: 'user_name', label: 'Usuario' },
     { key: 'branch_name', label: 'Sucursal' },
+    { key: 'cash_session_id', label: 'Sesión de caja', format: (v: unknown) => (v ? `#${v}` : '—') },
     { key: 'payment_method', label: 'Método de pago', format: (v: unknown) => formatPaymentMethod(String(v || '')) },
     { key: 'amount', label: 'Monto', format: (v: unknown) => `S/ ${Number(v).toFixed(2)}` },
     { key: 'notes_detail', label: 'Notas' },
@@ -184,6 +185,11 @@ export default function CashReportPage() {
     { key: 'contact_name', label: 'Cliente / detalle' },
     { key: 'user_name', label: 'Usuario' },
     { key: 'branch_name', label: 'Sucursal' },
+    {
+      key: 'cash_session_id',
+      label: 'Sesión de caja',
+      format: (v: unknown) => (v ? `#${v}` : '—'),
+    },
     {
       key: 'payment_method',
       label: 'Método de pago',
