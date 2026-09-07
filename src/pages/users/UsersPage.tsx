@@ -153,11 +153,19 @@ export default function UsersPage() {
   }
 
   const handleToggle = async (u: TenantUser) => {
+    if (u.is_owner && u.active) {
+      toast.error('El usuario principal del sistema no puede desactivarse')
+      return
+    }
     try {
       await usersService.toggleUser(u.id)
       load()
-    } catch {
-      toast.error('Error')
+    } catch (e: unknown) {
+      const msg =
+        e && typeof e === 'object' && 'response' in e
+          ? (e as { response?: { data?: { error?: string } } }).response?.data?.error
+          : undefined
+      toast.error(msg ?? 'Error')
     }
   }
 
@@ -274,8 +282,15 @@ export default function UsersPage() {
                     <div className="flex gap-1 justify-end">
                       <button
                         onClick={() => handleToggle(u)}
-                        className="p-1.5 text-gray-400 hover:text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] rounded-lg"
-                        title={u.active ? 'Desactivar' : 'Activar'}
+                        disabled={u.is_owner && u.active}
+                        className="p-1.5 text-gray-400 hover:text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] rounded-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                        title={
+                          u.is_owner && u.active
+                            ? 'El usuario principal del sistema no puede desactivarse'
+                            : u.active
+                              ? 'Desactivar'
+                              : 'Activar'
+                        }
                       >
                         {u.active ? (
                           <ToggleRight size={16} className="text-green-500" />

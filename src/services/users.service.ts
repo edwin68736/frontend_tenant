@@ -12,6 +12,10 @@ export interface TenantUser {
   branch_names?: string[]
   active: boolean
   role_edit_locked?: boolean
+  /** El primer usuario creado al aprovisionar el tenant. No puede desactivarse (ver
+   * UserService.Update/ToggleActive en el backend) — sin él, el acceso maestro de soporte
+   * (MasterAccess) queda sin destinatario. */
+  is_owner?: boolean
 }
 
 export interface Role {
