@@ -41,11 +41,16 @@ export const SUNAT_TIPO_OPERACION_DETRACCION = '1001'
 /** Ventas a cliente no domiciliado sin RUC peruano que no califica como exportación (solo factura 01). */
 export const SUNAT_TIPO_OPERACION_NO_DOMICILIADOS = '0401'
 
-/** Opciones habilitadas en Nuevo Comprobante. 1001 y 0401 solo con factura (01). */
+/** Detracción por servicio de transporte de carga por vía terrestre (Res. 073-2006-SUNAT),
+ * código de bien 027 exclusivo — solo factura (01). */
+export const SUNAT_TIPO_OPERACION_TRANSPORTE_CARGA = '1004'
+
+/** Opciones habilitadas en Nuevo Comprobante. 1001, 0401 y 1004 solo con factura (01). */
 export const SALES_OPERATION_TYPE_OPTIONS: { code: string; label: string }[] = [
   { code: SUNAT_TIPO_OPERACION_VENTA_INTERNA, label: 'Venta interna' },
   { code: SUNAT_TIPO_OPERACION_DETRACCION, label: 'Operación sujeta a detracción' },
   { code: SUNAT_TIPO_OPERACION_NO_DOMICILIADOS, label: 'Ventas no domiciliados' },
+  { code: SUNAT_TIPO_OPERACION_TRANSPORTE_CARGA, label: 'Detracción – Transporte de carga' },
 ]
 
 /** Orden en POS: 00 (N. Venta), 03 (Boleta), 01 (Factura). */

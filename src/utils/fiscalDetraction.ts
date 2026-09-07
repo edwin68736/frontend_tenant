@@ -15,6 +15,10 @@ export interface DetraccionPreviewInput {
   minAmountPen: number
   bankAccount: string
   contactEsPercepcion?: boolean
+  /** Solo 1004 (transporte de carga): la base de cálculo es el mayor entre el importe de la
+   * operación y este valor — Resolución 073-2006-SUNAT Art. 4. Espejo de
+   * pkg/sunat/detraccion/calculator.go (backend, fuente de verdad del cálculo real). */
+  valorReferencialPen?: number
 }
 
 export interface DetraccionPreviewResult {
@@ -34,7 +38,8 @@ export function previewDetraccion(input: DetraccionPreviewInput): DetraccionPrev
     netPayable: input.saleTotal,
   })
 
-  if (input.operationTypeCode !== '1001') {
+  const isTransporte = input.operationTypeCode === '1004'
+  if (input.operationTypeCode !== '1001' && !isTransporte) {
     return fail('')
   }
   if (input.sunatCode !== '01') {
@@ -52,13 +57,22 @@ export function previewDetraccion(input: DetraccionPreviewInput): DetraccionPrev
   if (!input.goodCode?.trim()) {
     return fail('Seleccione el bien o servicio sujeto a detracción')
   }
-  const base = roundSunat(input.gravadoTotal)
+  // 1001: total gravado con IGV. 1004: el importe TOTAL de la operación (incluido IGV) o el
+  // valor referencial, el que sea mayor — no es el mismo campo (ver calculator.go).
+  let base: number
+  if (isTransporte) {
+    base = roundSunat(input.saleTotal)
+    const vr = roundSunat(input.valorReferencialPen ?? 0)
+    if (vr > base) base = vr
+  } else {
+    base = roundSunat(input.gravadoTotal)
+  }
   if (base <= 0) {
-    return fail('Se requieren ítems gravados con IGV')
+    return fail(isTransporte ? 'Se requiere un importe de operación o valor referencial mayor a cero' : 'Se requieren ítems gravados con IGV')
   }
   const threshold = input.minAmountPen > 0 ? input.minAmountPen : SUNAT_DETRACCION_THRESHOLD_PEN
   if (base <= threshold) {
-    return fail(`El importe gravado no supera S/ ${threshold.toFixed(2)}`)
+    return fail(`${isTransporte ? 'El importe de la operación (o el valor referencial)' : 'El importe gravado'} no supera S/ ${threshold.toFixed(2)}`)
   }
   const rate = input.goodRatePercent
   const amount = roundSunat(base * rate / 100)

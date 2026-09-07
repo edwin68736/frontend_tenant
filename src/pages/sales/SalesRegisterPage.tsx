@@ -49,6 +49,7 @@ import {
   SALES_OPERATION_TYPE_OPTIONS,
   SUNAT_TIPO_OPERACION_DETRACCION,
   SUNAT_TIPO_OPERACION_NO_DOMICILIADOS,
+  SUNAT_TIPO_OPERACION_TRANSPORTE_CARGA,
   SUNAT_TIPO_OPERACION_VENTA_INTERNA,
 } from '@/constants/sunat'
 import {
@@ -341,7 +342,19 @@ function SalesRegisterContent({
   })
   const [tenantUsers, setTenantUsers] = useState<TenantUser[]>([])
   const [detraccionGoods, setDetraccionGoods] = useState<DetraccionGood[]>([])
+  const [detraccionTransportGoods, setDetraccionTransportGoods] = useState<DetraccionGood[]>([])
   const [detraccionGoodCode, setDetraccionGoodCode] = useState('')
+  // Campos exclusivos de 1004 (transporte de carga) — SUNAT los exige como
+  // AdditionalItemProperty (catálogo 55), captura manual (ver internal/detraccion/service.go).
+  const [transporteForm, setTransporteForm] = useState({
+    valor_referencial_pen: '',
+    mtc_registro: '',
+    configuracion_vehicular: '',
+    punto_origen: '',
+    punto_destino: '',
+    carga_efectiva_tm: '',
+    carga_util_tm: '',
+  })
   const [emitPrepayment, setEmitPrepayment] = useState(false)
   const [deductPrepayment, setDeductPrepayment] = useState(false)
   const [prepaymentDeductionRows, setPrepaymentDeductionRows] = useState<PrepaymentDeductionRow[]>([])
@@ -356,7 +369,13 @@ function SalesRegisterContent({
     meta: tcMeta,
   } = useExchangeRate(form.issue_date, { enabled: !isQuotation })
 
-  const isDetraccion = form.operation_type_code === SUNAT_TIPO_OPERACION_DETRACCION
+  const isDetraccionTransporte = form.operation_type_code === SUNAT_TIPO_OPERACION_TRANSPORTE_CARGA
+  // isDetraccion cubre ambas variantes (1001 general, 1004 transporte de carga): comparten toda
+  // la infraestructura ya construida — moneda forzada a PEN, exclusión con retención IGV y
+  // anticipo, preview, payload de guardado — y solo 1004 difiere en el combo de bien/servicio
+  // (limitado a 027) y los campos adicionales de transporte.
+  const isDetraccion =
+    form.operation_type_code === SUNAT_TIPO_OPERACION_DETRACCION || isDetraccionTransporte
   const isPrepaymentEmit = emitPrepayment
   const prepaymentDeductionBase = useMemo(
     () => prepaymentDeductionRows.reduce((s, r) => s + (r.amount > 0 ? r.amount : 0), 0),
@@ -388,6 +407,7 @@ function SalesRegisterContent({
   useEffect(() => {
     if (isNotaVenta || isQuotation) return
     catalogsService.detraccionGoods().then(setDetraccionGoods).catch(() => {})
+    catalogsService.detraccionTransportGoods().then(setDetraccionTransportGoods).catch(() => {})
   }, [isNotaVenta, isQuotation])
 
   useEffect(() => {
@@ -398,6 +418,11 @@ function SalesRegisterContent({
     // 0401 (ventas no domiciliados) también es exclusivo de factura — mismo criterio que 1001.
     if (form.sunat_code !== '01' && form.operation_type_code === SUNAT_TIPO_OPERACION_NO_DOMICILIADOS) {
       setForm((f) => ({ ...f, operation_type_code: SUNAT_TIPO_OPERACION_VENTA_INTERNA }))
+    }
+    // 1004 (transporte de carga) también es exclusiva de factura.
+    if (form.sunat_code !== '01' && form.operation_type_code === SUNAT_TIPO_OPERACION_TRANSPORTE_CARGA) {
+      setForm((f) => ({ ...f, operation_type_code: SUNAT_TIPO_OPERACION_VENTA_INTERNA }))
+      setDetraccionGoodCode('')
     }
   }, [form.sunat_code, form.operation_type_code])
 
@@ -961,8 +986,12 @@ function SalesRegisterContent({
     parsedExchangeRate,
   )
 
-  const selectedGood = detraccionGoods.find((g) => g.code === detraccionGoodCode)
+  // 1004 usa el catálogo de transporte (solo 027); 1001 usa el resto — nunca mezclados.
+  const selectedGood = (isDetraccionTransporte ? detraccionTransportGoods : detraccionGoods).find(
+    (g) => g.code === detraccionGoodCode,
+  )
   const detractionBnAccount = companyConfig?.detraction_bn_account?.trim() ?? ''
+  const transporteValorReferencial = parseFloat(transporteForm.valor_referencial_pen.replace(',', '.')) || 0
   const detractionPreview = previewDetraccion({
     sunatCode: form.sunat_code,
     operationTypeCode: form.operation_type_code,
@@ -974,6 +1003,7 @@ function SalesRegisterContent({
     minAmountPen: selectedGood?.min_amount_pen ?? 700,
     bankAccount: detractionBnAccount,
     contactEsPercepcion: selectedContact?.es_agente_de_percepcion,
+    valorReferencialPen: isDetraccionTransporte ? transporteValorReferencial : undefined,
   })
 
   const issueDateMin = getMinIssueDatePeru()
@@ -1398,6 +1428,20 @@ function SalesRegisterContent({
         toast.error(detractionPreview.reason || 'Verifique los datos de detracción')
         return
       }
+      if (isDetraccionTransporte) {
+        const missing =
+          !transporteForm.mtc_registro.trim() ||
+          !transporteForm.configuracion_vehicular.trim() ||
+          !transporteForm.punto_origen.trim() ||
+          !transporteForm.punto_destino.trim() ||
+          !(parseFloat(transporteForm.carga_efectiva_tm) > 0) ||
+          !(parseFloat(transporteForm.carga_util_tm) > 0) ||
+          !(transporteValorReferencial > 0)
+        if (missing) {
+          toast.error('Complete todos los datos de transporte de carga (marcados con *)')
+          return
+        }
+      }
     }
     if (isPrepaymentEmit) {
       const prepErr = validatePrepaymentItems(prepaymentAffectationGroup, items)
@@ -1487,7 +1531,20 @@ function SalesRegisterContent({
         from_quotation_id: linkQuotationId ?? undefined,
         fiscal_context: hasFiscalContextContent(fiscalForm) ? buildFiscalPayload() : undefined,
         detraccion: isDetraccion && detraccionGoodCode
-          ? { good_code: detraccionGoodCode }
+          ? {
+              good_code: detraccionGoodCode,
+              ...(isDetraccionTransporte
+                ? {
+                    valor_referencial_pen: transporteValorReferencial,
+                    mtc_registro: transporteForm.mtc_registro.trim(),
+                    configuracion_vehicular: transporteForm.configuracion_vehicular.trim(),
+                    punto_origen: transporteForm.punto_origen.trim(),
+                    punto_destino: transporteForm.punto_destino.trim(),
+                    carga_efectiva_tm: parseFloat(transporteForm.carga_efectiva_tm) || 0,
+                    carga_util_tm: parseFloat(transporteForm.carga_util_tm) || 0,
+                  }
+                : {}),
+            }
           : undefined,
         prepayment: isPrepaymentEmit
           ? { emit: true, affectation_group: prepaymentAffectationGroup }
@@ -1882,12 +1939,22 @@ function SalesRegisterContent({
                 disabled={form.sunat_code !== '01'}
                 onChange={(e) => {
                   const code = e.target.value
+                  const goesToDetraccion =
+                    code === SUNAT_TIPO_OPERACION_DETRACCION || code === SUNAT_TIPO_OPERACION_TRANSPORTE_CARGA
                   setForm((f) => ({
                     ...f,
                     operation_type_code: code,
-                    currency: code === SUNAT_TIPO_OPERACION_DETRACCION ? 'PEN' : f.currency,
+                    currency: goesToDetraccion ? 'PEN' : f.currency,
                   }))
-                  if (code !== SUNAT_TIPO_OPERACION_DETRACCION) setDetraccionGoodCode('')
+                  // El código de bien no es intercambiable entre 1001 y 1004 (catálogos
+                  // distintos): limpiar siempre que cambie el modo, no solo al salir de detracción.
+                  if (code !== form.operation_type_code) setDetraccionGoodCode('')
+                  if (code !== SUNAT_TIPO_OPERACION_TRANSPORTE_CARGA) {
+                    setTransporteForm({
+                      valor_referencial_pen: '', mtc_registro: '', configuracion_vehicular: '',
+                      punto_origen: '', punto_destino: '', carga_efectiva_tm: '', carga_util_tm: '',
+                    })
+                  }
                   // El anticipo exige venta interna (0101) en el backend; si se elige cualquier
                   // otra operación (detracción o no domiciliados), se desactiva para no fallar
                   // recién al guardar.
@@ -1992,7 +2059,9 @@ function SalesRegisterContent({
 
         {isDetraccion && !isNotaVenta && (
           <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 space-y-3">
-            <p className="text-xs font-semibold text-amber-900 uppercase tracking-wide">Detracción SUNAT (1001)</p>
+            <p className="text-xs font-semibold text-amber-900 uppercase tracking-wide">
+              Detracción SUNAT ({isDetraccionTransporte ? '1004 — Transporte de carga' : '1001'})
+            </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               <div className="sm:col-span-2">
                 <label className="block text-xs font-medium text-gray-700 mb-1">Bien / servicio (Cat. 54) *</label>
@@ -2002,7 +2071,7 @@ function SalesRegisterContent({
                   onChange={(e) => setDetraccionGoodCode(e.target.value)}
                 >
                   <option value="">Seleccionar...</option>
-                  {detraccionGoods.map((g) => (
+                  {(isDetraccionTransporte ? detraccionTransportGoods : detraccionGoods).map((g) => (
                     <option key={g.code} value={g.code}>
                       {g.code} — {g.description} ({g.rate_percent}%)
                     </option>
@@ -2040,6 +2109,80 @@ function SalesRegisterContent({
                 )}
               </div>
             </div>
+
+            {isDetraccionTransporte && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1 border-t border-amber-200/70">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Registro MTC *</label>
+                  <input
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
+                    value={transporteForm.mtc_registro}
+                    onChange={(e) => setTransporteForm((f) => ({ ...f, mtc_registro: e.target.value }))}
+                    placeholder="Ej. 15X123CNG"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Configuración vehicular *</label>
+                  <input
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
+                    value={transporteForm.configuracion_vehicular}
+                    onChange={(e) => setTransporteForm((f) => ({ ...f, configuracion_vehicular: e.target.value }))}
+                    placeholder="Ej. C3"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Carga efectiva (TM) *</label>
+                  <input
+                    type="number" min={0} step="0.01"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white tabular-nums"
+                    value={transporteForm.carga_efectiva_tm}
+                    onChange={(e) => setTransporteForm((f) => ({ ...f, carga_efectiva_tm: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Carga útil del vehículo (TM) *</label>
+                  <input
+                    type="number" min={0} step="0.01"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white tabular-nums"
+                    value={transporteForm.carga_util_tm}
+                    onChange={(e) => setTransporteForm((f) => ({ ...f, carga_util_tm: e.target.value }))}
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Punto de origen *</label>
+                  <input
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
+                    value={transporteForm.punto_origen}
+                    onChange={(e) => setTransporteForm((f) => ({ ...f, punto_origen: e.target.value }))}
+                    placeholder="Dirección y ubigeo de origen"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Punto de destino *</label>
+                  <input
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
+                    value={transporteForm.punto_destino}
+                    onChange={(e) => setTransporteForm((f) => ({ ...f, punto_destino: e.target.value }))}
+                    placeholder="Dirección y ubigeo de destino"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Valor referencial (S/) *
+                  </label>
+                  <input
+                    type="number" min={0} step="0.01"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white tabular-nums"
+                    value={transporteForm.valor_referencial_pen}
+                    onChange={(e) => setTransporteForm((f) => ({ ...f, valor_referencial_pen: e.target.value }))}
+                  />
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    Tabla D.S. 020-2021-MTC. Captura manual — no se calcula automáticamente.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {detractionPreview.reason && !detractionPreview.applicable && (
               <p className="text-xs text-amber-800">{detractionPreview.reason}</p>
             )}

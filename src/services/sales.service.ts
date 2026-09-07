@@ -200,7 +200,18 @@ export interface CreateSaleInput {
   /** Al registrar venta desde cotización (opción B). */
   from_quotation_id?: number
   fiscal_context?: SaleFiscalContextInput
-  detraccion?: { good_code: string; payment_method_code?: string }
+  detraccion?: {
+    good_code: string
+    payment_method_code?: string
+    /** Exclusivos de 1004 (transporte de carga) — ver internal/detraccion/service.go. */
+    valor_referencial_pen?: number
+    mtc_registro?: string
+    configuracion_vehicular?: string
+    punto_origen?: string
+    punto_destino?: string
+    carga_efectiva_tm?: number
+    carga_util_tm?: number
+  }
   prepayment?: {
     emit?: boolean
     affectation_group: 'gravado' | 'exonerado' | 'inafecto'
