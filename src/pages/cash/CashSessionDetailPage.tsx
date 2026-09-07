@@ -161,7 +161,9 @@ function CashSessionDetailContent() {
   const commercialTotal = report.totals.total_sales_commercial ?? directSalesTotal + spotTotal
   // Mismo criterio que CashReportsPage.tsx: "cobrado directo" es venta o cobro CxC, nunca una
   // detracción (SPOT tiene su propia sección, sin impacto en arqueo).
-  const directIncomeRows = report.income_detail.filter(
+  // El `?? []` no sobra: una sesión sin movimientos devuelve income_detail en null y esta vista
+  // reventaba al entrar (sesión 5 de tukifac). Igual que en CashReportsPage y en los export.
+  const directIncomeRows = (report.income_detail ?? []).filter(
     row => (row.type === 'venta' || row.type === 'cobro_cxc') && !isDetractionPaymentMethod(row.payment_method),
   )
   const arqueoCounted = session.arqueo_json ? parseArqueoJson(session.arqueo_json) : null
