@@ -10,7 +10,7 @@ export function HomeWelcomeCard() {
   return (
     <div className="relative h-[220px] overflow-hidden rounded-[20px] shadow-sm">
       <img
-        src="/home/inicio-hero.webp"
+        src="/landing/inicio-hero.webp"
         alt=""
         aria-hidden
         className="absolute inset-0 h-full w-full object-cover"
