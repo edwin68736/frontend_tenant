@@ -48,6 +48,7 @@ import {
   formatTipoDocIdentidadDisplay,
   SALES_OPERATION_TYPE_OPTIONS,
   SUNAT_TIPO_OPERACION_DETRACCION,
+  SUNAT_TIPO_OPERACION_NO_DOMICILIADOS,
   SUNAT_TIPO_OPERACION_VENTA_INTERNA,
 } from '@/constants/sunat'
 import {
@@ -393,6 +394,10 @@ function SalesRegisterContent({
     if (form.sunat_code !== '01' && form.operation_type_code === SUNAT_TIPO_OPERACION_DETRACCION) {
       setForm((f) => ({ ...f, operation_type_code: SUNAT_TIPO_OPERACION_VENTA_INTERNA }))
       setDetraccionGoodCode('')
+    }
+    // 0401 (ventas no domiciliados) también es exclusivo de factura — mismo criterio que 1001.
+    if (form.sunat_code !== '01' && form.operation_type_code === SUNAT_TIPO_OPERACION_NO_DOMICILIADOS) {
+      setForm((f) => ({ ...f, operation_type_code: SUNAT_TIPO_OPERACION_VENTA_INTERNA }))
     }
   }, [form.sunat_code, form.operation_type_code])
 
@@ -1295,23 +1300,28 @@ function SalesRegisterContent({
     }
 
     const sunatCode = form.sunat_code
+    const isVentasNoDomiciliados = form.operation_type_code === SUNAT_TIPO_OPERACION_NO_DOMICILIADOS
     if (sunatCode === '01') {
       if (!selectedContact) {
-        toast.error('Factura (01) requiere cliente con RUC')
+        toast.error('Factura (01) requiere un cliente seleccionado')
         return
       }
       if (selectedContact.es_agente_de_percepcion && form.operation_type_code === SUNAT_TIPO_OPERACION_DETRACCION) {
         toast.error('No se permite detracción con cliente agente de percepción')
         return
       }
-      if (selectedContact.doc_type !== '6') {
+      // 0401 (ventas no domiciliados): el cliente es extranjero/no domiciliado sin RUC peruano
+      // —pasaporte, carné de extranjería, doc. trib. no dom. sin RUC—, así que no se exige RUC.
+      if (!isVentasNoDomiciliados && selectedContact.doc_type !== '6') {
         toast.error('La factura solo puede emitirse a clientes con RUC')
         return
       }
-      const docNum = (selectedContact.doc_number ?? '').trim()
-      if (docNum.length !== SUNAT_RUC_LENGTH || !/^\d+$/.test(docNum)) {
-        toast.error(`El RUC del cliente debe tener ${SUNAT_RUC_LENGTH} dígitos numéricos`)
-        return
+      if (!isVentasNoDomiciliados) {
+        const docNum = (selectedContact.doc_number ?? '').trim()
+        if (docNum.length !== SUNAT_RUC_LENGTH || !/^\d+$/.test(docNum)) {
+          toast.error(`El RUC del cliente debe tener ${SUNAT_RUC_LENGTH} dígitos numéricos`)
+          return
+        }
       }
     }
     // Solo la boleta (03): es la que se declara. La nota de venta (00) es interna y no
@@ -1878,7 +1888,10 @@ function SalesRegisterContent({
                     currency: code === SUNAT_TIPO_OPERACION_DETRACCION ? 'PEN' : f.currency,
                   }))
                   if (code !== SUNAT_TIPO_OPERACION_DETRACCION) setDetraccionGoodCode('')
-                  if (code === SUNAT_TIPO_OPERACION_DETRACCION) setEmitPrepayment(false)
+                  // El anticipo exige venta interna (0101) en el backend; si se elige cualquier
+                  // otra operación (detracción o no domiciliados), se desactiva para no fallar
+                  // recién al guardar.
+                  if (code !== SUNAT_TIPO_OPERACION_VENTA_INTERNA) setEmitPrepayment(false)
                 }}
               >
                 {operationTypeOptions.map((op) => (

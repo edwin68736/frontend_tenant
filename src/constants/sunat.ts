@@ -38,10 +38,14 @@ export const SUNAT_TIPO_OPERACION_ANTICIPOS = '0104'
 /** Operación sujeta a detracción (solo factura 01). */
 export const SUNAT_TIPO_OPERACION_DETRACCION = '1001'
 
-/** Opciones habilitadas en Nuevo Comprobante. 1001 solo con factura (01). */
+/** Ventas a cliente no domiciliado sin RUC peruano que no califica como exportación (solo factura 01). */
+export const SUNAT_TIPO_OPERACION_NO_DOMICILIADOS = '0401'
+
+/** Opciones habilitadas en Nuevo Comprobante. 1001 y 0401 solo con factura (01). */
 export const SALES_OPERATION_TYPE_OPTIONS: { code: string; label: string }[] = [
   { code: SUNAT_TIPO_OPERACION_VENTA_INTERNA, label: 'Venta interna' },
   { code: SUNAT_TIPO_OPERACION_DETRACCION, label: 'Operación sujeta a detracción' },
+  { code: SUNAT_TIPO_OPERACION_NO_DOMICILIADOS, label: 'Ventas no domiciliados' },
 ]
 
 /** Orden en POS: 00 (N. Venta), 03 (Boleta), 01 (Factura). */
