@@ -2832,11 +2832,11 @@ function SalesRegisterContent({
           </div>
         </section>
 
-        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-4 border-t border-gray-100">
+        <div className="grid grid-cols-1 gap-2 pt-4 border-t border-gray-100 sm:grid-cols-3 md:flex md:flex-row md:justify-end">
           <button
             type="button"
             onClick={() => navigate(isQuotation ? '/quotations' : '/sales')}
-            className="inline-flex items-center justify-center px-5 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 sm:min-w-[7.5rem]"
+            className="order-3 sm:order-1 md:order-none w-full md:w-auto inline-flex items-center justify-center px-3 md:px-5 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 md:min-w-[7.5rem]"
           >
             Cancelar
           </button>
@@ -2844,7 +2844,7 @@ function SalesRegisterContent({
             type="button"
             onClick={() => void handleSalePreview()}
             disabled={previewLoading || saving || items.length === 0}
-            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl border border-amber-300 bg-amber-50 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50 sm:min-w-[9rem]"
+            className="order-2 w-full md:w-auto inline-flex items-center justify-center gap-2 px-3 md:px-5 py-2.5 rounded-xl border border-amber-300 bg-amber-50 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50 md:min-w-[9rem]"
           >
             {previewLoading ? <Loader2 size={16} className="animate-spin" /> : null}
             Previsualizar
@@ -2853,7 +2853,7 @@ function SalesRegisterContent({
             type="button"
             onClick={handleSave}
             disabled={saving || items.length === 0 || (!isQuotation && !cashSession)}
-            className="inline-flex items-center justify-center px-6 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50 sm:min-w-[9rem]"
+            className="order-1 sm:order-3 md:order-none w-full md:w-auto inline-flex items-center justify-center px-3 md:px-6 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50 md:min-w-[9rem]"
           >
             {saving
               ? 'Guardando...'
