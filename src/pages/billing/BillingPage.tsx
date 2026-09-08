@@ -102,6 +102,8 @@ function BillingContent() {
   const [searchParams] = useSearchParams()
   const [viewMode, setViewMode] = useState<'invoices' | 'credit_notes' | 'summaries_voided'>('invoices')
   const [filterStatus, setFilterStatus] = useState<string>(() => searchParams.get('status') || '')
+  // Solo aplica a la pestaña "Facturas y boletas"; '' = ambos tipos (comportamiento previo).
+  const [docTypeFilter, setDocTypeFilter] = useState<'' | '01' | '03'>('')
   const [searchTerm, setSearchTerm] = useState('')
   const [dateRange, setDateRange] = useState(() => getCurrentMonthRange())
   const [sales, setSales] = useState<Sale[]>([])
@@ -223,7 +225,7 @@ function BillingContent() {
       from: dateRange.from || undefined,
       to: dateRange.to || undefined,
       billing_status: filterStatus || undefined,
-      sunat_code: '01,03',
+      sunat_code: docTypeFilter || '01,03',
       page,
       per_page: perPage,
     })
@@ -265,7 +267,7 @@ function BillingContent() {
     if (status && ['pending', 'error', 'rejected', 'sent', 'accepted'].includes(status)) setFilterStatus(status)
   }, [searchParams])
 
-  useEffect(() => { load() }, [viewMode, noteKind, filterStatus, searchTerm, dateRange.from, dateRange.to, page, perPage])
+  useEffect(() => { load() }, [viewMode, noteKind, filterStatus, docTypeFilter, searchTerm, dateRange.from, dateRange.to, page, perPage])
 
   useEffect(() => {
     const id = (location.state as { openSaleId?: number } | null)?.openSaleId
@@ -855,6 +857,20 @@ function BillingContent() {
             </option>
           ))}
         </select>
+        {viewMode === 'invoices' && (
+          <select
+            className="border border-gray-200 rounded-xl px-3 py-2 text-sm min-w-[150px]"
+            value={docTypeFilter}
+            onChange={(e) => {
+              setDocTypeFilter(e.target.value as '' | '01' | '03')
+              setPage(1)
+            }}
+          >
+            <option value="">Boleta y factura</option>
+            <option value="03">Solo boleta</option>
+            <option value="01">Solo factura</option>
+          </select>
+        )}
         <div className="relative flex-1 min-w-[240px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
