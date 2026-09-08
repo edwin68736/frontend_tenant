@@ -225,6 +225,29 @@ export interface BulkImportResultPayload {
   failed: { row: number; name: string; error: string }[]
 }
 
+export interface BulkPriceUpdateRowPayload {
+  row_number: number
+  code: string
+  /** undefined = no tocar ese precio (columna vacía en el Excel subido). */
+  sale_price?: number
+  purchase_price?: number
+}
+
+export interface BulkPriceUpdateRowResult {
+  row_number: number
+  code: string
+  product_id?: number
+  product_name?: string
+  status: 'updated' | 'error'
+  error?: string
+}
+
+export interface BulkPriceUpdateResult {
+  rows: BulkPriceUpdateRowResult[]
+  updated: number
+  errors: number
+}
+
 export interface BulkDeleteProductRef {
   id: number
   name: string
@@ -519,6 +542,15 @@ export const productsService = {
         updates,
       })
       .then(r => r.data),
+
+  /** "Actualizar precio" (Productos): sube precio de venta/compra en masa, matcheando por código. */
+  bulkUpdatePrices: (branchId: number, rows: BulkPriceUpdateRowPayload[]) =>
+    api
+      .patch<{ success: boolean; data: BulkPriceUpdateResult }>('/api/products/bulk-update-prices', {
+        branch_id: branchId,
+        rows,
+      })
+      .then(r => r.data.data),
 }
 
 /** Devuelve la URL absoluta de la imagen del producto (backend guarda rutas relativas). */

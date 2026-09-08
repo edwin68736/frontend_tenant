@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Settings2, Package, Upload, Download, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Trash2, CheckCircle, Eye, EyeOff, Keyboard, Loader2 } from 'lucide-react'
+import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Settings2, Package, Upload, Download, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Trash2, CheckCircle, Eye, EyeOff, Keyboard, Loader2, Tag } from 'lucide-react'
 import { ProductImportModal } from '@/components/products/ProductImportModal'
+import { ProductPriceUpdateModal } from '@/components/products/ProductPriceUpdateModal'
 import { BulkDeleteProductsPinModal } from '@/components/products/BulkDeleteProductsPinModal'
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { ProductPresentationsModal } from '@/components/products/ProductPresentationsModal'
@@ -141,7 +142,7 @@ export default function ProductsPage() {
 }
 
 export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) {
-  const { activeBranchId } = useBranch()
+  const { activeBranchId, activeBranch } = useBranch()
   const { hasPermission } = useAuth()
   const canDeleteProducts = hasPermission('products.delete')
   const [products, setProducts] = useState<Product[]>([])
@@ -213,6 +214,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const [stockByProductId, setStockByProductId] = useState<Record<string, number>>({})
   const [adjustmentProduct, setAdjustmentProduct] = useState<Product | null>(null)
   const [importModalOpen, setImportModalOpen] = useState(false)
+  const [priceUpdateModalOpen, setPriceUpdateModalOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
   const [deletingProduct, setDeletingProduct] = useState(false)
@@ -875,6 +877,13 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 className="touch-target sm:min-h-0 flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
               >
                 {exporting ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Exportar Excel
+              </button>
+              <button
+                type="button"
+                onClick={() => setPriceUpdateModalOpen(true)}
+                className="touch-target sm:min-h-0 flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50"
+              >
+                <Tag size={15} /> Actualizar precio
               </button>
               <button
                 type="button"
@@ -2024,6 +2033,14 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           setImportModalOpen(false)
           load()
         }}
+      />
+
+      <ProductPriceUpdateModal
+        open={priceUpdateModalOpen}
+        onClose={() => setPriceUpdateModalOpen(false)}
+        branchId={activeBranchId}
+        branchName={activeBranch?.name}
+        onUpdated={load}
       />
 
       {canDeleteProducts && (
