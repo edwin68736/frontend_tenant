@@ -615,7 +615,10 @@ function SalesRegisterContent({
         setForm((f) => ({
           ...f,
           contact_id: q.contact_id ?? f.contact_id,
-          issue_date: issueYmd || f.issue_date,
+          // Al editar la cotización sí se respeta su fecha de emisión; al generar la venta desde
+          // ella, la venta debe llevar la fecha actual (f.issue_date, ya inicializada con hoy),
+          // no la fecha en que se cotizó.
+          issue_date: isQuotation ? issueYmd || f.issue_date : f.issue_date,
           due_date: isQuotation ? validYmd : f.due_date,
           currency: q.currency || f.currency,
           exchange_rate: q.exchange_rate != null ? String(q.exchange_rate) : f.exchange_rate,
