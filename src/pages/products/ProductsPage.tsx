@@ -8,12 +8,10 @@ import { BulkDeleteProductsPinModal } from '@/components/products/BulkDeleteProd
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { ProductPresentationsModal } from '@/components/products/ProductPresentationsModal'
 import { ModifierOptionsEditor } from '@/components/modifiers/ModifierOptionsEditor'
-import { productsService, getProductImageUrl, type Product, type Category, type Brand, type CreateProductInput, type ModifierGroup, type ProductCatalogType, type ProductPresentation, type BulkDeleteProductsResult } from '@/services/products.service'
+import { productsService, getProductImageUrl, type Product, type Category, type Brand, type Unit, type CreateProductInput, type ModifierGroup, type ProductCatalogType, type ProductPresentation, type BulkDeleteProductsResult } from '@/services/products.service'
 import { createEmptyOptionDraft, draftsFromApiOptions, optionDraftsToPayload, validateOptionDrafts, type ModifierOptionDraft } from '@/utils/modifierOptionText'
 import {
-  PRODUCT_UNIT_FORM_OPTIONS,
   QUANTITY_MAX_DECIMALS,
-  isProductUnitFormCode,
   productUnitFormDisplayName,
   unitAllowsDecimals,
 } from '@/constants/sunatUnits'
@@ -58,12 +56,15 @@ function validateProductImageFile(file: File): string | null {
   return null
 }
 
-function emptyForm(pageMode: ProductCatalogType): CreateProductInput {
+function emptyForm(pageMode: ProductCatalogType, units: Unit[] = []): CreateProductInput {
+  const defaultCode = pageMode === 'service' ? 'ZZ' : 'NIU'
+  const defaultUnitId = units.find((u) => u.code === defaultCode)?.id ?? null
   if (pageMode === 'service') {
     return {
       name: '',
       type: 'service',
       unit: 'ZZ',
+      unit_id: defaultUnitId,
       sale_price: 0,
       purchase_price: 0,
       igv_affectation_type: '10',
@@ -89,6 +90,7 @@ function emptyForm(pageMode: ProductCatalogType): CreateProductInput {
     name: '',
     type: 'product',
     unit: 'NIU',
+    unit_id: defaultUnitId,
     sale_price: 0,
     purchase_price: 0,
     igv_affectation_type: '10',
@@ -148,6 +150,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [brands, setBrands] = useState<Brand[]>([])
+  const [units, setUnits] = useState<Unit[]>([])
   const [modifierGroups, setModifierGroups] = useState<ModifierGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
@@ -173,7 +176,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const [show, setShow] = useState(false)
   const [showMoreOptions, setShowMoreOptions] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
-  const [form, setForm] = useState<CreateProductInput>(() => emptyForm(pageMode))
+  const [form, setForm] = useState<CreateProductInput>(() => emptyForm(pageMode, units))
   const [saving, setSaving] = useState(false)
   const [newCatName, setNewCatName] = useState('')
   const [addingCat, setAddingCat] = useState(false)
@@ -271,6 +274,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         Promise.all([
           productsService.listCategories(),
           productsService.listBrands(),
+          productsService.listUnits(),
           productsService.listModifierGroups(),
           productsList.filter(x => x.manage_stock).length > 0
             ? inventoryService
@@ -280,12 +284,13 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 )
                 .catch(() => ({}))
             : Promise.resolve({} as Record<string, number>),
-        ]) as Promise<[Category[], Brand[], ModifierGroup[], Record<string, number>]>
+        ]) as Promise<[Category[], Brand[], Unit[], ModifierGroup[], Record<string, number>]>
       )
-      .then(([categoriesList, brandsList, modifierGroupsList, summary]) => {
+      .then(([categoriesList, brandsList, unitsList, modifierGroupsList, summary]) => {
         if (seq !== loadSeqRef.current) return
         setCategories(categoriesList ?? [])
         setBrands(brandsList ?? [])
+        setUnits(unitsList ?? [])
         setModifierGroups(modifierGroupsList ?? [])
         setStockByProductId(summary ?? {})
       })
@@ -370,7 +375,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const openNew = () => {
     clearPendingImage()
     setEditing(null)
-    setForm({ ...emptyForm(pageMode), code: generateRandomProductCode() })
+    setForm({ ...emptyForm(pageMode, units), code: generateRandomProductCode() })
     setPresentations([])
     setShowMoreOptions(false)
     setShow(true)
@@ -385,6 +390,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       name: p.name,
       type: (p.type as ProductCatalogType | undefined) ?? pageMode,
       unit: p.unit,
+      unit_id: p.unit_id ?? null,
       sale_price: p.sale_price,
       purchase_price: p.purchase_price ?? 0,
       igv_affectation_type: p.igv_affectation_type,
@@ -1431,15 +1437,25 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               <label className="block text-xs font-medium text-gray-600 mb-1">Unidad</label>
               <select
                 className={PRODUCT_FORM_INPUT}
-                value={form.unit}
-                onChange={(e) => setF('unit', e.target.value)}
+                value={form.unit_id ?? ''}
+                onChange={(e) => {
+                  const selected = units.find((u) => u.id === Number(e.target.value))
+                  setForm((f) => ({
+                    ...f,
+                    unit_id: selected?.id ?? null,
+                    unit: selected?.code ?? f.unit,
+                  }))
+                }}
               >
-                {form.unit && !isProductUnitFormCode(form.unit) && (
-                  <option value={form.unit}>{productUnitFormDisplayName(form.unit)}</option>
+                {/* Producto ya guardado con una unidad que el select no trae cargada todavía
+                    (recién creada desde otra pestaña) — se muestra igual en vez de forzar NIU. */}
+                {form.unit_id != null && !units.some((u) => u.id === form.unit_id) && (
+                  <option value={form.unit_id}>{productUnitFormDisplayName(form.unit)}</option>
                 )}
-                {PRODUCT_UNIT_FORM_OPTIONS.map((u) => (
-                  <option key={u.code} value={u.code}>
-                    {u.displayName}
+                {units.length === 0 && <option value="">Cargando…</option>}
+                {units.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.code} - {u.name}
                   </option>
                 ))}
               </select>

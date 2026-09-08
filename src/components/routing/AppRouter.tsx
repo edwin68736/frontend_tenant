@@ -17,6 +17,7 @@ const CombosPage = lazy(() => import('@/pages/products/CombosPage'))
 const ServicesCatalogPage = lazy(() => import('@/pages/products/ServicesCatalogPage'))
 const CategoriesPage = lazy(() => import('@/pages/products/CategoriesPage'))
 const BrandsPage = lazy(() => import('@/pages/products/BrandsPage'))
+const UnitsPage = lazy(() => import('@/pages/products/UnitsPage'))
 const ContactsPage = lazy(() => import('@/pages/contacts/ContactsPage'))
 const SalesPage = lazy(() => import('@/pages/sales/SalesPage'))
 const SalesRegisterLegacyRedirect = lazy(() => import('@/pages/sales/SalesRegisterLegacyRedirect'))
@@ -159,6 +160,7 @@ function AppRoutes() {
         <Route path="products/services" element={<Lazy><ServicesCatalogPage /></Lazy>} />
         <Route path="products/categories" element={<Lazy><CategoriesPage /></Lazy>} />
         <Route path="products/brands" element={<Lazy><BrandsPage /></Lazy>} />
+        <Route path="products/units" element={<Lazy><UnitsPage /></Lazy>} />
         <Route path="contacts" element={<Lazy><ContactsPage /></Lazy>} />
         <Route path="inventory" element={<Lazy><InventoryPage /></Lazy>} />
         <Route path="inventory/services" element={<Navigate to="/products/services" replace />} />

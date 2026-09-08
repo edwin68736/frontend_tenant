@@ -48,6 +48,7 @@ export interface Product {
   /** product = bien con inventario posible; service = prestación (unidad ZZ, sin stock). */
   type?: ProductCatalogType
   unit: string
+  unit_id?: number | null
   sale_price: number
   purchase_price: number
   tax_rate: number
@@ -115,6 +116,32 @@ export interface Brand {
   active?: boolean
 }
 
+/** Catálogo de unidades de medida (SUNAT N°03) del tenant — gestionable desde Tukifac, usado por
+ * el select de unidad en el formulario de producto (Tukifac y Tukichef). is_system=true = fila
+ * sembrada por defecto al aprovisionar el tenant (código no editable, ver UpdateUnitInput). */
+export interface Unit {
+  id: number
+  code: string
+  name: string
+  symbol?: string
+  is_system: boolean
+  sort_order?: number
+  active: boolean
+}
+
+export interface CreateUnitInput {
+  code: string
+  name: string
+  symbol?: string
+}
+
+export interface UpdateUnitInput {
+  code: string
+  name: string
+  symbol?: string
+  active: boolean
+}
+
 export interface CreateBrandInput {
   name: string
   description?: string
@@ -148,6 +175,9 @@ export interface CreateProductInput {
   description?: string
   image_url?: string
   unit: string
+  /** Fuente de verdad para la unidad del producto (catálogo tenant_units) — unit (texto) se sigue
+   * enviando por compatibilidad, pero el backend prioriza unit_id cuando ambos vienen. */
+  unit_id?: number | null
   sale_price: number
   purchase_price?: number
   igv_affectation_type: string
@@ -471,6 +501,34 @@ export const productsService = {
       .then((r) => r.data.data),
 
   deleteBrand: (id: number) => api.delete(`/api/brands/${id}`).then((r) => r.data),
+
+  listUnits: (opts?: { all?: boolean }) =>
+    api
+      .get<{ data: Unit[] }>('/api/units', {
+        params: opts?.all ? { all: 'true' } : undefined,
+      })
+      .then((r) => r.data.data ?? []),
+
+  createUnit: (input: CreateUnitInput) =>
+    api
+      .post<{ data: Unit }>('/api/units', {
+        code: input.code,
+        name: input.name,
+        symbol: input.symbol ?? '',
+      })
+      .then((r) => r.data.data),
+
+  updateUnit: (id: number, input: UpdateUnitInput) =>
+    api
+      .put<{ data: Unit }>(`/api/units/${id}`, {
+        code: input.code,
+        name: input.name,
+        symbol: input.symbol ?? '',
+        active: input.active,
+      })
+      .then((r) => r.data.data),
+
+  deleteUnit: (id: number) => api.delete(`/api/units/${id}`).then((r) => r.data),
 
   listModifierGroups: () =>
     api.get<{ data: ModifierGroup[] }>('/api/modifier-groups').then(r => r.data.data ?? []),

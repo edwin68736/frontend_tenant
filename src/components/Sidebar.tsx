@@ -9,6 +9,7 @@ import {
   Utensils, FileText, X, Grid3x3, Layers, ChefHat, UserCog,
   Shield, MapPin, FileCode, ShieldCheck, ArrowRightLeft, ListOrdered, LayoutGrid, RotateCcw, ShoppingBag,
   ChevronLeft, ChevronRight, BarChart3, CreditCard, Briefcase, UserCircle, Car, Lock, Send, FileSignature,
+  Ruler,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -209,6 +210,14 @@ const NAV_GROUPS: NavGroup[] = [
         to: '/products/brands',
         label: 'Marcas',
         icon: <Layers size={14} />,
+        module: 'products',
+        permission: 'products.view',
+      },
+      {
+        id: 'prod-unidades',
+        to: '/products/units',
+        label: 'Unidades de medida',
+        icon: <Ruler size={14} />,
         module: 'products',
         permission: 'products.view',
       },

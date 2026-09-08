@@ -6,16 +6,16 @@ import {
   productsService,
   type CreateProductInput,
   type Product,
+  type Unit,
 } from '@/services/products.service'
 import { PRODUCT_IGV_AFFECTATION_OPTIONS, isGravadoIgv } from '@/constants/igvAffectation'
-import { PRODUCT_UNIT_FORM_OPTIONS } from '@/constants/sunatUnits'
 
 const IGV_TYPES = PRODUCT_IGV_AFFECTATION_OPTIONS
 
 type QuickProductForm = {
   name: string
   code: string
-  unit: string
+  unit_id: number | null
   purchase_price: number
   sale_price: number
   igv_affectation_type: string
@@ -27,7 +27,7 @@ type QuickProductForm = {
 const emptyForm = (): QuickProductForm => ({
   name: '',
   code: '',
-  unit: 'NIU',
+  unit_id: null,
   purchase_price: 0,
   sale_price: 0,
   igv_affectation_type: '10',
@@ -44,11 +44,20 @@ type Props = {
 
 export function QuickProductCreateModal({ open, onClose, onCreated }: Props) {
   const [form, setForm] = useState<QuickProductForm>(() => emptyForm())
+  const [units, setUnits] = useState<Unit[]>([])
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (!open) return
     setForm(emptyForm())
+    productsService
+      .listUnits()
+      .then((list) => {
+        setUnits(list)
+        const niu = list.find((u) => u.code === 'NIU')
+        if (niu) setForm((f) => ({ ...f, unit_id: niu.id }))
+      })
+      .catch(() => setUnits([]))
   }, [open])
 
   const patch = (p: Partial<QuickProductForm>) => setForm(f => ({ ...f, ...p }))
@@ -67,11 +76,13 @@ export function QuickProductCreateModal({ open, onClose, onCreated }: Props) {
       return
     }
 
+    const selectedUnit = units.find((u) => u.id === form.unit_id)
     const payload: CreateProductInput = {
       name: form.name.trim(),
       code: form.code.trim() || undefined,
       type: 'product',
-      unit: form.unit || 'NIU',
+      unit: selectedUnit?.code ?? 'NIU',
+      unit_id: form.unit_id,
       sale_price: Math.max(0, form.sale_price),
       purchase_price: Math.max(0, form.purchase_price),
       igv_affectation_type: form.igv_affectation_type,
@@ -122,12 +133,13 @@ export function QuickProductCreateModal({ open, onClose, onCreated }: Props) {
             <label className="block text-xs font-medium text-gray-600 mb-1">Unidad</label>
             <select
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-              value={form.unit}
-              onChange={e => patch({ unit: e.target.value })}
+              value={form.unit_id ?? ''}
+              onChange={e => patch({ unit_id: e.target.value ? Number(e.target.value) : null })}
             >
-              {PRODUCT_UNIT_FORM_OPTIONS.map(u => (
-                <option key={u.code} value={u.code}>
-                  {u.displayName}
+              {units.length === 0 && <option value="">Cargando…</option>}
+              {units.map(u => (
+                <option key={u.id} value={u.id}>
+                  {u.code} - {u.name}
                 </option>
               ))}
             </select>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Plus, Pencil, ToggleLeft, ToggleRight, Search } from 'lucide-react'
-import { productsService, type Product, type Category, type CreateProductInput, type ModifierGroup } from '@/services/products.service'
+import { productsService, type Product, type Category, type Unit, type CreateProductInput, type ModifierGroup } from '@/services/products.service'
 import { useBranch } from '@/contexts/BranchContext'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
@@ -20,10 +20,8 @@ function isGravadoIgv(code: string): boolean {
   if (['20','21','30','31','32','33','34','35','36','40'].includes(c)) return false
   return true
 }
-const UNITS = ['NIU','ZZ','KGM','LTR','MTR','POR','RCN']
-
-const empty = (): CreateProductInput => ({
-  name: '', unit: 'NIU', sale_price: 0, purchase_price: 0,
+const empty = (unitId: number | null = null): CreateProductInput => ({
+  name: '', unit: 'NIU', unit_id: unitId, sale_price: 0, purchase_price: 0,
   igv_affectation_type: '10', price_includes_igv: true,
   manage_stock: false, min_stock: 0, is_restaurant: true, category_id: null, code: '',
   manage_series: false, has_modifiers: false, modifier_group_ids: [],
@@ -37,6 +35,7 @@ function RestaurantProductsContent() {
   const { activeBranchId } = useBranch()
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  const [units, setUnits] = useState<Unit[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
   const listSearchQuery = useMemo(() => {
@@ -59,11 +58,13 @@ function RestaurantProductsContent() {
     productsService.list(listSearchQuery, catFilter, true, undefined, undefined, undefined, undefined, undefined, activeBranchId),
     productsService.listCategories(),
     productsService.listModifierGroups(),
+    productsService.listUnits(),
   ])
-    .then(([p, c, g]) => {
+    .then(([p, c, g, u]) => {
       setProducts((p?.data) ?? [])
       setCategories(c ?? [])
       setModifierGroups(g ?? [])
+      setUnits(u ?? [])
     })
     .catch((e: any) => toast.error(e?.response?.data?.error ?? 'Error cargando productos'))
     .finally(() => setLoading(false))
@@ -71,13 +72,18 @@ function RestaurantProductsContent() {
 
   useEffect(() => { load() }, [listSearchQuery, catFilter, activeBranchId])
 
-  const openNew = () => { setEditing(null); setForm(empty()); setShow(true) }
+  const openNew = () => {
+    setEditing(null)
+    setForm(empty(units.find((u) => u.code === 'NIU')?.id ?? null))
+    setShow(true)
+  }
   const openEdit = async (p: Product) => {
     setEditing(p)
     setForm({
       code: p.code,
       name: p.name,
       unit: p.unit,
+      unit_id: p.unit_id ?? null,
       sale_price: p.sale_price,
       purchase_price: p.purchase_price ?? 0,
       igv_affectation_type: p.igv_affectation_type,
@@ -215,8 +221,13 @@ function RestaurantProductsContent() {
               value={form.name} onChange={e => setF('name', e.target.value)} /></div>
           <div><label className="block text-xs font-medium text-gray-600 mb-1">Unidad</label>
             <select className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-              value={form.unit} onChange={e => setF('unit', e.target.value)}>
-              {UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+              value={form.unit_id ?? ''}
+              onChange={e => {
+                const selected = units.find(u => u.id === Number(e.target.value))
+                setForm(f => ({ ...f, unit_id: selected?.id ?? null, unit: selected?.code ?? f.unit }))
+              }}>
+              {units.length === 0 && <option value="">Cargando…</option>}
+              {units.map(u => <option key={u.id} value={u.id}>{u.code} - {u.name}</option>)}
             </select>
           </div>
         </div>
