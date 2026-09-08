@@ -270,7 +270,9 @@ export const productsService = {
     branch_id?: number,
     /** Oculta los combos. Úselo al elegir componentes: un combo no puede contener otro. */
     exclude_combos?: boolean,
-    brand_id?: number
+    brand_id?: number,
+    /** Muestra solo los inactivos (en vez de incluirlos junto con los activos). */
+    inactive_only?: boolean
   ) =>
     api
       .get<{ data: Product[]; total?: number }>('/api/products', {
@@ -286,6 +288,7 @@ export const productsService = {
           ...(branch_id && branch_id > 0 ? { branch_id } : {}),
           ...(exclude_combos ? { exclude_combos: true } : {}),
           ...(brand_id ? { brand_id } : {}),
+          ...(inactive_only ? { inactive_only: true } : {}),
         },
       })
       .then(r => ({

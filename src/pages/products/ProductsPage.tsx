@@ -164,7 +164,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   }, [q])
   const [catFilter, setCatFilter] = useState<number | undefined>()
   const [brandFilter, setBrandFilter] = useState<number | undefined>()
-  const [includeInactive, setIncludeInactive] = useState(false)
+  /** Cuando está activo, el listado muestra SOLO los inactivos (no los suma a los activos). */
+  const [onlyInactive, setOnlyInactive] = useState(false)
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(10)
   const [total, setTotal] = useState(0)
@@ -257,7 +258,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     const stockBranchId = pageMode === 'product' && activeBranchId > 0 ? activeBranchId : undefined
     return productsService
       // Los combos se administran en /products/combos: aquí solo el catálogo suelto.
-      .list(listSearchQuery, catFilter, undefined, !includeInactive, page, perPage, undefined, pageMode, stockBranchId, true, brandFilter)
+      .list(listSearchQuery, catFilter, undefined, !onlyInactive, page, perPage, undefined, pageMode, stockBranchId, true, brandFilter, onlyInactive)
       .then(({ data: p, total: t }) => {
         if (seq !== loadSeqRef.current) return [] as Product[]
         setProducts(p ?? [])
@@ -301,7 +302,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   useEffect(() => {
     void load()
     setSelectedIds(new Set())
-  }, [listSearchQuery, catFilter, brandFilter, includeInactive, page, perPage, pageMode, activeBranchId])
+  }, [listSearchQuery, catFilter, brandFilter, onlyInactive, page, perPage, pageMode, activeBranchId])
 
   // Nota: se removió el refetch automático al volver a la pestaña (visibilitychange).
   // Provocaba recargas y 3-4 peticiones al backend cada vez que se cambiaba de pestaña.
@@ -321,7 +322,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       const per = 100
       for (;;) {
         const { data, total: t } = await productsService.list(
-          listSearchQuery, catFilter, undefined, !includeInactive, p, per, undefined, pageMode, stockBranchId, true, brandFilter,
+          listSearchQuery, catFilter, undefined, !onlyInactive, p, per, undefined, pageMode, stockBranchId, true, brandFilter, onlyInactive,
         )
         if (!data || data.length === 0) break
         all.push(...data)
@@ -931,8 +932,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           </select>
         )}
         <label className="flex items-center gap-2 cursor-pointer px-3 py-2 text-sm text-gray-700">
-          <input type="checkbox" checked={includeInactive} onChange={e => setIncludeInactive(e.target.checked)} className="rounded" />
-          Incluir inactivos
+          <input type="checkbox" checked={onlyInactive} onChange={e => setOnlyInactive(e.target.checked)} className="rounded" />
+          Solo inactivos
         </label>
         <div className="flex items-center gap-2">
           <span className="text-sm text-gray-600 whitespace-nowrap">Mostrar</span>
