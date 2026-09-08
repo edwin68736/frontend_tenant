@@ -32,6 +32,11 @@ function formatSoles(n: number): string {
   return `S/ ${Number(n).toFixed(2)}`
 }
 
+/** Entero tal cual; con decimales (ej. productos por peso) recorta ceros de más. */
+function formatStockQty(n: number): string {
+  return Number.isInteger(n) ? String(n) : Number(n.toFixed(2)).toString()
+}
+
 export default function EcommerceStorePage() {
   const [settings, setSettings] = useState<PublicStoreSettings | null>(null)
   const [categories, setCategories] = useState<PublicCategory[]>([])
@@ -379,7 +384,10 @@ export default function EcommerceStorePage() {
               {products.map((p) => {
                 // Con show_stock=false el backend ya no manda stock_total real; además de eso, acá
                 // se apaga del todo la condición para no mostrar "Agotado" ni bloquear "Agregar".
-                const outOfStock = settings?.show_stock !== false && Boolean(p.manage_stock) && Number(p.stock_total ?? 0) <= 0
+                const showStockOn = settings?.show_stock !== false
+                const outOfStock = showStockOn && Boolean(p.manage_stock) && Number(p.stock_total ?? 0) <= 0
+                const stockQty = Number(p.stock_total ?? 0)
+                const showStockQty = showStockOn && Boolean(p.manage_stock) && stockQty > 0
                 return (
                   <div
                     key={p.id}
@@ -408,6 +416,9 @@ export default function EcommerceStorePage() {
                         </span>
                       )}
                       <p className="text-sm font-medium text-gray-800 line-clamp-2 flex-1">{p.name}</p>
+                      {showStockQty && (
+                        <span className="text-[11px] text-gray-400 mt-0.5">Stock: {formatStockQty(stockQty)}</span>
+                      )}
                       <div className="flex items-center justify-between mt-2">
                         <span className="font-bold text-sm" style={{ color: 'rgb(var(--vs-primary))' }}>{formatSoles(p.sale_price)}</span>
                         <button

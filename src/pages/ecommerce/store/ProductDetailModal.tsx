@@ -7,6 +7,11 @@ function formatSoles(n: number): string {
   return `S/ ${Number(n).toFixed(2)}`
 }
 
+/** Entero tal cual; con decimales (ej. productos por peso) recorta ceros de más. */
+function formatStockQty(n: number): string {
+  return Number.isInteger(n) ? String(n) : Number(n.toFixed(2)).toString()
+}
+
 export default function ProductDetailModal({
   product,
   onClose,
@@ -20,7 +25,9 @@ export default function ProductDetailModal({
   showStock?: boolean
 }) {
   const [qty, setQty] = useState(1)
-  const outOfStock = showStock && Boolean(product.manage_stock) && Number(product.stock_total ?? 0) <= 0
+  const stockQty = Number(product.stock_total ?? 0)
+  const outOfStock = showStock && Boolean(product.manage_stock) && stockQty <= 0
+  const showStockQty = showStock && Boolean(product.manage_stock) && stockQty > 0
 
   return (
     <div className="fixed inset-0 z-[300] flex items-end sm:items-center justify-center">
@@ -62,6 +69,9 @@ export default function ProductDetailModal({
               </span>
               {product.unit && <span className="text-xs text-gray-400">por {product.unit.toLowerCase()}</span>}
             </div>
+            {showStockQty && (
+              <p className="text-xs text-gray-400 -mt-3 mb-4">Stock disponible: {formatStockQty(stockQty)}</p>
+            )}
             {!outOfStock && (
               <div className="flex items-center gap-3 mb-4">
                 <span className="text-xs text-gray-500">Cantidad</span>
