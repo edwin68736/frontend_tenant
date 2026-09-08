@@ -102,6 +102,8 @@ type SeriesRow = SalePreviewSeries & {
   doc_type: string
   branch_id?: number
   active?: boolean
+  /** Comprobante preferido de la sucursal (Ajustes → Series). A lo sumo una serie lo trae en true. */
+  is_default?: boolean
 }
 
 /** Ítem del detalle en el formulario (incluye datos para cálculo y envío). */
@@ -173,6 +175,24 @@ function codesForMode(mode: SalesRegisterMode, billingOk: boolean, canFactura = 
 function defaultCodeForMode(mode: SalesRegisterMode): string {
   if (mode === 'quotation') return 'QT'
   return mode === 'nota-venta' ? '00' : '03'
+}
+
+/**
+ * Comprobante inicial a mostrar: el marcado como is_default en Ajustes → Series para esta
+ * sucursal (mismo criterio que ya usa el checkout POS), si aplica al modo actual y sigue
+ * disponible. 'nota-venta' y 'quotation' tienen un único tipo fijo y no consultan is_default;
+ * si ninguna serie de 'comprobante' trae el flag, cae al comportamiento previo (Boleta).
+ */
+function pickDefaultSalesCode(mode: SalesRegisterMode, ventaSeries: SeriesRow[], availableCodes: string[]): string {
+  const fallback = defaultCodeForMode(mode)
+  if (mode !== 'comprobante') return fallback
+  const preferred = ventaSeries.find((s) => {
+    if (!s.is_default) return false
+    const code = (s.sunat_code ?? '').trim() || docTypeToSunatCode(s.doc_type)
+    return availableCodes.includes(code)
+  })
+  if (!preferred) return fallback
+  return (preferred.sunat_code ?? '').trim() || docTypeToSunatCode(preferred.doc_type)
 }
 
 function resolveCashMethodCode(methods: PaymentMethodRecord[]): string {
@@ -492,7 +512,7 @@ function SalesRegisterContent({
                   .filter((c) => c && modeCodes.includes(c)),
               ),
             ]
-        let defaultCode = defaultCodeForMode(mode)
+        let defaultCode = pickDefaultSalesCode(mode, ventaSeries, availableCodes)
         if (!availableCodes.includes(defaultCode)) defaultCode = availableCodes[0] ?? defaultCode
         const matchSeries = isQuotation
           ? ventaSeries[0]
@@ -563,7 +583,7 @@ function SalesRegisterContent({
                   .filter((c) => c && modeCodes.includes(c)),
               ),
             ]
-        let defaultCode = defaultCodeForMode(mode)
+        let defaultCode = pickDefaultSalesCode(mode, ventaSeries, availableCodes)
         if (!availableCodes.includes(defaultCode)) defaultCode = availableCodes[0] ?? defaultCode
         const matchSeries = isQuotation
           ? ventaSeries[0]
