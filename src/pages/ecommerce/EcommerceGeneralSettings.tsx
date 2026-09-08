@@ -21,6 +21,7 @@ export default function EcommerceGeneralSettings() {
   const [description, setDescription] = useState('')
   const [whatsappOverride, setWhatsappOverride] = useState('')
   const [enabled, setEnabled] = useState(false)
+  const [showStock, setShowStock] = useState(true)
   const logoInputRef = useRef<HTMLInputElement>(null)
   const [uploadingLogo, setUploadingLogo] = useState(false)
 
@@ -36,6 +37,7 @@ export default function EcommerceGeneralSettings() {
         setDescription(data.description || '')
         setWhatsappOverride(data.whatsapp_number || '')
         setEnabled(data.enabled)
+        setShowStock(data.show_stock)
       })
       .catch(() => toast.error('Error cargando ajustes de la tienda'))
       .finally(() => setLoading(false))
@@ -52,6 +54,7 @@ export default function EcommerceGeneralSettings() {
         tagline,
         description,
         whatsapp_number: whatsappOverride,
+        show_stock: showStock,
       })
       setSettings(data)
       setResolvedWhatsApp(resolved_whatsapp_number)
@@ -110,6 +113,26 @@ export default function EcommerceGeneralSettings() {
           className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${enabled ? 'bg-[rgb(var(--p600))]' : 'bg-gray-300'}`}
         >
           <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${enabled ? 'translate-x-5' : ''}`} />
+        </button>
+      </div>
+
+      <div className="flex items-center justify-between gap-4 bg-gray-50 rounded-xl p-4">
+        <div>
+          <p className="text-sm font-semibold text-gray-800">Mostrar stock</p>
+          <p className="text-xs text-gray-500">
+            Con esto desactivado, la tienda no muestra disponibilidad ni "Agotado": todos los
+            productos se ven comprables, sin importar el stock real.
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={showStock}
+          aria-label="Mostrar stock"
+          onClick={() => setShowStock((v) => !v)}
+          className={`relative w-11 h-6 rounded-full transition-colors shrink-0 ${showStock ? 'bg-[rgb(var(--p600))]' : 'bg-gray-300'}`}
+        >
+          <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${showStock ? 'translate-x-5' : ''}`} />
         </button>
       </div>
 

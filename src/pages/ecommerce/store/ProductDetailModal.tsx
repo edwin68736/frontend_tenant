@@ -11,13 +11,16 @@ export default function ProductDetailModal({
   product,
   onClose,
   onAdd,
+  showStock = true,
 }: {
   product: ProductReportRow
   onClose: () => void
   onAdd: (product: ProductReportRow, quantity: number) => void
+  /** Ajuste de la tienda (Módulos → Tienda Virtual → General). false = tratar como siempre disponible. */
+  showStock?: boolean
 }) {
   const [qty, setQty] = useState(1)
-  const outOfStock = Boolean(product.manage_stock) && Number(product.stock_total ?? 0) <= 0
+  const outOfStock = showStock && Boolean(product.manage_stock) && Number(product.stock_total ?? 0) <= 0
 
   return (
     <div className="fixed inset-0 z-[300] flex items-end sm:items-center justify-center">

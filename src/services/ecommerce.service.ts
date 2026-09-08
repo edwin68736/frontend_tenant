@@ -17,6 +17,8 @@ export interface EcommerceSettings {
   font_family: string
   card_style: string
   category_style: string
+  /** Si es false, la tienda pública no muestra disponibilidad/"Agotado" ni recibe el stock real. */
+  show_stock: boolean
 }
 
 export interface EcommerceSettingsResponse {
@@ -37,6 +39,7 @@ export interface UpdateEcommerceSettingsInput {
   font_family?: string
   card_style?: string
   category_style?: string
+  show_stock?: boolean
 }
 
 export interface EcommerceSlider {
@@ -171,6 +174,8 @@ export interface PublicStoreSettings {
   font_family: string
   card_style: string
   category_style: string
+  /** Si es false, no mostrar disponibilidad/"Agotado" — tratar todos los productos como disponibles. */
+  show_stock: boolean
   sliders: EcommerceSlider[]
 }
 

@@ -377,7 +377,9 @@ export default function EcommerceStorePage() {
           <>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
               {products.map((p) => {
-                const outOfStock = Boolean(p.manage_stock) && Number(p.stock_total ?? 0) <= 0
+                // Con show_stock=false el backend ya no manda stock_total real; además de eso, acá
+                // se apaga del todo la condición para no mostrar "Agotado" ni bloquear "Agregar".
+                const outOfStock = settings?.show_stock !== false && Boolean(p.manage_stock) && Number(p.stock_total ?? 0) <= 0
                 return (
                   <div
                     key={p.id}
@@ -487,7 +489,12 @@ export default function EcommerceStorePage() {
       </footer>
 
       {detailProduct && (
-        <ProductDetailModal product={detailProduct} onClose={() => setDetailProduct(null)} onAdd={handleAdd} />
+        <ProductDetailModal
+          product={detailProduct}
+          onClose={() => setDetailProduct(null)}
+          onAdd={handleAdd}
+          showStock={settings?.show_stock !== false}
+        />
       )}
 
       <StoreCartDrawer
