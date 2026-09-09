@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { TrendingUp, TrendingDown, Eye, Download, Plus } from 'lucide-react'
+import { TrendingUp, TrendingDown, Eye, Download, Plus, UserPlus } from 'lucide-react'
 import { cashbankService, type CashSession, type MovementReportRow } from '@/services/cashbank.service'
+import { contactsService, type Contact } from '@/services/contacts.service'
+import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
 import { useBranch } from '@/contexts/BranchContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { Modal } from '@/components/ui/Modal'
@@ -66,10 +68,30 @@ export function CashMovementTypeView({ type }: { type: MovementType }) {
   // mismo, vinculado a esa sesión activa, sin pedir elegir ninguna caja.
   const [session, setSession] = useState<CashSession | null | undefined>(undefined)
 
-  // Modal "Agregar ingreso/egreso" — mismos campos que el modal de movimiento de CashPage.tsx.
+  // Modal "Agregar ingreso/egreso" — mismos campos que el modal de movimiento de CashPage.tsx,
+  // más `contact_id` (solo egresos) para vincular el egreso con un proveedor.
   const [showAddModal, setShowAddModal] = useState(false)
-  const [addForm, setAddForm] = useState({ category: '', reference: '', amount: 0, notes: '', payment_method: 'efectivo' })
+  const [addForm, setAddForm] = useState<{ category: string; reference: string; amount: number; notes: string; payment_method: string; contact_id: number | undefined }>(
+    { category: '', reference: '', amount: 0, notes: '', payment_method: 'efectivo', contact_id: undefined },
+  )
   const [saving, setSaving] = useState(false)
+
+  // Proveedores para el egreso — mismo patrón que PurchaseRegisterPage.tsx (select + botón
+  // "Nuevo proveedor" con QuickContactCreateModal, mismas validaciones de RUC/DNI). Solo hace
+  // falta en Egresos: un ingreso no se vincula a un proveedor.
+  const [suppliers, setSuppliers] = useState<Contact[]>([])
+  const [loadingSuppliers, setLoadingSuppliers] = useState(false)
+  const [addSupplierOpen, setAddSupplierOpen] = useState(false)
+
+  useEffect(() => {
+    if (type !== 'expense') return
+    setLoadingSuppliers(true)
+    contactsService
+      .list('', 'supplier')
+      .then(s => setSuppliers(Array.isArray(s) ? s : []))
+      .catch(() => toast.error('Error al cargar proveedores'))
+      .finally(() => setLoadingSuppliers(false))
+  }, [type])
 
   const load = async () => {
     setLoading(true)
@@ -163,6 +185,7 @@ export function CashMovementTypeView({ type }: { type: MovementType }) {
       amount: 0,
       notes: '',
       payment_method: 'efectivo',
+      contact_id: undefined,
     })
     setShowAddModal(true)
   }
@@ -172,7 +195,7 @@ export function CashMovementTypeView({ type }: { type: MovementType }) {
     if (!addForm.amount) { toast.error('Monto requerido'); return }
     setSaving(true)
     try {
-      await cashbankService.addMovement(session.id, { type, ...addForm })
+      await cashbankService.addMovement(session.id, { type, ...addForm, contact_id: addForm.contact_id || undefined })
       toast.success(copy.addedToast)
       setShowAddModal(false)
       // Si ya estoy en la página 1, setPage(1) no dispara el useEffect (mismo valor) — recargo a
@@ -227,7 +250,11 @@ export function CashMovementTypeView({ type }: { type: MovementType }) {
               <table className="w-full text-sm min-w-[760px]">
                 <thead className="bg-gray-50">
                   <tr>
-                    {['Fecha', 'Sesión', 'Categoría', 'Documento / Referencia', 'Usuario', 'Método de pago', 'Monto', 'Acciones'].map(h => (
+                    {[
+                      'Fecha', 'Sesión', 'Categoría',
+                      ...(type === 'expense' ? ['Proveedor'] : []),
+                      'Documento / Referencia', 'Usuario', 'Método de pago', 'Monto', 'Acciones',
+                    ].map(h => (
                       <th key={h} className="text-left px-3 sm:px-4 py-2 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -251,6 +278,9 @@ export function CashMovementTypeView({ type }: { type: MovementType }) {
                             <span className="ml-1.5 text-[10px] leading-none px-1.5 py-0.5 rounded-full bg-orange-50 text-orange-600">Compra</span>
                           )}
                         </td>
+                        {type === 'expense' && (
+                          <td className="px-3 sm:px-4 py-2 text-xs whitespace-nowrap">{m.contact_name || '—'}</td>
+                        )}
                         <td className="px-3 sm:px-4 py-2 text-xs text-gray-500">{m.doc_number || m.cash_reference || 'Sin referencia'}</td>
                         <td className="px-3 sm:px-4 py-2 text-xs whitespace-nowrap">{m.user_name || '—'}</td>
                         <td className="px-3 sm:px-4 py-2 whitespace-nowrap">{formatPaymentMethodLabel(m.payment_method)}</td>
@@ -353,6 +383,38 @@ export function CashMovementTypeView({ type }: { type: MovementType }) {
               ))}
             </select>
           </div>
+          {type === 'expense' && (
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Proveedor (opcional)</label>
+              <div className="flex gap-2 items-stretch">
+                <select
+                  className="flex-1 min-w-0 border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
+                  value={addForm.contact_id ?? ''}
+                  disabled={loadingSuppliers}
+                  onChange={e => setAddForm(f => ({ ...f, contact_id: e.target.value ? Number(e.target.value) : undefined }))}
+                >
+                  <option value="">Sin proveedor</option>
+                  {suppliers.map(s => (
+                    <option key={s.id} value={s.id}>{s.business_name}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => setAddSupplierOpen(true)}
+                  className="shrink-0 inline-flex items-center justify-center rounded-xl border border-gray-200 px-3 py-2 text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] min-h-[42px]"
+                  title="Nuevo proveedor"
+                  aria-label="Nuevo proveedor"
+                >
+                  <UserPlus size={18} />
+                </button>
+              </div>
+              {suppliers.length === 0 && !loadingSuppliers && (
+                <p className="text-xs text-amber-700 mt-1">
+                  No hay proveedores registrados. Use el botón + para crear uno aquí.
+                </p>
+              )}
+            </div>
+          )}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Referencia</label>
             <input
@@ -410,6 +472,23 @@ export function CashMovementTypeView({ type }: { type: MovementType }) {
           </div>
         </div>
       </Modal>
+
+      {/* Alta rápida de proveedor desde el modal de Agregar egreso — mismo componente y
+          validaciones (RUC/DNI) que usa Compras (PurchaseRegisterPage.tsx). `stacked` porque se
+          abre encima del modal de Agregar egreso, ya abierto. */}
+      {type === 'expense' && (
+        <QuickContactCreateModal
+          open={addSupplierOpen}
+          onClose={() => setAddSupplierOpen(false)}
+          contactType="supplier"
+          defaultDocType="6"
+          stacked
+          onCreated={contact => {
+            setSuppliers(prev => [...prev, contact])
+            setAddForm(f => ({ ...f, contact_id: contact.id }))
+          }}
+        />
+      )}
     </div>
   )
 }

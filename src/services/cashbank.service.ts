@@ -59,6 +59,9 @@ export interface CashMovement {
   user_id?: number
   sale_id?: number | null
   purchase_id?: number | null
+  /** Proveedor/cliente vinculado a mano (típico en un egreso a proveedor sin compra registrada
+   *  todavía) — nulo en movimientos de venta/compra, que ya se vinculan por sale_id/purchase_id. */
+  contact_id?: number | null
   /** Si ESTE movimiento es la reversión de otro, el id del original (del mismo kind). */
   reversal_of_id?: number | null
 }
@@ -319,7 +322,7 @@ export const cashbankService = {
   listMovements: (sessionId: number): Promise<CashMovement[]> =>
     api.get(`/api/cashbank/sessions/${sessionId}/movements`).then(r => r.data.data ?? r.data ?? []),
 
-  addMovement: (sessionId: number, data: { type: 'income' | 'expense'; category: string; reference?: string; payment_method?: string; amount: number; notes?: string }): Promise<CashMovement> =>
+  addMovement: (sessionId: number, data: { type: 'income' | 'expense'; category: string; reference?: string; payment_method?: string; amount: number; notes?: string; contact_id?: number | null }): Promise<CashMovement> =>
     api.post(`/api/cashbank/sessions/${sessionId}/movements`, data).then(r => r.data.data ?? r.data),
 
   /** Revierte un movimiento MANUAL (ingreso/egreso sin venta/compra asociada). El original
