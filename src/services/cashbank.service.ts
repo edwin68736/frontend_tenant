@@ -230,6 +230,11 @@ export interface MovementReportRow {
   category?: string
   cash_reference?: string
   notes_detail?: string
+  /** Documento de origen cuando el movimiento viene de una venta o compra — permite imprimir el
+   *  comprobante REAL de ese documento (ticket fiscal para ventas) en vez del recibo interno
+   *  genérico de caja. Ausente/null cuando el movimiento es manual. */
+  sale_id?: number | null
+  purchase_id?: number | null
 }
 
 export interface MovementReportSummary {

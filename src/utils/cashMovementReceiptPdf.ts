@@ -1,5 +1,4 @@
 import { jsPDF } from 'jspdf'
-import type { CashMovement } from '@/services/cashbank.service'
 import { getCompanyConfigCache, getCompanyLogoForPrint } from '@/lib/companyConfig/store'
 import { fitReceiptLogoMm, resolveReceiptLogoForPdf } from '@/utils/receiptLogoPdf'
 import { scaleLogoDimension } from '@/services/printers/logoPrintSize'
@@ -20,9 +19,25 @@ import { TUKIFAC_APP_NAME } from '@/lib/appVersion'
  *  receiptPdf.ts) para no dejar un PDF con medio metro de página en blanco. */
 const TICKET_PAGE_HEIGHT = 300
 
-/** Datos de contexto que NO viven en CashMovement (pertenecen a la sesión/usuario, no al
- *  movimiento) — quien llama a este generador ya los tiene a mano (sesión abierta + usuario
- *  autenticado), así que se pasan explícitos en vez de volver a pedirlos aquí. */
+/** Forma mínima que necesita este generador — deliberadamente más chica que `CashMovement`
+ *  (services/cashbank.service.ts) para que también la satisfaga, sin adaptar campos, una fila
+ *  del reporte histórico multi-sesión (`MovementReportRow`) mapeada por quien llama: el
+ *  histórico de Ingresos/Egresos (CashMovementTypeView.tsx) usa esta misma función tanto para
+ *  movimientos de MI caja abierta como para movimientos ya cerrados. */
+export interface CashMovementReceiptInput {
+  id: number
+  type: 'income' | 'expense'
+  category: string
+  reference?: string
+  payment_method?: string
+  notes?: string
+  amount: number
+  created_at: string
+}
+
+/** Datos de contexto que NO viven en el movimiento (pertenecen a la sesión/usuario) — quien
+ *  llama a este generador ya los tiene a mano, así que se pasan explícitos en vez de volver a
+ *  pedirlos aquí. */
 export interface CashMovementReceiptContext {
   sessionId: number
   cashierName?: string
@@ -40,7 +55,7 @@ function money(n: number): string {
  * simple: no reemplaza la representación impresa de un comprobante electrónico.
  */
 export async function generateCashMovementReceiptPdf(
-  movement: CashMovement,
+  movement: CashMovementReceiptInput,
   ctx: CashMovementReceiptContext,
   paperWidthMm?: TicketPaperWidthMm,
 ): Promise<jsPDF> {
@@ -178,13 +193,13 @@ export async function generateCashMovementReceiptPdf(
   return doc
 }
 
-function movementReceiptFileName(movement: CashMovement): string {
+function movementReceiptFileName(movement: CashMovementReceiptInput): string {
   const kind = movement.type === 'income' ? 'ingreso' : 'egreso'
   return `${kind}-caja-${movement.id}.pdf`
 }
 
 export async function downloadCashMovementReceiptPdf(
-  movement: CashMovement,
+  movement: CashMovementReceiptInput,
   ctx: CashMovementReceiptContext,
   paperWidthMm?: TicketPaperWidthMm,
 ): Promise<void> {
@@ -195,7 +210,7 @@ export async function downloadCashMovementReceiptPdf(
 /** Muestra el ticket en el visor de PDF global de la app (mismo visor que usan los
  *  comprobantes de venta — ver pdfViewerStore.ts). */
 export async function openCashMovementReceiptPdfViewer(
-  movement: CashMovement,
+  movement: CashMovementReceiptInput,
   ctx: CashMovementReceiptContext,
   paperWidthMm?: TicketPaperWidthMm,
 ): Promise<void> {
