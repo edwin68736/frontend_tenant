@@ -9,7 +9,7 @@ import {
   Utensils, FileText, X, Grid3x3, Layers, ChefHat, UserCog,
   Shield, MapPin, FileCode, ShieldCheck, ArrowRightLeft, ListOrdered, LayoutGrid, RotateCcw, ShoppingBag,
   ChevronLeft, ChevronRight, BarChart3, CreditCard, Briefcase, UserCircle, Car, Lock, Send, FileSignature,
-  Ruler,
+  Ruler, TrendingUp, TrendingDown,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -248,6 +248,8 @@ const NAV_GROUPS: NavGroup[] = [
     icon: <Wallet size={16} />,
     children: [
       { id: 'fin-caja', to: '/cashbank/cash', label: 'Caja', icon: <Wallet size={14} />, module: 'cashbank', permission: 'cashbank.view' },
+      { id: 'fin-ingresos', to: '/cashbank/income', label: 'Ingresos', icon: <TrendingUp size={14} />, module: 'cashbank', permission: 'cashbank.view' },
+      { id: 'fin-egresos', to: '/cashbank/expenses', label: 'Egresos', icon: <TrendingDown size={14} />, module: 'cashbank', permission: 'cashbank.view' },
       { id: 'fin-bancos', to: '/cashbank/bank', label: 'Cuentas / Bancos', icon: <Building2 size={14} />, module: 'cashbank', permission: 'cashbank.view' },
       { id: 'fin-metodos', to: '/cashbank/payment-methods', label: 'Métodos de pago', icon: <Wallet size={14} />, module: 'cashbank', permission: 'cashbank.manage' },
       {

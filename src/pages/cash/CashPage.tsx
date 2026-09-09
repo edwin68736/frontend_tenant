@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { X, TrendingUp, TrendingDown, Wallet, History, Pencil, Trash2, Unlock, Eye } from 'lucide-react'
+import { TrendingUp, TrendingDown, Wallet, History, Pencil, Trash2, Unlock, Eye, MoreVertical, X } from 'lucide-react'
 import { cashbankService, type CashSession, type SessionBalanceSummary } from '@/services/cashbank.service'
 import { openCashDrawer } from '@/services/printers.service'
 import { useBranch } from '@/contexts/BranchContext'
 import { useAuth } from '@/contexts/AuthContext'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
+import { RowMenu } from '@/components/ui/RowMenu'
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { PendingRefundsPanel, PendingRefundsNotice } from '@/components/cash/PendingRefundsPanel'
 import {
@@ -26,6 +27,7 @@ export default function CashPage() {
 }
 
 function CashContent() {
+  const navigate = useNavigate()
   const { activeBranchId } = useBranch()
   const { hasPermission } = useAuth()
   const [session, setSession] = useState<CashSession | null | undefined>(undefined)
@@ -330,65 +332,63 @@ function CashContent() {
                               type="button"
                               title="Registrar ingreso"
                               onClick={() => { setMovType('income'); setMovForm({ category: 'ingreso_manual', reference: '', amount: 0, notes: '', payment_method: 'efectivo' }); setShowMov(true) }}
-                              className="p-1.5 rounded-lg text-green-600 hover:bg-green-50"
+                              className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 text-xs font-medium"
                             >
-                              <TrendingUp size={14} />
+                              <TrendingUp size={14} /> Ingreso
                             </button>
                             <button
                               type="button"
                               title="Registrar egreso"
                               onClick={() => { setMovType('expense'); setMovForm({ category: 'egreso_manual', reference: '', amount: 0, notes: '', payment_method: 'efectivo' }); setShowMov(true) }}
-                              className="p-1.5 rounded-lg text-red-500 hover:bg-red-50"
+                              className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 text-xs font-medium"
                             >
-                              <TrendingDown size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              title="Abrir gaveta"
-                              onClick={() => void handleOpenDrawer()}
-                              disabled={openingDrawer}
-                              className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-100 disabled:opacity-50"
-                            >
-                              <Unlock size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              title="Cerrar caja"
-                              onClick={() => { setCloseNotes(''); setCloseArqueo(session?.arqueo_json ? parseArqueoJson(session.arqueo_json) : emptyArqueo()); setCloseWithArqueo(!!session?.arqueo_json); setShowClose(true) }}
-                              className="inline-flex items-center gap-1 text-xs text-gray-600 hover:underline"
-                            >
-                              <Wallet size={13} /> Cerrar
+                              <TrendingDown size={14} /> Egreso
                             </button>
                           </>
                         )}
-                        <Link
-                          to={`/cashbank/cash/${s.id}`}
-                          title="Ver el detalle completo de esta sesión y exportar su reporte"
-                          className="inline-flex items-center gap-1 text-xs text-gray-600 hover:underline"
-                        >
-                          <Eye size={13} /> Detalle
-                        </Link>
-                        {canAdjustOpening && (
-                          <button
-                            type="button"
-                            title="Corregir el monto de apertura"
-                            onClick={() => setOpeningEdit({ session: s, amount: Number(s.opening_balance) })}
-                            className="inline-flex items-center gap-1 text-xs text-[rgb(var(--p600))] hover:underline"
-                          >
-                            <Pencil size={13} /> Apertura
-                          </button>
-                        )}
-                        {/* Solo las cajas sin nada registrado: las demás respaldan dinero contado. */}
-                        {canDeleteSession && s.empty && (
-                          <button
-                            type="button"
-                            title="Eliminar esta caja (no registró movimientos ni ventas)"
-                            onClick={() => setDeleteTarget(s)}
-                            className="inline-flex items-center gap-1 text-xs text-red-600 hover:underline"
-                          >
-                            <Trash2 size={13} /> Eliminar
-                          </button>
-                        )}
+                        {/* Acciones secundarias (abrir gaveta, cerrar, detalle, apertura, eliminar)
+                            agrupadas en un menú desplegable: se renderiza vía portal en <body>
+                            (RowMenu) para no quedar recortado por el overflow-x-auto de la tabla,
+                            con z-index por encima de cualquier otro contenido de la página. */}
+                        <RowMenu
+                          title="Más acciones"
+                          triggerIcon={<MoreVertical size={16} />}
+                          triggerClassName="inline-flex items-center gap-0.5 p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg ring-1 ring-gray-200 disabled:opacity-40"
+                          items={[
+                            {
+                              hidden: !isMine,
+                              icon: <Unlock size={14} className="text-gray-500" />,
+                              label: 'Abrir gaveta',
+                              disabled: openingDrawer,
+                              onClick: () => void handleOpenDrawer(),
+                            },
+                            {
+                              hidden: !isMine,
+                              icon: <Wallet size={14} className="text-gray-600" />,
+                              label: 'Cerrar caja',
+                              onClick: () => { setCloseNotes(''); setCloseArqueo(session?.arqueo_json ? parseArqueoJson(session.arqueo_json) : emptyArqueo()); setCloseWithArqueo(!!session?.arqueo_json); setShowClose(true) },
+                            },
+                            {
+                              icon: <Eye size={14} className="text-gray-600" />,
+                              label: 'Ver detalle',
+                              onClick: () => navigate(`/cashbank/cash/${s.id}`),
+                            },
+                            {
+                              hidden: !canAdjustOpening,
+                              icon: <Pencil size={14} className="text-[rgb(var(--p600))]" />,
+                              label: 'Editar apertura',
+                              onClick: () => setOpeningEdit({ session: s, amount: Number(s.opening_balance) }),
+                            },
+                            // Solo las cajas sin nada registrado: las demás respaldan dinero contado.
+                            {
+                              hidden: !(canDeleteSession && s.empty),
+                              icon: <Trash2 size={14} />,
+                              label: 'Eliminar caja',
+                              danger: true,
+                              onClick: () => setDeleteTarget(s),
+                            },
+                          ]}
+                        />
                       </div>
                     </td>
                   </tr>

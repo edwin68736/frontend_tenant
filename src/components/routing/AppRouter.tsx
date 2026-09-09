@@ -36,6 +36,8 @@ const InventoryIngressPage = lazy(() => import('@/pages/inventory/InventoryIngre
 const InventoryEgressPage = lazy(() => import('@/pages/inventory/InventoryEgressPage'))
 const InventoryImportAdjustmentPage = lazy(() => import('@/pages/inventory/InventoryImportAdjustmentPage'))
 const CashPage = lazy(() => import('@/pages/cash/CashPage'))
+const CashIncomePage = lazy(() => import('@/pages/cash/CashIncomePage'))
+const CashExpensePage = lazy(() => import('@/pages/cash/CashExpensePage'))
 const CashSessionDetailPage = lazy(() => import('@/pages/cash/CashSessionDetailPage'))
 const CashReportsPage = lazy(() => import('@/pages/cash/CashReportsPage'))
 const ReceivablesPage = lazy(() => import('@/pages/receivables/ReceivablesPage'))
@@ -175,6 +177,8 @@ function AppRoutes() {
         <Route path="inventory/kardex" element={<Lazy><InventoryKardexPage /></Lazy>} />
         <Route path="inventory/import-adjustment" element={<Lazy><InventoryImportAdjustmentPage /></Lazy>} />
         <Route path="cashbank/cash" element={<Lazy><CashPage /></Lazy>} />
+        <Route path="cashbank/income" element={<Lazy><CashIncomePage /></Lazy>} />
+        <Route path="cashbank/expenses" element={<Lazy><CashExpensePage /></Lazy>} />
         <Route path="cashbank/cash/:id" element={<Lazy><CashSessionDetailPage /></Lazy>} />
         <Route path="cashbank/reports" element={<Lazy><CashReportsPage /></Lazy>} />
         <Route path="cashbank/receivables" element={<Navigate to="/sales/receivables" replace />} />
