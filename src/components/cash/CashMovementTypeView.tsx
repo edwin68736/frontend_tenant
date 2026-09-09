@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { TrendingUp, TrendingDown, Eye, Download } from 'lucide-react'
-import { cashbankService, type MovementReportRow } from '@/services/cashbank.service'
+import { TrendingUp, TrendingDown, Eye, Download, Plus } from 'lucide-react'
+import { cashbankService, type CashSession, type MovementReportRow } from '@/services/cashbank.service'
 import { useBranch } from '@/contexts/BranchContext'
 import { useAuth } from '@/contexts/AuthContext'
-import { categoryLabel } from '@/utils/cashMovementCategories'
+import { Modal } from '@/components/ui/Modal'
+import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
+import { INCOME_CATEGORIES, EXPENSE_CATEGORIES, categoryLabel } from '@/utils/cashMovementCategories'
 import { formatPaymentMethodLabel } from '@/utils/paymentMethodLabel'
 import { createLocalReceiptPdfObjectUrl, downloadLocalReceiptPdf } from '@/utils/localReceiptPdf'
 import { openPdfViewer } from '@/components/pdf/pdfViewerStore'
@@ -19,18 +21,22 @@ type MovementType = 'income' | 'expense'
 
 const PER_PAGE_OPTIONS = [20, 50, 100] as const
 
-const COPY: Record<MovementType, { title: string; subtitle: string; emptyLabel: string; amountLabel: string }> = {
+const COPY: Record<MovementType, { title: string; subtitle: string; emptyLabel: string; amountLabel: string; addLabel: string; addedToast: string }> = {
   income: {
     title: 'Ingresos',
     subtitle: 'Histórico de ingresos manuales y ventas cobradas — de mis cajas (abiertas y cerradas)',
     emptyLabel: 'Sin ingresos registrados',
     amountLabel: 'Total ingresado',
+    addLabel: 'Agregar ingreso',
+    addedToast: 'Ingreso registrado',
   },
   expense: {
     title: 'Egresos',
     subtitle: 'Histórico de egresos — de mis cajas (abiertas y cerradas)',
     emptyLabel: 'Sin egresos registrados',
     amountLabel: 'Total retirado',
+    addLabel: 'Agregar egreso',
+    addedToast: 'Egreso registrado',
   },
 }
 
@@ -55,18 +61,32 @@ export function CashMovementTypeView({ type }: { type: MovementType }) {
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState<number>(20)
 
+  // Mi caja abierta en esta sucursal (GetOpenSession la resuelve por usuario, igual que en
+  // CashPage.tsx) — el botón "Agregar ingreso/egreso" de esta vista registra el movimiento ahí
+  // mismo, vinculado a esa sesión activa, sin pedir elegir ninguna caja.
+  const [session, setSession] = useState<CashSession | null | undefined>(undefined)
+
+  // Modal "Agregar ingreso/egreso" — mismos campos que el modal de movimiento de CashPage.tsx.
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [addForm, setAddForm] = useState({ category: '', reference: '', amount: 0, notes: '', payment_method: 'efectivo' })
+  const [saving, setSaving] = useState(false)
+
   const load = async () => {
     setLoading(true)
     try {
-      const res = await cashbankService.listMovementsReport({
-        branch_id: activeBranchId || undefined,
-        type,
-        page,
-        per_page: perPage,
-      })
+      const [res, sess] = await Promise.all([
+        cashbankService.listMovementsReport({
+          branch_id: activeBranchId || undefined,
+          type,
+          page,
+          per_page: perPage,
+        }),
+        cashbankService.getOpenSession(activeBranchId || undefined),
+      ])
       setRows(res.data)
       setTotal(res.total)
       setSummary({ sumIncome: res.summary.sum_income, sumExpense: res.summary.sum_expense })
+      setSession(sess ?? null)
     } catch {
       toast.error('Error al cargar movimientos')
     } finally {
@@ -134,6 +154,39 @@ export function CashMovementTypeView({ type }: { type: MovementType }) {
     }
   }
 
+  const categoryOptions = type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES
+
+  const openAddModal = () => {
+    setAddForm({
+      category: type === 'income' ? 'ingreso_manual' : 'egreso_manual',
+      reference: '',
+      amount: 0,
+      notes: '',
+      payment_method: 'efectivo',
+    })
+    setShowAddModal(true)
+  }
+
+  const handleAddMovement = async () => {
+    if (!session) { toast.error('No tienes una caja abierta en esta sucursal'); return }
+    if (!addForm.amount) { toast.error('Monto requerido'); return }
+    setSaving(true)
+    try {
+      await cashbankService.addMovement(session.id, { type, ...addForm })
+      toast.success(copy.addedToast)
+      setShowAddModal(false)
+      // Si ya estoy en la página 1, setPage(1) no dispara el useEffect (mismo valor) — recargo a
+      // mano. Si no, dejo que el useEffect (que ya escucha `page`) haga la única recarga, para no
+      // pedir el listado dos veces con la página vieja todavía en el closure de este handler.
+      if (page === 1) void load()
+      else setPage(1)
+    } catch (e: any) {
+      toast.error(e.response?.data?.error ?? 'Error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const totalAmount = type === 'income' ? summary.sumIncome : summary.sumExpense
 
   return (
@@ -143,8 +196,19 @@ export function CashMovementTypeView({ type }: { type: MovementType }) {
           <h2 className="text-lg font-bold text-gray-800">{copy.title}</h2>
           <p className="text-sm text-gray-500">{copy.subtitle}</p>
         </div>
-        <div className={`px-3 py-2 rounded-xl text-sm font-semibold ${type === 'income' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
-          {copy.amountLabel}: S/ {totalAmount.toFixed(2)}
+        <div className="flex items-center gap-2">
+          <div className={`px-3 py-2 rounded-xl text-sm font-semibold ${type === 'income' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
+            {copy.amountLabel}: S/ {totalAmount.toFixed(2)}
+          </div>
+          <button
+            type="button"
+            onClick={openAddModal}
+            disabled={!session}
+            title={session ? undefined : 'Abre una caja en esta sucursal para registrar movimientos'}
+            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-medium text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap ${type === 'income' ? 'bg-green-600' : 'bg-red-500'}`}
+          >
+            <Plus size={16} /> {copy.addLabel}
+          </button>
         </div>
       </div>
 
@@ -268,6 +332,84 @@ export function CashMovementTypeView({ type }: { type: MovementType }) {
           </>
         )}
       </div>
+
+      {/* Modal "Agregar ingreso/egreso" — mismos campos que el modal de movimiento de CashPage.tsx,
+          registrado siempre contra MI caja abierta (session), nunca contra una que elija a mano. */}
+      <Modal open={showAddModal} onClose={() => setShowAddModal(false)} contentClassName="max-w-md w-full mx-2 sm:mx-0 max-h-[90vh] overflow-y-auto">
+        <h3 className="font-bold text-gray-800 text-base sm:text-lg">{copy.addLabel}</h3>
+        {session && (
+          <p className="text-xs text-gray-500">Se registrará en tu caja abierta #{session.id}.</p>
+        )}
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Categoría</label>
+            <select
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              value={addForm.category}
+              onChange={e => setAddForm(f => ({ ...f, category: e.target.value }))}
+            >
+              {categoryOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Referencia</label>
+            <input
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              value={addForm.reference}
+              onChange={e => setAddForm(f => ({ ...f, reference: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Notas</label>
+            <input
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              value={addForm.notes}
+              onChange={e => setAddForm(f => ({ ...f, notes: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Método de pago</label>
+            <select
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              value={addForm.payment_method}
+              onChange={e => setAddForm(f => ({ ...f, payment_method: e.target.value }))}
+            >
+              <option value="efectivo">Efectivo</option>
+              <option value="yape">Yape</option>
+              <option value="plin">Plin</option>
+              <option value="tarjeta">Tarjeta</option>
+              <option value="transferencia">Transferencia</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Monto (S/) *</label>
+            <MoneyAmountInput
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              value={addForm.amount}
+              onChange={v => setAddForm(f => ({ ...f, amount: v }))}
+              emptyWhenZero
+              placeholder="0.00"
+            />
+          </div>
+          <div className="flex flex-col-reverse sm:flex-row gap-2 pt-1">
+            <button
+              onClick={() => setShowAddModal(false)}
+              className="flex-1 py-2.5 sm:py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleAddMovement}
+              disabled={saving}
+              className={`flex-1 py-2.5 sm:py-2 ${type === 'income' ? 'bg-green-600' : 'bg-red-500'} text-white rounded-xl text-sm font-medium disabled:opacity-50`}
+            >
+              {saving ? '...' : 'Guardar'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }
