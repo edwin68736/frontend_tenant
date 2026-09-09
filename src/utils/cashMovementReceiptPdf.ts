@@ -124,6 +124,15 @@ export async function generateCashMovementReceiptPdf(
 
   // Encabezado empresa (misma fuente de datos que los comprobantes de venta: config cacheada
   // al iniciar sesión — sin llamadas a red aquí).
+  //
+  // El primer contenido dibujado es el nombre de la empresa en negrita 12pt (o el logo): a esa
+  // altura `y` es la línea de BASE del texto, y las mayúsculas suben ~3mm por encima de esa
+  // línea de base. Sin este espacio extra, `y` (margen + padding superior, ~1.8mm) queda más
+  // arriba que el borde superior de la página (y=0) para esas mayúsculas — literalmente fuera
+  // del PDF, así que la parte de arriba de la razón social se veía cortada (mismo espacio que
+  // reserva receiptPdf.ts con su `addSpace(3)` inicial en el ticket real de venta).
+  space(3)
+
   const cfg = getCompanyConfigCache()
   const companyLogo = getCompanyLogoForPrint()
   if (companyLogo) {
