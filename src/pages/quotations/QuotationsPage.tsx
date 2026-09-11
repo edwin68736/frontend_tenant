@@ -285,10 +285,13 @@ function QuotationsContent() {
     setConvertOpen(true)
     setConvertLoading(true)
     try {
+      // contactsService.list con catch propio: un rol con acceso a cotizaciones (sales.view)
+      // pero sin contacts.view no debe perder también las series/el detalle de la cotización
+      // por un 403 ajeno — mismo patrón de bug que rompía Nota de venta (ver company/routes.go).
       const [raw, detail, customerList] = await Promise.all([
         companyService.listSeries({ branch_id: row.branch_id, category: 'venta' }),
         quotationsService.get(row.id),
-        contactsService.list('', 'customer'),
+        contactsService.list('', 'customer').catch(() => []),
       ])
       setConvertSeriesList((raw as SeriesRow[]) ?? [])
       const customers = Array.isArray(customerList) ? customerList : []

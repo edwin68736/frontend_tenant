@@ -107,7 +107,9 @@ function InventoryContent() {
   }, [stockLessThanInput])
 
   useEffect(() => {
-    Promise.all([companyService.listBranches(), productsService.listCategories()])
+    // Catch individual en categorías: un rol con inventory.view pero sin products.view no debe
+    // quedarse también sin sucursales por un 403 ajeno (mismo patrón que rompía Nota de venta).
+    Promise.all([companyService.listBranches(), productsService.listCategories().catch(() => [])])
       .then(([b, c]) => {
         setBranches((b ?? []) as Branch[])
         setCategories((c ?? []) as Category[])
