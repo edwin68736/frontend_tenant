@@ -14,7 +14,10 @@ export const PERMISSION_MODULE_LABELS: Record<string, string> = {
   cashbank: 'Caja y bancos',
   reports: 'Reportes',
   billing: 'Facturación electrónica',
+  fleet: 'Transportistas y flota',
   memberships: 'Membresías',
+  ecommerce: 'Tienda virtual',
+  modules: 'Módulos del plan',
   general: 'General',
 }
 
@@ -61,6 +64,11 @@ const PERMISSION_FALLBACK_LABELS: Record<string, string> = {
   'memberships.edit': 'Editar membresías',
   'memberships.delete': 'Eliminar membresías',
   'memberships.generate_sale': 'Generar venta desde membresía',
+  'modules.manage': 'Activar/desactivar módulos',
+  'ecommerce.view': 'Ver tienda virtual y pedidos web',
+  'ecommerce.manage': 'Configurar tienda virtual',
+  'fleet.view': 'Ver transportistas, conductores y vehículos',
+  'fleet.manage': 'Gestionar transportistas, conductores y vehículos',
 }
 
 const MODULE_ORDER = [
@@ -72,9 +80,12 @@ const MODULE_ORDER = [
   'contacts',
   'cashbank',
   'billing',
+  'fleet',
+  'ecommerce',
   'memberships',
   'reports',
   'company',
+  'modules',
   'users',
   'roles',
   'general',

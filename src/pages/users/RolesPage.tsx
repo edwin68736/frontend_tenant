@@ -101,40 +101,42 @@ export default function RolesPage() {
       </div>
       {roles.length === 0 && <div className="bg-white rounded-2xl shadow-sm text-center py-10 text-gray-400 text-sm">No hay roles registrados</div>}
 
-      <Modal open={show} onClose={() => setShow(false)}>
+      <Modal open={show} onClose={() => setShow(false)} contentClassName="max-w-3xl lg:max-w-5xl">
         <h3 className="font-bold text-gray-800">{editing ? 'Editar rol' : 'Nuevo rol'}</h3>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Nombre *</label>
-          <input className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-            value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
-        </div>
-        <div><label className="block text-xs font-medium text-gray-600 mb-1">Descripción</label>
-          <input className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-            value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div><label className="block text-xs font-medium text-gray-600 mb-1">Nombre *</label>
+            <input className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+          </div>
+          <div><label className="block text-xs font-medium text-gray-600 mb-1">Descripción</label>
+            <input className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+          </div>
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-2">Permisos ({form.permission_ids.length} seleccionados)</label>
-          <div className="space-y-3 max-h-64 overflow-y-auto border border-gray-100 rounded-xl p-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto border border-gray-100 rounded-xl p-3">
             {groupedEntries.map(([mod, perms]) => (
-              <div key={mod}>
+              <div key={mod} className="border border-gray-100 rounded-lg p-2.5">
                 <div className="flex items-center gap-2 mb-1.5">
                   <ChevronDown size={12} className="text-gray-400" />
                   <span className="text-xs font-semibold uppercase text-gray-500">{getPermissionModuleLabel(mod)}</span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pl-4">
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-1.5 pl-4">
                   {perms.map(p => (
                     <label
                       key={p.id}
-                      className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer hover:text-gray-800"
+                      className="flex items-start gap-1.5 text-xs text-gray-600 cursor-pointer hover:text-gray-800"
                       title={getPermissionInternalKey(p)}
                     >
-                      <input type="checkbox" checked={form.permission_ids.includes(p.id)} onChange={() => togglePerm(p.id)} className="rounded shrink-0" />
+                      <input type="checkbox" checked={form.permission_ids.includes(p.id)} onChange={() => togglePerm(p.id)} className="rounded shrink-0 mt-0.5" />
                       <span>{getPermissionDisplayLabel(p)}</span>
                     </label>
                   ))}
                 </div>
               </div>
             ))}
-            {permissions.length === 0 && <p className="text-xs text-gray-400 text-center py-2">Sin permisos disponibles</p>}
+            {permissions.length === 0 && <p className="text-xs text-gray-400 text-center py-2 col-span-full">Sin permisos disponibles</p>}
           </div>
         </div>
         <div className="flex gap-2 pt-2">
