@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { authService, decodeJWT, type AuthUser, type LoginPayload, type JWTPayload } from '@/services/auth.service'
+import { hasTenantPermission } from '@/lib/permissions'
 import {
   buildUserFromMasterToken,
   clearMasterSsoFromUrl,
@@ -206,7 +207,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const hasModule = (key: string): boolean => state.modules.includes(key)
-  const hasPermission = (permission: string): boolean => state.permissions.includes(permission)
+  const hasPermission = (permission: string): boolean => hasTenantPermission(state.permissions, permission)
 
   return (
     <AuthContext.Provider value={{ ...state, login, logout, updateSessionUser, hasModule, hasPermission }}>
