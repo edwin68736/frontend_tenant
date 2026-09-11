@@ -54,6 +54,7 @@ const SIMPLE_ITEMS: SimpleItem[] = [
     to: '/modules',
     label: 'Módulos',
     icon: <LayoutGrid size={16} />,
+    permission: 'modules.manage',
   },
   {
     id: 'contacts',
@@ -129,6 +130,7 @@ const NAV_GROUPS: NavGroup[] = [
         label: 'Pedidos web',
         icon: <ShoppingBag size={14} />,
         module: 'ecommerce',
+        permission: 'ecommerce.view',
         exact: true,
       },
     ],
@@ -268,7 +270,7 @@ const NAV_GROUPS: NavGroup[] = [
         module: 'purchases',
         permission: 'purchases.view',
       },
-      { id: 'fin-reporte-caja', to: '/cashbank/reports', label: 'Reporte de caja', icon: <FileText size={14} />, module: 'cashbank', permission: 'reports.view' },
+      { id: 'fin-reporte-caja', to: '/cashbank/reports', label: 'Reporte de caja', icon: <FileText size={14} />, module: 'cashbank', permission: 'cashbank.view' },
     ],
   },
   {
@@ -278,9 +280,9 @@ const NAV_GROUPS: NavGroup[] = [
     children: [
       { id: 'doc-guias-remitente', to: '/billing/docs/despatches/remitente', label: 'G.R. Remitente', icon: <Send size={14} />, module: 'billing', permission: 'billing.send' },
       { id: 'doc-guias-transportista', to: '/billing/docs/despatches/transportista', label: 'G.R. Transportista', icon: <Truck size={14} />, module: 'billing', permission: 'billing.send' },
-      { id: 'doc-transportistas', to: '/fleet/carriers', label: 'Transportistas', icon: <Truck size={14} />, module: 'billing', permission: 'billing.send' },
-      { id: 'doc-conductores', to: '/fleet/drivers', label: 'Conductores', icon: <UserCircle size={14} />, module: 'billing', permission: 'billing.send' },
-      { id: 'doc-vehiculos', to: '/fleet/vehicles', label: 'Vehículos', icon: <Car size={14} />, module: 'billing', permission: 'billing.send' },
+      { id: 'doc-transportistas', to: '/fleet/carriers', label: 'Transportistas', icon: <Truck size={14} />, module: 'billing', permission: 'fleet.view' },
+      { id: 'doc-conductores', to: '/fleet/drivers', label: 'Conductores', icon: <UserCircle size={14} />, module: 'billing', permission: 'fleet.view' },
+      { id: 'doc-vehiculos', to: '/fleet/vehicles', label: 'Vehículos', icon: <Car size={14} />, module: 'billing', permission: 'fleet.view' },
     ],
   },
   {
@@ -298,13 +300,13 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Reportes',
     icon: <BarChart3 size={16} />,
     children: [
-      { id: 'rep-ventas', to: '/reports/sales', label: 'Reporte de ventas', icon: <Receipt size={14} /> },
-      { id: 'rep-productos', to: '/reports/products', label: 'Reporte de productos', icon: <Tag size={14} /> },
-      { id: 'rep-ventas-producto', to: '/reports/sales-by-product', label: 'Ventas por producto', icon: <BarChart3 size={14} /> },
-      { id: 'rep-notas', to: '/reports/notes', label: 'Notas de crédito/débito', icon: <FileSignature size={14} /> },
-      { id: 'rep-compras', to: '/reports/purchases', label: 'Reporte de compras', icon: <Truck size={14} /> },
-      { id: 'rep-kardex', to: '/reports/kardex', label: 'Reporte de kardex', icon: <ListOrdered size={14} /> },
-      { id: 'rep-caja', to: '/reports/cash', label: 'Reporte de caja', icon: <Wallet size={14} /> },
+      { id: 'rep-ventas', to: '/reports/sales', label: 'Reporte de ventas', icon: <Receipt size={14} />, module: 'sales', permission: 'sales.view' },
+      { id: 'rep-productos', to: '/reports/products', label: 'Reporte de productos', icon: <Tag size={14} />, module: 'products', permission: 'products.view' },
+      { id: 'rep-ventas-producto', to: '/reports/sales-by-product', label: 'Ventas por producto', icon: <BarChart3 size={14} />, module: 'sales', permission: 'sales.view' },
+      { id: 'rep-notas', to: '/reports/notes', label: 'Notas de crédito/débito', icon: <FileSignature size={14} />, module: 'billing', permission: 'billing.send' },
+      { id: 'rep-compras', to: '/reports/purchases', label: 'Reporte de compras', icon: <Truck size={14} />, module: 'purchases', permission: 'purchases.view' },
+      { id: 'rep-kardex', to: '/reports/kardex', label: 'Reporte de kardex', icon: <ListOrdered size={14} />, module: 'inventory', permission: 'inventory.view' },
+      { id: 'rep-caja', to: '/reports/cash', label: 'Reporte de caja', icon: <Wallet size={14} />, module: 'cashbank', permission: 'cashbank.view' },
     ],
   },
   {
