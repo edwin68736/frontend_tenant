@@ -17,7 +17,7 @@ import { isCapacitorAndroid } from '@/lib/platform/detect'
 import { useDesktopViewport, useTabletViewport } from '@/hooks/useMediaQuery'
 
 export default function HomePage() {
-  const { modules } = useAuth()
+  const { modules, hasPermission } = useAuth()
 
   // El hook va primero y sin condiciones: dentro de un `||` el short-circuit podría saltárselo.
   const isDesktop = useDesktopViewport()
@@ -30,53 +30,57 @@ export default function HomePage() {
 
   const hasModule = (key: string) => modules.includes(key)
 
+  // Antes solo filtraba por módulo del plan, nunca por permiso — "Módulos" y "Dashboard" se
+  // veían para cualquier rol (la ruta sí los bloquea, ver AppRouter.tsx, pero el atajo quedaba
+  // visible igual), y el resto solo chequeaba el módulo, no si el rol puede usarlos. Mismo
+  // permiso que exige cada ruta real.
   const quickLinks: QuickLink[] = [
-    hasModule('sales') && {
+    hasModule('sales') && hasPermission('sales.pos') && {
       to: '/sales/pos',
       icon: ShoppingCart,
       label: 'Punto de venta',
       description: 'Crear ventas rápidas desde POS',
     },
-    hasModule('sales') && {
+    hasModule('sales') && hasPermission('sales.view') && {
       to: '/sales',
       icon: Receipt,
       label: 'Notas de venta',
       description: 'Notas de venta internas (SUNAT 00), sin envío obligatorio',
-      newTo: '/sales/nota-venta',
+      newTo: hasPermission('sales.create') ? '/sales/nota-venta' : undefined,
     },
-    hasModule('sales') && {
+    hasModule('sales') && hasPermission('sales.view') && {
       to: '/quotations',
       icon: FileText,
       label: 'Cotizaciones',
       description: 'Cotiza precios antes de emitir el comprobante',
-      newTo: '/quotations/new',
+      newTo: hasPermission('sales.create') ? '/quotations/new' : undefined,
     },
-    hasModule('purchases') && {
+    hasModule('purchases') && hasPermission('purchases.view') && {
       to: '/purchases',
       icon: Truck,
       label: 'Compras',
       description: 'Registra facturas y boletas de tus proveedores',
-      newTo: '/purchases/register',
+      newTo: hasPermission('purchases.create') ? '/purchases/register' : undefined,
     },
-    hasModule('products') && {
+    hasModule('products') && hasPermission('products.view') && {
       to: '/products',
       icon: Tag,
       label: 'Productos',
       description: 'Gestiona tu catálogo y precios',
     },
-    hasModule('cashbank') && {
+    hasModule('cashbank') && hasPermission('cashbank.view') && {
       to: '/cashbank/cash',
       icon: Wallet,
       label: 'Caja',
       description: 'Abrir o revisar sesiones de caja',
     },
-    {
+    hasPermission('modules.manage') && {
       to: '/modules',
       icon: Grid3x3,
       label: 'Módulos',
       description: 'Explora módulos adicionales como Restaurante',
     },
-    {
+    hasPermission('dashboard.view') && {
       to: '/dashboard',
       icon: LayoutDashboard,
       label: 'Dashboard',
