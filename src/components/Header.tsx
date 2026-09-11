@@ -129,7 +129,7 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
 
       <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0 overflow-hidden">
         <HeaderQuickActions />
-        <SubscriptionHeaderWidget />
+        {hasPermission('subscription.view') && <SubscriptionHeaderWidget />}
       </div>
 
       {/* Botón de soporte directo por WhatsApp — visible desde md (medio/grande); en pantallas
@@ -298,7 +298,7 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
           <div className="absolute right-0 top-full mt-1.5 w-56 rounded-2xl border border-gray-100 bg-white shadow-xl ring-1 ring-black/5 py-1.5 z-50">
             <BranchSwitcherUserMenu onClose={() => setUserMenuOpen(false)} />
             {/* Solo en móvil: en pantallas grandes el plan vive en el header. */}
-            <SubscriptionUserMenuItem onClose={() => setUserMenuOpen(false)} />
+            {hasPermission('subscription.view') && <SubscriptionUserMenuItem onClose={() => setUserMenuOpen(false)} />}
             <Link
               to="/profile"
               onClick={() => setUserMenuOpen(false)}

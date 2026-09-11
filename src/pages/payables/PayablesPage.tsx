@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Wallet, AlertCircle } from 'lucide-react'
 import RequireModule from '@/components/ui/RequireModule'
+import { useAuth } from '@/contexts/AuthContext'
 import { payablesService, type PayableRow, type PayablesSummary } from '@/services/payables.service'
 import { cashbankService, type PaymentMethodRecord } from '@/services/cashbank.service'
 import { formatDisplayDatePeru } from '@/utils/datesPeru'
@@ -16,6 +17,8 @@ export default function PayablesPage() {
 }
 
 function PayablesContent() {
+  const { hasPermission } = useAuth()
+  const canPay = hasPermission('payables.pay')
   const [rows, setRows] = useState<PayableRow[]>([])
   const [summary, setSummary] = useState<PayablesSummary | null>(null)
   const [loading, setLoading] = useState(true)
@@ -119,7 +122,7 @@ function PayablesContent() {
                       {row.due > 0 ? `S/ ${row.due.toFixed(2)}` : '—'}
                     </td>
                     <td className="px-4 py-3">
-                      {row.due > 0 && (
+                      {row.due > 0 && canPay && (
                         <button
                           type="button"
                           onClick={() => setPayRow(row)}

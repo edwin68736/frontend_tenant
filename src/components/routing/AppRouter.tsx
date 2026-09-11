@@ -126,9 +126,12 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
  * mismo criterio que el Sidebar usa para decidir qué mostrar, para que "ocultar" y "bloquear"
  * nunca queden desincronizados.
  */
-function Protected({ perm, children }: { perm: string; children: ReactNode }) {
+function Protected({ perm, children }: { perm: string | string[]; children: ReactNode }) {
   const { hasPermission } = useAuth()
-  if (!hasPermission(perm)) return <Navigate to="/home" replace />
+  // Un array exige CUALQUIERA de los permisos (ej. nota independiente: crédito O débito según
+  // el body) — mismo criterio que RequireAnyPermission en el backend.
+  const allowed = Array.isArray(perm) ? perm.some(hasPermission) : hasPermission(perm)
+  if (!allowed) return <Navigate to="/home" replace />
   return <>{children}</>
 }
 
@@ -163,13 +166,13 @@ function AppRoutes() {
         <Route path="sales/register" element={<Lazy><Protected perm="sales.create"><SalesRegisterLegacyRedirect /></Protected></Lazy>} />
         <Route path="sales/nota-venta" element={<Lazy><Protected perm="sales.create"><NotaVentaRegisterPage /></Protected></Lazy>} />
         <Route path="sales/pos" element={<Lazy><Protected perm="sales.pos"><POSPage /></Protected></Lazy>} />
-        <Route path="sales/receivables" element={<Lazy><Protected perm="sales.view"><ReceivablesPage /></Protected></Lazy>} />
-        <Route path="quotations" element={<Lazy><Protected perm="sales.view"><QuotationsPage /></Protected></Lazy>} />
-        <Route path="quotations/new" element={<Lazy><Protected perm="sales.create"><QuotationRegisterPage /></Protected></Lazy>} />
-        <Route path="quotations/:id/edit" element={<Lazy><Protected perm="sales.create"><QuotationRegisterPage /></Protected></Lazy>} />
+        <Route path="sales/receivables" element={<Lazy><Protected perm="receivables.view"><ReceivablesPage /></Protected></Lazy>} />
+        <Route path="quotations" element={<Lazy><Protected perm="quotations.view"><QuotationsPage /></Protected></Lazy>} />
+        <Route path="quotations/new" element={<Lazy><Protected perm="quotations.create"><QuotationRegisterPage /></Protected></Lazy>} />
+        <Route path="quotations/:id/edit" element={<Lazy><Protected perm="quotations.edit"><QuotationRegisterPage /></Protected></Lazy>} />
         <Route path="purchases/register" element={<Lazy><Protected perm="purchases.create"><PurchaseRegisterPage /></Protected></Lazy>} />
         <Route path="purchases/suppliers" element={<Lazy><Protected perm="contacts.view"><SuppliersPage /></Protected></Lazy>} />
-        <Route path="purchases/payables" element={<Lazy><Protected perm="purchases.view"><PayablesPage /></Protected></Lazy>} />
+        <Route path="purchases/payables" element={<Lazy><Protected perm="payables.view"><PayablesPage /></Protected></Lazy>} />
         <Route path="purchases" element={<Lazy><Protected perm="purchases.view"><PurchasesPage /></Protected></Lazy>} />
         <Route path="products" element={<Lazy><Protected perm="products.view"><ProductsPage /></Protected></Lazy>} />
         <Route path="products/combos" element={<Lazy><Protected perm="products.view"><CombosPage /></Protected></Lazy>} />
@@ -199,28 +202,30 @@ function AppRoutes() {
         <Route path="cashbank/bank" element={<Lazy><Protected perm="cashbank.view"><BankPage /></Protected></Lazy>} />
         <Route path="cashbank/payment-methods" element={<Lazy><Protected perm="cashbank.manage"><PaymentMethodsPage /></Protected></Lazy>} />
         <Route path="billing" element={<Lazy><Protected perm="billing.send"><BillingPage /></Protected></Lazy>} />
-        {/* Nota de crédito/débito independiente (Fase 3): sin venta local, documento afectado a mano. */}
-        <Route path="billing/notes/new" element={<Lazy><Protected perm="billing.send"><IndependentNoteCreatePage /></Protected></Lazy>} />
+        {/* Nota de crédito/débito independiente (Fase 3): sin venta local, documento afectado a mano.
+            Un solo formulario sirve ambos tipos según lo que elija el usuario — exige cualquiera
+            de los dos permisos, igual que el backend (RequireAnyPermission). */}
+        <Route path="billing/notes/new" element={<Lazy><Protected perm={['billing.credit_note', 'billing.debit_note']}><IndependentNoteCreatePage /></Protected></Lazy>} />
         {/* Guías de remisión: vistas independientes por tipo (remitente 09 / transportista 31). */}
-        <Route path="billing/docs/despatches/:guiaTipo/new" element={<Lazy><Protected perm="billing.send"><GuiaRemisionCreatePage /></Protected></Lazy>} />
-        <Route path="billing/docs/despatches/:guiaTipo" element={<Lazy><Protected perm="billing.send"><GuiaListPage /></Protected></Lazy>} />
+        <Route path="billing/docs/despatches/:guiaTipo/new" element={<Lazy><Protected perm="billing.despatch"><GuiaRemisionCreatePage /></Protected></Lazy>} />
+        <Route path="billing/docs/despatches/:guiaTipo" element={<Lazy><Protected perm="billing.despatch"><GuiaListPage /></Protected></Lazy>} />
         {/* Compatibilidad con enlaces viejos a la vista combinada. */}
         <Route path="billing/docs/despatches/new" element={<Navigate to="/billing/docs/despatches/remitente/new" replace />} />
         <Route path="billing/docs/despatches" element={<Navigate to="/billing/docs/despatches/remitente" replace />} />
         <Route path="billing/docs" element={<Navigate to="/billing/docs/retentions" replace />} />
-        <Route path="billing/docs/:docType" element={<Lazy><Protected perm="billing.send"><SunatDocsPage /></Protected></Lazy>} />
+        <Route path="billing/docs/:docType" element={<Lazy><Protected perm="billing.advanced_docs"><SunatDocsPage /></Protected></Lazy>} />
         <Route path="fleet/carriers" element={<Lazy><Protected perm="fleet.view"><TransportistasPage /></Protected></Lazy>} />
         <Route path="fleet/drivers" element={<Lazy><Protected perm="fleet.view"><ConductoresPage /></Protected></Lazy>} />
         <Route path="fleet/vehicles" element={<Lazy><Protected perm="fleet.view"><VehiculosPage /></Protected></Lazy>} />
         <Route path="modules" element={<Lazy><Protected perm="modules.manage"><ModulesPage /></Protected></Lazy>} />
         <Route path="memberships" element={<Lazy><Protected perm="memberships.view"><MembershipsPage /></Protected></Lazy>} />
-        <Route path="sales/pedidos-web" element={<Lazy><Protected perm="ecommerce.view"><PedidosWebPage /></Protected></Lazy>} />
+        <Route path="sales/pedidos-web" element={<Lazy><Protected perm="ecommerce.orders"><PedidosWebPage /></Protected></Lazy>} />
         <Route path="reports" element={<Lazy><ReportsLayout /></Lazy>}>
           <Route index element={<Navigate to="/reports/sales" replace />} />
           <Route path="sales" element={<Lazy><Protected perm="sales.view"><SalesReportPage /></Protected></Lazy>} />
           <Route path="products" element={<Lazy><Protected perm="products.view"><ProductsReportPage /></Protected></Lazy>} />
           <Route path="sales-by-product" element={<Lazy><Protected perm="sales.view"><SalesByProductReportPage /></Protected></Lazy>} />
-          <Route path="notes" element={<Lazy><Protected perm="billing.send"><NotesReportPage /></Protected></Lazy>} />
+          <Route path="notes" element={<Lazy><Protected perm="sales.view"><NotesReportPage /></Protected></Lazy>} />
           <Route path="purchases" element={<Lazy><Protected perm="purchases.view"><PurchasesReportPage /></Protected></Lazy>} />
           <Route path="kardex" element={<Lazy><Protected perm="inventory.view"><KardexReportPage /></Protected></Lazy>} />
           <Route path="cash" element={<Lazy><Protected perm="cashbank.view"><CashReportPage /></Protected></Lazy>} />
@@ -236,7 +241,7 @@ function AppRoutes() {
         <Route path="roles" element={<Lazy><Protected perm="roles.view"><RolesPage /></Protected></Lazy>} />
         <Route path="profile" element={<Lazy><ProfilePage /></Lazy>} />
         <Route path="ajustes" element={<Lazy><AjustesPage /></Lazy>} />
-        <Route path="subscription" element={<Lazy><SubscriptionPage /></Lazy>} />
+        <Route path="subscription" element={<Lazy><Protected perm="subscription.view"><SubscriptionPage /></Protected></Lazy>} />
         <Route path="company/config" element={<Lazy><Protected perm="company.view"><CompanyConfigPage /></Protected></Lazy>} />
         <Route path="company/sunat" element={<Lazy><Protected perm="company.view"><ErpSettingsRedirect companyTab="impuestos" /></Protected></Lazy>} />
         <Route path="company/branches" element={<Lazy><Protected perm="company.view"><ErpSettingsRedirect companyTab="sucursales" /></Protected></Lazy>} />

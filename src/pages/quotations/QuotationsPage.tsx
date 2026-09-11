@@ -80,8 +80,13 @@ function QuotationsContent() {
   const navigate = useNavigate()
   const { hasModule, hasPermission } = useAuth()
   const { activeBranchId } = useBranch()
-  const canCreate = hasPermission('sales.create')
-  const canEmit = hasModule('billing') && canCreate
+  const canCreate = hasPermission('quotations.create')
+  const canEdit = hasPermission('quotations.edit')
+  const canDelete = hasPermission('quotations.delete')
+  const canConvert = hasPermission('quotations.convert')
+  // Emitir electrónico (boleta/factura) desde la conversión: mismo permiso que crear una venta
+  // (POST /sales/:id/issue-electronic exige sales.create), no un permiso de cotizaciones.
+  const canEmit = hasModule('billing') && hasPermission('sales.create')
   const { sunat } = useBranchCheckoutSeries()
   const canFactura = tenantCanEmitFactura(sunat)
 
@@ -268,7 +273,7 @@ function QuotationsContent() {
   )
 
   const openConvertDirect = async (row: Quotation) => {
-    if (!canCreate) {
+    if (!canConvert) {
       toast.error('No tiene permiso para convertir cotizaciones')
       return
     }
@@ -408,7 +413,7 @@ function QuotationsContent() {
   }
 
   const handleDelete = async (row: Quotation) => {
-    if (!canCreate) return
+    if (!canDelete) return
     if (row.status === 'converted') {
       toast.error('No se puede eliminar una cotización convertida')
       return
@@ -660,27 +665,31 @@ function QuotationsContent() {
             role="menu"
             aria-label="Acciones de cotización"
           >
-            {canCreate && (
+            {canEdit && (
+              <Link
+                to={`/quotations/${actionsMenuRow.id}/edit`}
+                className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-gray-800"
+                role="menuitem"
+                onClick={() => setActionsMenu(null)}
+              >
+                <Pencil size={14} /> Editar
+              </Link>
+            )}
+            {canDelete && (
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-2 px-3 py-2 hover:bg-gray-50 text-red-600"
+                onClick={() => {
+                  setActionsMenu(null)
+                  void handleDelete(actionsMenuRow)
+                }}
+              >
+                <Trash2 size={14} /> Eliminar
+              </button>
+            )}
+            {canConvert && (
               <>
-                <Link
-                  to={`/quotations/${actionsMenuRow.id}/edit`}
-                  className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-gray-800"
-                  role="menuitem"
-                  onClick={() => setActionsMenu(null)}
-                >
-                  <Pencil size={14} /> Editar
-                </Link>
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="flex w-full items-center gap-2 px-3 py-2 hover:bg-gray-50 text-red-600"
-                  onClick={() => {
-                    setActionsMenu(null)
-                    void handleDelete(actionsMenuRow)
-                  }}
-                >
-                  <Trash2 size={14} /> Eliminar
-                </button>
                 <div className="border-t border-gray-100 my-1" />
                 <p className="px-3 py-1 text-[10px] uppercase tracking-wide text-gray-400">Convertir directo</p>
                 <button

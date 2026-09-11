@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Search, Wallet, AlertCircle, Building2, FileText } from 'lucide-react'
 import RequireModule from '@/components/ui/RequireModule'
+import { useAuth } from '@/contexts/AuthContext'
 import { Modal } from '@/components/ui/Modal'
 import {
   receivablesService,
@@ -22,6 +23,9 @@ export default function ReceivablesPage() {
 }
 
 function ReceivablesContent() {
+  const { hasPermission } = useAuth()
+  const canCollect = hasPermission('receivables.collect')
+  const canConfirmBn = hasPermission('receivables.confirm_bn')
   const [rows, setRows] = useState<ReceivableRow[]>([])
   const [summary, setSummary] = useState<ReceivablesSummary | null>(null)
   const [loading, setLoading] = useState(true)
@@ -212,7 +216,7 @@ function ReceivablesContent() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
-                        {row.direct_due > 0 && (
+                        {row.direct_due > 0 && canCollect && (
                           <button
                             type="button"
                             onClick={() => setCollectRow(row)}
@@ -221,7 +225,7 @@ function ReceivablesContent() {
                             Cobrar
                           </button>
                         )}
-                        {row.spot_pending > 0 && row.bn_confirmation_status === 'pending' && (
+                        {row.spot_pending > 0 && row.bn_confirmation_status === 'pending' && canConfirmBn && (
                           <>
                             <button
                               type="button"

@@ -83,7 +83,11 @@ export default function InventoryDocumentPage({ direction }: InventoryDocumentPa
   const isNew = location.pathname.endsWith('/new')
   const isEdit = Boolean(id) && location.pathname.endsWith('/edit')
   const isForm = isNew || isEdit
-  const canManage = hasPermission('inventory.manage')
+  // inventory.manage sigue concediendo todo (implica el resto vía "{modulo}.manage"), pero cada
+  // botón ahora respeta su propio permiso fino en vez de uno solo para crear/confirmar/anular.
+  const canCreateDoc = hasPermission('inventory.create_document')
+  const canConfirmDoc = hasPermission('inventory.confirm_document')
+  const canVoidDoc = hasPermission('inventory.void_document')
 
   const [branches, setBranches] = useState<Branch[]>([])
   const [operationTypes, setOperationTypes] = useState<InventoryOperationType[]>([])
@@ -452,7 +456,7 @@ export default function InventoryDocumentPage({ direction }: InventoryDocumentPa
           >
             Cancelar
           </Link>
-          {canManage && (
+          {canCreateDoc && (
             <button
               type="button"
               onClick={() => void saveForm()}
@@ -481,7 +485,7 @@ export default function InventoryDocumentPage({ direction }: InventoryDocumentPa
         basePath={meta.basePath}
         title={meta.title}
         subtitle={meta.subtitle}
-        canCreate={canManage}
+        canCreate={canCreateDoc}
         branches={branches}
         branchFilter={branchFilter}
         onBranchFilterChange={setBranchFilter}
@@ -538,26 +542,30 @@ export default function InventoryDocumentPage({ direction }: InventoryDocumentPa
                             >
                               <Eye size={14} />
                             </button>
-                            {doc.status === 'draft' && canManage && (
+                            {doc.status === 'draft' && (
                               <>
-                                <Link
-                                  to={`${meta.basePath}/${doc.id}/edit`}
-                                  className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg inline-flex"
-                                  title="Editar"
-                                >
-                                  <Pencil size={14} />
-                                </Link>
-                                <button
-                                  type="button"
-                                  onClick={() => setConfirmAction({ type: 'confirm', id: doc.id })}
-                                  className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg"
-                                  title="Confirmar"
-                                >
-                                  <CheckCircle size={14} />
-                                </button>
+                                {canCreateDoc && (
+                                  <Link
+                                    to={`${meta.basePath}/${doc.id}/edit`}
+                                    className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg inline-flex"
+                                    title="Editar"
+                                  >
+                                    <Pencil size={14} />
+                                  </Link>
+                                )}
+                                {canConfirmDoc && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmAction({ type: 'confirm', id: doc.id })}
+                                    className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg"
+                                    title="Confirmar"
+                                  >
+                                    <CheckCircle size={14} />
+                                  </button>
+                                )}
                               </>
                             )}
-                            {doc.status === 'confirmed' && canManage && (
+                            {doc.status === 'confirmed' && canVoidDoc && (
                               <button
                                 type="button"
                                 onClick={() => setConfirmAction({ type: 'void', id: doc.id })}
@@ -683,25 +691,29 @@ export default function InventoryDocumentPage({ direction }: InventoryDocumentPa
                   ))}
                 </div>
               </div>
-              {detailDoc.status === 'draft' && canManage && (
+              {detailDoc.status === 'draft' && (canCreateDoc || canConfirmDoc) && (
                 <div className="flex flex-wrap gap-2 pt-2">
-                  <Link
-                    to={`${meta.basePath}/${detailDoc.id}/edit`}
-                    className="px-3 py-1.5 text-sm border border-gray-200 rounded-xl hover:bg-gray-50"
-                    onClick={closeDetail}
-                  >
-                    Editar
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmAction({ type: 'confirm', id: detailDoc.id })}
-                    className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-xl hover:opacity-90"
-                  >
-                    Confirmar
-                  </button>
+                  {canCreateDoc && (
+                    <Link
+                      to={`${meta.basePath}/${detailDoc.id}/edit`}
+                      className="px-3 py-1.5 text-sm border border-gray-200 rounded-xl hover:bg-gray-50"
+                      onClick={closeDetail}
+                    >
+                      Editar
+                    </Link>
+                  )}
+                  {canConfirmDoc && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmAction({ type: 'confirm', id: detailDoc.id })}
+                      className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-xl hover:opacity-90"
+                    >
+                      Confirmar
+                    </button>
+                  )}
                 </div>
               )}
-              {detailDoc.status === 'confirmed' && canManage && (
+              {detailDoc.status === 'confirmed' && canVoidDoc && (
                 <button
                   type="button"
                   onClick={() => setConfirmAction({ type: 'void', id: detailDoc.id })}

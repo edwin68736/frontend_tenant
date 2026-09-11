@@ -97,7 +97,13 @@ function BillingContent() {
   // La corrección fiscal solo se ofrece en sesiones de soporte. El backend
   // vuelve a exigirlo: ocultar el botón no es la barrera, solo evita mostrar
   // una acción que el tenant no puede ejecutar.
-  const { isImpersonated } = useAuth()
+  const { isImpersonated, hasPermission } = useAuth()
+  // POST /billing/void-with-credit-note y /billing/debit-notes ahora exigen billing.credit_note/
+  // billing.debit_note respectivamente (antes bastaba billing.send, el mismo permiso con el que
+  // se abre esta pantalla) — sin esto, un rol sin esos permisos veía el botón y solo se enteraba
+  // al hacer clic y recibir el 403.
+  const canVoidCreditNote = hasPermission('billing.credit_note')
+  const canDebitNote = hasPermission('billing.debit_note')
   const [sunatEnabled, setSunatEnabled] = useState<boolean | null>(null)
   const [searchParams] = useSearchParams()
   const [viewMode, setViewMode] = useState<'invoices' | 'credit_notes' | 'summaries_voided'>('invoices')
@@ -1144,7 +1150,7 @@ function BillingContent() {
                           onClick: () => void handleSend(s.id),
                         },
                         {
-                          hidden: !(viewMode === 'invoices' && canVoidWithCreditNote(s)),
+                          hidden: !(viewMode === 'invoices' && canVoidCreditNote && canVoidWithCreditNote(s)),
                           icon: <Ban size={14} className="text-red-600" />,
                           label: 'Anular',
                           danger: true,
@@ -1152,14 +1158,14 @@ function BillingContent() {
                           onClick: () => openVoidNcModal(s, true),
                         },
                         {
-                          hidden: !(viewMode === 'invoices' && canVoidWithCreditNote(s)),
+                          hidden: !(viewMode === 'invoices' && canVoidCreditNote && canVoidWithCreditNote(s)),
                           icon: <FileSignature size={14} className="text-orange-600" />,
                           label: 'Nota de crédito',
                           disabled: voidNcSubmitting && voidNcTarget?.id === s.id,
                           onClick: () => openVoidNcModal(s, false),
                         },
                         {
-                          hidden: !(viewMode === 'invoices' && canVoidWithCreditNote(s)),
+                          hidden: !(viewMode === 'invoices' && canDebitNote && canVoidWithCreditNote(s)),
                           icon: <FileSignature size={14} className="text-blue-600" />,
                           label: 'Nota de débito',
                           disabled: debitNoteSubmitting && debitNoteTarget?.id === s.id,

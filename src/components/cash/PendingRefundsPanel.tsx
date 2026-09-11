@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Undo2, Loader2 } from 'lucide-react'
 import { salesService, type PendingRefund } from '@/services/sales.service'
+import { useAuth } from '@/contexts/AuthContext'
 
 /** Carga las devoluciones que siguen esperando una caja abierta en la sucursal. */
 function usePendingRefunds(branchId?: number | null) {
@@ -77,6 +78,11 @@ function rowKey(row: PendingRefund): string {
 export function PendingRefundsPanel({ sessionId, branchId, onApplied }: Props) {
   const { rows, loading, total, reload: load } = usePendingRefunds(branchId)
   const [applyingKey, setApplyingKey] = useState<string | null>(null)
+  // POST /sales/pending-refunds[/apply-note] exige sales.cancel en el backend (antes no exigía
+  // nada — quien podía "ver" la devolución también podía aplicarla). Sin este permiso, la fila
+  // sigue mostrando el monto pendiente (informativo) pero sin el botón de acción.
+  const { hasPermission } = useAuth()
+  const canApply = hasPermission('sales.cancel')
 
   const apply = async (row: PendingRefund) => {
     setApplyingKey(rowKey(row))
@@ -137,19 +143,21 @@ export function PendingRefundsPanel({ sessionId, branchId, onApplied }: Props) {
             <span className="font-bold text-gray-900 tabular-nums">
               S/ {Number(row.amount).toFixed(2)}
             </span>
-            <button
-              type="button"
-              onClick={() => void apply(row)}
-              disabled={applyingKey !== null}
-              className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 disabled:opacity-50"
-            >
-              {applyingKey === rowKey(row) ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <Undo2 size={14} />
-              )}
-              Registrar salida
-            </button>
+            {canApply && (
+              <button
+                type="button"
+                onClick={() => void apply(row)}
+                disabled={applyingKey !== null}
+                className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 disabled:opacity-50"
+              >
+                {applyingKey === rowKey(row) ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Undo2 size={14} />
+                )}
+                Registrar salida
+              </button>
+            )}
           </li>
         ))}
       </ul>
