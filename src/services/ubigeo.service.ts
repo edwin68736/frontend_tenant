@@ -16,6 +16,7 @@ export interface UbiDistrito {
   nombre: string
   provincia_id: string
   region_id: string
+  info_busqueda?: string
 }
 
 export const ubigeoService = {

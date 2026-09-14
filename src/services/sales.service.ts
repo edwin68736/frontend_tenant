@@ -203,6 +203,8 @@ export interface CreateSaleInput {
   detraccion?: {
     good_code: string
     payment_method_code?: string
+    /** N° de constancia de pago (opcional, 1001 y 1004) — solo referencia impresa, no viaja a SUNAT. */
+    pay_constancy_number?: string
     /** Exclusivos de 1004 (transporte de carga) — ver internal/detraccion/service.go. */
     valor_referencial_pen?: number
     mtc_registro?: string
@@ -211,6 +213,8 @@ export interface CreateSaleInput {
     punto_destino?: string
     carga_efectiva_tm?: number
     carga_util_tm?: number
+    /** Obligatorio en 1004. Solo referencia impresa, no viaja a SUNAT. */
+    trip_detail?: string
   }
   prepayment?: {
     emit?: boolean

@@ -42,6 +42,7 @@ import { buildFiscalReferences, hasFiscalContextContent, previewIgvRetention, va
 import { formatSaleMoney, saleCurrencySymbol } from '@/utils/formatMoney'
 import { useExchangeRate } from '@/hooks/useExchangeRate'
 import { catalogsService, type DetraccionGood } from '@/services/catalogs.service'
+import { UbigeoCascadeSelect } from '@/components/UbigeoCascadeSelect'
 import { previewDetraccion, DETRACCION_PAYMENT_METHOD_CODE, DETRACCION_PAYMENT_METHOD_NAME } from '@/utils/fiscalDetraction'
 import { filterOperationalPaymentMethods } from '@/utils/operationalPaymentMethods'
 import {
@@ -364,16 +365,35 @@ function SalesRegisterContent({
   const [detraccionGoods, setDetraccionGoods] = useState<DetraccionGood[]>([])
   const [detraccionTransportGoods, setDetraccionTransportGoods] = useState<DetraccionGood[]>([])
   const [detraccionGoodCode, setDetraccionGoodCode] = useState('')
-  // Campos exclusivos de 1004 (transporte de carga) — SUNAT los exige como
-  // AdditionalItemProperty (catálogo 55), captura manual (ver internal/detraccion/service.go).
+  // N° de constancia de pago (1001 y 1004): solo referencia impresa, no viaja a SUNAT — ver
+  // database.TenantSaleDetraccion.PayConstancyNumber. Campo que tenía el sistema anterior y
+  // Tukifac no, agregado a pedido del usuario (14-sep-2026).
+  const [detraccionPayConstancyNumber, setDetraccionPayConstancyNumber] = useState('')
+  // Campos exclusivos de 1004 (transporte de carga) — se envían al comprobante como
+  // AdditionalItemProperty (catálogo 55 SUNAT), captura manual (ver internal/detraccion/service.go).
+  // Registro MTC y configuración vehicular quedan OPCIONALES: el sistema anterior nunca los pidió
+  // ni los envió a SUNAT y jamás tuvo problemas de validación por eso (ver
+  // validateTransporteFields en el backend) — se siguen aceptando si el usuario los completa, pero
+  // ya no bloquean el guardado.
+  // Origen/destino se capturan como ubigeo (selector en cascada departamento→provincia→distrito,
+  // un solo campo) + dirección, igual que el sistema anterior — se componen en un solo string al
+  // guardar porque el backend/XML SUNAT siguen esperando punto_origen/punto_destino como texto libre.
+  // trip_detail ("Detalle del viaje", obligatorio como en el sistema anterior) es solo referencia
+  // interna/impresión — este sistema no tiene un nodo UBL equivalente en la factura, a diferencia
+  // del sistema anterior (cac:Despatch/Instructions); ver TripDetail en migrations.go.
   const [transporteForm, setTransporteForm] = useState({
     valor_referencial_pen: '',
     mtc_registro: '',
     configuracion_vehicular: '',
-    punto_origen: '',
-    punto_destino: '',
+    origen_ubigeo: '',
+    origen_ubigeo_label: '',
+    origen_direccion: '',
+    destino_ubigeo: '',
+    destino_ubigeo_label: '',
+    destino_direccion: '',
     carga_efectiva_tm: '',
     carga_util_tm: '',
+    trip_detail: '',
   })
   const [emitPrepayment, setEmitPrepayment] = useState(false)
   const [deductPrepayment, setDeductPrepayment] = useState(false)
@@ -1452,14 +1472,18 @@ function SalesRegisterContent({
         return
       }
       if (isDetraccionTransporte) {
+        // Registro MTC y configuración vehicular quedan opcionales a propósito (ver
+        // internal/detraccion/service.go:validateTransporteFields): el sistema anterior nunca los
+        // pidió ni los envió a SUNAT y jamás tuvo problemas de validación por eso.
         const missing =
-          !transporteForm.mtc_registro.trim() ||
-          !transporteForm.configuracion_vehicular.trim() ||
-          !transporteForm.punto_origen.trim() ||
-          !transporteForm.punto_destino.trim() ||
+          !transporteForm.origen_ubigeo ||
+          !transporteForm.origen_direccion.trim() ||
+          !transporteForm.destino_ubigeo ||
+          !transporteForm.destino_direccion.trim() ||
           !(parseFloat(transporteForm.carga_efectiva_tm) > 0) ||
           !(parseFloat(transporteForm.carga_util_tm) > 0) ||
-          !(transporteValorReferencial > 0)
+          !(transporteValorReferencial > 0) ||
+          !transporteForm.trip_detail.trim()
         if (missing) {
           toast.error('Complete todos los datos de transporte de carga (marcados con *)')
           return
@@ -1556,15 +1580,20 @@ function SalesRegisterContent({
         detraccion: isDetraccion && detraccionGoodCode
           ? {
               good_code: detraccionGoodCode,
+              pay_constancy_number: detraccionPayConstancyNumber.trim() || undefined,
               ...(isDetraccionTransporte
                 ? {
                     valor_referencial_pen: transporteValorReferencial,
                     mtc_registro: transporteForm.mtc_registro.trim(),
                     configuracion_vehicular: transporteForm.configuracion_vehicular.trim(),
-                    punto_origen: transporteForm.punto_origen.trim(),
-                    punto_destino: transporteForm.punto_destino.trim(),
+                    // El backend/XML SUNAT siguen esperando punto_origen/punto_destino como texto
+                    // libre (AdditionalItemProperty catálogo 55) — se compone aquí para no tocar
+                    // ese contrato ni la generación del comprobante.
+                    punto_origen: `${transporteForm.origen_direccion.trim()} - ${transporteForm.origen_ubigeo_label}`,
+                    punto_destino: `${transporteForm.destino_direccion.trim()} - ${transporteForm.destino_ubigeo_label}`,
                     carga_efectiva_tm: parseFloat(transporteForm.carga_efectiva_tm) || 0,
                     carga_util_tm: parseFloat(transporteForm.carga_util_tm) || 0,
+                    trip_detail: transporteForm.trip_detail.trim(),
                   }
                 : {}),
             }
@@ -1971,11 +2000,16 @@ function SalesRegisterContent({
                   }))
                   // El código de bien no es intercambiable entre 1001 y 1004 (catálogos
                   // distintos): limpiar siempre que cambie el modo, no solo al salir de detracción.
-                  if (code !== form.operation_type_code) setDetraccionGoodCode('')
+                  if (code !== form.operation_type_code) {
+                    setDetraccionGoodCode('')
+                    setDetraccionPayConstancyNumber('')
+                  }
                   if (code !== SUNAT_TIPO_OPERACION_TRANSPORTE_CARGA) {
                     setTransporteForm({
                       valor_referencial_pen: '', mtc_registro: '', configuracion_vehicular: '',
-                      punto_origen: '', punto_destino: '', carga_efectiva_tm: '', carga_util_tm: '',
+                      origen_ubigeo: '', origen_ubigeo_label: '', origen_direccion: '',
+                      destino_ubigeo: '', destino_ubigeo_label: '', destino_direccion: '',
+                      carga_efectiva_tm: '', carga_util_tm: '', trip_detail: '',
                     })
                   }
                   // El anticipo exige venta interna (0101) en el backend; si se elige cualquier
@@ -2131,28 +2165,73 @@ function SalesRegisterContent({
                   </div>
                 )}
               </div>
+              {/* N° Constancia de pago: oculto por ahora a pedido del usuario (14-sep-2026), mismo
+                  criterio que Registro MTC/Configuración vehicular más abajo — el estado y el
+                  payload de guardado (detraccionPayConstancyNumber) quedan intactos por si se
+                  reactiva, solo se quitó el input del formulario. */}
             </div>
 
             {isDetraccionTransporte && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1 border-t border-amber-200/70">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Registro MTC *</label>
-                  <input
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
-                    value={transporteForm.mtc_registro}
-                    onChange={(e) => setTransporteForm((f) => ({ ...f, mtc_registro: e.target.value }))}
-                    placeholder="Ej. 15X123CNG"
-                  />
+                {/* Registro MTC y configuración vehicular: ocultos por ahora a pedido del usuario
+                    (14-sep-2026) — no se envían a SUNAT en la práctica (el sistema anterior nunca
+                    los pidió ni los envió, ver validateTransporteFields en el backend) y no aportan
+                    valor visible mientras tanto. El backend los sigue aceptando como opcionales si
+                    algún día se reactivan: transporteForm.mtc_registro/configuracion_vehicular y su
+                    payload de guardado quedan intactos, solo se quitó el input del formulario. */}
+                {/* Ubigeo origen/destino van primero y alineados horizontalmente (uno junto al
+                    otro en la misma fila) — 2 columnas cada uno de 4, a pedido del usuario
+                    (14-sep-2026), para que se comparen de un vistazo como en el sistema anterior. */}
+                <div className="sm:col-span-2 space-y-2">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Ubigeo origen *</label>
+                    <UbigeoCascadeSelect
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2 min-h-[42px]"
+                      value={transporteForm.origen_ubigeo}
+                      label={transporteForm.origen_ubigeo_label}
+                      onChange={(id, lbl) =>
+                        setTransporteForm((f) => ({ ...f, origen_ubigeo: id, origen_ubigeo_label: lbl }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Dirección de origen *</label>
+                    <input
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
+                      value={transporteForm.origen_direccion}
+                      onChange={(e) => setTransporteForm((f) => ({ ...f, origen_direccion: e.target.value }))}
+                      placeholder="Ej. Av. Los Álamos 123"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Configuración vehicular *</label>
-                  <input
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
-                    value={transporteForm.configuracion_vehicular}
-                    onChange={(e) => setTransporteForm((f) => ({ ...f, configuracion_vehicular: e.target.value }))}
-                    placeholder="Ej. C3"
-                  />
+                <div className="sm:col-span-2 space-y-2">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Ubigeo destino *</label>
+                    <UbigeoCascadeSelect
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2 min-h-[42px]"
+                      value={transporteForm.destino_ubigeo}
+                      label={transporteForm.destino_ubigeo_label}
+                      onChange={(id, lbl) =>
+                        setTransporteForm((f) => ({ ...f, destino_ubigeo: id, destino_ubigeo_label: lbl }))
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Dirección de destino *</label>
+                    <input
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
+                      value={transporteForm.destino_direccion}
+                      onChange={(e) => setTransporteForm((f) => ({ ...f, destino_direccion: e.target.value }))}
+                      placeholder="Ej. Jr. Comercio 456"
+                    />
+                  </div>
                 </div>
+                {/* Registro MTC y configuración vehicular: ocultos por ahora a pedido del usuario
+                    (14-sep-2026) — no se envían a SUNAT en la práctica (el sistema anterior nunca
+                    los pidió ni los envió, ver validateTransporteFields en el backend) y no aportan
+                    valor visible mientras tanto. El backend los sigue aceptando como opcionales si
+                    algún día se reactivan: transporteForm.mtc_registro/configuracion_vehicular y su
+                    payload de guardado quedan intactos, solo se quitó el input del formulario. */}
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">Carga efectiva (TM) *</label>
                   <input
@@ -2171,24 +2250,6 @@ function SalesRegisterContent({
                     onChange={(e) => setTransporteForm((f) => ({ ...f, carga_util_tm: e.target.value }))}
                   />
                 </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Punto de origen *</label>
-                  <input
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
-                    value={transporteForm.punto_origen}
-                    onChange={(e) => setTransporteForm((f) => ({ ...f, punto_origen: e.target.value }))}
-                    placeholder="Dirección y ubigeo de origen"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Punto de destino *</label>
-                  <input
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
-                    value={transporteForm.punto_destino}
-                    onChange={(e) => setTransporteForm((f) => ({ ...f, punto_destino: e.target.value }))}
-                    placeholder="Dirección y ubigeo de destino"
-                  />
-                </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">
                     Valor referencial (S/) *
@@ -2201,6 +2262,19 @@ function SalesRegisterContent({
                   />
                   <p className="text-[11px] text-gray-500 mt-1">
                     Tabla D.S. 020-2021-MTC. Captura manual — no se calcula automáticamente.
+                  </p>
+                </div>
+                <div className="sm:col-span-2 lg:col-span-4">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Detalle del viaje *</label>
+                  <textarea
+                    rows={2}
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white resize-y"
+                    value={transporteForm.trip_detail}
+                    onChange={(e) => setTransporteForm((f) => ({ ...f, trip_detail: e.target.value }))}
+                    placeholder="Ej. Transporte de cemento en bolsas, viaje directo sin trasbordo"
+                  />
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    Solo referencia impresa en el comprobante — no viaja al XML SUNAT.
                   </p>
                 </div>
               </div>
