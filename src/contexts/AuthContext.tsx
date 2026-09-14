@@ -11,6 +11,8 @@ import { toast } from 'sonner'
 import { isNativeShell } from '@/lib/platform/detect'
 import { clearCompanyCaches } from '@/lib/companyConfig/store'
 import { SESSION_EXPIRED_EVENT, SESSION_REFRESHED_EVENT } from '@/services/api'
+import { useIdleLogout } from '@/hooks/useIdleLogout'
+import { markIdleActivity, clearIdleActivity } from '@/lib/idleSession'
 
 interface AuthState {
   user: AuthUser | null
@@ -65,6 +67,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isLoading: true,
   })
 
+  // Cierre de sesión automático por inactividad (30 min) — ver hooks/useIdleLogout.ts.
+  useIdleLogout(state.isAuthenticated)
+
   // Restaurar sesión o acceso maestro (/?master_sso=...) — sin recarga de página
   useEffect(() => {
     const masterToken = readMasterSsoTokenFromUrl()
@@ -73,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (user) {
         persistMasterSsoSession(masterToken, user)
         clearMasterSsoFromUrl()
+        markIdleActivity()
         setState({
           user,
           token: masterToken,
@@ -171,6 +177,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } else {
       localStorage.removeItem('allowed_branches')
     }
+    // Reloj de inactividad fresco: un login nuevo no debe heredar el conteo de una sesión
+    // anterior que haya dejado la llave sin limpiar.
+    markIdleActivity()
 
     setState({
       user: data.user,
@@ -192,6 +201,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('active_branch')
     localStorage.removeItem('can_switch_branch')
     localStorage.removeItem('allowed_branches')
+    clearIdleActivity()
     setState({ user: null, token: null, modules: [], permissions: [], tenantStatus: '', isImpersonated: false, isAuthenticated: false, isLoading: false })
     toast.info('Sesión cerrada')
     if (isNativeShell()) {

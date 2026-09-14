@@ -8,6 +8,7 @@ import {
 import { getResolvedTenantApiUrl, getTenantBinding } from '@/lib/tenantBinding/store'
 import { normalizeBindingApiUrl } from '@/lib/tenantBinding/types'
 import { isNativeShell } from '@/lib/platform/detect'
+import { clearIdleActivity } from '@/lib/idleSession'
 
 const api = axios.create({
   baseURL: 'http://localhost:3000',
@@ -116,7 +117,9 @@ function isOnPublicRoute(): boolean {
   return path.startsWith('/ecommerce')
 }
 
-function redirectToLogin(message?: string) {
+/** Exportada para que useIdleLogout dispare el mismo camino de "sesión caída" que ya usa este
+ * interceptor ante un 401/409 — mismo cleanup, mismo evento, misma navegación. */
+export function redirectToLogin(message?: string) {
   if (isOnPublicRoute()) return
   if (redirecting) return
   redirecting = true
@@ -126,6 +129,7 @@ function redirectToLogin(message?: string) {
   localStorage.removeItem('user')
   localStorage.removeItem('active_branch')
   localStorage.removeItem('can_switch_branch')
+  clearIdleActivity()
   import('sonner').then(({ toast }) => {
     // id fijo: si por cualquier motivo se dispara otra vez, sonner REEMPLAZA el toast en
     // lugar de apilar varios (mismo patrón que el front de restaurante).
