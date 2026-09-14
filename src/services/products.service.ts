@@ -237,6 +237,8 @@ export interface BulkImportItemPayload {
   purchase_price?: number
   unit?: string
   category_name?: string
+  /** Opcional: si viene, busca la marca por nombre (sin distinguir mayúsculas) y la crea si no existe. */
+  brand_name?: string
   igv_affectation_type?: string
   price_includes_igv?: boolean
   manage_stock?: boolean

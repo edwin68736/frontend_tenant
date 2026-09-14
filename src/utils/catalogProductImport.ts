@@ -41,6 +41,7 @@ export const CATALOG_IMPORT_COLUMNS = [
   'precio_compra',
   'unidad',
   'categoria',
+  'marca',
   'afectacion_igv',
   'precio_incluye_igv',
   'control_stock',
@@ -74,6 +75,10 @@ const HEADER_ALIASES: Record<string, (typeof CATALOG_IMPORT_COLUMNS)[number]> = 
   unit: 'unidad',
   categoria: 'categoria',
   category: 'categoria',
+  marca: 'marca',
+  brand: 'marca',
+  marca_producto: 'marca',
+  brand_name: 'marca',
   afectacion_igv: 'afectacion_igv',
   tipo_afectacion_igv: 'afectacion_igv',
   tipo_afectacion: 'afectacion_igv',
@@ -181,6 +186,8 @@ export const CATALOG_PRODUCT_IMPORT_SCHEMA: SchemaDefinition = {
     },
   },
   categoria: { column: 'categoria', type: 'string', max: 120 },
+  /** Opcional: si viene, busca la marca por nombre (sin distinguir mayúsculas) y la crea si no existe. */
+  marca: { column: 'marca', type: 'string', max: 120 },
   /** SUNAT: 10 gravado, 20 exonerado, 30 inafecto, 40 exportación. Vacío = 10. */
   afectacion_igv: {
     column: 'afectacion_igv',
@@ -247,6 +254,7 @@ export type ParsedCatalogImportRow = {
   precio_compra?: number
   unidad: string
   categoria: string
+  marca: string
   afectacion_igv: string
   precio_incluye_igv: boolean
   control_stock: boolean
@@ -363,6 +371,7 @@ export async function downloadCatalogProductTemplate(): Promise<void> {
     15.0,
     'NIU',
     'General',
+    'Marca demo',
     '10',
     'si',
     'no',
@@ -387,6 +396,7 @@ export type CatalogExportRow = {
   purchase_price?: number
   unit: string
   category_name?: string
+  brand_name?: string
   igv_affectation_type: string
   price_includes_igv: boolean
   manage_stock: boolean
@@ -418,6 +428,7 @@ export async function exportCatalogProductsToExcel(
     r.purchase_price ?? '',
     r.unit,
     r.category_name ?? '',
+    r.brand_name ?? '',
     r.igv_affectation_type || '10',
     r.price_includes_igv ? 'si' : 'no',
     r.manage_stock ? 'si' : 'no',
@@ -609,6 +620,7 @@ export async function validateCatalogProductExcel(file: File): Promise<ImportVal
       precio_compra: precioCompra,
       unidad: normalizeSunatUnit(String(row.unidad ?? ''), tipo),
       categoria: String(row.categoria ?? '').trim(),
+      marca: String(row.marca ?? '').trim(),
       afectacion_igv: afectacionIgv,
       precio_incluye_igv: parseExcelBoolean(row.precio_incluye_igv),
       control_stock: controlStock,
@@ -635,6 +647,7 @@ function rowToBulkPayload(row: ParsedCatalogImportRow, hasExpiryColumn: boolean)
     ...(row.precio_compra != null ? { purchase_price: row.precio_compra } : {}),
     unit: row.unidad,
     category_name: row.categoria || undefined,
+    brand_name: row.marca || undefined,
     igv_affectation_type: row.afectacion_igv,
     price_includes_igv: row.precio_incluye_igv,
     manage_stock: row.control_stock,

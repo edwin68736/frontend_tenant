@@ -393,6 +393,12 @@ export function ProductImportModal({ open, onClose, onImported }: Props) {
                 (producto nuevo en 0; si actualiza por código, conserva el costo actual).
               </li>
               <li>
+                <strong>marca</strong> (opcional): si la celda tiene un valor, se busca la marca por
+                nombre (sin distinguir mayúsculas) y se crea automáticamente si no existe, quedando
+                vinculada al producto. Si la celda va vacía, no se toca la marca (producto nuevo
+                queda sin marca; si actualiza por código, conserva la marca actual).
+              </li>
+              <li>
                 <strong>afectacion_igv</strong> (SUNAT, opcional; vacío = 10): solo estos códigos:
                 <ul className="list-disc pl-5 mt-1.5 space-y-0.5 text-gray-600">
                   <li>

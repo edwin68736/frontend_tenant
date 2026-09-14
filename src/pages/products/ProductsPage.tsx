@@ -353,6 +353,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         purchase_price: item.purchase_price,
         unit: item.unit,
         category_name: item.category_name ?? categories.find((c) => c.id === item.category_id)?.name ?? '',
+        brand_name: item.brand_name ?? '',
         igv_affectation_type: item.igv_affectation_type,
         price_includes_igv: item.price_includes_igv,
         manage_stock: item.manage_stock,
