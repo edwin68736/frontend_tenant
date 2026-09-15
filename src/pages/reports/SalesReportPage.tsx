@@ -482,7 +482,6 @@ export default function SalesReportPage() {
           <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">Vuelto</p>
             <p className="text-2xl font-bold text-sky-950">S/ {stats.sumChangeAmount.toFixed(2)}</p>
-            <p className="text-[10px] text-sky-700/80 mt-0.5">Entregado por pagos superiores al total</p>
           </div>
           {stats.methodCards.map((card) => {
             const cl = paymentMethodStatCardClasses(card.code)
