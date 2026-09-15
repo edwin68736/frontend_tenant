@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Settings2, Package, Upload, Download, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Trash2, CheckCircle, Eye, EyeOff, Keyboard, Loader2, Tag } from 'lucide-react'
+import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Settings2, Package, Upload, Download, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Trash2, CheckCircle, Eye, EyeOff, Keyboard, Loader2, Tag, SlidersHorizontal, X } from 'lucide-react'
 import { ProductImportModal } from '@/components/products/ProductImportModal'
 import { ProductPriceUpdateModal } from '@/components/products/ProductPriceUpdateModal'
 import { BulkDeleteProductsPinModal } from '@/components/products/BulkDeleteProductsPinModal'
@@ -117,8 +117,10 @@ function emptyForm(pageMode: ProductCatalogType, units: Unit[] = []): CreateProd
 
 const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
 
-/** Layout responsive del modal crear/editar producto. */
-const PRODUCT_FORM_GRID = 'grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4'
+/** Layout del modal crear/editar producto: siempre 2 columnas (Unidad/Categoría, Precio venta/
+ * compra, etc.), incluso en pantallas angostas — a pedido del usuario (14-sep-2026), no debe
+ * colapsar a una sola columna en móvil. */
+const PRODUCT_FORM_GRID = 'grid grid-cols-2 gap-3 sm:gap-4'
 const PRODUCT_FORM_INPUT =
   'w-full min-w-0 border border-gray-200 rounded-xl px-3 py-2.5 sm:py-2 text-base sm:text-sm outline-none focus:ring-2 focus:ring-[rgb(var(--p200))] focus:border-[rgb(var(--p400))]'
 const PRODUCT_FORM_MODAL_CLASS =
@@ -218,6 +220,10 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const [adjustmentProduct, setAdjustmentProduct] = useState<Product | null>(null)
   const [importModalOpen, setImportModalOpen] = useState(false)
   const [priceUpdateModalOpen, setPriceUpdateModalOpen] = useState(false)
+  // Móvil: filtros secundarios (categoría, marca, solo inactivos, por página, Excel, precio,
+  // extras) van a un modal aparte para priorizar la lista — a pedido del usuario (14-sep-2026),
+  // antes ocupaban casi toda la pantalla antes de llegar a ver un solo producto.
+  const [filtersModalOpen, setFiltersModalOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
   const [deletingProduct, setDeletingProduct] = useState(false)
@@ -861,13 +867,20 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           <h2 className="text-lg font-bold text-gray-800">
             {pageMode === 'service' ? 'Servicios' : 'Productos'}
           </h2>
-          <p className="text-sm text-gray-500">
+          {/* Oculto en móvil (14-sep-2026): es texto explicativo, no imprescindible, y en
+              pantallas chicas le quita espacio a lo que sí importa, la lista de productos.
+              Corte en md (768px), no sm (640px): hay celulares (sobre todo en horizontal) con
+              ancho de viewport por encima de 640px que igual deben ver la versión compacta. */}
+          <p className="hidden md:block text-sm text-gray-500">
             {pageMode === 'service'
               ? 'Prestaciones sin control de stock (unidad SUNAT ZZ). Para bienes use Productos.'
               : 'Catálogo de bienes; los servicios se administran en Inventario → Servicios.'}
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        {/* Escritorio/tablet (≥768px): todos los botones inline, como siempre. Por debajo
+            quedan en el modal de "Filtros" salvo "Nuevo producto", que se repite fuera para
+            no perderlo. */}
+        <div className="hidden md:flex items-center gap-2 flex-wrap">
           {pageMode === 'product' && (
             <>
               <button
@@ -910,7 +923,38 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         </div>
       </div>
 
-      <div className="flex gap-3 flex-wrap">
+      {/* Móvil (<768px, cubre celulares en vertical Y horizontal): se prioriza la lista — solo
+          "Nuevo producto" y el buscador quedan a la vista; el resto (Excel, precio, extras,
+          categoría, marca, solo inactivos, por página) va al modal de "Filtros" para no ocupar
+          toda la pantalla antes de ver un solo producto. */}
+      <div className="md:hidden space-y-2">
+        <button
+          onClick={openNew}
+          className="touch-target flex w-full items-center justify-center gap-1.5 px-4 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90"
+        >
+          <Plus size={15} /> {pageMode === 'service' ? 'Nuevo servicio' : 'Nuevo producto'}
+        </button>
+        <div className="flex gap-2">
+          <div className="relative flex-1 min-w-0">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input className="w-full border border-gray-200 rounded-xl pl-8 pr-3 py-2.5 text-base"
+              placeholder={pageMode === 'service' ? 'Buscar servicio…' : 'Buscar producto…'}
+              value={q}
+              onChange={e => setQ(e.target.value)}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setFiltersModalOpen(true)}
+            className="touch-target shrink-0 flex items-center gap-1.5 px-3.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            <SlidersHorizontal size={16} /> Filtros
+          </button>
+        </div>
+      </div>
+
+      {/* Escritorio/tablet (≥768px): fila de filtros completa, como siempre. */}
+      <div className="hidden md:flex gap-3 flex-wrap">
         <div className="relative flex-1 min-w-52">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input className="w-full border border-gray-200 rounded-xl pl-8 pr-3 py-2 text-sm"
@@ -965,6 +1009,114 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           <span className="text-sm text-gray-600 whitespace-nowrap">por página</span>
         </div>
       </div>
+
+      {/* Móvil: modal con todo lo que no cabe en la barra compacta de arriba. */}
+      <Modal open={filtersModalOpen} onClose={() => setFiltersModalOpen(false)} contentClassName="max-w-md">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-bold text-gray-800">Filtros</h3>
+          <button
+            type="button"
+            onClick={() => setFiltersModalOpen(false)}
+            className="p-1.5 rounded-lg hover:bg-gray-100"
+            aria-label="Cerrar filtros"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        {pageMode === 'product' && (
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => { setFiltersModalOpen(false); setImportModalOpen(true) }}
+              className="touch-target flex items-center justify-center gap-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50"
+            >
+              <FileSpreadsheet size={15} /> Importar Excel
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleExport()}
+              disabled={exporting}
+              className="touch-target flex items-center justify-center gap-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+            >
+              {exporting ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Exportar Excel
+            </button>
+            <button
+              type="button"
+              onClick={() => { setFiltersModalOpen(false); setPriceUpdateModalOpen(true) }}
+              className="touch-target flex items-center justify-center gap-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50"
+            >
+              <Tag size={15} /> Actualizar precio
+            </button>
+            <button
+              type="button"
+              onClick={() => { setFiltersModalOpen(false); setShowModifierGroups(true) }}
+              className="touch-target flex items-center justify-center gap-1.5 px-3 py-2.5 border border-[rgb(var(--p300))] text-[rgb(var(--p700))] rounded-xl text-sm font-medium hover:bg-[rgb(var(--p50))]"
+            >
+              <Layers size={15} /> Grupos de extras
+            </button>
+          </div>
+        )}
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Categoría</label>
+            {categories.filter(Boolean).length >= MIN_OPTIONS_FOR_SEARCH ? (
+              <SearchSelect
+                options={categories.filter(Boolean).map(c => ({ value: String(c.id), label: c.name }))}
+                value={String(catFilter ?? '')}
+                onChange={(v) => setCatFilter(v ? Number(v) : undefined)}
+                placeholder="Todas las categorías"
+              />
+            ) : (
+              <select className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm"
+                value={catFilter ?? ''} onChange={e => setCatFilter(e.target.value ? Number(e.target.value) : undefined)}>
+                <option value="">Todas las categorías</option>
+                {categories.filter(Boolean).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            )}
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Marca</label>
+            {brands.filter(Boolean).length >= MIN_OPTIONS_FOR_SEARCH ? (
+              <SearchSelect
+                options={brands.filter(Boolean).map(b => ({ value: String(b.id), label: b.name }))}
+                value={String(brandFilter ?? '')}
+                onChange={(v) => setBrandFilter(v ? Number(v) : undefined)}
+                placeholder="Todas las marcas"
+              />
+            ) : (
+              <select className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm"
+                value={brandFilter ?? ''} onChange={e => setBrandFilter(e.target.value ? Number(e.target.value) : undefined)}>
+                <option value="">Todas las marcas</option>
+                {brands.filter(Boolean).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            )}
+          </div>
+          <label className="flex items-center gap-2 cursor-pointer py-1 text-sm text-gray-700">
+            <input type="checkbox" checked={onlyInactive} onChange={e => setOnlyInactive(e.target.checked)} className="rounded" />
+            Solo inactivos
+          </label>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-600 whitespace-nowrap">Mostrar</span>
+            <select
+              className="border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              value={perPage}
+              onChange={e => { setPerPage(Number(e.target.value)); setPage(1) }}
+            >
+              {PER_PAGE_OPTIONS.map(n => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+            <span className="text-sm text-gray-600 whitespace-nowrap">por página</span>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setFiltersModalOpen(false)}
+          className="w-full py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90"
+        >
+          Aplicar
+        </button>
+      </Modal>
 
       {canDeleteProducts && selectedCount > 0 && (
         <div className="space-y-2 px-1 py-2 rounded-xl border border-blue-200 bg-blue-50/80">
@@ -1329,11 +1481,11 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           </div>
         )}
         <div className={PRODUCT_FORM_GRID}>
-          <div className="min-w-0 sm:col-span-2 lg:col-span-1">
+          <div className="min-w-0 col-span-2 lg:col-span-1">
             <label className="block text-xs font-medium text-gray-600 mb-1">
               {pageMode === 'product' ? 'Código (barras)' : 'Código'}
             </label>
-            <div className="flex flex-col sm:flex-row sm:items-start gap-2">
+            <div className="flex flex-row items-start gap-2">
               <div
                 className={clsx(
                   'flex flex-1 min-w-0 rounded-xl border overflow-hidden bg-white focus-within:ring-2',
@@ -1380,7 +1532,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                   type="button"
                   onClick={codeBarcodeScan.toggleScannerMode}
                   className={clsx(
-                    'inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 sm:p-2 transition-colors touch-manipulation shrink-0 w-full sm:w-auto',
+                    'inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 sm:p-2 transition-colors touch-manipulation shrink-0 w-auto',
                     codeBarcodeScan.scannerMode && codeBarcodeScan.cameraScannerOpen
                       ? 'border-primary-300 bg-primary-50 text-primary-700'
                       : 'border-gray-200 bg-stone-50 text-stone-600 hover:bg-stone-100',
@@ -1395,7 +1547,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                   aria-label="Escanear con la cámara"
                 >
                   <ScanBarcode size={18} aria-hidden />
-                  <span className="text-sm font-medium sm:sr-only">Cámara</span>
+                  <span className="sr-only">Cámara</span>
                 </button>
               )}
               {pageMode === 'product' && codeBarcodeScan.useCameraBarcodeScanner && (
@@ -1403,7 +1555,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                   type="button"
                   onClick={codeBarcodeScan.activatePhysicalScanner}
                   className={clsx(
-                    'inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 sm:p-2 transition-colors touch-manipulation shrink-0 w-full sm:w-auto',
+                    'inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 sm:p-2 transition-colors touch-manipulation shrink-0 w-auto',
                     codeBarcodeScan.scannerMode && !codeBarcodeScan.cameraScannerOpen
                       ? 'border-primary-300 bg-primary-50 text-primary-700'
                       : 'border-gray-200 bg-stone-50 text-stone-600 hover:bg-stone-100',
@@ -1412,7 +1564,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                   aria-label="Usar lector físico de código de barras"
                 >
                   <Keyboard size={18} aria-hidden />
-                  <span className="text-sm font-medium sm:sr-only">Lector físico</span>
+                  <span className="sr-only">Lector físico</span>
                 </button>
               )}
             </div>
@@ -1427,7 +1579,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               </p>
             )}
           </div>
-          <div className="min-w-0 sm:col-span-2 lg:col-span-1">
+          <div className="min-w-0 col-span-2 lg:col-span-1">
             <label className="block text-xs font-medium text-gray-600 mb-1">Nombre *</label>
             <input className={PRODUCT_FORM_INPUT} value={form.name} onChange={e => setF('name', e.target.value)} />
           </div>
@@ -1752,7 +1904,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         )}
 
         </div>
-        <div className="modal-footer-safe shrink-0 border-t border-gray-100 px-4 sm:px-6 md:px-7 pt-3 bg-white flex flex-col-reverse sm:flex-row gap-2">
+        <div className="modal-footer-safe shrink-0 border-t border-gray-100 px-4 sm:px-6 md:px-7 pt-3 bg-white flex flex-row gap-2">
           <button type="button" onClick={closeProductModal} disabled={saving || uploadingImage} className="touch-target sm:min-h-0 flex-1 py-2.5 sm:py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 font-medium disabled:opacity-50">Cancelar</button>
           <button type="button" onClick={handleSave} disabled={saving || uploadingImage} className="touch-target sm:min-h-0 flex-1 py-2.5 sm:py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50">
             {saving || uploadingImage ? 'Guardando...' : 'Guardar'}
