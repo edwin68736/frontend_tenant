@@ -903,9 +903,11 @@ function drawDetraccionInfoBox(ctx: A4Ctx, data: PrintData, startY: number): num
     rows.push({ label: 'P. DETRACCIÓN:', value: `${f.detraccion_rate_percent.toFixed(2)}%` })
   }
   if (f.detraccion_amount != null) {
+    // A pedido del negocio, este monto se redondea al entero más cercano (10.56 → 11, 10.54 →
+    // 10) — a diferencia del resto de importes del comprobante, que siempre llevan 2 decimales.
     rows.push({
       label: 'MONTO DETRACCIÓN:',
-      value: `${moneySymbol(data.currency)} ${formatPlainAmount(f.detraccion_amount)}`,
+      value: `${moneySymbol(data.currency)} ${Math.round(f.detraccion_amount)}`,
     })
   }
   if (f.detraccion_pay_constancy_number) {
