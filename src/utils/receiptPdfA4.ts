@@ -651,6 +651,7 @@ function estimateA4PostTableBlockHeight(data: PrintData, showPaymentCondition: b
   // de detracción se dibujan en el recuadro "Información Adicional" — ver más abajo.
   if (f?.has_detraccion) rightH += 1 * (LINE_H + 0.4)
   if (f?.has_prepayment_emit) rightH += LINE_H + 0.4
+  if (data.change_amount && data.change_amount > 0) rightH += LINE_H + 0.4
   if (showPaymentCondition && isElectronic) {
     // El QR es el elemento más alto de esta columna y el que peor se ve cortado a la mitad.
     rightH += 3 + SUNAT_QR_SIZE + (data.sunat_hash?.trim() ? 2 * (LINE_H - 0.3) + 2.5 : 0)
@@ -741,6 +742,11 @@ function drawTotalsRight(ctx: A4Ctx, data: PrintData, startY: number): number {
   }
   if (f?.has_prepayment_emit) {
     drawRow('ANTICIPO:', f.prepayment_label ?? 'COMPROBANTE DE ANTICIPO', true)
+  }
+  // Vuelto: independiente de retención/detracción/anticipo (esas ajustan lo cobrable; el vuelto
+  // es sobre el efectivo realmente entregado), por eso va al final, siempre que exista.
+  if (data.change_amount && data.change_amount > 0) {
+    drawRow(`VUELTO: ${sym}`, formatPlainAmount(data.change_amount), true)
   }
 
   return y + 2

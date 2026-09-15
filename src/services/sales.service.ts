@@ -57,6 +57,8 @@ export interface Sale {
   net_payable?: number
   detraccion_rate_percent?: number
   linked_perception?: LinkedFiscalDocSummary | null
+  /** Vuelto entregado (pagos directos por encima del importe cobrable). 0/ausente si no hubo. */
+  change_amount?: number
 }
 
 export interface SaleItem {
@@ -288,6 +290,8 @@ export interface SaleListSummary {
   sum_net_payable?: number
   count_detraccion?: number
   spot_total?: number
+  /** Vuelto total entregado en las ventas del filtro. */
+  sum_change_amount?: number
   payment_totals: Array<{ method: string; total: number }>
 }
 
@@ -303,6 +307,7 @@ const emptySaleSummary = (): SaleListSummary => ({
   sum_net_payable: 0,
   count_detraccion: 0,
   spot_total: 0,
+  sum_change_amount: 0,
   payment_totals: [],
 })
 

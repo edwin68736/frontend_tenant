@@ -492,6 +492,11 @@ export async function generateReceiptPdf(
       )
     }
     renderFiscalTotals(data, emitTicketAmountRow)
+    // Vuelto: independiente de lo fiscal (aplica también a notas de venta), por eso va acá y no
+    // dentro de renderFiscalTotals (que corta de inmediato si data.fiscal no existe).
+    if (data.change_amount && data.change_amount > 0) {
+      emitTicketAmountRow('VUELTO:', formatMoney(data.change_amount, data.currency), { bold: true })
+    }
     doc.setTextColor(0, 0, 0)
     doc.setFont('helvetica', 'normal')
     addSpace(2)
