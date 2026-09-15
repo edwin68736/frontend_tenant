@@ -382,6 +382,93 @@ function drawCustomerBlock(
   ctx.y += 4
 }
 
+/**
+ * "DETALLE - SERVICIOS DE TRANSPORTE DE CARGA" (solo detracción 1004) — mismo lugar (entre
+ * los datos del cliente y la tabla de ítems) y el mismo tipo de recuadro de 2 columnas que el
+ * PDF del sistema anterior (facturador-tukifac). Antes esta sección no existía en absoluto en
+ * el PDF A4 de Tukifac aunque el backend ya guardaba todos estos datos.
+ *
+ * El sistema anterior guarda ubigeo (código numérico) y dirección como dos campos separados;
+ * Tukifac los compone en un solo string al guardar la venta (ver UbigeoCascadeSelect.tsx /
+ * SalesRegisterPage.tsx) para no tocar el contrato de punto_origen/punto_destino que ya
+ * consume el backend — por eso acá se muestran como "Punto de origen/destino" en una sola
+ * línea en vez de "Ubigeo" + "Dirección" separados.
+ */
+function drawTransportDetailBox(ctx: A4Ctx, data: PrintData, startY: number): number {
+  const f = data.fiscal
+  if (!f?.has_detraccion || !f.detraccion_punto_origen) return startY
+  const { doc } = ctx
+  const boxX = MARGIN
+  const boxW = CONTENT_W
+  const pad = 3
+  const colW = boxW / 2
+  const labelW = 34
+
+  type Cell = { label: string; value: string }
+  const cells: (Cell | null)[] = [
+    { label: 'PUNTO DE ORIGEN:', value: f.detraccion_punto_origen },
+    f.detraccion_punto_destino ? { label: 'PUNTO DE DESTINO:', value: f.detraccion_punto_destino } : null,
+    f.detraccion_valor_referencial != null
+      ? {
+          label: 'VALOR REFERENCIAL:',
+          value: `${moneySymbol(data.currency)} ${formatPlainAmount(f.detraccion_valor_referencial)}`,
+        }
+      : null,
+    f.detraccion_carga_efectiva_tm != null
+      ? { label: 'CARGA EFECTIVA:', value: `${f.detraccion_carga_efectiva_tm.toFixed(2)} TM` }
+      : null,
+    f.detraccion_carga_util_tm != null
+      ? { label: 'CARGA ÚTIL:', value: `${f.detraccion_carga_util_tm.toFixed(2)} TM` }
+      : null,
+    f.detraccion_trip_detail ? { label: 'DETALLE DEL VIAJE:', value: f.detraccion_trip_detail } : null,
+    f.detraccion_mtc_registro ? { label: 'REGISTRO MTC:', value: f.detraccion_mtc_registro } : null,
+    f.detraccion_config_vehicular ? { label: 'CONFIG. VEHICULAR:', value: f.detraccion_config_vehicular } : null,
+  ]
+  const present = cells.filter((c): c is Cell => c != null)
+  if (!present.length) return startY
+
+  // Pares izquierda/derecha en el mismo orden, como el recuadro del sistema anterior.
+  const pairs: { left: Cell; right?: Cell }[] = []
+  for (let i = 0; i < present.length; i += 2) pairs.push({ left: present[i], right: present[i + 1] })
+
+  setFont(doc, FONT_XS, 'normal')
+  const valueW = colW - pad - labelW
+  const pairLineCounts = pairs.map((p) => {
+    const l = Math.max(1, doc.splitTextToSize(p.left.value, valueW).length)
+    const r = p.right ? Math.max(1, doc.splitTextToSize(p.right.value, valueW).length) : 0
+    return Math.max(l, r)
+  })
+  const rowH = LINE_H - 0.6
+  const titleH = LINE_H
+  const boxH = pad * 2 + titleH + pairLineCounts.reduce((sum, n) => sum + n * rowH, 0)
+
+  const boxY = startY
+  doc.setLineWidth(0.25)
+  doc.setDrawColor(0, 0, 0)
+  doc.roundedRect(boxX, boxY, boxW, boxH, BOX_RADIUS, BOX_RADIUS)
+
+  let y = boxY + pad + LINE_H - 1
+  setFont(doc, FONT_SM, 'bold')
+  doc.text('DETALLE - SERVICIOS DE TRANSPORTE DE CARGA', boxX + pad, y)
+  y += titleH
+
+  pairs.forEach((p, i) => {
+    const drawCell = (cell: Cell, x: number) => {
+      setFont(doc, FONT_XS, 'bold')
+      doc.text(cell.label, x, y)
+      setFont(doc, FONT_XS, 'normal')
+      const lines = doc.splitTextToSize(cell.value, valueW)
+      lines.forEach((line: string, li: number) => doc.text(line, x + labelW, y + li * rowH))
+    }
+    drawCell(p.left, boxX + pad)
+    if (p.right) drawCell(p.right, boxX + colW + pad)
+    y += pairLineCounts[i] * rowH
+  })
+
+  ctx.y = boxY + boxH + 4
+  return ctx.y
+}
+
 type TableCol = { label: string; w: number; align?: 'left' | 'right' | 'center' }
 
 /**
@@ -560,10 +647,9 @@ function estimateA4PostTableBlockHeight(data: PrintData, showPaymentCondition: b
   // SUNAT justo debajo (drawElectronicPaymentAndQrRow lo engancha después de esta columna).
   let rightH = buildReceiptTotalLines(data).length * (LINE_H + 0.4) + 2
   if (f?.retention_applied) rightH += 2 * (LINE_H + 0.4)
-  // DETRACCIÓN (%) + NETO A COBRAR en la columna de totales (drawRow, LINE_H+0.4 cada una).
-  // El recuadro "Información Adicional" (leyenda, bien/servicio, medio de pago, CTA. BN) se
-  // dibuja aparte en la columna izquierda — ver más abajo.
-  if (f?.has_detraccion) rightH += 2 * (LINE_H + 0.4)
+  // Solo NETO A COBRAR queda en la columna de totales (drawRow, LINE_H+0.4). El % y el monto
+  // de detracción se dibujan en el recuadro "Información Adicional" — ver más abajo.
+  if (f?.has_detraccion) rightH += 1 * (LINE_H + 0.4)
   if (f?.has_prepayment_emit) rightH += LINE_H + 0.4
   if (showPaymentCondition && isElectronic) {
     // El QR es el elemento más alto de esta columna y el que peor se ve cortado a la mitad.
@@ -596,6 +682,9 @@ function estimateA4PostTableBlockHeight(data: PrintData, showPaymentCondition: b
     let infoLines = 0
     if (f.detraccion_legend_text) infoLines += 1
     if (f.detraccion_good_code) infoLines += 2
+    if (f.detraccion_rate_percent != null) infoLines += 1
+    if (f.detraccion_amount != null) infoLines += 1
+    if (f.detraccion_pay_constancy_number) infoLines += 1
     if (f.detraccion_payment_method_code) infoLines += 2
     if (f.detraccion_bank_account) infoLines += 1
     leftH += infoLines * (LINE_H - 0.6) + 12
@@ -644,12 +733,10 @@ function drawTotalsRight(ctx: A4Ctx, data: PrintData, startY: number): number {
     drawRow(`NETO A COBRAR: ${sym}`, formatPlainAmount(f.net_collectible ?? data.total), true)
   }
   if (f?.has_detraccion) {
-    const pct = f.detraccion_rate_percent ?? 0
-    drawRow(`DETRACCIÓN (${pct}%):`, formatPlainAmount(f.detraccion_amount ?? 0))
-    // Leyenda, bien/servicio, medio de pago y cuenta BN ahora van en su propio recuadro
-    // "Información Adicional" en la columna izquierda (drawDetraccionInfoBox) — igual que
-    // el PDF del facturador — en vez de apretados como texto de 7pt en esta columna angosta
-    // de 58mm, donde quedaban difíciles de leer y mal organizados.
+    // El % y el monto de la detracción van en el recuadro "Información Adicional" (columna
+    // izquierda, drawDetraccionInfoBox) — igual que el PDF del sistema anterior, donde
+    // "P. DETRACCIÓN"/"MONTO DETRACCIÓN" viven junto a la cuenta y el bien/servicio, no
+    // apretados en esta columna angosta de 58mm. Acá solo queda el neto a cobrar.
     drawRow(`NETO A COBRAR: ${sym}`, formatPlainAmount(f.detraccion_net_payable ?? data.total), true)
   }
   if (f?.has_prepayment_emit) {
@@ -808,6 +895,21 @@ function drawDetraccionInfoBox(ctx: A4Ctx, data: PrintData, startY: number): num
         ? `${f.detraccion_good_code} - ${f.detraccion_good_label}`
         : f.detraccion_good_code,
     })
+  }
+  // P. DETRACCIÓN y MONTO DETRACCIÓN: igual que el sistema anterior (recuadro "OPERACIÓN
+  // SUJETA A DETRACCIÓN"), en vez de ir junto a los totales en la columna derecha — ver
+  // drawTotalsRight, que ya no dibuja estas dos líneas.
+  if (f.detraccion_rate_percent != null) {
+    rows.push({ label: 'P. DETRACCIÓN:', value: `${f.detraccion_rate_percent.toFixed(2)}%` })
+  }
+  if (f.detraccion_amount != null) {
+    rows.push({
+      label: 'MONTO DETRACCIÓN:',
+      value: `${moneySymbol(data.currency)} ${formatPlainAmount(f.detraccion_amount)}`,
+    })
+  }
+  if (f.detraccion_pay_constancy_number) {
+    rows.push({ label: 'N° CONSTANCIA:', value: f.detraccion_pay_constancy_number })
   }
   if (f.detraccion_payment_method_code) {
     rows.push({
@@ -1406,6 +1508,7 @@ export async function renderReceiptA4(doc: jsPDF, data: PrintData): Promise<void
 
   await drawHeader(ctx, data, nvLayout)
   drawCustomerBlock(ctx, data, nvLayout)
+  drawTransportDetailBox(ctx, data, ctx.y)
   drawItemsTable(ctx, data)
 
   // Ver estimateA4PostTableBlockHeight: si el bloque de totales/QR/cuentas bancarias no

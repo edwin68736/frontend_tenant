@@ -82,6 +82,20 @@ export type BuildSalePreviewPrintDataInput = {
   detraccionGoodCode: string
   detraccionGoodLabel?: string
   detractionBnAccount: string
+  detraccionPayConstancyNumber?: string
+  /** Solo 1004 (transporte de carga) — sección "DETALLE - SERVICIOS DE TRANSPORTE DE CARGA"
+   * del PDF A4, igual que print_data.go en el backend (ver DetraccionPuntoOrigen y afines). */
+  isDetraccionTransporte?: boolean
+  transporte?: {
+    puntoOrigen: string
+    puntoDestino: string
+    valorReferencialPen: number
+    cargaEfectivaTm: number
+    cargaUtilTm: number
+    tripDetail?: string
+    mtcRegistro?: string
+    configuracionVehicular?: string
+  }
   retentionPreview: RetentionPreview
   sellerName?: string
   paymentConditionCode?: 'cash' | 'credit'
@@ -206,6 +220,9 @@ function buildFiscalBlock(input: BuildSalePreviewPrintDataInput): PrintFiscalCon
     detraccionGoodCode,
     detraccionGoodLabel,
     detractionBnAccount,
+    detraccionPayConstancyNumber,
+    isDetraccionTransporte,
+    transporte,
     retentionPreview,
   } = input
 
@@ -232,6 +249,27 @@ function buildFiscalBlock(input: BuildSalePreviewPrintDataInput): PrintFiscalCon
     fiscal.detraccion_bank_account = detractionBnAccount
     fiscal.detraccion_payment_method_code = DETRACCION_PAYMENT_METHOD_CODE
     fiscal.detraccion_net_payable = detractionPreview.netPayable
+    if (detraccionPayConstancyNumber?.trim()) {
+      fiscal.detraccion_pay_constancy_number = detraccionPayConstancyNumber.trim()
+    }
+    // Sección "DETALLE - SERVICIOS DE TRANSPORTE DE CARGA" del PDF A4 — mismos campos que
+    // print_data.go arma para la venta ya guardada (ver DetraccionPuntoOrigen y afines).
+    if (isDetraccionTransporte && transporte) {
+      fiscal.detraccion_punto_origen = transporte.puntoOrigen
+      fiscal.detraccion_punto_destino = transporte.puntoDestino
+      // Valor referencial, carga efectiva y carga útil son opcionales (ver
+      // validateTransporteFields en el backend): si el usuario las dejó en blanco llegan en 0, y
+      // no deben mostrarse en la previsualización como "S/ 0.00" / "0.00 TM" — el comprobante real
+      // tampoco las enviará (ver transporteAttributes).
+      if (transporte.valorReferencialPen > 0) fiscal.detraccion_valor_referencial = transporte.valorReferencialPen
+      if (transporte.cargaEfectivaTm > 0) fiscal.detraccion_carga_efectiva_tm = transporte.cargaEfectivaTm
+      if (transporte.cargaUtilTm > 0) fiscal.detraccion_carga_util_tm = transporte.cargaUtilTm
+      if (transporte.tripDetail) fiscal.detraccion_trip_detail = transporte.tripDetail
+      if (transporte.mtcRegistro) fiscal.detraccion_mtc_registro = transporte.mtcRegistro
+      if (transporte.configuracionVehicular) {
+        fiscal.detraccion_config_vehicular = transporte.configuracionVehicular
+      }
+    }
   } else if (!isNotaVenta && fiscalForm.has_igv_retention && retentionPreview.applicable) {
     fiscal.has_igv_retention = true
     fiscal.retention_applied = true

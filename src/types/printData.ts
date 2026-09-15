@@ -112,6 +112,18 @@ export interface PrintFiscalContext {
   detraccion_net_payable?: number
   /** Leyenda SUNAT (catálogo 2006) exigida en todo comprobante sujeto a detracción. */
   detraccion_legend_text?: string
+  /** N° de operación del depósito de detracción (opcional, ver PayConstancyNumber en backend). */
+  detraccion_pay_constancy_number?: string
+  /** Campos exclusivos de 1004 (transporte de carga) — sección "DETALLE - SERVICIOS DE
+   * TRANSPORTE DE CARGA" del PDF A4, igual que el sistema anterior. */
+  detraccion_valor_referencial?: number
+  detraccion_mtc_registro?: string
+  detraccion_config_vehicular?: string
+  detraccion_punto_origen?: string
+  detraccion_punto_destino?: string
+  detraccion_carga_efectiva_tm?: number
+  detraccion_carga_util_tm?: number
+  detraccion_trip_detail?: string
   has_prepayment_emit?: boolean
   prepayment_label?: string
   prepayment_affectation_group?: string

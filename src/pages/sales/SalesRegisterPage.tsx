@@ -1208,6 +1208,20 @@ function SalesRegisterContent({
     detraccionGoodCode,
     detraccionGoodLabel: selectedGood?.description,
     detractionBnAccount,
+    detraccionPayConstancyNumber,
+    isDetraccionTransporte,
+    transporte: isDetraccionTransporte
+      ? {
+          puntoOrigen: `${transporteForm.origen_direccion.trim()} - ${transporteForm.origen_ubigeo_label}`,
+          puntoDestino: `${transporteForm.destino_direccion.trim()} - ${transporteForm.destino_ubigeo_label}`,
+          valorReferencialPen: transporteValorReferencial,
+          cargaEfectivaTm: parseFloat(transporteForm.carga_efectiva_tm) || 0,
+          cargaUtilTm: parseFloat(transporteForm.carga_util_tm) || 0,
+          tripDetail: transporteForm.trip_detail.trim() || undefined,
+          mtcRegistro: transporteForm.mtc_registro.trim() || undefined,
+          configuracionVehicular: transporteForm.configuracion_vehicular.trim() || undefined,
+        }
+      : undefined,
     retentionPreview,
     sellerName,
     paymentConditionCode,
@@ -1472,20 +1486,20 @@ function SalesRegisterContent({
         return
       }
       if (isDetraccionTransporte) {
-        // Registro MTC y configuración vehicular quedan opcionales a propósito (ver
-        // internal/detraccion/service.go:validateTransporteFields): el sistema anterior nunca los
-        // pidió ni los envió a SUNAT y jamás tuvo problemas de validación por eso.
+        // Solo origen y destino son obligatorios (ver
+        // internal/detraccion/service.go:validateTransporteFields): lo mínimo para identificar el
+        // servicio. Registro MTC, config. vehicular, carga efectiva, carga útil, detalle del
+        // viaje y valor referencial quedan opcionales — ninguno es obligatorio en el esquema UBL
+        // 2.1 de SUNAT, y el valor referencial exige una tabla oficial del MTC que este sistema no
+        // tiene integrada; sin él, calculator.go ya aplica la detracción sobre el importe de la
+        // venta, tal como permite la propia norma cuando no hay valor referencial determinable.
         const missing =
           !transporteForm.origen_ubigeo ||
           !transporteForm.origen_direccion.trim() ||
           !transporteForm.destino_ubigeo ||
-          !transporteForm.destino_direccion.trim() ||
-          !(parseFloat(transporteForm.carga_efectiva_tm) > 0) ||
-          !(parseFloat(transporteForm.carga_util_tm) > 0) ||
-          !(transporteValorReferencial > 0) ||
-          !transporteForm.trip_detail.trim()
+          !transporteForm.destino_direccion.trim()
         if (missing) {
-          toast.error('Complete todos los datos de transporte de carga (marcados con *)')
+          toast.error('Complete los datos obligatorios de transporte de carga (marcados con *)')
           return
         }
       }
@@ -2233,7 +2247,7 @@ function SalesRegisterContent({
                     algún día se reactivan: transporteForm.mtc_registro/configuracion_vehicular y su
                     payload de guardado quedan intactos, solo se quitó el input del formulario. */}
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Carga efectiva (TM) *</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Carga efectiva (TM) (opcional)</label>
                   <input
                     type="number" min={0} step="0.01"
                     className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white tabular-nums"
@@ -2242,7 +2256,7 @@ function SalesRegisterContent({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Carga útil del vehículo (TM) *</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Carga útil del vehículo (TM) (opcional)</label>
                   <input
                     type="number" min={0} step="0.01"
                     className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white tabular-nums"
@@ -2252,7 +2266,7 @@ function SalesRegisterContent({
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Valor referencial (S/) *
+                    Valor referencial (S/) (opcional)
                   </label>
                   <input
                     type="number" min={0} step="0.01"
@@ -2261,11 +2275,12 @@ function SalesRegisterContent({
                     onChange={(e) => setTransporteForm((f) => ({ ...f, valor_referencial_pen: e.target.value }))}
                   />
                   <p className="text-[11px] text-gray-500 mt-1">
-                    Tabla D.S. 020-2021-MTC. Captura manual — no se calcula automáticamente.
+                    Tabla D.S. 020-2021-MTC. Solo referencia impresa en el comprobante — la
+                    detracción siempre se calcula sobre el importe de la venta.
                   </p>
                 </div>
                 <div className="sm:col-span-2 lg:col-span-4">
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Detalle del viaje *</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Detalle del viaje (opcional)</label>
                   <textarea
                     rows={2}
                     className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white resize-y"
