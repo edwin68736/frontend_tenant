@@ -651,7 +651,6 @@ function estimateA4PostTableBlockHeight(data: PrintData, showPaymentCondition: b
   // de detracción se dibujan en el recuadro "Información Adicional" — ver más abajo.
   if (f?.has_detraccion) rightH += 1 * (LINE_H + 0.4)
   if (f?.has_prepayment_emit) rightH += LINE_H + 0.4
-  if (data.change_amount && data.change_amount > 0) rightH += LINE_H + 0.4
   if (showPaymentCondition && isElectronic) {
     // El QR es el elemento más alto de esta columna y el que peor se ve cortado a la mitad.
     rightH += 3 + SUNAT_QR_SIZE + (data.sunat_hash?.trim() ? 2 * (LINE_H - 0.3) + 2.5 : 0)
@@ -666,11 +665,22 @@ function estimateA4PostTableBlockHeight(data: PrintData, showPaymentCondition: b
   if (showPaymentCondition) {
     if (isElectronic) {
       // drawElectronicPaymentAndQrRow: boxH = pad*2 + payLines.length*(LINE_H+0.2) + 1,
-      // más el hueco de 5 con el que sigue el resto de la columna izquierda.
-      const payLines = 2 + Math.max(1, data.payments.length)
+      // más el hueco de 5 con el que sigue el resto de la columna izquierda. +1 línea si hay
+      // vuelto (ver drawElectronicPaymentAndQrRow).
+      const hasChange = !!data.change_amount && data.change_amount > 0
+      const payLines = 2 + Math.max(1, data.payments.length) + (hasChange ? 1 : 0)
       leftH += 2 * 3 + payLines * (LINE_H + 0.2) + 1 + 5
     } else {
-      leftH += LINE_H + 2 * 2.5 + 5
+      // drawPaymentMethodBox: caja de una sola línea si hay un solo método y sin vuelto (el caso
+      // más común); si no, lista con 1 línea de encabezado + 1 por pago + 1 si hay vuelto — mismo
+      // cálculo que boxH ahí en cada rama.
+      const hasChange = !!data.change_amount && data.change_amount > 0
+      if (data.payments.length <= 1 && !hasChange) {
+        leftH += LINE_H + 2 * 2.5 + 5
+      } else {
+        const nvLines = 1 + Math.max(1, data.payments.length) + (hasChange ? 1 : 0)
+        leftH += 2 * 2.5 + nvLines * (LINE_H + 0.2) - 0.2 + 5
+      }
     }
   }
 
@@ -743,11 +753,6 @@ function drawTotalsRight(ctx: A4Ctx, data: PrintData, startY: number): number {
   if (f?.has_prepayment_emit) {
     drawRow('ANTICIPO:', f.prepayment_label ?? 'COMPROBANTE DE ANTICIPO', true)
   }
-  // Vuelto: independiente de retención/detracción/anticipo (esas ajustan lo cobrable; el vuelto
-  // es sobre el efectivo realmente entregado), por eso va al final, siempre que exista.
-  if (data.change_amount && data.change_amount > 0) {
-    drawRow(`VUELTO: ${sym}`, formatPlainAmount(data.change_amount), true)
-  }
 
   return y + 2
 }
@@ -786,6 +791,7 @@ async function drawElectronicPaymentAndQrRow(
   const leftX = MARGIN
   const pad = 3
 
+  const sym = moneySymbol(data.currency)
   type PayLine = { text: string; bold?: boolean; bullet?: boolean }
   const payLines: PayLine[] = []
   const cond = String(data.payment_condition ?? '').trim() || (data.payments.length > 0 ? 'Contado' : 'Contado')
@@ -793,10 +799,15 @@ async function drawElectronicPaymentAndQrRow(
   payLines.push({ text: 'PAGOS:', bold: true })
   if (data.payments.length > 0) {
     for (const p of data.payments) {
-      payLines.push({ text: salePaymentMethodLabelEs(p.method), bullet: true })
+      payLines.push({ text: `${salePaymentMethodLabelEs(p.method)}: ${sym} ${formatPlainAmount(p.amount)}`, bullet: true })
     }
   } else {
     payLines.push({ text: primaryPaymentLabel(data), bullet: true })
+  }
+  // Vuelto: cuánto se entregó de más y se devolvió — va junto a los pagos, no en la columna de
+  // totales (esa solo debe mostrar el total neto de la venta).
+  if (data.change_amount && data.change_amount > 0) {
+    payLines.push({ text: `VUELTO: ${sym} ${formatPlainAmount(data.change_amount)}`, bullet: true })
   }
 
   const boxH = pad * 2 + payLines.length * (LINE_H + 0.2) + 1
@@ -851,25 +862,67 @@ async function drawElectronicPaymentAndQrRow(
 
 function drawPaymentMethodBox(ctx: A4Ctx, data: PrintData, startY: number): number {
   const { doc } = ctx
-  let y = startY
-  const method = primaryPaymentLabel(data)
   const padX = 3
   const padY = 2.5
-  setFont(doc, FONT, 'bold')
-  const labelPart = 'MÉTODO DE PAGO:'
-  const labelW = doc.getTextWidth(`${labelPart} `)
-  setFont(doc, FONT, 'normal')
-  const methodW = doc.getTextWidth(` ${method}`)
-  const boxW = labelW + methodW + padX * 2
-  const boxH = LINE_H + padY * 2
   const boxX = MARGIN
-  const boxY = y - LINE_H + 1
+  const hasChange = !!data.change_amount && data.change_amount > 0
+
+  // Caso simple (el más frecuente): un solo método y sin vuelto — una sola línea, como antes.
+  if (data.payments.length <= 1 && !hasChange) {
+    const y = startY
+    const method = primaryPaymentLabel(data)
+    setFont(doc, FONT, 'bold')
+    const labelPart = 'MÉTODO DE PAGO:'
+    const labelW = doc.getTextWidth(`${labelPart} `)
+    setFont(doc, FONT, 'normal')
+    const methodW = doc.getTextWidth(` ${method}`)
+    const boxW = labelW + methodW + padX * 2
+    const boxH = LINE_H + padY * 2
+    const boxY = y - LINE_H + 1
+
+    drawDottedRect(doc, boxX, boxY, boxW, boxH)
+    setFont(doc, FONT, 'bold')
+    doc.text(labelPart, boxX + padX, y)
+    setFont(doc, FONT, 'normal')
+    doc.text(` ${method}`, boxX + padX + labelW, y)
+
+    return boxY + boxH + 5
+  }
+
+  // Pago mixto y/o con vuelto: una línea por método con su monto, más el vuelto si corresponde
+  // — igual criterio que la caja "PAGOS:" de comprobantes electrónicos
+  // (drawElectronicPaymentAndQrRow), para que ambos formatos muestren siempre cuánto se pagó
+  // por cada método, no solo el nombre.
+  const sym = moneySymbol(data.currency)
+  type Line = { text: string; bold?: boolean }
+  const lines: Line[] = [{ text: 'MÉTODO DE PAGO:', bold: true }]
+  if (data.payments.length > 0) {
+    for (const p of data.payments) {
+      lines.push({ text: `${salePaymentMethodLabelEs(p.method)}: ${sym} ${formatPlainAmount(p.amount)}` })
+    }
+  } else {
+    lines.push({ text: primaryPaymentLabel(data) })
+  }
+  if (hasChange) {
+    lines.push({ text: `VUELTO: ${sym} ${formatPlainAmount(data.change_amount as number)}` })
+  }
+
+  let maxW = 0
+  for (const l of lines) {
+    setFont(doc, FONT, l.bold ? 'bold' : 'normal')
+    maxW = Math.max(maxW, doc.getTextWidth(l.text))
+  }
+  const boxW = maxW + padX * 2
+  const boxH = padY * 2 + lines.length * (LINE_H + 0.2) - 0.2
+  const boxY = startY - LINE_H + 1
 
   drawDottedRect(doc, boxX, boxY, boxW, boxH)
-  setFont(doc, FONT, 'bold')
-  doc.text(labelPart, boxX + padX, y)
-  setFont(doc, FONT, 'normal')
-  doc.text(` ${method}`, boxX + padX + labelW, y)
+  let ly = boxY + padY + LINE_H - 0.3
+  for (const l of lines) {
+    setFont(doc, FONT, l.bold ? 'bold' : 'normal')
+    doc.text(l.text, boxX + padX, ly)
+    ly += LINE_H + 0.2
+  }
 
   return boxY + boxH + 5
 }
