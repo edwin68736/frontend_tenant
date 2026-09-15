@@ -40,6 +40,7 @@ import {
   normalizeSlot,
 } from '@/services/printers/storage'
 import { sendEscPosPayload, isNativePrintAvailable } from '@/services/printers/transport'
+import { playSaleReceiptSound } from '@/utils/receiptSound'
 import type {
   PrinterConfig,
   PrinterConnectionMode,
@@ -830,6 +831,10 @@ export async function printDocumentAuto(printData: PrintData): Promise<string> {
   const data = await buildSaleDocumentEscPos(printData, cfg.paperWidthMm, {
     openDrawer: Boolean(cfg.openDrawerOnPrint),
   })
+  // Sonido tipo caja registradora al enviar el comprobante a la ticketera (Windows/Tauri y
+  // Android/Capacitor por igual) — pedido del usuario. No se espera ni se deja que una falla de
+  // audio afecte la impresión: ver playSaleReceiptSound.
+  playSaleReceiptSound()
   return printRawEscPos({ ...cfg, data, docName: `${TUKIFAC_APP_NAME} - Documento` })
 }
 
