@@ -26,6 +26,7 @@ import { downloadReceiptPdf, openReceiptPdfInNewTab } from '@/utils/receiptPdf'
 import { SalePaymentsBreakdown } from '@/components/sales/SalePaymentsBreakdown'
 import { formatPaymentMethodLabel } from '@/utils/paymentMethodLabel'
 import { formatSaleMoney } from '@/utils/formatMoney'
+import { enrichPrintDataWithSaleUnitNames, resolveSaleUnitNames, saleLineUnitLabel } from '@/utils/saleUnitNames'
 
 const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
 const TABLE_SKELETON_ROWS = 6
@@ -83,6 +84,10 @@ function SalesContent() {
   const [total, setTotal] = useState(0)
   const [detail, setDetail] = useState<SaleDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  // Nombre comercial de cada SaleUnit ("Caja") usada en las líneas de `detail`/`emitDetail` —
+  // clave `${product_id}:${sale_unit_id}` (Fase 7F). Un solo mapa para ambos modales: la caché de
+  // resolveSaleUnitNames ya evita pedir dos veces la misma combinación.
+  const [saleUnitNames, setSaleUnitNames] = useState<Map<string, string>>(new Map())
 
   const [emitOpen, setEmitOpen] = useState(false)
   // Anulación de nota de venta: exige motivo, igual que la baja SUNAT de un electrónico.
@@ -142,7 +147,10 @@ function SalesContent() {
   const openDetail = async (id: number) => {
     setDetailLoading(true)
     try {
-      setDetail(await salesService.get(id))
+      const d = await salesService.get(id)
+      setDetail(d)
+      const names = await resolveSaleUnitNames(d.items ?? [])
+      setSaleUnitNames((prev) => new Map([...prev, ...names]))
     } catch {
       toast.error('Error cargando detalle')
     } finally {
@@ -200,6 +208,9 @@ function SalesContent() {
         companyService.listSeries({ branch_id: row.branch_id, category: 'venta' }),
       ])
       setEmitDetail(det)
+      resolveSaleUnitNames(det.items ?? []).then((names) =>
+        setSaleUnitNames((prev) => new Map([...prev, ...names])),
+      )
       const sl = (rawSeries as SeriesRow[]) ?? []
       setEmitSeriesList(sl.filter((s) => String(s.sunat_code || '').trim() === '01' || String(s.sunat_code || '').trim() === '03'))
     } catch {
@@ -259,7 +270,7 @@ function SalesContent() {
         toast.error('No hay datos para generar el PDF del comprobante.')
         return
       }
-      await openReceiptPdfInNewTab(d.print_data, 'a4')
+      await openReceiptPdfInNewTab(await enrichPrintDataWithSaleUnitNames(d.print_data), 'a4')
     } catch (e: unknown) {
       toast.error((e as Error)?.message ?? 'No se pudo abrir el PDF')
     } finally {
@@ -275,7 +286,7 @@ function SalesContent() {
         toast.error('No hay datos para generar el PDF del comprobante.')
         return
       }
-      await downloadReceiptPdf(d.print_data, 'a4')
+      await downloadReceiptPdf(await enrichPrintDataWithSaleUnitNames(d.print_data), 'a4')
     } catch (e: unknown) {
       toast.error((e as Error)?.message ?? 'No se pudo descargar el PDF')
     } finally {
@@ -291,7 +302,7 @@ function SalesContent() {
         toast.error('No hay datos para generar el PDF del comprobante.')
         return
       }
-      await openReceiptPdfInNewTab(d.print_data, 'ticket')
+      await openReceiptPdfInNewTab(await enrichPrintDataWithSaleUnitNames(d.print_data), 'ticket')
     } catch (e: unknown) {
       toast.error((e as Error)?.message ?? 'No se pudo abrir el PDF ticket')
     } finally {
@@ -307,7 +318,7 @@ function SalesContent() {
         toast.error('No hay datos para generar el PDF del comprobante.')
         return
       }
-      await downloadReceiptPdf(d.print_data, 'ticket')
+      await downloadReceiptPdf(await enrichPrintDataWithSaleUnitNames(d.print_data), 'ticket')
     } catch (e: unknown) {
       toast.error((e as Error)?.message ?? 'No se pudo descargar el PDF ticket')
     } finally {
@@ -327,7 +338,7 @@ function SalesContent() {
         return
       }
       await shareReceiptPngViaWhatsApp({
-        printData: d.print_data,
+        printData: await enrichPrintDataWithSaleUnitNames(d.print_data),
         format,
         phone: d.contact?.phone,
         message: `Le envío la nota de venta ${formatSaleDocumentNumber(d.sale.series, d.sale.number)} (${format === 'ticket' ? 'formato ticket' : 'formato A4'})`,
@@ -500,7 +511,11 @@ function SalesContent() {
                         {pdfTicketDownloadBusyId === pdfId ? <RefreshCw size={14} className="animate-spin" /> : <FileDown size={14} />}
                       </button>
                       <PrintDocButton
-                        loadPrintData={() => salesService.get(pdfId).then((d) => d.print_data)}
+                        loadPrintData={() =>
+                          salesService
+                            .get(pdfId)
+                            .then((d) => (d.print_data ? enrichPrintDataWithSaleUnitNames(d.print_data) : d.print_data))
+                        }
                         webFormat="ticket"
                         title="Imprimir (ticketera en app / PDF en web)"
                       />
@@ -810,7 +825,7 @@ function SalesContent() {
                         <div>
                           <p className="font-medium text-gray-800">{item.description}</p>
                           <p className="text-gray-400">
-                            {item.quantity} × {fmtEmit(Number(item.unit_price))}
+                            {item.quantity} {saleLineUnitLabel(item, saleUnitNames)} × {fmtEmit(Number(item.unit_price))}
                           </p>
                         </div>
                         <p className="font-semibold text-gray-700">{fmtEmit(Number(item.total))}</p>
@@ -984,7 +999,7 @@ function SalesContent() {
                       <div>
                         <p className="font-medium text-gray-800">{item.description}</p>
                         <p className="text-xs text-gray-400">
-                          {item.quantity} × S/ {Number(item.unit_price).toFixed(2)}
+                          {item.quantity} {saleLineUnitLabel(item, saleUnitNames)} × S/ {Number(item.unit_price).toFixed(2)}
                         </p>
                       </div>
                       <p className="font-semibold text-gray-700">S/ {Number(item.total).toFixed(2)}</p>

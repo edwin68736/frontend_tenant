@@ -207,6 +207,21 @@ export interface PrintItem {
   modifiers_json?: string
   /** Nota libre de la línea, guardada en el snapshot del documento. */
   item_note?: string
+  /**
+   * product_id + sale_unit_id: referencia para resolver el NOMBRE comercial de la SaleUnit usada
+   * en esta línea (ej. "Caja") vía productsService.getSaleUnit — Fase 7F. `unit` de arriba sigue
+   * siendo el código fiscal SUNAT (ej. "BX"); ambos conceptos no se mezclan. undefined/null =
+   * línea manual sin producto de catálogo, o vendida en la unidad base.
+   */
+  product_id?: number | null
+  sale_unit_id?: number | null
+  /**
+   * Nombre comercial ya resuelto para esta línea (ej. "Caja"), calculado en frontend antes de
+   * imprimir (ver utils/saleUnitNames.ts) — Fase 7F. No lo llena el backend. Si falta (llamador
+   * que no lo resolvió), los renderizadores caen a `unit` (código SUNAT), igual que antes de esta
+   * fase — cambio 100% retrocompatible.
+   */
+  unit_display?: string
 }
 
 export interface PrintAffectTotal {

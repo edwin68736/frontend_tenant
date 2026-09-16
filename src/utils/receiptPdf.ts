@@ -16,6 +16,7 @@ import { buildReceiptTotalLines, formatReceiptTotalAmount, resolvePrintChangeAmo
 import {
   receiptItemDisplayDescription,
   receiptItemDisplayTotal,
+  receiptItemDisplayUnit,
   receiptItemDisplayUnitPrice,
 } from '@/utils/receiptBonificacion'
 import { ticketColumnLayoutMm } from '@/utils/receiptTicketLayout'
@@ -446,7 +447,12 @@ export async function generateReceiptPdf(
 
       setTicketDetailFont(false)
       doc.text(String(it.quantity), lay.xQty, y, { maxWidth: lay.wQty })
-      doc.text((it.unit || '').slice(0, 10), lay.xUnit, y, { maxWidth: lay.wUnit })
+      // splitTextToSize()[0] mide el ancho real con la fuente ya activa (setTicketDetailFont(false)
+      // recién aplicado) y devuelve solo lo que cabe en lay.wUnit sin envolver — evita que jsPDF
+      // parta "Unidades" en una 2ª línea que invade la fila siguiente (Fase 7F, corrección visual).
+      // Antes se usaba un slice(0, 10) por cantidad de caracteres, que no mide el ancho renderizado.
+      const unitLabel = doc.splitTextToSize(receiptItemDisplayUnit(it), lay.wUnit)[0] ?? ''
+      doc.text(unitLabel, lay.xUnit, y, { maxWidth: lay.wUnit })
       doc.text(firstDesc, lay.xDesc, y, { maxWidth: lay.wDescFirst })
       doc.text(pu, lay.xEndPUnit, y, { align: 'right', maxWidth: lay.wMoney })
       doc.text(tot, lay.xEndTotal, y, { align: 'right', maxWidth: lay.wMoney })

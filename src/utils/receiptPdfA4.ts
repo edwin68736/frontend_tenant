@@ -12,6 +12,7 @@ import { buildReceiptTotalLines } from '@/utils/receiptTotals'
 import {
   receiptItemDisplayDescription,
   receiptItemDisplayTotal,
+  receiptItemDisplayUnit,
   receiptItemDisplayUnitPrice,
 } from '@/utils/receiptBonificacion'
 import { lineGlobalSubtotalDiscount, lineSubtotalDiscount } from '@/utils/receiptDiscount'
@@ -569,7 +570,7 @@ function drawItemsTable(ctx: A4Ctx, data: PrintData): number {
     setFont(doc, FONT_SM, 'normal')
     const midY = rowY + rowH - 0.5
     doc.text(String(it.quantity), colX[0] + cols[0].w / 2, midY, { align: 'center' })
-    doc.text((it.unit || 'NIU').slice(0, 8), colX[1] + cols[1].w / 2, midY, { align: 'center' })
+    doc.text((receiptItemDisplayUnit(it) || 'NIU').slice(0, 8), colX[1] + cols[1].w / 2, midY, { align: 'center' })
     doc.text((it.code || '—').slice(0, 14), colX[2] + 1.5, midY, { maxWidth: cols[2].w - 2 })
     for (let i = 0; i < descLines.length; i++) {
       doc.text(descLines[i], colX[3] + 1.5, rowY + rowH - 0.5 + i * rowH, { maxWidth: cols[3].w - 3 })
@@ -1491,7 +1492,7 @@ function drawDespatchItemsTable(ctx: A4Ctx, data: PrintData): number {
     for (let i = 0; i < descLines.length; i++) {
       doc.text(descLines[i], colX[2] + 1.5, rowY + rowH - 0.6 + i * rowH, { maxWidth: cols[2].w - 3 })
     }
-    doc.text((it.unit || 'NIU').slice(0, 8), colX[3] + cols[3].w / 2, midY, { align: 'center' })
+    doc.text((receiptItemDisplayUnit(it) || 'NIU').slice(0, 8), colX[3] + cols[3].w / 2, midY, { align: 'center' })
     doc.text(String(it.quantity), colX[4] + cols[4].w / 2, midY, { align: 'center' })
     rowY += h
   })

@@ -42,3 +42,27 @@ export function receiptItemDisplayTotal(it: PrintItem, formatAmount: (n: number)
 export function receiptItemDisplayUnitPrice(it: PrintItem, formatAmount: (n: number) => string): string {
   return formatAmount(it.unit_price ?? 0)
 }
+
+/**
+ * Alias compacto SOLO para la columna UNID del comprobante impreso — la columna del ticket
+ * térmico es angosta (9mm) y "Unidades" (nombre visible de NIU en el resto de la UI, ver
+ * constants/sunatUnits.ts) no entraba sin partirse en dos líneas. No afecta al nombre mostrado en
+ * ningún otro lugar de la app (formularios, POS, historial) ni al código SUNAT — puramente
+ * cosmético para impresión (Fase 7F, corrección visual). Nunca se aplica al nombre comercial de
+ * una SaleUnit real (ese "debe mantenerse completo" — solo actúa cuando la etiqueta cae al nombre
+ * de la unidad base, que es lo único que produce hoy un valor igual a esta clave).
+ */
+const COMPACT_PRINT_UNIT_LABELS: Record<string, string> = {
+  Unidades: 'Unidad',
+}
+
+/**
+ * Unidad a mostrar en la columna UNID (ticket/A4): el nombre comercial de la SaleUnit si ya se
+ * resolvió (`unit_display`, ver utils/saleUnitNames.ts — Fase 7F), o el código SUNAT tal cual
+ * (`unit`) si no se resolvió — mismo comportamiento que antes de esta fase. El dato fiscal
+ * (`unit`, lo que viaja a SUNAT) nunca se modifica; esto es solo la columna visual del comprobante.
+ */
+export function receiptItemDisplayUnit(it: PrintItem): string {
+  const label = (it.unit_display || it.unit || '').trim()
+  return COMPACT_PRINT_UNIT_LABELS[label] ?? label
+}
