@@ -348,20 +348,14 @@ function POSContent() {
   const taxConfig = buildTaxConfigFromSunat(cachedSunat ?? sunat ?? undefined)
   const taxRate = taxConfig.taxRate
 
-  const addToCart = useCallback(
+  // Fase 7E: cache de "este producto tiene SaleUnits activas" durante la sesión del POS. GET
+  // /api/products (catálogo) no las incluye — confirmado en Fase 7A — así que hay que preguntar
+  // con productsService.listSaleUnits por producto. Se cachea (incluso vacío) para no repetir la
+  // consulta en cada click sobre el mismo producto; un ref porque no debe disparar renders.
+  const saleUnitsCacheRef = useRef<Map<number, boolean>>(new Map())
+
+  const directAddToCart = useCallback(
     (product: Product, sourceEl?: HTMLElement) => {
-      if (product.has_combo) {
-        configureFlySourceRef.current = sourceEl
-        cancelFlyAnimations()
-        setComboToConfigure(product)
-        return
-      }
-      if (productNeedsSaleConfiguration(product)) {
-        configureFlySourceRef.current = sourceEl
-        cancelFlyAnimations()
-        setProductToConfigure(product)
-        return
-      }
       const imageUrl = getProductImageUrl(product.image_url)
       let merged = false
       setCart((c) => {
@@ -372,7 +366,55 @@ function POSContent() {
       if (!merged && sourceEl) flyToCart(sourceEl, imageUrl)
       playCartAddSound()
     },
-    [flyToCart, cancelFlyAnimations],
+    [flyToCart],
+  )
+
+  const openConfigureModal = useCallback(
+    (product: Product, sourceEl?: HTMLElement) => {
+      configureFlySourceRef.current = sourceEl
+      cancelFlyAnimations()
+      setProductToConfigure(product)
+    },
+    [cancelFlyAnimations],
+  )
+
+  const addToCart = useCallback(
+    (product: Product, sourceEl?: HTMLElement) => {
+      if (product.has_combo) {
+        configureFlySourceRef.current = sourceEl
+        cancelFlyAnimations()
+        setComboToConfigure(product)
+        return
+      }
+      if (productNeedsSaleConfiguration(product)) {
+        openConfigureModal(product, sourceEl)
+        return
+      }
+      // Producto "simple" para presentaciones/extras/series — puede seguir siéndolo, o tener
+      // SaleUnits activas configuradas en Fase 7B (el catálogo no las trae, hay que preguntar).
+      const hasSaleUnits = saleUnitsCacheRef.current.get(product.id)
+      if (hasSaleUnits === true) {
+        openConfigureModal(product, sourceEl)
+        return
+      }
+      if (hasSaleUnits === false) {
+        directAddToCart(product, sourceEl)
+        return
+      }
+      productsService
+        .listSaleUnits(product.id)
+        .then((units) => {
+          const found = (units ?? []).length > 0
+          saleUnitsCacheRef.current.set(product.id, found)
+          if (found) openConfigureModal(product, sourceEl)
+          else directAddToCart(product, sourceEl)
+        })
+        .catch(() => {
+          saleUnitsCacheRef.current.set(product.id, false)
+          directAddToCart(product, sourceEl)
+        })
+    },
+    [cancelFlyAnimations, directAddToCart, openConfigureModal],
   )
 
   const barcodeScan = useBarcodeProductScanner({
@@ -710,6 +752,10 @@ function POSContent() {
             // Variante elegida (ej. color): el backend descuenta el stock de esa presentación en
             // vez del agregado del producto cuando el producto tiene presentaciones con stock propio.
             presentation_id: presentationIdFromSelection(i.modifiers),
+            // Unidad de venta elegida (Fase 7E), cuando la línea la usa. quantity/unit_price de
+            // esta misma línea siguen siendo COMERCIALES (2, S/48) — nunca se convierten a
+            // cantidad base ni se multiplican por el factor; eso lo hace el backend.
+            sale_unit_id: i.sale_unit?.id,
             code: i.product.code,
             description: i.product.name,
             unit: i.product.unit,
@@ -1310,10 +1356,11 @@ function POSContent() {
         </ul>
       </PosMobileCartDrawer>
 
-      {/* Modal configurar producto (presentaciones, extras, series) */}
+      {/* Modal configurar producto (presentaciones, extras, series, unidades de venta) */}
       <ProductConfigureModal
         product={productToConfigure}
         branchId={session?.branch_id ?? activeBranchId}
+        enableSaleUnits
         onClose={() => setProductToConfigure(null)}
         onConfirm={handleConfigureConfirm}
       />

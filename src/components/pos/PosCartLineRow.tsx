@@ -10,6 +10,7 @@ import {
   cartLineUnitPrice,
   isCatalogCartLine,
   isManualCartLine,
+  normalizeSaleUnitQuantity,
 } from '@/utils/posCart'
 import { formatModifierLines } from '@/utils/productModifiers'
 import { normalizeQuantityForUnit, normalizeSunatUnit, unitAllowsDecimals } from '@/constants/sunatUnits'
@@ -102,22 +103,24 @@ function CartUnitPriceInput({
 /**
  * Cantidad tecleable del POS, para TODAS las unidades: tocar el número permite escribir la
  * cantidad directa (20 unidades sin presionar + veinte veces; 0.750 kg en pesables). La
- * validación sigue la unidad: discretas → entero (con aviso de redondeo); medibles → 3 dec.
+ * validación de enteros/decimales la decide el caller (por unidad SUNAT, o por
+ * SaleUnit.allow_fraction cuando la línea tiene una unidad de venta — Fase 7E).
  */
 function CartQtyEditableInput({
   quantity,
-  unit,
+  allowDecimals,
+  normalize,
   onCommit,
 }: {
   quantity: number
-  unit: string
+  allowDecimals: boolean
+  normalize: (qty: number) => number
   onCommit: (qty: number) => void
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const { flashRounded, badge } = useRoundedQuantityBadge()
-  const allowDecimals = unitAllowsDecimals(unit)
 
   const commit = () => {
     const trimmed = draft.trim().replace(',', '.')
@@ -125,7 +128,7 @@ function CartQtyEditableInput({
     if (trimmed === '') return
     const parsed = Number.parseFloat(trimmed)
     if (!Number.isFinite(parsed) || parsed <= 0) return
-    const normalized = normalizeQuantityForUnit(parsed, unit)
+    const normalized = normalize(parsed)
     if (!allowDecimals && !Number.isInteger(parsed)) {
       flashRounded(inputRef.current, normalized)
     }
@@ -176,8 +179,16 @@ export function PosCartLineRow({
   const catalog = isCatalogCartLine(line)
   // Unidad efectiva de la línea: los manuales del POS no llevan unidad → discreta (enteros).
   const lineUnit = catalog ? normalizeSunatUnit(line.product.unit ?? '', line.product.type ?? 'product') : 'NIU'
+  // SaleUnit (Fase 7E): si la línea tiene una unidad de venta, allow_fraction decide si la
+  // cantidad COMERCIAL admite decimales — ya NO la unidad base del producto. Sin SaleUnit,
+  // comportamiento idéntico al de siempre (unitAllowsDecimals sobre la unidad del producto).
+  const saleUnit = catalog ? line.sale_unit : undefined
+  const qtyAllowsDecimals = saleUnit ? saleUnit.allow_fraction : unitAllowsDecimals(lineUnit)
+  const normalizeQty = saleUnit
+    ? (q: number) => normalizeSaleUnitQuantity(q, saleUnit.allow_fraction)
+    : (q: number) => normalizeQuantityForUnit(q, lineUnit)
   // Cantidad tecleable para TODAS las unidades (escribir 20 directo en vez de 20 taps al +);
-  // la validación entero/decimal la hace el propio input según la unidad.
+  // la validación entero/decimal la hace el propio input según la unidad o la SaleUnit.
   const editableQty = Boolean(onQtySet)
   const thumbUrl = catalog ? getProductImageUrl(line.product.image_url) : null
   const modifierLines = catalog && line.modifiers.length > 0 ? formatModifierLines(line.modifiers) : []
@@ -212,6 +223,11 @@ export function PosCartLineRow({
             </span>
             {manual && (
               <span className="text-[10px] font-medium text-amber-700">{line.code}</span>
+            )}
+            {saleUnit && (
+              <span className="block text-[10px] text-[rgb(var(--p700))] font-semibold leading-snug">
+                {saleUnit.name}
+              </span>
             )}
             {modifierLines.map((mLine) => (
               <span key={mLine} className="block text-[10px] text-[rgb(var(--p700))] leading-snug">
@@ -251,7 +267,8 @@ export function PosCartLineRow({
               {editableQty ? (
                 <CartQtyEditableInput
                   quantity={line.quantity}
-                  unit={lineUnit}
+                  allowDecimals={qtyAllowsDecimals}
+                  normalize={normalizeQty}
                   onCommit={(qty) => onQtySet!(qty)}
                 />
               ) : (

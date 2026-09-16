@@ -93,9 +93,13 @@ export function buildCatalogConfigureKey(
   itemNote: string,
   unitPrice: number,
   serials?: string[],
+  /** Fase 7E: unidad de venta elegida (ej. "Caja x12"). Distingue líneas del mismo producto en
+   *  distinta unidad de venta, para que nunca se fusionen entre sí (ni con una línea legacy). */
+  saleUnitId?: number,
 ): string {
   const serialPart = serials?.length ? `@s${[...serials].sort().join(',')}` : ''
-  return `${buildConfigureKey(modifiers, itemNote)}@u${roundMoney(unitPrice).toFixed(2)}${serialPart}`
+  const saleUnitPart = saleUnitId ? `@su${saleUnitId}` : ''
+  return `${buildConfigureKey(modifiers, itemNote)}@u${roundMoney(unitPrice).toFixed(2)}${serialPart}${saleUnitPart}`
 }
 
 export function hasConfigurableModifierUI(

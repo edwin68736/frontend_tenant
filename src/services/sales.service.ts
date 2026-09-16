@@ -67,13 +67,28 @@ export interface SaleItem {
   code: string
   description: string
   unit: string
+  /** Cantidad COMERCIAL (ej. 2, no 24) cuando la línea usó una unidad de venta (sale_unit_id). */
   quantity: number
+  /** Precio histórico COMERCIAL (ej. S/36 por caja) — nunca se multiplica por el factor. */
   unit_price: number
   igv_affectation_type: string
   price_includes_igv: boolean
   subtotal: number
   tax_amount: number
   total: number
+  /**
+   * Unidad de venta con conversión usada en esta línea (ej. "Caja x12"). undefined/null = línea
+   * legacy sin conversión (comportamiento previo). Confirmado en Fase 7A: GET /api/sales/:id
+   * devuelve el TenantSaleItem completo, por lo que este campo YA viaja en la respuesta real del
+   * backend aunque no estuviera declarado aquí — ver backend_principal/pkg/database/migrations.go
+   * (TenantSaleItem.SaleUnitID) y sale_handler.go:479 (items sin DTO intermedio).
+   *
+   * NO existe `sale_unit_quantity` ni `conversion_factor` en TenantSaleItem — esos snapshots
+   * viven únicamente en TenantStockMovement (Kardex), no en la línea de venta. `quantity` de
+   * arriba YA es la cantidad comercial; para mostrar el factor/nombre hay que resolver la
+   * SaleUnit del catálogo (productsService.getSaleUnit) o leerlo del Kardex.
+   */
+  sale_unit_id?: number | null
 }
 
 export interface SalePayment {
@@ -228,6 +243,14 @@ export interface CreateSaleInput {
   items: {
     product_id?: number | null
     presentation_id?: number
+    /**
+     * Unidad de venta elegida (ej. "Caja x12"). `quantity`/`unit_price` de esta misma línea
+     * siguen siendo COMERCIALES (2, S/36) — el backend convierte a unidad base internamente y
+     * valida unit_price server-side contra BranchPrice → SaleUnit global → Price1 (nunca confiar
+     * en el precio que llega del cliente). Mutuamente excluyente con presentation_id. Confirmado
+     * en Fase 7A contra service.SaleItemInput.SaleUnitID (sale_service.go:119).
+     */
+    sale_unit_id?: number
     code: string
     description: string
     unit: string

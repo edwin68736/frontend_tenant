@@ -7,8 +7,10 @@ import { ProductPriceUpdateModal } from '@/components/products/ProductPriceUpdat
 import { BulkDeleteProductsPinModal } from '@/components/products/BulkDeleteProductsPinModal'
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { ProductPresentationsModal } from '@/components/products/ProductPresentationsModal'
+import { SaleUnitsModal } from '@/components/products/SaleUnitsModal'
+import { ProductAttributesModal } from '@/components/products/ProductAttributesModal'
 import { ModifierOptionsEditor } from '@/components/modifiers/ModifierOptionsEditor'
-import { productsService, getProductImageUrl, type Product, type Category, type Brand, type Unit, type CreateProductInput, type ModifierGroup, type ProductCatalogType, type ProductPresentation, type BulkDeleteProductsResult } from '@/services/products.service'
+import { productsService, getProductImageUrl, type Product, type Category, type Brand, type Unit, type CreateProductInput, type ModifierGroup, type ProductCatalogType, type ProductPresentation, type ProductSaleUnit, type ProductAttribute, type BulkDeleteProductsResult } from '@/services/products.service'
 import { createEmptyOptionDraft, draftsFromApiOptions, optionDraftsToPayload, validateOptionDrafts, type ModifierOptionDraft } from '@/utils/modifierOptionText'
 import {
   QUANTITY_MAX_DECIMALS,
@@ -135,7 +137,7 @@ const PREPARATION_AREAS = [
   { value: 'otro', label: 'Otro' },
 ] as const
 
-type AdvancedTab = 'datos' | 'modificadores' | 'stock'
+type AdvancedTab = 'datos' | 'modificadores' | 'unidades' | 'atributos' | 'stock'
 
 export default function ProductsPage() {
   return (
@@ -205,6 +207,16 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const [savingGroup, setSavingGroup] = useState(false)
   const [presentations, setPresentations] = useState<ProductPresentation[]>([])
   const [showPresentationsModal, setShowPresentationsModal] = useState(false)
+
+  // Unidades de venta (Fase 7B) — solo se gestionan sobre un producto ya existente, desde el
+  // Panel avanzado. GET /products/:id no las incluye (a diferencia de presentations), así que se
+  // cargan aparte en openPanel con productsService.listSaleUnits.
+  const [panelSaleUnits, setPanelSaleUnits] = useState<ProductSaleUnit[]>([])
+  const [showSaleUnitsModal, setShowSaleUnitsModal] = useState(false)
+
+  // Atributos (Fase 7C) — mismo criterio que SaleUnits: GET /products/:id tampoco los incluye.
+  const [panelAttributes, setPanelAttributes] = useState<ProductAttribute[]>([])
+  const [showAttributesModal, setShowAttributesModal] = useState(false)
 
   // Panel avanzado
   const [panelProduct, setPanelProduct] = useState<Product | null>(null)
@@ -784,23 +796,54 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     setPanelDetail(null)
     setPanelSerials([])
     setStockRows([])
+    setPanelSaleUnits([])
+    setPanelAttributes([])
     setPanelLoading(true)
     try {
-      const [detail, b, stock, serials] = await Promise.all([
+      const [detail, b, stock, serials, saleUnits, attributes] = await Promise.all([
         productsService.get(p.id),
         companyService.listBranches(),
         p.manage_stock ? inventoryService.getStock(p.id) : Promise.resolve([]),
         p.manage_series ? productsService.getSerials(p.id) : Promise.resolve([]),
+        productsService.listSaleUnits(p.id, { all: true }),
+        productsService.listAttributes(p.id, { all: true }),
       ])
       setPanelDetail(detail)
       setBranches(b ?? [])
       setStockRows(Array.isArray(stock) ? stock : [])
       setPanelSerials(Array.isArray(serials) ? serials : [])
+      setPanelSaleUnits(Array.isArray(saleUnits) ? saleUnits : [])
+      setPanelAttributes(Array.isArray(attributes) ? attributes : [])
     } catch {
       toast.error('Error al cargar datos')
     } finally {
       setPanelLoading(false)
     }
+  }
+
+  const reloadPanelSaleUnits = () => {
+    if (!panelProduct) return
+    productsService
+      .listSaleUnits(panelProduct.id, { all: true })
+      .then((list) => setPanelSaleUnits(Array.isArray(list) ? list : []))
+      .catch(() => {})
+  }
+
+  const reloadPanelAttributes = () => {
+    if (!panelProduct) return
+    productsService
+      .listAttributes(panelProduct.id, { all: true })
+      .then((list) => setPanelAttributes(Array.isArray(list) ? list : []))
+      .catch(() => {})
+  }
+
+  // Cierra el Panel avanzado y, con él, cualquier sub-modal que dependa de panelProduct
+  // (SaleUnits/Attributes) — evitaba quedar abiertos con un productId obsoleto (0) si el panel se
+  // cerraba por otra vía (Escape, "Editar producto") mientras seguían abiertos.
+  const closePanel = () => {
+    setPanelProduct(null)
+    setShowSaleUnitsModal(false)
+    setShowAttributesModal(false)
   }
 
   const branchName = (id: number) => branches.find(b => b.id === id)?.name ?? `Sucursal ${id}`
@@ -1921,6 +1964,27 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         showInitialStock={Boolean(form.manage_stock)}
       />
 
+      <SaleUnitsModal
+        // Atado a panelProduct: si el Panel avanzado se cierra por cualquier vía (Escape, "Editar
+        // producto", "Cerrar") mientras este modal sigue abierto, se cierra con él en vez de
+        // quedar operable con un productId obsoleto (bug real: "producto no encontrado" al
+        // guardar, porque productId caía a 0).
+        open={showSaleUnitsModal && !!panelProduct}
+        productId={panelProduct?.id ?? 0}
+        productName={panelProduct?.name}
+        baseUnitLabel={productUnitFormDisplayName(panelProduct?.unit ?? '')}
+        onClose={() => setShowSaleUnitsModal(false)}
+        onChanged={reloadPanelSaleUnits}
+      />
+
+      <ProductAttributesModal
+        open={showAttributesModal && !!panelProduct}
+        productId={panelProduct?.id ?? 0}
+        productName={panelProduct?.name}
+        onClose={() => setShowAttributesModal(false)}
+        onChanged={reloadPanelAttributes}
+      />
+
       {/* Modal Grupos de extras */}
       <Modal
         open={showModifierGroups}
@@ -2012,7 +2076,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       )}
 
       {/* Panel avanzado (Administrar producto) */}
-      <Modal open={!!panelProduct} onClose={() => setPanelProduct(null)} closeOnBackdropClick={false}>
+      <Modal open={!!panelProduct} onClose={closePanel} closeOnBackdropClick={false}>
         {panelProduct && (
           <>
             <h3 className="font-bold text-gray-800 flex items-center gap-2">
@@ -2023,8 +2087,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
 
             <div className="flex gap-1 border-b border-gray-100 pb-2 overflow-x-auto">
               {(panelProduct.type === 'service'
-                ? (['datos', 'modificadores'] as const)
-                : (['datos', 'modificadores', 'stock'] as const)
+                ? (['datos', 'modificadores', 'unidades', 'atributos'] as const)
+                : (['datos', 'modificadores', 'unidades', 'atributos', 'stock'] as const)
               ).map(
                 (tab) => (
                   <button
@@ -2037,6 +2101,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                   >
                     {tab === 'datos' && 'Datos'}
                     {tab === 'modificadores' && (panelProduct.type === 'service' ? 'Presentaciones' : 'Presentaciones y extras')}
+                    {tab === 'unidades' && 'Unidades de venta'}
+                    {tab === 'atributos' && 'Atributos'}
                     {tab === 'stock' && 'Stock'}
                   </button>
                 ),
@@ -2070,7 +2136,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                       type="button"
                       onClick={() => {
                         setShow(false)
-                        setPanelProduct(null)
+                        closePanel()
                         openEdit(panelProduct)
                         setShow(true)
                       }}
@@ -2122,6 +2188,84 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                           : 'Este producto no usa presentaciones ni extras.'}
                       </p>
                     ) : null}
+                  </div>
+                )}
+
+                {panelTab === 'unidades' && (
+                  <div className="text-sm space-y-3">
+                    <p className="text-xs text-gray-600 leading-relaxed">
+                      Las unidades de venta permiten vender este producto en diferentes cantidades
+                      comerciales — por ejemplo Caja x12, Pack x6 o Unidad — con conversión hacia la
+                      unidad base ({productUnitFormDisplayName(panelProduct?.unit ?? '')}). No
+                      reemplazan las presentaciones ni tienen stock propio.
+                    </p>
+                    {panelSaleUnits.length > 0 ? (
+                      <ul className="space-y-1">
+                        {panelSaleUnits.map((u) => (
+                          <li
+                            key={u.id}
+                            className="text-gray-600 text-xs border border-gray-100 rounded-lg px-2 py-1.5 flex items-center justify-between gap-2"
+                          >
+                            <span>
+                              {u.name}
+                              {u.is_base && (
+                                <span className="ml-1 text-[10px] text-[rgb(var(--p600))] font-semibold">(base)</span>
+                              )}
+                              {' — factor '}{u.conversion_factor}{' — S/ '}{Number(u.price1).toFixed(2)}
+                            </span>
+                            <span
+                              className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-medium ${u.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}
+                            >
+                              {u.active ? 'Activa' : 'Inactiva'}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-gray-400">Aún no hay unidades de venta configuradas.</p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowSaleUnitsModal(true)}
+                      className="w-full sm:w-auto px-4 py-2 rounded-xl text-sm font-medium border border-[rgb(var(--p300))] text-[rgb(var(--p700))] hover:bg-[rgb(var(--p100))]"
+                    >
+                      Gestionar unidades de venta
+                    </button>
+                  </div>
+                )}
+
+                {panelTab === 'atributos' && (
+                  <div className="text-sm space-y-3">
+                    <p className="text-xs text-gray-600 leading-relaxed">
+                      Datos descriptivos del producto (ej. Color → Rojo, Material → Acero). Son
+                      puramente informativos: no afectan precio, stock, ventas ni SUNAT.
+                    </p>
+                    {panelAttributes.length > 0 ? (
+                      <ul className="space-y-1">
+                        {panelAttributes.map((a) => (
+                          <li
+                            key={a.id}
+                            className="text-gray-600 text-xs border border-gray-100 rounded-lg px-2 py-1.5 flex items-center justify-between gap-2"
+                          >
+                            <span>{a.name} — {a.value}</span>
+                            <span
+                              className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-medium ${a.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}
+                            >
+                              {a.active ? 'Activo' : 'Inactivo'}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-gray-400">Aún no hay atributos configurados.</p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setShowAttributesModal(true)}
+                      className="w-full sm:w-auto px-4 py-2 rounded-xl text-sm font-medium border border-[rgb(var(--p300))] text-[rgb(var(--p700))] hover:bg-[rgb(var(--p100))]"
+                    >
+                      Gestionar atributos
+                    </button>
                   </div>
                 )}
 
@@ -2189,7 +2333,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
             )}
 
             <div className="pt-3 border-t border-gray-100 mt-3">
-              <button type="button" onClick={() => setPanelProduct(null)} className="w-full py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cerrar</button>
+              <button type="button" onClick={closePanel} className="w-full py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cerrar</button>
             </div>
           </>
         )}

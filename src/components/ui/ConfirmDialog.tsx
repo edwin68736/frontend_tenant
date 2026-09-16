@@ -16,6 +16,8 @@ export interface ConfirmDialogProps {
   variant?: ConfirmVariant
   /** Si true, deshabilita el botón confirm y muestra estado de carga (útil cuando onConfirm es async) */
   loading?: boolean
+  /** Si este diálogo se abre encima de otro modal ya "stacked", pásalo también aquí para quedar por encima de ese. */
+  stacked?: boolean
 }
 
 export function ConfirmDialog({
@@ -28,6 +30,7 @@ export function ConfirmDialog({
   cancelLabel = 'Cancelar',
   variant = 'default',
   loading = false,
+  stacked,
 }: ConfirmDialogProps) {
   const handleConfirm = async () => {
     await onConfirm()
@@ -40,7 +43,7 @@ export function ConfirmDialog({
     : 'bg-[rgb(var(--p600))] text-white hover:opacity-90'
 
   return (
-    <Modal open={open} onClose={loading ? undefined : onClose} contentClassName="max-w-md">
+    <Modal open={open} onClose={loading ? undefined : onClose} stacked={stacked} contentClassName="max-w-md">
       <h3 className="font-bold text-gray-800 text-lg">{title}</h3>
       {message != null && (
         <div className="text-gray-600 text-sm">

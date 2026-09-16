@@ -227,6 +227,71 @@ export interface ProductDetailResponse {
   combo_groups?: ComboGroup[]
 }
 
+/**
+ * Unidad de venta comercial de un producto (ej. "Caja x12"), con conversión hacia la unidad base
+ * del producto (`Product.unit`). No tiene stock propio — el stock sigue siendo el del producto,
+ * en unidad base. Fase 7A: tipo verificado contra `TenantProductSaleUnit`
+ * (backend_principal/pkg/database/migrations.go) y el payload real de
+ * `/api/products/:id/sale-units*` (backend_principal/internal/products/handler/product_handler.go).
+ *
+ * IMPORTANTE: NO confundir con `ProductPresentation` — son conceptos distintos (ver
+ * FRONTEND_IMPLEMENTATION_PLAN.md, sección 6).
+ */
+export interface ProductSaleUnit {
+  id?: number
+  product_id?: number
+  name: string
+  /**
+   * Unidad comercial SUNAT (Catálogo N°03) propia de esta SaleUnit — ej. "Caja" → BX. Mismo patrón
+   * que Product.unit_id/unit: unit_id es la fuente de verdad (FK a Unit, ver listUnits), unit es
+   * el código ya resuelto por el backend (nunca se envía como texto libre; el backend lo resuelve
+   * desde unit_id y lo devuelve). Requerido al crear una SaleUnit nueva; opcional al editar una ya
+   * existente (no fuerza a completar retroactivamente las creadas antes de este campo).
+   *
+   * NUNCA se deriva de `name` ("Caja" no implica BX) ni de `conversion_factor` — son tres datos
+   * independientes: nombre comercial, código fiscal y factor de conversión de inventario.
+   */
+  unit_id?: number | null
+  unit?: string
+  conversion_factor: number
+  /** true = representa 1:1 la unidad base del producto (conversion_factor siempre 1). A lo sumo una por producto. */
+  is_base: boolean
+  allow_fraction: boolean
+  price1: number
+  price2?: number | null
+  price3?: number | null
+  sort_order?: number
+  active: boolean
+}
+
+/**
+ * Override de precio de una SaleUnit para una sucursal puntual. Si no existe uno activo para una
+ * sucursal, se usa el precio global de la SaleUnit (ProductSaleUnit.price1/2/3) — ver
+ * pkg/saleunit/price.go:ResolvePrice. Nunca se multiplica por conversion_factor.
+ */
+export interface SaleUnitBranchPrice {
+  id?: number
+  sale_unit_id?: number
+  branch_id: number
+  price1: number
+  price2?: number | null
+  price3?: number | null
+  active: boolean
+}
+
+/**
+ * Atributo descriptivo simple de un producto (ej. "Color" / "Rojo"). Puramente informativo: no
+ * genera stock, precio ni conversión — no confundir con SaleUnit ni con ProductPresentation.
+ */
+export interface ProductAttribute {
+  id?: number
+  product_id?: number
+  name: string
+  value: string
+  sort_order?: number
+  active: boolean
+}
+
 export interface BulkImportItemPayload {
   row_number: number
   name: string
@@ -611,6 +676,78 @@ export const productsService = {
         rows,
       })
       .then(r => r.data.data),
+
+  // ---- Unidades de venta (Fase 7B) ----
+  // NOTA: GET /api/products/:id NO incluye sale_units (a diferencia de `presentations`, que sí
+  // viene incluida) — hay que pedirlas aparte con listSaleUnits. Confirmado en Fase 7A.
+
+  /** Lista las unidades de venta activas del producto. `all: true` incluye las inactivas (admin). */
+  listSaleUnits: (productId: number, opts?: { all?: boolean }) =>
+    api
+      .get<{ data: ProductSaleUnit[] }>(`/api/products/${productId}/sale-units`, {
+        params: opts?.all ? { all: 'true' } : undefined,
+      })
+      .then(r => r.data.data ?? []),
+
+  getSaleUnit: (productId: number, saleUnitId: number) =>
+    api.get<{ data: ProductSaleUnit }>(`/api/products/${productId}/sale-units/${saleUnitId}`).then(r => r.data.data),
+
+  createSaleUnit: (productId: number, input: ProductSaleUnit) =>
+    api.post<{ data: ProductSaleUnit }>(`/api/products/${productId}/sale-units`, input).then(r => r.data.data),
+
+  updateSaleUnit: (productId: number, saleUnitId: number, input: ProductSaleUnit) =>
+    api.put<{ data: ProductSaleUnit }>(`/api/products/${productId}/sale-units/${saleUnitId}`, input).then(r => r.data.data),
+
+  deleteSaleUnit: (productId: number, saleUnitId: number) =>
+    api.delete(`/api/products/${productId}/sale-units/${saleUnitId}`).then(r => r.data),
+
+  // ---- Precios por sucursal de una unidad de venta (Fase 7D) ----
+
+  listSaleUnitBranchPrices: (productId: number, saleUnitId: number) =>
+    api
+      .get<{ data: SaleUnitBranchPrice[] }>(`/api/products/${productId}/sale-units/${saleUnitId}/branch-prices`)
+      .then(r => r.data.data ?? []),
+
+  getSaleUnitBranchPrice: (productId: number, saleUnitId: number, branchId: number) =>
+    api
+      .get<{ data: SaleUnitBranchPrice }>(`/api/products/${productId}/sale-units/${saleUnitId}/branch-prices/${branchId}`)
+      .then(r => r.data.data),
+
+  createSaleUnitBranchPrice: (productId: number, saleUnitId: number, branchId: number, input: SaleUnitBranchPrice) =>
+    api
+      .post<{ data: SaleUnitBranchPrice }>(`/api/products/${productId}/sale-units/${saleUnitId}/branch-prices/${branchId}`, input)
+      .then(r => r.data.data),
+
+  updateSaleUnitBranchPrice: (productId: number, saleUnitId: number, branchId: number, input: SaleUnitBranchPrice) =>
+    api
+      .put<{ data: SaleUnitBranchPrice }>(`/api/products/${productId}/sale-units/${saleUnitId}/branch-prices/${branchId}`, input)
+      .then(r => r.data.data),
+
+  deleteSaleUnitBranchPrice: (productId: number, saleUnitId: number, branchId: number) =>
+    api.delete(`/api/products/${productId}/sale-units/${saleUnitId}/branch-prices/${branchId}`).then(r => r.data),
+
+  // ---- Atributos descriptivos (Fase 7C) ----
+  // NOTA: igual que sale_units, GET /api/products/:id NO incluye attributes — pedirlas aparte.
+
+  /** Lista los atributos activos del producto. `all: true` incluye los inactivos (admin). */
+  listAttributes: (productId: number, opts?: { all?: boolean }) =>
+    api
+      .get<{ data: ProductAttribute[] }>(`/api/products/${productId}/attributes`, {
+        params: opts?.all ? { all: 'true' } : undefined,
+      })
+      .then(r => r.data.data ?? []),
+
+  getAttribute: (productId: number, attributeId: number) =>
+    api.get<{ data: ProductAttribute }>(`/api/products/${productId}/attributes/${attributeId}`).then(r => r.data.data),
+
+  createAttribute: (productId: number, input: ProductAttribute) =>
+    api.post<{ data: ProductAttribute }>(`/api/products/${productId}/attributes`, input).then(r => r.data.data),
+
+  updateAttribute: (productId: number, attributeId: number, input: ProductAttribute) =>
+    api.put<{ data: ProductAttribute }>(`/api/products/${productId}/attributes/${attributeId}`, input).then(r => r.data.data),
+
+  deleteAttribute: (productId: number, attributeId: number) =>
+    api.delete(`/api/products/${productId}/attributes/${attributeId}`).then(r => r.data),
 }
 
 /** Devuelve la URL absoluta de la imagen del producto (backend guarda rutas relativas). */

@@ -26,8 +26,23 @@ export interface PurchaseItem {
   code: string
   description: string
   unit: string
+  /** Cantidad COMERCIAL (ej. 10, no 1000) cuando la línea usa una unidad de venta (sale_unit_id). */
   quantity: number
+  /** Costo COMERCIAL (ej. S/350/saco) — el backend convierte a costo base internamente. */
   unit_cost: number
+  /**
+   * Unidad de venta con conversión usada en esta línea (ej. "Saco 100 KG"). Confirmado en Fase 7A
+   * como aceptado por POST /api/purchases (service.PurchaseItemInput.SaleUnitID,
+   * purchase_service.go:40) — se puede enviar al crear una compra.
+   *
+   * PENDIENTE DE CONTRATO (lectura): GET /api/purchases/:id NO lo devuelve todavía — el handler
+   * (purchase_api.go, tipo interno `itemRow`, líneas 124-139) arma una fila a mano que omite
+   * sale_unit_id. Este campo por lo tanto NUNCA viene poblado al leer una compra ya creada,
+   * aunque sí se envía al crearla. No modificar el backend sin autorización explícita; hasta
+   * entonces, el detalle de una compra por SaleUnit no puede mostrar qué unidad se usó (bloquea
+   * parte de la Fase 7H — "mostrar unidad en detalle/anulación").
+   */
+  sale_unit_id?: number
   igv_affectation_type: string
   price_includes_igv: boolean
   /** Números de serie (para productos con manejo de series). */
