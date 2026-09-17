@@ -75,7 +75,15 @@ export interface DashboardAnalytics {
   sales_by_branch: Array<{ id: number; name: string; total: number }>
   sales_by_seller: Array<{ id: number; name: string; total: number }>
   top_clients: Array<{ id: number; name: string; total: number; sales_count: number }>
-  top_products: Array<{ product_id: number; name: string; quantity: number; total: number }>
+  /**
+   * Ranking "Productos más vendidos" — Fase 7J.2/7J.4: cada fila es una combinación INEQUÍVOCA
+   * product_id+sale_unit_id, nunca cantidades comerciales mezcladas de distintas unidades.
+   * `sale_unit_id` nulo = venta en unidad base/legacy (combinación propia, nunca se funde con una
+   * SaleUnit real del mismo producto). `quantity` es siempre COMERCIAL, nunca convertida a base.
+   * El nombre comercial de la SaleUnit se resuelve en el frontend (saleUnitNames.ts), este backend
+   * no lo expone. El "top N" ya se aplicó en el backend sobre combinaciones, no sobre productos.
+   */
+  top_products: Array<{ product_id: number; name: string; sale_unit_id?: number | null; quantity: number; total: number }>
   by_doc_type: Array<{ key: string; total: number; count: number }>
   by_payment_method: Array<{ key: string; total: number; count: number }>
   by_sale_status: Array<{ key: string; count: number }>

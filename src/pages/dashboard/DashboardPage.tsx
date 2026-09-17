@@ -55,6 +55,7 @@ import {
   getProductExpiryStatus,
   PRODUCT_EXPIRY_BADGE_CLASS,
 } from '@/utils/productExpiry'
+import { resolveSaleUnitNames, saleLineUnitLabel } from '@/utils/saleUnitNames'
 
 const ZONE = 'America/Lima'
 
@@ -102,6 +103,22 @@ function getRangePreset(key: string): { from: string; to: string } {
 
 const fmtMoney = (n: number) =>
   new Intl.NumberFormat('es-PE', { style: 'currency', currency: 'PEN', minimumFractionDigits: 2 }).format(n || 0)
+
+/**
+ * Fila del widget "Productos más vendidos" con el nombre comercial de la SaleUnit ya resuelto
+ * (Fase 7J.4) — mismo criterio que SalesByProductReportPage.tsx (7J.3). `sale_unit_label` solo
+ * existe cuando `sale_unit_id` no es nulo; una fila legacy no se toca y conserva exactamente su
+ * presentación anterior (solo el nombre del producto, sin unidad — este widget nunca mostró
+ * unidad antes de 7J.4, así que no se inventa ninguna para las combinaciones sin SaleUnit).
+ */
+type TopProductRow = DashboardAnalytics['top_products'][number] & { sale_unit_label?: string }
+
+async function attachTopProductLabels(rows: DashboardAnalytics['top_products']): Promise<TopProductRow[]> {
+  const withSaleUnit = rows.filter((r) => r.sale_unit_id != null)
+  if (withSaleUnit.length === 0) return rows
+  const names = await resolveSaleUnitNames(withSaleUnit)
+  return rows.map((r) => (r.sale_unit_id != null ? { ...r, sale_unit_label: saleLineUnitLabel(r, names) } : r))
+}
 
 const PAYMENT_LABELS: Record<string, string> = {
   cash: 'Efectivo',
@@ -317,6 +334,7 @@ const PRESETS = [
 
 export default function DashboardPage() {
   const [analytics, setAnalytics] = useState<DashboardAnalytics | null>(null)
+  const [topProducts, setTopProducts] = useState<TopProductRow[]>([])
   const [loading, setLoading] = useState(true)
   const [branches, setBranches] = useState<BranchOpt[]>([])
   const [branchId, setBranchId] = useState<number | ''>('')
@@ -339,9 +357,11 @@ export default function DashboardPage() {
         branch_id: branchId ? Number(branchId) : undefined,
       })
       setAnalytics(data)
+      setTopProducts(await attachTopProductLabels(data.top_products ?? []))
     } catch {
       toast.error('No se pudieron cargar las métricas del dashboard')
       setAnalytics(null)
+      setTopProducts([])
     } finally {
       setLoading(false)
     }
@@ -933,14 +953,19 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {(analytics?.top_products ?? []).map((r) => (
-                  <tr key={r.product_id} className="transition hover:bg-slate-50/80">
-                    <td className="px-5 py-2.5 font-medium text-slate-800">{r.name}</td>
+                {topProducts.map((r) => (
+                  <tr key={`${r.product_id}-${r.sale_unit_id ?? 'legacy'}`} className="transition hover:bg-slate-50/80">
+                    <td className="px-5 py-2.5 font-medium text-slate-800">
+                      <div>{r.name}</div>
+                      {r.sale_unit_label && (
+                        <div className="text-[11px] font-normal text-slate-400">{r.sale_unit_label}</div>
+                      )}
+                    </td>
                     <td className="px-5 py-2.5 text-right text-slate-600">{r.quantity.toFixed(2)}</td>
                     <td className="px-5 py-2.5 text-right font-semibold text-slate-900">{fmtMoney(r.total)}</td>
                   </tr>
                 ))}
-                {!loading && !(analytics?.top_products ?? []).length && (
+                {!loading && !topProducts.length && (
                   <tr>
                     <td colSpan={3} className="px-5 py-8 text-center text-slate-400">
                       Sin ventas con productos en el período
