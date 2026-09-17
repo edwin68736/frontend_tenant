@@ -8,10 +8,11 @@ import {
   type CreatePurchaseInput,
 } from '@/services/purchases.service'
 import { contactsService, type Contact } from '@/services/contacts.service'
-import { productsService, type Product } from '@/services/products.service'
+import { productsService, type Product, type ProductSaleUnit } from '@/services/products.service'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { UnitQuantityInput } from '@/components/ui/UnitQuantityInput'
+import { PurchaseSaleUnitSelector } from '@/components/purchases/PurchaseSaleUnitSelector'
 import { ProductPickerModal } from '@/components/sales/ProductPickerModal'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
 import { QuickProductCreateModal } from '@/components/products/QuickProductCreateModal'
@@ -26,10 +27,22 @@ const DOC_TYPES = ['FACTURA', 'BOLETA', 'NOTA DE CRÉDITO', 'TICKET']
 const PRESENTATIONS_WARNING =
   'Este producto posee presentaciones con precios independientes. Solo se actualizará el precio base del producto. Los precios de las presentaciones deberán modificarse desde el módulo Productos.'
 
+/**
+ * Extiende PurchaseItem con un campo SOLO DE UI (Fase 7H) — no forma parte del contrato con el
+ * backend, se descarta al construir el payload de POST /purchases (ver handleSave). Vive acá y no
+ * en purchases.service.ts porque ese archivo es alcance de la Fase 7H.6, todavía no autorizada.
+ */
+type PurchaseLineItem = PurchaseItem & {
+  /** allow_fraction de la SaleUnit elegida en esta línea (PurchaseSaleUnitSelector). Permite que
+   *  UnitQuantityInput sepa si admite decimales sin volver a pedir la lista de SaleUnits al
+   *  backend. undefined = sin SaleUnit elegida (comportamiento legacy intacto). */
+  sale_unit_allow_fraction?: boolean
+}
+
 function buildPurchaseLine(
   p: Product,
   opts?: { isNewlyCreated?: boolean; hasPresentations?: boolean; priceIncludesIgv?: boolean },
-): PurchaseItem {
+): PurchaseLineItem {
   return {
     product_id: p.id,
     code: p.code ?? '',
@@ -69,7 +82,7 @@ function PurchaseRegisterContent() {
     currency: 'PEN',
     issue_date: getTodayPeru(),
   })
-  const [items, setItems] = useState<PurchaseItem[]>([])
+  const [items, setItems] = useState<PurchaseLineItem[]>([])
   const [saving, setSaving] = useState(false)
   const [addSupplierOpen, setAddSupplierOpen] = useState(false)
   const [seriesModalItemIdx, setSeriesModalItemIdx] = useState<number | null>(null)
@@ -149,8 +162,24 @@ function PurchaseRegisterContent() {
     )
   }
 
-  const updateItem = (idx: number, field: keyof PurchaseItem, val: unknown) =>
+  const updateItem = (idx: number, field: keyof PurchaseLineItem, val: unknown) =>
     setItems(prev => prev.map((it, i) => (i !== idx ? it : { ...it, [field]: val })))
+
+  /**
+   * SaleUnit elegida/quitada para una línea (Fase 7H) — cambia sale_unit_id (contrato real) y
+   * sale_unit_allow_fraction (solo UI, para UnitQuantityInput) juntos, en un solo commit de
+   * estado. NO convierte cantidad ni costo: la línea sigue guardando quantity/unit_cost
+   * COMERCIALES tal cual los tecleó el usuario — la conversión a base es exclusiva del backend.
+   */
+  const handleSaleUnitChange = (idx: number, saleUnitId: number | null, saleUnit: ProductSaleUnit | null) => {
+    setItems(prev =>
+      prev.map((it, i) =>
+        i !== idx
+          ? it
+          : { ...it, sale_unit_id: saleUnitId ?? undefined, sale_unit_allow_fraction: saleUnit?.allow_fraction },
+      ),
+    )
+  }
 
   const openSeriesModal = (idx: number) => {
     const it = items[idx]
@@ -246,6 +275,7 @@ function PurchaseRegisterContent() {
           current_sale_price: _cs,
           has_presentations: _hp,
           is_newly_created: _nc,
+          sale_unit_allow_fraction: _suaf,
           update_sale_price,
           new_sale_price,
           ...rest
@@ -475,6 +505,14 @@ function PurchaseRegisterContent() {
                       {it.code && (
                         <span className="block text-xs text-gray-400 font-mono">{it.code}</span>
                       )}
+                      <div className="mt-1.5">
+                        <PurchaseSaleUnitSelector
+                          productId={it.product_id}
+                          manageSeries={it.manage_series}
+                          value={it.sale_unit_id ?? null}
+                          onChange={(saleUnitId, saleUnit) => handleSaleUnitChange(idx, saleUnitId, saleUnit)}
+                        />
+                      </div>
                       {!it.is_newly_created && (
                         <div className="mt-2 space-y-1.5">
                           <label className="flex items-center gap-1.5 cursor-pointer">
@@ -537,6 +575,7 @@ function PurchaseRegisterContent() {
                           unit={it.unit}
                           onChange={(v) => updateItem(idx, 'quantity', v)}
                           className="w-full border border-gray-200 rounded-lg px-2 py-1 text-sm"
+                          allowDecimalsOverride={it.sale_unit_id != null ? it.sale_unit_allow_fraction : undefined}
                         />
                       )}
                     </td>

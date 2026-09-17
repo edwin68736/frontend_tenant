@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { normalizeQuantityForUnit, unitAllowsDecimals } from '@/constants/sunatUnits'
+import { QUANTITY_MAX_DECIMALS, normalizeQuantityForUnit, unitAllowsDecimals } from '@/constants/sunatUnits'
 
 /**
  * Input de cantidad cuya divisibilidad depende de la unidad de medida del producto
@@ -68,6 +68,7 @@ export function UnitQuantityInput({
   unit,
   className,
   disabled = false,
+  allowDecimalsOverride,
 }: {
   value: number
   onChange: (value: number) => void
@@ -75,16 +76,37 @@ export function UnitQuantityInput({
   unit?: string
   className?: string
   disabled?: boolean
+  /**
+   * Fuerza si la línea admite decimales, ignorando el código de unidad SUNAT — para cuando la
+   * divisibilidad la decide una unidad de venta (ProductSaleUnit.allow_fraction, Fase 7H:
+   * PurchaseRegisterPage) en vez de la unidad base del producto. Mismo criterio que ya usa POS
+   * desde Fase 7E (`PosCartLineRow.tsx`), que resuelve esto con un input de cantidad propio; acá
+   * se extiende este componente compartido en vez de duplicarlo una tercera vez.
+   * undefined (default) = comportamiento de siempre, se deriva de `unit`.
+   */
+  allowDecimalsOverride?: boolean
 }) {
   const [draft, setDraft] = useState<string | null>(null)
   const prevRef = useRef(value)
   const inputRef = useRef<HTMLInputElement>(null)
   const { flashRounded, badge } = useRoundedQuantityBadge()
-  const allowDecimals = unitAllowsDecimals(unit ?? '')
+  const allowDecimals = allowDecimalsOverride ?? unitAllowsDecimals(unit ?? '')
 
-  /** Normaliza según la unidad, avisa si hubo redondeo (discreta) y entrega al padre. */
+  /** Normaliza según la divisibilidad resuelta (unidad u override), avisa si hubo redondeo
+   *  (discreta) y entrega al padre. Cuando hay override, no se puede reusar
+   *  normalizeQuantityForUnit (esa función deriva la divisibilidad de `unit`, ignorando el
+   *  override) — se replica aquí la misma regla (entero≥1 vs. hasta 3 decimales) parametrizada
+   *  por el booleano ya resuelto en vez de por el código de unidad. */
+  const normalize = (qty: number): number => {
+    if (allowDecimalsOverride === undefined) return normalizeQuantityForUnit(qty, unit ?? '')
+    if (!Number.isFinite(qty)) return 1
+    if (!allowDecimals) return Math.max(1, Math.round(qty))
+    const factor = 10 ** QUANTITY_MAX_DECIMALS
+    return Math.max(1 / factor, Math.round(qty * factor) / factor)
+  }
+
   const commit = (raw: number) => {
-    const normalized = normalizeQuantityForUnit(raw, unit ?? '')
+    const normalized = normalize(raw)
     if (!allowDecimals && !Number.isInteger(raw)) {
       flashRounded(inputRef.current, normalized)
     }
