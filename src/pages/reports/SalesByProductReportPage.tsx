@@ -12,8 +12,33 @@ import { exportTableToPdf } from '@/utils/exportPdf'
 import { exportTableToExcel } from '@/utils/exportExcel'
 import type { ExportColumn } from '@/utils/exportPdf'
 import { formatDisplayDatePeru, getTodayPeru } from '@/utils/datesPeru'
+import { resolveSaleUnitNames, saleLineUnitLabel } from '@/utils/saleUnitNames'
 
 type Branch = { id: number; name: string }
+
+/**
+ * Fila con el nombre comercial de la SaleUnit ya resuelto (Fase 7J.3) — se calcula una sola vez
+ * tras cargar el reporte y viaja pegado a cada fila, para que tabla en pantalla y exportación
+ * (PDF/Excel) lean el mismo valor. `sale_unit_label` solo existe cuando `sale_unit_id` no es nulo;
+ * una fila legacy (sin SaleUnit) no se toca y conserva exactamente su presentación anterior.
+ */
+type Row = SalesByProductRow & { sale_unit_label?: string }
+
+/** Resuelve en un solo batch el nombre comercial de cada SaleUnit distinta referenciada por el
+ *  reporte. Las filas legacy (sale_unit_id nulo) no reciben ninguna etiqueta nueva. */
+async function attachSaleUnitLabels(rows: SalesByProductRow[]): Promise<Row[]> {
+  const withSaleUnit = rows.filter((r) => r.sale_unit_id != null)
+  if (withSaleUnit.length === 0) return rows
+  const names = await resolveSaleUnitNames(withSaleUnit)
+  return rows.map((r) => (r.sale_unit_id != null ? { ...r, sale_unit_label: saleLineUnitLabel(r, names) } : r))
+}
+
+/** Unidad a mostrar en pantalla/export: nombre comercial de la SaleUnit si la fila la tiene
+ *  (nunca una cantidad comercial sin su contexto), o el código SUNAT legacy sin cambios. */
+function unitCellLabel(row: Row): string {
+  if (row.sale_unit_id != null && row.sale_unit_label) return row.sale_unit_label
+  return row.unit || '—'
+}
 
 const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
 
@@ -24,13 +49,14 @@ const getCurrentMonthRange = () => {
 }
 
 // lines_count/avg_line_amount son métricas técnicas de granularidad interna (cuántas filas de
-// detalle tuvo el producto, no cuántas ventas) sin lectura de negocio clara — no se muestran
-// aquí; en su lugar avg_unit_price (precio promedio de venta por unidad) sí es un dato útil.
-const EXPORT_COLS: ExportColumn<SalesByProductRow>[] = [
+// detalle tuvo la combinación producto+SaleUnit, no cuántas ventas) sin lectura de negocio clara —
+// no se muestran aquí; en su lugar avg_unit_price (precio promedio de venta, válido dentro de esa
+// combinación) sí es un dato útil.
+const EXPORT_COLS: ExportColumn<Row>[] = [
   { key: 'category_name', label: 'Categoría' },
   { key: 'product_code', label: 'Código' },
   { key: 'product_name', label: 'Producto' },
-  { key: 'unit', label: 'Unidad', format: (v: unknown) => String(v || '—') },
+  { key: 'unit', label: 'Unidad de venta', format: (_v: unknown, row: Row) => unitCellLabel(row) },
   { key: 'quantity_sold', label: 'Cantidad', format: (v: unknown) => Number(v).toFixed(3) },
   { key: 'sales_count', label: 'Comprobantes', format: (v: unknown) => String(v ?? '') },
   { key: 'total_amount', label: 'Total (S/)', format: (v: unknown) => Number(v).toFixed(2) },
@@ -52,7 +78,7 @@ function fmtQty(n: unknown): string {
 export default function SalesByProductReportPage() {
   const [branches, setBranches] = useState<Branch[]>([])
   const [categories, setCategories] = useState<{ id: number; name: string }[]>([])
-  const [data, setData] = useState<SalesByProductRow[]>([])
+  const [data, setData] = useState<Row[]>([])
   const [summary, setSummary] = useState<SalesByProductSummary | null>(null)
   const [loading, setLoading] = useState(false)
   const currentMonthRange = getCurrentMonthRange()
@@ -101,7 +127,7 @@ export default function SalesByProductReportPage() {
       if (filters.q.trim()) params.q = filters.q.trim()
       if (filters.product_type) params.product_type = filters.product_type
       const { data: list, summary: sm } = await salesService.listByProduct(params)
-      setData(list ?? [])
+      setData(await attachSaleUnitLabels(list ?? []))
       setSummary(sm ?? null)
     } catch {
       setData([])
@@ -138,7 +164,7 @@ export default function SalesByProductReportPage() {
   }, [data, effectivePage, perPage])
 
   const exportPdf = () => {
-    exportTableToPdf<SalesByProductRow>(
+    exportTableToPdf<Row>(
       'Ventas por producto',
       EXPORT_COLS,
       data,
@@ -149,7 +175,7 @@ export default function SalesByProductReportPage() {
 
   const exportExcel = async () => {
     try {
-      await exportTableToExcel<SalesByProductRow>(
+      await exportTableToExcel<Row>(
         'Ventas por producto',
         EXPORT_COLS,
         data,
@@ -280,14 +306,10 @@ export default function SalesByProductReportPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Total vendido</p>
               <p className="text-xl font-bold text-violet-950">{fmtMoney(summary.total_amount)}</p>
-            </div>
-            <div className="rounded-2xl border border-sky-100 bg-sky-50 px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">Unidades</p>
-              <p className="text-xl font-bold text-sky-950">{fmtQty(summary.total_quantity)}</p>
             </div>
             <div className="rounded-2xl border border-teal-100 bg-teal-50 px-4 py-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Comprobantes</p>
@@ -322,7 +344,7 @@ export default function SalesByProductReportPage() {
                 <tr>
                   <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Código</th>
                   <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Producto</th>
-                  <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Und.</th>
+                  <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Unidad de venta</th>
                   <th className="text-right px-4 py-2 text-xs font-semibold text-gray-500">Cantidad</th>
                   <th className="text-right px-4 py-2 text-xs font-semibold text-gray-500">Cmpr.</th>
                   <th className="text-right px-4 py-2 text-xs font-semibold text-gray-500">Total</th>
@@ -335,7 +357,7 @@ export default function SalesByProductReportPage() {
                     const prevCat = i > 0 ? pagedData[i - 1].category_name : null
                     const showHeader = row.category_name !== prevCat
                     return (
-                      <Fragment key={`${row.product_id}-${(effectivePage - 1) * perPage + i}`}>
+                      <Fragment key={`${row.product_id}-${row.sale_unit_id ?? 'legacy'}-${(effectivePage - 1) * perPage + i}`}>
                         {showHeader && (
                           <tr className="bg-slate-100/90">
                             <td
@@ -349,7 +371,7 @@ export default function SalesByProductReportPage() {
                         <tr className="border-b border-gray-50 hover:bg-gray-50/80">
                           <td className="px-4 py-2 font-mono text-xs">{row.product_code || '—'}</td>
                           <td className="px-4 py-2 text-gray-900">{row.product_name}</td>
-                          <td className="px-4 py-2 text-gray-600">{row.unit || '—'}</td>
+                          <td className="px-4 py-2 text-gray-600">{unitCellLabel(row)}</td>
                           <td className="px-4 py-2 text-right tabular-nums">{fmtQty(row.quantity_sold)}</td>
                           <td className="px-4 py-2 text-right tabular-nums text-gray-700">{row.sales_count ?? 0}</td>
                           <td className="px-4 py-2 text-right tabular-nums font-medium text-gray-900">

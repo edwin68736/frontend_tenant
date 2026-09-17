@@ -281,20 +281,33 @@ export interface SalesByProductRow {
   product_name: string
   category_id?: number | null
   category_name: string
+  /**
+   * Unidad de venta de ESTA combinación (Fase 7J): cada fila ya es una combinación homogénea
+   * producto+SaleUnit; `null`/`undefined` = venta en unidad base/legacy (combinación propia, nunca
+   * se funde con una SaleUnit real del mismo producto). El nombre comercial se resuelve en el
+   * frontend vía saleUnitNames.ts, igual que ya hacen Compras (7H) y Kardex (7I).
+   */
+  sale_unit_id?: number | null
+  /** Código SUNAT de la línea (fallback de UI cuando sale_unit_id es nil) — nunca el nombre comercial. */
   unit: string
+  /** Cantidad COMERCIAL de esta combinación — nunca convertida a base ni sumada contra otra SaleUnit. */
   quantity_sold: number
   total_amount: number
   /** Métricas técnicas de granularidad interna, no se muestran en el reporte del front. */
   lines_count: number
   sales_count: number
   avg_line_amount: number
-  /** total_amount / quantity_sold — precio promedio de venta por unidad. */
+  /** total_amount / quantity_sold — precio promedio, válido dentro de esta combinación producto+SaleUnit. */
   avg_unit_price: number
 }
 
+/**
+ * Fase 7J: se quitó `total_quantity` — sumar cantidades comerciales de todas las combinaciones
+ * (distintos productos Y distintas SaleUnits) no tiene lectura de negocio válida. `products_count`
+ * es COUNT(DISTINCT product_id), no la cantidad de filas (que ahora son combinaciones).
+ */
 export interface SalesByProductSummary {
   total_amount: number
-  total_quantity: number
   line_items: number
   distinct_sales: number
   products_count: number
@@ -437,7 +450,6 @@ export const salesService = {
         data: r.data.data ?? [],
         summary: r.data.summary ?? {
           total_amount: 0,
-          total_quantity: 0,
           line_items: 0,
           distinct_sales: 0,
           products_count: 0,
