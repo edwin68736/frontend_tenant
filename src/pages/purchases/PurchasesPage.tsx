@@ -19,6 +19,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { Modal } from '@/components/ui/Modal'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { formatDisplayDatePeru } from '@/utils/datesPeru'
+import { resolveSaleUnitNames, saleLineUnitLabel } from '@/utils/saleUnitNames'
 
 export default function PurchasesPage() {
   return (
@@ -36,6 +37,10 @@ function PurchasesContent() {
   const [q, setQ] = useState('')
   const [detail, setDetail] = useState<PurchaseDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  // Nombre comercial de la SaleUnit por línea (Fase 7H.6) — solo para mostrar; ninguna cifra de
+  // esta página se calcula a partir de esto. saleLineUnitLabel cae al nombre de la unidad SUNAT
+  // si la línea no tiene SaleUnit, así que solo se usa cuando item.sale_unit_id existe (ver abajo).
+  const [saleUnitNames, setSaleUnitNames] = useState<Map<string, string>>(new Map())
   const [voiding, setVoiding] = useState(false)
   const [confirmVoidId, setConfirmVoidId] = useState<number | null>(null)
   const [creModalOpen, setCreModalOpen] = useState(false)
@@ -72,6 +77,7 @@ function PurchasesContent() {
       const d = await purchasesService.get(id)
       setDetail(d)
       setLinkedRetention(d.linked_retention ?? null)
+      resolveSaleUnitNames(d.items ?? []).then(setSaleUnitNames).catch(() => setSaleUnitNames(new Map()))
     } catch {
       toast.error('Error al cargar detalle')
     } finally {
@@ -275,13 +281,21 @@ function PurchasesContent() {
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Ítems</p>
                 <div className="space-y-1">
-                  {(detail.items ?? []).map((item, i) => (
+                  {(detail.items ?? []).map((item, i) => {
+                    // Solo se muestra el nombre comercial cuando la línea REALMENTE usó una
+                    // SaleUnit — saleLineUnitLabel cae al nombre de la unidad SUNAT si no hay
+                    // sale_unit_id, y eso cambiaría el texto de TODAS las líneas legacy (que hoy
+                    // no muestran ninguna unidad); se evita a propósito para no alterar su
+                    // apariencia existente.
+                    const saleUnitLabel = item.sale_unit_id ? saleLineUnitLabel(item, saleUnitNames) : null
+                    return (
                     <div key={i} className="py-1.5 border-b border-gray-50">
                       <div className="flex justify-between text-sm">
                         <div>
                           <p className="font-medium text-gray-800">{item.description}</p>
                           <p className="text-xs text-gray-400">
-                            {item.quantity} × S/ {Number(item.unit_cost).toFixed(2)}
+                            {item.quantity}
+                            {saleUnitLabel ? ` ${saleUnitLabel}` : ''} × S/ {Number(item.unit_cost).toFixed(2)}
                           </p>
                           {(item.serials ?? []).length > 0 && (
                             <p className="text-xs text-gray-500 mt-1 font-mono">
@@ -294,7 +308,8 @@ function PurchasesContent() {
                         </p>
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
                 <div className="pt-2 space-y-1 text-sm">
                   <div className="flex justify-between text-gray-600">

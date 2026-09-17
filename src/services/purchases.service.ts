@@ -31,18 +31,28 @@ export interface PurchaseItem {
   /** Costo COMERCIAL (ej. S/350/saco) — el backend convierte a costo base internamente. */
   unit_cost: number
   /**
-   * Unidad de venta con conversión usada en esta línea (ej. "Saco 100 KG"). Confirmado en Fase 7A
-   * como aceptado por POST /api/purchases (service.PurchaseItemInput.SaleUnitID,
-   * purchase_service.go:40) — se puede enviar al crear una compra.
-   *
-   * PENDIENTE DE CONTRATO (lectura): GET /api/purchases/:id NO lo devuelve todavía — el handler
-   * (purchase_api.go, tipo interno `itemRow`, líneas 124-139) arma una fila a mano que omite
-   * sale_unit_id. Este campo por lo tanto NUNCA viene poblado al leer una compra ya creada,
-   * aunque sí se envía al crearla. No modificar el backend sin autorización explícita; hasta
-   * entonces, el detalle de una compra por SaleUnit no puede mostrar qué unidad se usó (bloquea
-   * parte de la Fase 7H — "mostrar unidad en detalle/anulación").
+   * Unidad de venta con conversión usada en esta línea (ej. "Saco 100 KG"). Aceptado por
+   * POST /api/purchases desde Fase 7A (service.PurchaseItemInput.SaleUnitID,
+   * purchase_service.go:40) y devuelto por GET /api/purchases/:id desde Fase 7H.1 (commit
+   * c4650e1, purchase_api.go `itemRow`) — antes de ese commit este campo nunca venía poblado al
+   * leer una compra ya creada; ya no es el caso.
    */
   sale_unit_id?: number
+  /**
+   * Cantidad COMERCIAL snapshot del movimiento de Kardex al momento de la compra (Fase 7H.1) —
+   * en la práctica coincide con `quantity` de esta misma línea; se expone porque es el dato
+   * histórico real (TenantStockMovement.SaleUnitQuantity), no un valor derivado en el frontend.
+   * Solo presente cuando `sale_unit_id` también lo está.
+   */
+  sale_unit_quantity?: number
+  /**
+   * Factor de conversión histórico de la SaleUnit AL MOMENTO de esta compra (Fase 7H.1) — snapshot
+   * inmutable (TenantStockMovement.ConversionFactor), no el factor actual de la SaleUnit si esta
+   * cambió después. Solo dato informativo: el frontend no lo usa para calcular nada (la conversión
+   * cantidad/costo comercial→base ya la hizo el backend al registrar la compra). Solo presente
+   * cuando `sale_unit_id` también lo está.
+   */
+  conversion_factor?: number
   igv_affectation_type: string
   price_includes_igv: boolean
   /** Números de serie (para productos con manejo de series). */
