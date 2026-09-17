@@ -45,6 +45,7 @@ import { PosMobileCartDrawer } from '@/components/pos/PosMobileCartDrawer'
 import { ManualProductModal } from '@/components/pos/ManualProductModal'
 import { PosProductInfoModal, type PosProductInfoMode } from '@/components/pos/PosProductInfoModal'
 import { PosCategoriesModal } from '@/components/pos/PosCategoriesModal'
+import { enrichPrintDataWithSaleUnitNames } from '@/utils/saleUnitNames'
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { isTabletCapacitorDevice } from '@/lib/platform/detect'
 import { PosCartLineRow } from '@/components/pos/PosCartLineRow'
@@ -777,7 +778,7 @@ function POSContent() {
         total: sale.total,
         clientEmail: contactForCheckout?.email?.trim(),
       })
-      setPrintData(sale.print_data ?? null)
+      setPrintData(sale.print_data ? await enrichPrintDataWithSaleUnitNames(sale.print_data) : null)
       setReceiptModalOpen(true)
       const docLabel = docTypeShortLabel(sale.doc_type ?? selectedSeries.doc_type, selectedSunatCode)
       const docNum = formatSaleDocumentNumber(sale.series, sale.number)

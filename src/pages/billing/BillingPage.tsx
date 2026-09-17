@@ -41,6 +41,14 @@ import { getTodayPeru, formatDisplayDatePeru } from '@/utils/datesPeru'
 import { formatSaleDocumentNumber } from '@/utils/format'
 import { formatSaleMoney } from '@/utils/formatMoney'
 import { createLocalReceiptPdfObjectUrl, downloadLocalReceiptPdf } from '@/utils/localReceiptPdf'
+import {
+  enrichPrintDataWithSaleUnitNames,
+  resolveSaleUnitAllowFraction,
+  resolveSaleUnitNames,
+  saleLineAllowsFraction,
+  saleLineUnitLabel,
+} from '@/utils/saleUnitNames'
+import { normalizeSaleUnitQuantity } from '@/utils/posCart'
 import { shareReceiptPngViaWhatsApp } from '@/utils/receiptPng'
 import { WhatsAppGlyph } from '@/components/icons/WhatsAppGlyph'
 import { useBillingEvents } from '@/hooks/useBillingEvents'
@@ -135,6 +143,10 @@ function BillingContent() {
   const [voidNcOrigItems, setVoidNcOrigItems] = useState<SaleItem[]>([])
   const [voidNcItemsLoading, setVoidNcItemsLoading] = useState(false)
   const [voidNcSelections, setVoidNcSelections] = useState<Record<number, number>>({})
+  // Nombre comercial y allow_fraction de cada SaleUnit usada en voidNcOrigItems (Fase 7G) — misma
+  // caché/mecanismo de utils/saleUnitNames.ts ya usado por el historial de venta (Fase 7F).
+  const [voidNcUnitNames, setVoidNcUnitNames] = useState<Map<string, string>>(new Map())
+  const [voidNcAllowFraction, setVoidNcAllowFraction] = useState<Map<string, boolean>>(new Map())
   const [debitNoteOpen, setDebitNoteOpen] = useState(false)
   const [debitNoteTarget, setDebitNoteTarget] = useState<{ id: number; series: string; number: string } | null>(null)
   const [debitNoteReason, setDebitNoteReason] = useState('')
@@ -428,7 +440,12 @@ function BillingContent() {
       setVoidNcItemsLoading(true)
       salesService
         .get(sale.id)
-        .then((d) => setVoidNcOrigItems(d.items ?? []))
+        .then((d) => {
+          const items = d.items ?? []
+          setVoidNcOrigItems(items)
+          resolveSaleUnitNames(items).then((names) => setVoidNcUnitNames((prev) => new Map([...prev, ...names])))
+          resolveSaleUnitAllowFraction(items).then((af) => setVoidNcAllowFraction((prev) => new Map([...prev, ...af])))
+        })
         .catch(() => setVoidNcOrigItems([]))
         .finally(() => setVoidNcItemsLoading(false))
     }
@@ -541,7 +558,7 @@ function BillingContent() {
       }
       const label = viewMode === 'credit_notes' ? `Nota de ${noteKind === 'debit' ? 'débito' : 'crédito'}` : 'Comprobante'
       await shareReceiptPngViaWhatsApp({
-        printData: d.print_data,
+        printData: await enrichPrintDataWithSaleUnitNames(d.print_data),
         format,
         phone: d.contact?.phone,
         message: `${label} ${formatSaleDocumentNumber(d.sale.series, d.sale.number)} (${format === 'ticket' ? 'formato ticket' : 'formato A4'})`,
@@ -1042,7 +1059,11 @@ function BillingContent() {
                       ]}
                     />
                     <PrintDocButton
-                      loadPrintData={() => salesService.get(s.id).then((d) => d.print_data)}
+                      loadPrintData={() =>
+                        salesService
+                          .get(s.id)
+                          .then((d) => (d.print_data ? enrichPrintDataWithSaleUnitNames(d.print_data) : d.print_data))
+                      }
                       webFormat="ticket"
                       title="Imprimir (ticketera en app / PDF en web)"
                       className="inline-flex items-center justify-center p-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
@@ -1602,6 +1623,11 @@ function BillingContent() {
                       <tbody>
                         {voidNcOrigItems.map((it) => {
                           const checked = it.id in voidNcSelections
+                          // Fase 7G: si la línea tiene SaleUnit, respeta su allow_fraction (igual
+                          // que el POS al vender — Fase 7E); sin SaleUnit, comportamiento de
+                          // unidad base existente (paso libre, sin cambios respecto a antes).
+                          const allowFraction = saleLineAllowsFraction(it, voidNcAllowFraction)
+                          const unitLabel = saleLineUnitLabel(it, voidNcUnitNames)
                           return (
                             <tr key={it.id} className="border-t border-gray-100">
                               <td className="px-2 py-1.5">
@@ -1613,15 +1639,21 @@ function BillingContent() {
                                 />
                               </td>
                               <td className="px-2 py-1.5 text-gray-700">{it.description}</td>
-                              <td className="px-2 py-1.5 text-right text-gray-500 tabular-nums">{it.quantity}</td>
+                              <td className="px-2 py-1.5 text-right text-gray-500 tabular-nums">
+                                {it.quantity} {unitLabel}
+                              </td>
                               <td className="px-2 py-1.5 text-right">
                                 <input
                                   type="number"
                                   min={0}
                                   max={it.quantity}
-                                  step="any"
+                                  step={allowFraction === false ? 1 : 'any'}
                                   value={voidNcSelections[it.id] ?? ''}
-                                  onChange={(e) => setVoidNcItemQuantity(it.id, Math.min(Number(e.target.value) || 0, it.quantity))}
+                                  onChange={(e) => {
+                                    const raw = Number(e.target.value) || 0
+                                    const qty = allowFraction === false ? normalizeSaleUnitQuantity(raw, false) : raw
+                                    setVoidNcItemQuantity(it.id, Math.min(qty, it.quantity))
+                                  }}
                                   disabled={!checked || voidNcSubmitting}
                                   className="w-16 border border-gray-200 rounded-lg px-1.5 py-1 text-right text-xs disabled:bg-gray-50 tabular-nums"
                                 />
