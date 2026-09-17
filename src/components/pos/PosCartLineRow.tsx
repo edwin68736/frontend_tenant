@@ -23,6 +23,13 @@ type Props = {
   /** Fija la cantidad absoluta (productos medibles: teclear 0.750 kg). */
   onQtySet?: (qty: number) => void
   onUnitPriceChange: (value: string) => void
+  /**
+   * false = el usuario no tiene el permiso sales.override_price (incidente 2026-09-17): el precio
+   * queda de solo lectura en el POS, aunque el backend igual lo re-valida contra el catálogo por
+   * su cuenta (esto es solo la protección de UI, no la única). Default true para no romper otros
+   * usos de este componente que no pasen el prop explícitamente.
+   */
+  canEditPrice?: boolean
 }
 
 function formatUnitPriceInput(n: number): string {
@@ -34,10 +41,12 @@ function CartUnitPriceInput({
   unitPrice,
   onCommit,
   invalid,
+  disabled,
 }: {
   unitPrice: number
   onCommit: (value: string) => void
   invalid?: boolean
+  disabled?: boolean
 }) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
@@ -68,14 +77,19 @@ function CartUnitPriceInput({
     <input
       type="text"
       inputMode="decimal"
+      readOnly={disabled}
       value={editing ? draft : formatUnitPriceInput(unitPrice)}
       onFocus={() => {
+        if (disabled) return
         savedRef.current = unitPrice
         setDraft('')
         setEditing(true)
       }}
       onBlur={commit}
-      onChange={(e) => setDraft(e.target.value)}
+      onChange={(e) => {
+        if (disabled) return
+        setDraft(e.target.value)
+      }}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
           e.preventDefault()
@@ -90,12 +104,15 @@ function CartUnitPriceInput({
       }}
       className={clsx(
         'h-8 w-[4.75rem] box-border rounded-lg border px-1.5 text-xs font-semibold tabular-nums text-right focus:outline-none focus:ring-1',
+        disabled && 'cursor-default bg-stone-50 opacity-70',
         invalid
           ? 'border-red-400 bg-red-50 text-red-700 focus:border-red-500 focus:ring-red-400'
           : 'border-stone-200 text-primary-700 focus:border-primary-500 focus:ring-primary-400',
       )}
-      aria-label="Precio unitario de venta"
+      aria-label={disabled ? 'Precio unitario de venta (bloqueado, requiere permiso)' : 'Precio unitario de venta'}
+      title={disabled ? 'No tienes permiso para cambiar el precio' : undefined}
       aria-invalid={invalid || undefined}
+      aria-readonly={disabled || undefined}
     />
   )
 }
@@ -174,6 +191,7 @@ export function PosCartLineRow({
   onQtyChange,
   onQtySet,
   onUnitPriceChange,
+  canEditPrice = true,
 }: Props) {
   const manual = isManualCartLine(line)
   const catalog = isCatalogCartLine(line)
@@ -254,6 +272,7 @@ export function PosCartLineRow({
               unitPrice={cartLineUnitPrice(line)}
               onCommit={onUnitPriceChange}
               invalid={missingPrice}
+              disabled={!canEditPrice}
             />
             <div className="flex items-center gap-1">
               <button

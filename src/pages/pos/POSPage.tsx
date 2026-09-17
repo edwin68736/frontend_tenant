@@ -92,7 +92,8 @@ export default function POSPage() {
 }
 
 function POSContent() {
-  const { hasModule } = useAuth()
+  const { hasModule, hasPermission } = useAuth()
+  const canEditPrice = hasPermission('sales.override_price')
   const { activeBranchId } = useBranch()
   const { checkoutSeries, seriesMetaReady, hasCheckoutSeries, sunat: cachedSunat } =
     useBranchCheckoutSeries()
@@ -535,6 +536,9 @@ function POSContent() {
         onQtyChange={(d) => setCartQty(i, item.quantity + d)}
         onQtySet={(qty) => setCartQty(i, qty)}
         onUnitPriceChange={(v) => setCartUnitPrice(i, v)}
+        // Solo restringe líneas de catálogo — una línea manual nunca tuvo precio de catálogo
+        // que proteger, validateAuthorizedPrices no la valida (mismo criterio que SalesRegisterPage).
+        canEditPrice={canEditPrice || !isCatalogCartLine(item)}
       />
     )})
 

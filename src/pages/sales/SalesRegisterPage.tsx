@@ -273,7 +273,10 @@ function SalesRegisterContent({
   const isQuotation = mode === 'quotation'
   const editingQuotationId = isQuotation && quotationId && quotationId > 0 ? quotationId : null
   const linkQuotationId = fromQuotationId ?? null
-  const { user, hasModule } = useAuth()
+  const { user, hasModule, hasPermission } = useAuth()
+  // sales.override_price (incidente 2026-09-17): sin el permiso, el precio unitario queda de
+  // solo lectura — protección de UI, el backend igual re-valida contra el catálogo por su cuenta.
+  const canEditPrice = hasPermission('sales.override_price')
   const { activeBranchId, activeBranch } = useBranch()
   const [series, setSeries] = useState<SeriesRow[]>([])
   const [customers, setCustomers] = useState<Contact[]>([])
@@ -2419,6 +2422,9 @@ function SalesRegisterContent({
                     ? formatModifierLines(parseStoredModifiers(it.modifiers_json))
                     : []
                   const missingPrice = !(Number(it.unit_price) > 0)
+                  // Solo restringe líneas de catálogo — una línea manual (sin product_id) nunca
+                  // tuvo precio de catálogo que proteger, validateAuthorizedPrices no la valida.
+                  const priceLocked = it.product_id != null && !canEditPrice
                   return (
                     <tr
                       key={`${saleItemMergeKey(it)}-${idx}`}
@@ -2490,12 +2496,15 @@ function SalesRegisterContent({
                         <MoneyAmountInput
                           className={clsx(
                             'w-full max-w-[5.5rem] rounded-lg px-2 py-1 text-sm border',
+                            priceLocked && 'cursor-default bg-stone-50 opacity-70',
                             missingPrice ? 'border-red-400 bg-red-50 text-red-700' : 'border-gray-200',
                           )}
                           value={it.unit_price}
                           onChange={(v) => updateItem(idx, 'unit_price', Math.max(0, v))}
                           clearOnFocus
                           emptyWhenZero
+                          readOnly={priceLocked}
+                          title={priceLocked ? 'No tienes permiso para cambiar el precio' : undefined}
                         />
                       </td>
                       <td className="px-4 py-2.5">
@@ -3104,6 +3113,7 @@ function SalesRegisterContent({
           currency={form.currency}
           taxRate={taxRate}
           taxConfig={taxConfig}
+          canEditPrice={canEditPrice}
           onSave={applyItemEdit}
           onClose={() => setEditItemIdx(null)}
         />
@@ -3367,6 +3377,7 @@ function EditItemModal({
   currency,
   taxRate,
   taxConfig,
+  canEditPrice,
   onSave,
   onClose,
 }: {
@@ -3374,9 +3385,13 @@ function EditItemModal({
   currency: string
   taxRate: number
   taxConfig: { taxRate: number; igvRegime?: string; taxBenefitZone?: boolean }
+  /** sales.override_price del usuario. Solo restringe líneas de catálogo (item.product_id != null)
+   * — una línea manual nunca tuvo precio de catálogo que proteger, ver validateAuthorizedPrices. */
+  canEditPrice: boolean
   onSave: (patch: Partial<SaleFormItem>) => void
   onClose: () => void
 }) {
+  const priceLocked = item?.product_id != null && !canEditPrice
   const [draft, setDraft] = useState<EditItemDraft | null>(null)
 
   // Al cerrar (item=null) se limpia el borrador; así reabrir la MISMA línea vuelve a leer sus
@@ -3488,11 +3503,16 @@ function EditItemModal({
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Precio unitario</label>
             <MoneyAmountInput
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              className={clsx(
+                'w-full border border-gray-200 rounded-xl px-3 py-2 text-sm',
+                priceLocked && 'cursor-default bg-stone-50 opacity-70',
+              )}
               value={draft.unit_price}
               onChange={(v) => setField('unit_price', Math.max(0, v))}
               clearOnFocus
               emptyWhenZero
+              readOnly={priceLocked}
+              title={priceLocked ? 'No tienes permiso para cambiar el precio' : undefined}
             />
           </div>
         </div>
