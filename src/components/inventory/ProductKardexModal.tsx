@@ -3,12 +3,14 @@ import { toast } from 'sonner'
 import { X } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { companyService } from '@/services/company.service'
-import { inventoryService, type StockMovement } from '@/services/inventory.service'
+import { inventoryService } from '@/services/inventory.service'
 import {
+  attachSaleUnitLabels,
   formatInventoryDocumentRef,
   formatOperationTypeLabel,
   formatSunatCode,
   fmtMovementTypeLabel,
+  type KardexRow,
   MOVEMENT_TYPE_LABELS,
 } from '@/utils/inventoryKardexLabels'
 
@@ -34,7 +36,7 @@ export function ProductKardexModal({
   const [branchId, setBranchId] = useState<number | ''>('')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
-  const [movements, setMovements] = useState<StockMovement[]>([])
+  const [movements, setMovements] = useState<KardexRow[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -51,7 +53,11 @@ export function ProductKardexModal({
         date_from: dateFrom || undefined,
         date_to: dateTo || undefined,
       })
-      .then(({ data }) => { if (!cancelled) setMovements(Array.isArray(data) ? data : []) })
+      .then(async ({ data }) => {
+        const rows = Array.isArray(data) ? data : []
+        const labeled = await attachSaleUnitLabels(rows)
+        if (!cancelled) setMovements(labeled)
+      })
       .catch(() => { if (!cancelled) toast.error('Error cargando kardex') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
@@ -108,6 +114,7 @@ export function ProductKardexModal({
                 <th className="text-left py-2 px-2">Fecha</th>
                 <th className="text-left py-2 px-2">Sucursal</th>
                 <th className="text-left py-2 px-2">Presentación</th>
+                <th className="text-left py-2 px-2">Unidad de venta</th>
                 <th className="text-left py-2 px-2">Movimiento</th>
                 <th className="text-left py-2 px-2">Tipo operación</th>
                 <th className="text-left py-2 px-2">Usuario</th>
@@ -126,6 +133,7 @@ export function ProductKardexModal({
                     <td className="py-2 px-2 whitespace-nowrap">{new Date(m.created_at).toLocaleString()}</td>
                     <td className="py-2 px-2">{m.branch_name || `Sucursal ${m.branch_id}`}</td>
                     <td className="py-2 px-2 text-gray-600">{m.presentation_name || '—'}</td>
+                    <td className="py-2 px-2 text-gray-600">{m.sale_unit_label || '—'}</td>
                     <td className="py-2 px-2">{movementKindLabel(m.type)}</td>
                     <td className="py-2 px-2">
                       {formatOperationTypeLabel(m)}
@@ -145,7 +153,7 @@ export function ProductKardexModal({
               })}
               {movements.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="py-8 text-center text-gray-400">
+                  <td colSpan={11} className="py-8 text-center text-gray-400">
                     No hay movimientos para los filtros seleccionados.
                   </td>
                 </tr>

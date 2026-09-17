@@ -1,17 +1,19 @@
 import { useEffect, useState } from 'react'
 import { FileDown, FileSpreadsheet, Search } from 'lucide-react'
 import { toast } from 'sonner'
-import { inventoryService, type StockMovement, type InventoryOperationType } from '@/services/inventory.service'
+import { inventoryService, type InventoryOperationType } from '@/services/inventory.service'
 import { companyService } from '@/services/company.service'
 import { exportTableToPdf } from '@/utils/exportPdf'
 import { exportTableToExcel } from '@/utils/exportExcel'
 import type { ExportColumn } from '@/utils/exportPdf'
 import { getTodayPeru } from '@/utils/datesPeru'
 import {
+  attachSaleUnitLabels,
   formatInventoryDocumentRef,
   formatOperationTypeLabel,
   formatSunatCode,
   fmtMovementTypeLabel,
+  type KardexRow,
 } from '@/utils/inventoryKardexLabels'
 
 type Branch = { id: number; name: string }
@@ -28,7 +30,7 @@ function fmtMovementType(t: unknown): string {
   return fmtMovementTypeLabel(t)
 }
 
-type Row = StockMovement
+type Row = KardexRow
 
 const COLS: ExportColumn<Row>[] = [
   {
@@ -40,6 +42,7 @@ const COLS: ExportColumn<Row>[] = [
   { key: 'product_code', label: 'Código' },
   { key: 'product_name', label: 'Producto' },
   { key: 'presentation_name', label: 'Presentación', format: (v: unknown) => String(v ?? '—') },
+  { key: 'sale_unit_label', label: 'Unidad de venta', format: (_v: unknown, row: Row) => row.sale_unit_label || '—' },
   { key: 'type', label: 'Movimiento', format: (v: unknown) => fmtMovementType(v) },
   {
     key: 'operation_type_name',
@@ -150,7 +153,11 @@ export default function KardexReportPage() {
       if (filters.ref_notes_q.trim()) params.q = filters.ref_notes_q.trim()
 
       const { data: list, total: t } = await inventoryService.listMovements(params)
-      setData(Array.isArray(list) ? list : [])
+      const rows = Array.isArray(list) ? list : []
+      // Resuelto para ESTE lote (la página actual en pantalla) — nunca se reutiliza para el lote
+      // de fetchAllForExport, que es un pedido HTTP distinto y puede traer un conjunto de filas
+      // diferente (hasta 10,000, sin paginar).
+      setData(await attachSaleUnitLabels(rows))
       setTotal(Number(t) || 0)
     } catch {
       toast.error('Error al cargar kardex')
@@ -184,7 +191,11 @@ export default function KardexReportPage() {
     if (filters.sunat_code.trim()) params.sunat_code = filters.sunat_code.trim()
     if (filters.ref_notes_q.trim()) params.q = filters.ref_notes_q.trim()
     const { data: list } = await inventoryService.listMovements(params)
-    return Array.isArray(list) ? list : []
+    const rows = Array.isArray(list) ? list : []
+    // Resuelto para ESTE lote (el conjunto completo que se exporta), independiente del lote que
+    // esté en pantalla en `data` — así el PDF/Excel siempre muestra el nombre correspondiente a
+    // sus propias filas, nunca el de la página que el usuario tenía visible al pedir la descarga.
+    return attachSaleUnitLabels(rows)
   }
 
   const exportPdf = async () => {

@@ -21,9 +21,29 @@ export interface StockMovement {
   branch_id: number
   branch_name?: string
   type: 'in' | 'out' | 'transfer' | 'adjustment' | string
+  /** SIEMPRE unidad BASE del producto — no cambia de significado por SaleUnit (Fase 7I). */
   quantity: number
+  /** SIEMPRE unidad BASE — igual que quantity. */
   balance?: number
   unit_cost?: number
+  /**
+   * Unidad de venta con conversión usada en el movimiento (ej. "Caja x12"), cuando el origen
+   * (venta o compra) usó una — expuesto por el backend desde Fase 7H.2. undefined/null = movimiento
+   * legacy sin conversión.
+   */
+  sale_unit_id?: number | null
+  /**
+   * Snapshot histórico: cantidad COMERCIAL de ese movimiento (ej. 1 para "1 Caja"). Solo dato
+   * informativo ya resuelto por el backend — NO se usa para ningún cálculo en el frontend y NO se
+   * muestra como una segunda cantidad junto a quantity/balance (decisión explícita, Fase 7I).
+   */
+  sale_unit_quantity?: number | null
+  /**
+   * Snapshot histórico del factor de conversión AL MOMENTO del movimiento — no el factor actual
+   * de la SaleUnit si esta cambió después. Solo disponible en el tipo por completitud del
+   * contrato; no se muestra ni se usa en ningún cálculo del frontend (decisión explícita, Fase 7I).
+   */
+  conversion_factor?: number | null
   reference?: string
   notes?: string
   operation_type_id?: number

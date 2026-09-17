@@ -11,10 +11,12 @@ import { companyService } from '@/services/company.service'
 import { exportTableToPdf } from '@/utils/exportPdf'
 import { exportTableToExcel } from '@/utils/exportExcel'
 import {
+  attachSaleUnitLabels,
   formatInventoryDocumentRef,
   formatOperationTypeLabel,
   formatSunatCode,
   fmtMovementTypeLabel,
+  type KardexRow,
   MOVEMENT_TYPE_LABELS,
 } from '@/utils/inventoryKardexLabels'
 
@@ -32,6 +34,7 @@ const KARDEX_EXPORT_COLUMNS = [
   { key: 'created_at', label: 'Fecha', format: (v: unknown) => new Date(String(v)).toLocaleString() },
   { key: 'branch_name', label: 'Sucursal', format: (_v: unknown, m: StockMovement) => m.branch_name || `Sucursal ${m.branch_id}` },
   { key: 'presentation_name', label: 'Presentación', format: (v: unknown) => String(v ?? '—') },
+  { key: 'sale_unit_label', label: 'Unidad de venta', format: (_v: unknown, m: KardexRow) => m.sale_unit_label || '—' },
   { key: 'type', label: 'Movimiento', format: (_v: unknown, m: StockMovement) => movementKindLabel(m.type) },
   { key: 'type', label: 'Tipo operación', format: (_v: unknown, m: StockMovement) => formatOperationTypeLabel(m) },
   { key: 'sunat_code', label: 'SUNAT', format: (_v: unknown, m: StockMovement) => formatSunatCode(m) },
@@ -72,7 +75,7 @@ function InventoryKardexContent() {
   const [sunatCode, setSunatCode] = useState('')
   const [inventoryDocOnly, setInventoryDocOnly] = useState(false)
   const [operationTypes, setOperationTypes] = useState<InventoryOperationType[]>([])
-  const [movements, setMovements] = useState<StockMovement[]>([])
+  const [movements, setMovements] = useState<KardexRow[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMov, setLoadingMov] = useState(false)
 
@@ -113,7 +116,8 @@ function InventoryKardexContent() {
         sunat_code: sunatCode.trim() || undefined,
         movement_kind: inventoryDocOnly ? 'inventory_doc' : undefined,
       })
-      setMovements(Array.isArray(data) ? data : [])
+      const rows = Array.isArray(data) ? data : []
+      setMovements(await attachSaleUnitLabels(rows))
     } catch {
       toast.error('Error cargando movimientos')
     } finally {
@@ -295,6 +299,7 @@ function InventoryKardexContent() {
                     <th className="text-left py-2 px-3">Fecha</th>
                     <th className="text-left py-2 px-3">Sucursal</th>
                     <th className="text-left py-2 px-3">Presentación</th>
+                    <th className="text-left py-2 px-3">Unidad de venta</th>
                     <th className="text-left py-2 px-3">Movimiento</th>
                     <th className="text-left py-2 px-3">Tipo operación</th>
                     <th className="text-left py-2 px-3">SUNAT</th>
@@ -319,6 +324,9 @@ function InventoryKardexContent() {
                         </td>
                         <td className="py-2 px-3">
                           <span className="text-[11px] text-gray-600">{m.presentation_name || '—'}</span>
+                        </td>
+                        <td className="py-2 px-3">
+                          <span className="text-[11px] text-gray-600">{m.sale_unit_label || '—'}</span>
                         </td>
                         <td className="py-2 px-3">
                           <span className="text-[11px]">{movementKindLabel(m.type)}</span>
@@ -361,7 +369,7 @@ function InventoryKardexContent() {
                   })}
                   {movements.length === 0 && (
                     <tr>
-                      <td colSpan={13} className="py-8 text-center text-gray-400">
+                      <td colSpan={14} className="py-8 text-center text-gray-400">
                         No hay movimientos para los filtros seleccionados.
                       </td>
                     </tr>
