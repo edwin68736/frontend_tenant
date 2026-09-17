@@ -113,6 +113,20 @@ export interface SaleFormItem {
   /** Variante/presentación elegida (ej. color), cuando el producto tiene presentaciones con
    *  stock propio. Sin esto, la venta descontaría el agregado del producto en vez de la variante. */
   presentation_id?: number
+  /**
+   * Unidad de venta elegida (ej. "Caja x12") — mismo contrato ya aceptado por
+   * CreateSaleInput.items[].sale_unit_id desde Fase 7A (sales.service.ts:253). undefined = línea
+   * legacy sin conversión (comportamiento previo, intacto). El backend resuelve toda la
+   * conversión comercial→base; este campo solo identifica QUÉ SaleUnit se usó.
+   */
+  sale_unit_id?: number
+  /**
+   * Solo UI (nueva fase, mismo patrón que PurchaseLineItem en PurchaseRegisterPage.tsx/Fase 7H.5):
+   * allow_fraction de la SaleUnit elegida, para que UnitQuantityInput sepa si esta línea admite
+   * decimales sin volver a pedir la lista de SaleUnits al backend. NUNCA se envía al backend —
+   * se omite explícitamente al construir el payload de POST /api/sales (ver handleSave).
+   */
+  sale_unit_allow_fraction?: boolean
   code: string
   description: string
   unit: string
@@ -208,6 +222,8 @@ function catalogLineToSaleItem(line: CatalogCartLine): SaleFormItem {
   return {
     product_id: p.id,
     presentation_id: presentationIdFromSelection(line.modifiers),
+    sale_unit_id: line.sale_unit?.id,
+    sale_unit_allow_fraction: line.sale_unit?.allow_fraction,
     line_key: line.configureKey,
     code: p.code ?? '',
     description: p.name,
@@ -284,6 +300,11 @@ function SalesRegisterContent({
   const [taxConfig, setTaxConfig] = useState<{ taxRate: number; igvRegime?: string; taxBenefitZone?: boolean }>({ taxRate: 18 })
   const [showProductPicker, setShowProductPicker] = useState(false)
   const [productToConfigure, setProductToConfigure] = useState<Product | null>(null)
+  // Caché de "¿este producto tiene SaleUnits activas?" — mismo patrón que saleUnitsCacheRef en
+  // POSPage.tsx (Fase 7E), duplicado aquí a propósito en vez de extraerlo a un helper compartido
+  // (extraerlo obligaría a tocar POSPage.tsx, fuera de alcance de esta fase). Vive por sesión del
+  // formulario, sin necesidad de persistir entre documentos.
+  const saleUnitsCacheRef = useRef<Map<number, boolean>>(new Map())
   const [comboToConfigure, setComboToConfigure] = useState<Product | null>(null)
   const [showManualItemModal, setShowManualItemModal] = useState(false)
   /** Índice de la línea del carrito que se está editando (null = ninguno). */
@@ -732,6 +753,12 @@ function SalesRegisterContent({
       ? lastAddedProductId
       : null
 
+  const openConfigureForSale = (p: Product) => {
+    setShowProductPicker(false)
+    setProductToConfigure(p)
+    toast.message(`Configura «${p.name}» antes de agregarlo`, { duration: 3500 })
+  }
+
   const addProductToItems = (p: Product) => {
     // Un combo necesita elegir sus opciones antes de entrar al detalle.
     if (p.has_combo) {
@@ -740,12 +767,34 @@ function SalesRegisterContent({
       return
     }
     if (productNeedsSaleConfiguration(p)) {
-      setShowProductPicker(false)
-      setProductToConfigure(p)
-      toast.message(`Configura «${p.name}» antes de agregarlo`, { duration: 3500 })
+      openConfigureForSale(p)
       return
     }
-    appendSaleItem(saleItemFromProduct(p))
+    // Producto "simple" para presentaciones/extras/series — puede tener SaleUnits activas
+    // configuradas (Fase 7B: el catálogo no las trae, hay que preguntar). Mismo criterio que
+    // addToCart en POSPage.tsx:383-420 (Fase 7E), duplicado aquí a propósito — ver comentario en
+    // saleUnitsCacheRef sobre por qué no se extrae a un helper compartido.
+    const hasSaleUnits = saleUnitsCacheRef.current.get(p.id)
+    if (hasSaleUnits === true) {
+      openConfigureForSale(p)
+      return
+    }
+    if (hasSaleUnits === false) {
+      appendSaleItem(saleItemFromProduct(p))
+      return
+    }
+    productsService
+      .listSaleUnits(p.id)
+      .then((units) => {
+        const found = (units ?? []).length > 0
+        saleUnitsCacheRef.current.set(p.id, found)
+        if (found) openConfigureForSale(p)
+        else appendSaleItem(saleItemFromProduct(p))
+      })
+      .catch(() => {
+        saleUnitsCacheRef.current.set(p.id, false)
+        appendSaleItem(saleItemFromProduct(p))
+      })
   }
 
   const handleSaleConfigureConfirm = (line: CatalogCartLine) => {
@@ -1630,6 +1679,10 @@ function SalesRegisterContent({
         items: items.map((it) => ({
           product_id: it.product_id ?? null,
           presentation_id: it.presentation_id,
+          // sale_unit_id: contrato real (sales.service.ts:253, aceptado por el backend desde
+          // Fase 7A). sale_unit_allow_fraction NO se incluye a propósito — es solo-UI, nunca
+          // formó parte de CreateSaleInput.items[].
+          sale_unit_id: it.sale_unit_id,
           code: it.code,
           description: it.description.trim(),
           unit: it.unit,
@@ -2490,6 +2543,7 @@ function SalesRegisterContent({
                           value={it.quantity}
                           unit={it.unit}
                           onChange={(v) => updateItem(idx, 'quantity', v)}
+                          allowDecimalsOverride={it.sale_unit_id != null ? it.sale_unit_allow_fraction : undefined}
                         />
                       </td>
                       <td className="px-2 py-2.5">
@@ -3009,6 +3063,7 @@ function SalesRegisterContent({
         product={productToConfigure}
         branchId={activeBranchId}
         stacked
+        enableSaleUnits
         onClose={() => setProductToConfigure(null)}
         onConfirm={handleSaleConfigureConfirm}
       />
