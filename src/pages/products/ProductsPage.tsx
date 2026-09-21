@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Settings2, Package, Upload, Download, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Trash2, CheckCircle, Eye, EyeOff, Keyboard, Loader2, Tag, SlidersHorizontal, X } from 'lucide-react'
+import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Settings2, Package, Upload, Download, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Barcode, Trash2, CheckCircle, Eye, EyeOff, Keyboard, Loader2, Tag, SlidersHorizontal, X } from 'lucide-react'
 import { ProductImportModal } from '@/components/products/ProductImportModal'
 import { ProductPriceUpdateModal } from '@/components/products/ProductPriceUpdateModal'
 import { BulkDeleteProductsPinModal } from '@/components/products/BulkDeleteProductsPinModal'
@@ -36,6 +36,7 @@ import {
   PRODUCT_EXPIRY_BADGE_CLASS,
 } from '@/utils/productExpiry'
 import { exportCatalogProductsToExcel, type CatalogExportRow } from '@/utils/catalogProductImport'
+import { exportProductBarcodesToPdf } from '@/utils/productBarcodePdf'
 
 import {
   PRODUCT_IGV_AFFECTATION_OPTIONS,
@@ -685,6 +686,27 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     })
   }
 
+  const handlePrintBarcodes = async () => {
+    const selected = products.filter((p) => selectedIds.has(p.id))
+    if (selected.length === 0) return
+    setBulkActionInProgress(true)
+    try {
+      const { skipped } = await exportProductBarcodesToPdf(selected)
+      if (skipped.length > 0) {
+        toast.warning(
+          `${skipped.length} producto(s) sin código no se incluyeron: ${skipped.slice(0, 3).join(', ')}${skipped.length > 3 ? '…' : ''}`,
+        )
+      }
+      if (skipped.length < selected.length) {
+        toast.success('PDF de códigos de barras generado')
+      }
+    } catch {
+      toast.error('No se pudo generar el PDF de códigos de barras')
+    } finally {
+      setBulkActionInProgress(false)
+    }
+  }
+
   const handleBulkDeleteDone = (result: BulkDeleteProductsResult) => {
     if (result.deleted.length > 0) {
       const deletedSet = new Set(result.deleted.map((p) => p.id))
@@ -1214,6 +1236,15 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 Controlar stock
               </button>
             )}
+            <button
+              type="button"
+              disabled={bulkActionInProgress}
+              onClick={() => void handlePrintBarcodes()}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-700 text-white hover:bg-slate-800 disabled:opacity-50"
+            >
+              <Barcode size={14} />
+              Código de barras
+            </button>
             <button
               type="button"
               onClick={() => setBulkDeleteOpen(true)}
