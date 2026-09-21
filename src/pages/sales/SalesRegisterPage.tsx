@@ -1166,6 +1166,19 @@ function SalesRegisterContent({
     }
   }, [paymentConditionCode, creditMode, installmentCount, creditAmount, creditFirstDueDate])
 
+  // Mismas reglas que se validan recién al guardar (más abajo en handleSave) — se repiten acá
+  // para bloquear "Generar" apenas hay una inconsistencia, en vez de dejar que el usuario
+  // llegue al toast de error después de llenar todo el formulario.
+  const creditInvalid = useMemo(() => {
+    if (isQuotation || paymentConditionCode !== 'credit' || creditAmount <= 0.009) return false
+    if (creditInstallments.length === 0) return true
+    for (const row of creditInstallments) {
+      if (!row.due_date?.trim()) return true
+      if (row.due_date <= form.issue_date) return true
+    }
+    return Math.abs(sumInstallmentAmounts(creditInstallments) - creditAmount) > 0.02
+  }, [isQuotation, paymentConditionCode, creditAmount, creditInstallments, form.issue_date])
+
   const handlePaymentConditionChange = (code: PaymentConditionCode) => {
     setPaymentConditionCode(code)
     if (code === 'credit' && payments.length === 1 && paymentsTotalPaid >= directPayableTarget - 0.01) {
@@ -3027,7 +3040,7 @@ function SalesRegisterContent({
           <button
             type="button"
             onClick={handleSave}
-            disabled={saving || items.length === 0 || (!isQuotation && !cashSession)}
+            disabled={saving || items.length === 0 || (!isQuotation && !cashSession) || creditInvalid}
             className="order-1 sm:order-3 md:order-none w-full md:w-auto inline-flex items-center justify-center px-3 md:px-6 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50 md:min-w-[9rem]"
           >
             {saving
