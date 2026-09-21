@@ -147,7 +147,7 @@ export function SalePaymentConditionSection({
                             )
                           }
                           min={minDueDate}
-                          disabled={disabled || creditMode === 'monthly'}
+                          disabled={disabled}
                         />
                       </td>
                       <td className="px-3 py-2 text-right">
@@ -162,7 +162,7 @@ export function SalePaymentConditionSection({
                               installments.map((r, i) => (i === idx ? { ...r, amount: e.target.value } : r)),
                             )
                           }
-                          disabled={disabled || creditMode === 'monthly'}
+                          disabled={disabled}
                         />
                       </td>
                     </tr>
