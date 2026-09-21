@@ -758,6 +758,7 @@ function SalesContent() {
             setEmitDetail(null)
           }
         }}
+        contentClassName="max-w-2xl"
       >
         <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-3">
           <h3 className="font-bold text-gray-800 flex items-center gap-2">
@@ -777,7 +778,7 @@ function SalesContent() {
             <div className="w-6 h-6 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : (
-          <div className="space-y-4 max-h-[80vh] overflow-y-auto text-sm">
+          <div className="space-y-4 text-sm">
             <p className="text-xs text-gray-500">
               Nota de venta{' '}
               <span className="font-mono font-semibold text-gray-800">
