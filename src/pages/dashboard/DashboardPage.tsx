@@ -770,12 +770,12 @@ export default function DashboardPage() {
               <div className="flex h-full items-center justify-center text-slate-400">Sin datos</div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={analytics!.sales_by_branch} layout="vertical" margin={{ left: 8, right: 16 }}>
-                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                  <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))} />
-                  <YAxis type="category" dataKey="name" width={100} tick={{ fontSize: 10 }} />
+                <BarChart data={analytics!.sales_by_branch} margin={{ left: 8, right: 16 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis dataKey="name" tick={{ fontSize: 9 }} interval={0} angle={-25} textAnchor="end" height={70} />
+                  <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v))} />
                   <Tooltip formatter={(v: number) => fmtMoney(v)} />
-                  <Bar dataKey="total" radius={[0, 6, 6, 0]} fill="rgb(var(--p600, 37 99 235))" />
+                  <Bar dataKey="total" radius={[6, 6, 0, 0]} fill="rgb(var(--p600, 37 99 235))" />
                 </BarChart>
               </ResponsiveContainer>
             )}
