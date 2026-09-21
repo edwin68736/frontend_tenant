@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -27,6 +27,10 @@ import { SalePaymentsBreakdown } from '@/components/sales/SalePaymentsBreakdown'
 import { formatPaymentMethodLabel } from '@/utils/paymentMethodLabel'
 import { formatSaleMoney } from '@/utils/formatMoney'
 import { enrichPrintDataWithSaleUnitNames, resolveSaleUnitNames, saleLineUnitLabel } from '@/utils/saleUnitNames'
+import { SearchableSelect } from '@/components/SearchableSelect'
+import { contactsService, type Contact } from '@/services/contacts.service'
+import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
+import { filterRucContacts, contactOptionLabel, rucContactLabel } from '@/utils/checkoutContacts'
 
 const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
 const TABLE_SKELETON_ROWS = 6
@@ -102,6 +106,12 @@ function SalesContent() {
   const [emitSeriesId, setEmitSeriesId] = useState<string>('')
   const [emitIssueDate, setEmitIssueDate] = useState(() => getTodayPeru())
   const [emitSeriesList, setEmitSeriesList] = useState<SeriesRow[]>([])
+  // Cambio de cliente al emitir (misma UX que Tukichef/VentasPage): por defecto se mantiene el
+  // cliente de la nota, pero se puede buscar otro o registrar uno nuevo antes de emitir.
+  const [emitContactId, setEmitContactId] = useState<number | null>(null)
+  const [emitNotaContactId, setEmitNotaContactId] = useState<number | null>(null)
+  const [emitContacts, setEmitContacts] = useState<Contact[]>([])
+  const [emitClientQuickAddOpen, setEmitClientQuickAddOpen] = useState(false)
   const [waBusyId, setWaBusyId] = useState<number | null>(null)
   const [waMenu, setWaMenu] = useState<{ saleId: number; top: number; left: number } | null>(null)
   const [pdfPreviewBusyId, setPdfPreviewBusyId] = useState<number | null>(null)
@@ -201,13 +211,21 @@ function SalesContent() {
     setEmitSeriesId('')
     setEmitIssueDate(getTodayPeru())
     setEmitDetail(null)
+    setEmitContactId(null)
+    setEmitNotaContactId(null)
+    setEmitContacts([])
     setEmitLoading(true)
     try {
-      const [det, rawSeries] = await Promise.all([
+      const [det, rawSeries, contactList] = await Promise.all([
         salesService.get(row.id),
         companyService.listSeries({ branch_id: row.branch_id, category: 'venta' }),
+        contactsService.list('', 'customer'),
       ])
       setEmitDetail(det)
+      const notaContactId = det.contact?.id ?? row.contact_id ?? null
+      setEmitNotaContactId(notaContactId)
+      setEmitContactId(notaContactId)
+      setEmitContacts(contactList ?? [])
       resolveSaleUnitNames(det.items ?? []).then((names) =>
         setSaleUnitNames((prev) => new Map([...prev, ...names])),
       )
@@ -222,6 +240,47 @@ function SalesContent() {
     }
   }
 
+  const emitSelectedContact = useMemo(
+    () => emitContacts.find((c) => c.id === emitContactId) ?? null,
+    [emitContacts, emitContactId],
+  )
+
+  const emitRequiresRuc = emitDocKind === '01'
+
+  const emitClientOptions = useMemo(() => {
+    const list = emitRequiresRuc ? filterRucContacts(emitContacts) : emitContacts
+    return list.map((c) => ({
+      value: c.id,
+      label: emitRequiresRuc ? rucContactLabel(c) : contactOptionLabel(c),
+    }))
+  }, [emitContacts, emitRequiresRuc])
+
+  const emitContactOk = emitRequiresRuc ? contactHasValidRuc(emitSelectedContact ?? undefined) : !!emitSelectedContact
+
+  const lastEmitDocKindRef = useRef<'01' | '03' | null>(null)
+
+  useEffect(() => {
+    if (!emitOpen) {
+      lastEmitDocKindRef.current = null
+      return
+    }
+    if (lastEmitDocKindRef.current === emitDocKind) return
+    lastEmitDocKindRef.current = emitDocKind
+
+    if (emitDocKind === '03' && emitNotaContactId != null) {
+      setEmitContactId(emitNotaContactId)
+      return
+    }
+    if (emitDocKind === '01') {
+      setEmitContactId((current) => {
+        if (current == null) return null
+        const c = emitContacts.find((x) => x.id === current)
+        if (c && !contactHasValidRuc(c)) return null
+        return current
+      })
+    }
+  }, [emitOpen, emitDocKind, emitNotaContactId, emitContacts])
+
   const filteredSeriesForEmit = useMemo(
     () => emitSeriesList.filter((s) => String(s.sunat_code || '').trim() === emitDocKind),
     [emitSeriesList, emitDocKind],
@@ -232,8 +291,12 @@ function SalesContent() {
 
   const submitEmit = async () => {
     if (!emitRow || !emitDetail) return
-    if (emitDocKind === '01' && !contactHasValidRuc(emitDetail.contact)) {
-      toast.error('Para factura el cliente debe tener RUC (tipo de documento 6) y 11 dígitos')
+    if (!emitContactId || !emitContactOk) {
+      toast.error(
+        emitDocKind === '01'
+          ? 'La factura requiere un cliente con RUC (11 dígitos)'
+          : 'Seleccione el cliente para la boleta',
+      )
       return
     }
     const sid = Number(emitSeriesId)
@@ -246,6 +309,7 @@ function SalesContent() {
       const res = await salesService.issueElectronicFromNota(emitRow.id, {
         series_id: sid,
         issue_date: emitIssueDate.trim() || undefined,
+        contact_id: emitContactId,
       })
       toast.success(
         `Comprobante generado: ${res.sale?.doc_type ?? ''} ${formatSaleDocumentNumber(res.sale?.series ?? '', res.sale?.number ?? '')}. Envíelo a SUNAT desde Facturación.`,
@@ -738,16 +802,6 @@ function SalesContent() {
                     </label>
                   )}
                 </div>
-                {emitDocKind === '01' && (
-                  <p className="text-xs text-amber-800 mt-2 bg-amber-50 rounded-lg px-2 py-1.5">
-                    Factura: el cliente debe tener <strong>RUC</strong> (tipo doc. 6, 11 dígitos).{' '}
-                    {!emitDetail?.contact
-                      ? 'Esta venta no tiene cliente asignado.'
-                      : !contactHasValidRuc(emitDetail.contact)
-                        ? 'El cliente actual no cumple con RUC válido.'
-                        : 'Cliente OK para factura.'}
-                  </p>
-                )}
               </div>
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Fecha de emisión</p>
@@ -758,6 +812,47 @@ function SalesContent() {
                   onChange={(e) => setEmitIssueDate(e.target.value)}
                 />
               </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase mb-1">
+                {emitRequiresRuc ? 'Cliente (RUC obligatorio)' : 'Cliente'}
+              </p>
+              <div className="flex gap-2">
+                <div className="min-w-0 flex-1">
+                  <SearchableSelect
+                    value={emitContactId}
+                    onChange={(v) => setEmitContactId(v == null || String(v) === '' ? null : Number(v))}
+                    options={emitClientOptions}
+                    placeholder={
+                      emitRequiresRuc
+                        ? emitClientOptions.length
+                          ? 'Selecciona cliente con RUC'
+                          : 'Registre un cliente con RUC'
+                        : 'Mantener o cambiar cliente'
+                    }
+                    searchable
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2 min-h-[42px]"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEmitClientQuickAddOpen(true)}
+                  className="shrink-0 rounded-xl border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 min-h-[42px]"
+                >
+                  Nuevo
+                </button>
+              </div>
+              {emitRequiresRuc && emitClientOptions.length === 0 && (
+                <p className="text-[11px] text-amber-700 mt-1">
+                  La factura solo puede emitirse a un cliente con RUC registrado.
+                </p>
+              )}
+              {!emitRequiresRuc && (
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Puede mantener el cliente de la nota o asignar otro para esta boleta.
+                </p>
+              )}
             </div>
 
             <div>
@@ -875,7 +970,8 @@ function SalesContent() {
               disabled={
                 emitSubmitting
                 || !emitSeriesId
-                || (emitDocKind === '01' && !contactHasValidRuc(emitDetail?.contact))
+                || !emitContactId
+                || !emitContactOk
                 || (emitCurrency === 'USD' && !(emitDetail?.sale.exchange_rate != null && emitDetail.sale.exchange_rate > 0))
               }
               onClick={() => void submitEmit()}
@@ -886,6 +982,19 @@ function SalesContent() {
           </div>
         )}
       </Modal>
+
+      <QuickContactCreateModal
+        open={emitClientQuickAddOpen}
+        onClose={() => setEmitClientQuickAddOpen(false)}
+        onCreated={(contact) => {
+          setEmitContacts((prev) => [contact, ...prev])
+          setEmitContactId(contact.id)
+          setEmitClientQuickAddOpen(false)
+        }}
+        defaultDocType={emitRequiresRuc ? '6' : '1'}
+        contactType="customer"
+        stacked
+      />
 
       <Modal
         open={!!cancelTarget}
