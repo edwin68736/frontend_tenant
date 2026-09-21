@@ -151,6 +151,9 @@ function POSContent() {
   const [checkoutDiscountMode, setCheckoutDiscountMode] = useState<CheckoutDiscountMode>('percent')
   const [checkoutDiscountValue, setCheckoutDiscountValue] = useState(0)
   const [addClientModal, setAddClientModal] = useState(false)
+  // Texto tipeado en el buscador de cliente cuando no encontró resultados y se usó "+ Agregar
+  // «texto»" — precarga el modal de alta rápida, igual que en sales/register.
+  const [newClientQuery, setNewClientQuery] = useState('')
   const [categoriesModalOpen, setCategoriesModalOpen] = useState(false)
   const categoriesScrollRef = useRef<HTMLDivElement>(null)
   const productsScrollRef = useRef<HTMLDivElement>(null)
@@ -800,7 +803,10 @@ function POSContent() {
     } finally { setProcessing(false) }
   }
 
-  const openAddClientModal = () => setAddClientModal(true)
+  const openAddClientModal = (query = '') => {
+    setNewClientQuery(query)
+    setAddClientModal(true)
+  }
 
   const cartCount = cart.length
   const branchSeriesMissing = Boolean(activeBranchId) && seriesMetaReady && !hasCheckoutSeries
@@ -1381,12 +1387,30 @@ function POSContent() {
 
       <QuickContactCreateModal
         open={addClientModal}
-        onClose={() => setAddClientModal(false)}
+        onClose={() => {
+          setAddClientModal(false)
+          setNewClientQuery('')
+        }}
         stacked
-        defaultDocType={isFacturaDocType(docType, selectedSeries?.sunat_code) ? '6' : '1'}
+        defaultDocType={
+          /^\d{11}$/.test(newClientQuery.trim())
+            ? '6'
+            : /^\d{8}$/.test(newClientQuery.trim())
+              ? '1'
+              : isFacturaDocType(docType, selectedSeries?.sunat_code)
+                ? '6'
+                : '1'
+        }
+        defaultDocNumber={/^\d{8}$|^\d{11}$/.test(newClientQuery.trim()) ? newClientQuery.trim() : undefined}
+        defaultBusinessName={
+          newClientQuery.trim() && !/^\d{8}$|^\d{11}$/.test(newClientQuery.trim())
+            ? newClientQuery.trim()
+            : undefined
+        }
         onCreated={(contact) => {
           setContacts((prev) => [...prev, contact])
           setContactId(contact.id)
+          setNewClientQuery('')
         }}
       />
 

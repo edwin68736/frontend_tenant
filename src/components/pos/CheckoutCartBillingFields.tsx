@@ -20,7 +20,8 @@ type Props = {
   contactId: number | null
   contacts: ContactOption[]
   onContactChange: (id: number | null) => void
-  onAddContact?: () => void
+  /** Query opcional: cuando viene del "+ Agregar «texto»" del buscador, precarga el modal. */
+  onAddContact?: (query?: string) => void
   /** Al elegir boleta / nota de venta, sugerir Clientes Varios. */
   onPreferVariosContact?: () => void
   /**
@@ -151,12 +152,14 @@ export function CheckoutCartBillingFields({
               }
               searchable
               className={SELECT_TRIGGER}
+              onCreateNew={onAddContact ? (q) => onAddContact(q) : undefined}
+              createNewLabel={(q) => `Agregar cliente "${q}"`}
             />
           </div>
           {onAddContact && (
             <button
               type="button"
-              onClick={onAddContact}
+              onClick={() => onAddContact()}
               className="shrink-0 rounded-xl border border-primary-500 px-3 py-2 text-xs font-medium text-primary-600 hover:bg-primary-50 min-h-[44px]"
             >
               Nuevo

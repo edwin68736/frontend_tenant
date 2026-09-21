@@ -67,7 +67,7 @@ type Props = {
   contactId: number | null
   contacts: { id: number; business_name: string; doc_number?: string; doc_type?: string }[]
   onContactChange: (id: number | null) => void
-  onAddContact?: () => void
+  onAddContact?: (query?: string) => void
   onPreferVariosContact?: () => void
   onRequireRucContact?: () => void
   paymentMethods: PaymentMethodRecord[]
