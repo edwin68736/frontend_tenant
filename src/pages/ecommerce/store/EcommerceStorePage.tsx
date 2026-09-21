@@ -73,6 +73,25 @@ export default function EcommerceStorePage() {
     publicEcommerceService.getPriceBounds().then(setPriceBounds).catch(() => {})
   }, [])
 
+  // Pestaña del navegador con la marca del tenant en vez de "Tukifac" — solo mientras se navega
+  // esta tienda pública; se restaura al salir. El preview de bots (WhatsApp/Facebook) usa un
+  // endpoint server-side aparte porque esos crawlers no ejecutan JS (ver ecommerce_handler.go).
+  useEffect(() => {
+    if (!settings) return
+    const prevTitle = document.title
+    document.title = settings.store_name?.trim() || 'Tienda online'
+
+    const iconHref = resolvePublicAssetUrl(settings.logo_url)
+    const iconLink = iconHref ? document.querySelector<HTMLLinkElement>('link[rel="icon"]') : null
+    const prevIconHref = iconLink?.getAttribute('href') ?? null
+    if (iconLink && iconHref) iconLink.setAttribute('href', iconHref)
+
+    return () => {
+      document.title = prevTitle
+      if (iconLink && prevIconHref != null) iconLink.setAttribute('href', prevIconHref)
+    }
+  }, [settings])
+
   useEffect(() => {
     const t = setTimeout(() => {
       setLoading(true)
