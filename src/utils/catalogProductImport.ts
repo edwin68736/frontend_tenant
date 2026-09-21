@@ -167,7 +167,7 @@ export function normalizeIgvAffectationCode(value: unknown): IgvAffectationCode 
 export const CATALOG_PRODUCT_IMPORT_SCHEMA: SchemaDefinition = {
   nombre: { column: 'nombre', type: 'string', required: true, min: 1, max: 255 },
   codigo: { column: 'codigo', type: 'string', max: 64 },
-  descripcion: { column: 'descripcion', type: 'string', max: 500 },
+  descripcion: { column: 'descripcion', type: 'string', max: 3000 },
   precio_venta: { column: 'precio_venta', type: 'number', required: true, min: 0.01 },
   /** Opcional: vacío = no se aplica (producto nuevo queda en 0; actualización conserva el costo actual). */
   precio_compra: {
