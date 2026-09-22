@@ -46,6 +46,9 @@ export default function PaymentModal({ open, onClose, hub, invoice, onSuccess }:
 
   const statusUi = invoiceStatusUI(invoice)
   const total = billingCyclePaymentTotal(invoice, sub)
+  // Desglose plan + reconexión: solo aparece cuando el total realmente incluye el recargo
+  // (cuenta suspendida) — para no mostrar una fila de "S/0.00" en pagos normales al día.
+  const includesReconnectionFee = total > invoice.amount && invoice.reconnection_fee > 0
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -107,6 +110,18 @@ export default function PaymentModal({ open, onClose, hub, invoice, onSuccess }:
             </div>
             <p className="text-sm text-gray-700 mt-1">Periodo {formatBillingPeriod(invoice.period_end)}</p>
             <p className="text-xs text-gray-500 mt-0.5">Vence {formatDate(invoice.due_date)}</p>
+            {includesReconnectionFee ? (
+              <div className="mt-2 pt-2 border-t border-gray-100 space-y-1 text-xs">
+                <div className="flex items-center justify-between text-gray-600">
+                  <span>Plan {sub.plan_name}</span>
+                  <span>{formatMoney(invoice.amount, invoice.currency)}</span>
+                </div>
+                <div className="flex items-center justify-between text-amber-700 font-medium">
+                  <span>Reconexión (cuenta suspendida)</span>
+                  <span>+{formatMoney(invoice.reconnection_fee, invoice.currency)}</span>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           {sub.can_submit_payment ? (
