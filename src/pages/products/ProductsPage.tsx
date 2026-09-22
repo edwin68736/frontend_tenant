@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Settings2, Package, Upload, Download, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Barcode, Trash2, CheckCircle, Eye, EyeOff, Keyboard, Loader2, Tag, SlidersHorizontal, X } from 'lucide-react'
+import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Package, Upload, Download, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Barcode, Trash2, CheckCircle, Eye, EyeOff, Keyboard, Loader2, Tag, SlidersHorizontal, X } from 'lucide-react'
 import { ProductImportModal } from '@/components/products/ProductImportModal'
 import { ProductPriceUpdateModal } from '@/components/products/ProductPriceUpdateModal'
 import { BulkDeleteProductsPinModal } from '@/components/products/BulkDeleteProductsPinModal'
@@ -10,7 +10,7 @@ import { ProductPresentationsModal } from '@/components/products/ProductPresenta
 import { SaleUnitsModal } from '@/components/products/SaleUnitsModal'
 import { ProductAttributesModal } from '@/components/products/ProductAttributesModal'
 import { ModifierOptionsEditor } from '@/components/modifiers/ModifierOptionsEditor'
-import { productsService, getProductImageUrl, type Product, type Category, type Brand, type Unit, type CreateProductInput, type ModifierGroup, type ProductCatalogType, type ProductPresentation, type ProductSaleUnit, type ProductAttribute, type BulkDeleteProductsResult } from '@/services/products.service'
+import { productsService, getProductImageUrl, type Product, type Category, type Brand, type Unit, type CreateProductInput, type ModifierGroup, type ProductCatalogType, type ProductPresentation, type BulkDeleteProductsResult } from '@/services/products.service'
 import { createEmptyOptionDraft, draftsFromApiOptions, optionDraftsToPayload, validateOptionDrafts, type ModifierOptionDraft } from '@/utils/modifierOptionText'
 import {
   QUANTITY_MAX_DECIMALS,
@@ -126,8 +126,11 @@ const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
 const PRODUCT_FORM_GRID = 'grid grid-cols-2 gap-3 sm:gap-4'
 const PRODUCT_FORM_INPUT =
   'w-full min-w-0 border border-gray-200 rounded-xl px-3 py-2.5 sm:py-2 text-base sm:text-sm outline-none focus:ring-2 focus:ring-[rgb(var(--p200))] focus:border-[rgb(var(--p400))]'
+// Ancho mayor que antes (lg:max-w-3xl): el modal ahora unifica alta/edición + Unidades de venta/
+// Atributos/Stock en pestañas (antes eran modales separados), necesita más aire para las tablas
+// de SaleUnitsEditor/ProductAttributesEditor.
 const PRODUCT_FORM_MODAL_CLASS =
-  'w-full max-w-none sm:max-w-2xl lg:max-w-3xl max-h-[min(92dvh,880px)] !overflow-hidden flex flex-col gap-0 !p-0'
+  'w-full max-w-none sm:max-w-2xl lg:max-w-4xl max-h-[min(92dvh,880px)] !overflow-hidden flex flex-col gap-0 !p-0'
 
 const PREPARATION_AREAS = [
   { value: '', label: 'Sin área' },
@@ -138,7 +141,7 @@ const PREPARATION_AREAS = [
   { value: 'otro', label: 'Otro' },
 ] as const
 
-type AdvancedTab = 'datos' | 'modificadores' | 'unidades' | 'atributos' | 'stock'
+type AdvancedTab = 'general' | 'modificadores' | 'unidades' | 'atributos' | 'stock'
 
 export default function ProductsPage() {
   return (
@@ -209,19 +212,13 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const [presentations, setPresentations] = useState<ProductPresentation[]>([])
   const [showPresentationsModal, setShowPresentationsModal] = useState(false)
 
-  // Unidades de venta (Fase 7B) — solo se gestionan sobre un producto ya existente, desde el
-  // Panel avanzado. GET /products/:id no las incluye (a diferencia de presentations), así que se
-  // cargan aparte en openPanel con productsService.listSaleUnits.
-  const [panelSaleUnits, setPanelSaleUnits] = useState<ProductSaleUnit[]>([])
-  const [showSaleUnitsModal, setShowSaleUnitsModal] = useState(false)
-
-  // Atributos (Fase 7C) — mismo criterio que SaleUnits: GET /products/:id tampoco los incluye.
-  const [panelAttributes, setPanelAttributes] = useState<ProductAttribute[]>([])
-  const [showAttributesModal, setShowAttributesModal] = useState(false)
-
-  // Panel avanzado
-  const [panelProduct, setPanelProduct] = useState<Product | null>(null)
-  const [panelTab, setPanelTab] = useState<AdvancedTab>('datos')
+  // Panel avanzado — unificado con el modal de alta/edición (una sola pantalla con pestañas, en
+  // vez de "Editar" + "Administrar" abriendo dos modales separados que a su vez abrían otros
+  // anidados para Unidades de venta/Atributos). `activeTab` reemplaza al viejo `panelTab`; las
+  // pestañas 'unidades'/'atributos' ya no tienen resumen de solo lectura propio (panelSaleUnits/
+  // panelAttributes) — se embebe directo el editor completo (SaleUnitsModal/ProductAttributesModal
+  // con `embedded`), que gestiona su propio fetch/guardado.
+  const [activeTab, setActiveTab] = useState<AdvancedTab>('general')
   const [panelDetail, setPanelDetail] = useState<{ data: Product; modifier_group_ids: number[]; presentations?: ProductPresentation[] } | null>(null)
   const [panelSerials, setPanelSerials] = useState<{ serial: string; branch_id: number; status: string }[]>([])
   const [branches, setBranches] = useState<{ id: number; name: string }[]>([])
@@ -258,8 +255,13 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
 
   const closeProductModal = () => {
     setShow(false)
+    setEditing(null)
     setPresentations([])
     setShowPresentationsModal(false)
+    setActiveTab('general')
+    setPanelDetail(null)
+    setPanelSerials([])
+    setStockRows([])
     codeBarcodeScan.deactivateScanner()
     clearPendingImage()
   }
@@ -398,6 +400,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     setForm({ ...emptyForm(pageMode, units), code: generateRandomProductCode() })
     setPresentations([])
     setShowMoreOptions(false)
+    setActiveTab('general')
     setShow(true)
   }
 
@@ -435,16 +438,36 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     setShow(true)
     setShowMoreOptions(false)
     setPresentations([])
+    setActiveTab('general')
+    // Datos de las demás pestañas (antes vivían en el Panel avanzado aparte, openPanel): se
+    // cargan en paralelo acá para que Presentaciones/Stock ya estén listos si el usuario cambia
+    // de pestaña — Unidades de venta/Atributos se cargan solas al montar su propio editor
+    // embebido (SaleUnitsModal/ProductAttributesModal con `embedded`).
+    setPanelDetail(null)
+    setPanelSerials([])
+    setStockRows([])
+    setPanelLoading(true)
     try {
-      const detail = await productsService.get(p.id)
+      const [detail, b, stock, serials] = await Promise.all([
+        productsService.get(p.id),
+        companyService.listBranches(),
+        p.manage_stock ? inventoryService.getStock(p.id) : Promise.resolve([]),
+        p.manage_series ? productsService.getSerials(p.id) : Promise.resolve([]),
+      ])
+      setPanelDetail(detail)
       setForm(f => ({
         ...f,
         modifier_group_ids: detail.modifier_group_ids ?? [],
         preparation_area: detail.data.preparation_area ?? '',
       }))
       setPresentations(detail.presentations ?? [])
+      setBranches(b ?? [])
+      setStockRows(Array.isArray(stock) ? stock : [])
+      setPanelSerials(Array.isArray(serials) ? serials : [])
     } catch {
       // Si GET /products/:id falla (ej. backend en otro puerto), los datos ya vienen del listado
+    } finally {
+      setPanelLoading(false)
     }
   }
 
@@ -810,62 +833,6 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     } finally {
       setSavingGroup(false)
     }
-  }
-
-  const openPanel = async (p: Product) => {
-    setPanelProduct(p)
-    setPanelTab('datos')
-    setPanelDetail(null)
-    setPanelSerials([])
-    setStockRows([])
-    setPanelSaleUnits([])
-    setPanelAttributes([])
-    setPanelLoading(true)
-    try {
-      const [detail, b, stock, serials, saleUnits, attributes] = await Promise.all([
-        productsService.get(p.id),
-        companyService.listBranches(),
-        p.manage_stock ? inventoryService.getStock(p.id) : Promise.resolve([]),
-        p.manage_series ? productsService.getSerials(p.id) : Promise.resolve([]),
-        productsService.listSaleUnits(p.id, { all: true }),
-        productsService.listAttributes(p.id, { all: true }),
-      ])
-      setPanelDetail(detail)
-      setBranches(b ?? [])
-      setStockRows(Array.isArray(stock) ? stock : [])
-      setPanelSerials(Array.isArray(serials) ? serials : [])
-      setPanelSaleUnits(Array.isArray(saleUnits) ? saleUnits : [])
-      setPanelAttributes(Array.isArray(attributes) ? attributes : [])
-    } catch {
-      toast.error('Error al cargar datos')
-    } finally {
-      setPanelLoading(false)
-    }
-  }
-
-  const reloadPanelSaleUnits = () => {
-    if (!panelProduct) return
-    productsService
-      .listSaleUnits(panelProduct.id, { all: true })
-      .then((list) => setPanelSaleUnits(Array.isArray(list) ? list : []))
-      .catch(() => {})
-  }
-
-  const reloadPanelAttributes = () => {
-    if (!panelProduct) return
-    productsService
-      .listAttributes(panelProduct.id, { all: true })
-      .then((list) => setPanelAttributes(Array.isArray(list) ? list : []))
-      .catch(() => {})
-  }
-
-  // Cierra el Panel avanzado y, con él, cualquier sub-modal que dependa de panelProduct
-  // (SaleUnits/Attributes) — evitaba quedar abiertos con un productId obsoleto (0) si el panel se
-  // cerraba por otra vía (Escape, "Editar producto") mientras seguían abiertos.
-  const closePanel = () => {
-    setPanelProduct(null)
-    setShowSaleUnitsModal(false)
-    setShowAttributesModal(false)
   }
 
   const branchName = (id: number) => branches.find(b => b.id === id)?.name ?? `Sucursal ${id}`
@@ -1431,7 +1398,6 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                       {p.active ? <ToggleRight size={16} className="text-green-600 hover:bg-green-50" /> : <ToggleLeft size={16} className="text-gray-400 hover:text-gray-600 hover:bg-gray-100" />}
                     </button>
                     <button onClick={() => openEdit(p)} className="p-1.5 text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] rounded-lg" title="Editar"><Pencil size={14} /></button>
-                    <button onClick={() => openPanel(p)} className="p-1.5 text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] rounded-lg" title="Administrar"><Settings2 size={14} /></button>
                     {canDeleteProducts && (
                       <button
                         type="button"
@@ -1504,6 +1470,34 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               ? 'Editar producto'
               : 'Nuevo producto'}
         </h3>
+
+        {/* Pestañas: solo con producto ya guardado (unidades/atributos/stock no aplican al alta,
+            mismo criterio de siempre — ver SaleUnitsModal.tsx/ProductAttributesModal.tsx). */}
+        {editing && (
+          <div className="flex gap-1 border-b border-gray-100 pb-2 overflow-x-auto -mt-1">
+            {(pageMode === 'service'
+              ? (['general', 'modificadores', 'unidades', 'atributos'] as const)
+              : (['general', 'modificadores', 'unidades', 'atributos', 'stock'] as const)
+            ).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setActiveTab(tab)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap ${
+                  activeTab === tab ? 'bg-[rgb(var(--p100))] text-[rgb(var(--p700))]' : 'text-gray-600 hover:bg-gray-100'
+                }`}
+              >
+                {tab === 'general' && 'General'}
+                {tab === 'modificadores' && (pageMode === 'service' ? 'Presentaciones' : 'Presentaciones y extras')}
+                {tab === 'unidades' && 'Unidades de venta'}
+                {tab === 'atributos' && 'Atributos'}
+                {tab === 'stock' && 'Stock'}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {activeTab === 'general' && <>
         {pageMode === 'product' && (
           <div className="min-w-0">
             <label className="block text-xs font-medium text-gray-600 mb-1">Imagen del producto</label>
@@ -1976,14 +1970,150 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
             )}
           </div>
         )}
+        </>}
+
+        {activeTab === 'modificadores' && (
+          panelLoading ? (
+            <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" /></div>
+          ) : panelDetail && (
+            <div className="text-sm space-y-4">
+              {panelDetail.data.has_variants && (panelDetail.presentations ?? []).length > 0 && (
+                <div>
+                  <p className="font-medium text-gray-700 mb-1">Presentaciones</p>
+                  <ul className="space-y-1">
+                    {(panelDetail.presentations ?? []).map((pres, i) => (
+                      <li key={pres.id ?? i} className="text-gray-600 text-xs border border-gray-100 rounded-lg px-2 py-1.5">
+                        {pres.name} — S/ {Number(pres.sale_price).toFixed(2)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {panelDetail.data.has_modifiers ? (
+                <div className="space-y-3">
+                  <p className="text-gray-500">Grupos asignados y opciones:</p>
+                  {(panelDetail.modifier_group_ids ?? []).length === 0 ? (
+                    <p className="text-gray-400">Ninguno. Edita el producto para asignar grupos.</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {(panelDetail.modifier_group_ids ?? []).map(gid => {
+                        const g = modifierGroups.find(m => m.id === gid)
+                        if (!g) return <li key={gid}>ID {gid}</li>
+                        return (
+                          <li key={gid} className="border border-gray-100 rounded-lg p-2">
+                            <p className="font-medium text-gray-800">{g.name}</p>
+                            <p className="text-xs text-gray-500">Opciones: {(g.options ?? []).map(o => o.name + (o.extra_price ? ` (+S/ ${Number(o.extra_price).toFixed(2)})` : '')).join(', ') || '—'}</p>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
+                </div>
+              ) : !panelDetail.data.has_variants ? (
+                <p className="text-gray-500">
+                  {panelDetail.data.type === 'service'
+                    ? 'Este servicio no usa presentaciones.'
+                    : 'Este producto no usa presentaciones ni extras.'}
+                </p>
+              ) : null}
+            </div>
+          )
+        )}
+
+        {activeTab === 'unidades' && editing && (
+          <SaleUnitsModal
+            embedded
+            open
+            productId={editing.id}
+            productName={editing.name}
+            baseUnitLabel={productUnitFormDisplayName(editing.unit ?? '')}
+            onClose={() => {}}
+          />
+        )}
+
+        {activeTab === 'atributos' && editing && (
+          <ProductAttributesModal
+            embedded
+            open
+            productId={editing.id}
+            productName={editing.name}
+            onClose={() => {}}
+          />
+        )}
+
+        {activeTab === 'stock' && (
+          <div className="text-sm space-y-4">
+            {editing?.manage_stock && (
+              <div className="overflow-x-auto">
+                <p className="font-medium text-gray-700 mb-1">
+                  {editing?.has_variants ? 'Stock por sucursal y presentación' : 'Stock por sucursal'}
+                </p>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-2">Sucursal</th>
+                      {editing?.has_variants && <th className="text-left py-2">Presentación</th>}
+                      <th className="text-right py-2">Cantidad</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {stockRows.length === 0 && (
+                      <tr><td colSpan={editing?.has_variants ? 3 : 2} className="py-4 text-gray-400 text-center">Sin stock registrado</td></tr>
+                    )}
+                    {stockRows.map((s, i) => (
+                      <tr key={i} className="border-b border-gray-50">
+                        <td className="py-2">{branchName(s.branch_id)}</td>
+                        {editing?.has_variants && <td className="py-2">{s.presentation_name || '—'}</td>}
+                        <td className="text-right py-2 font-mono">{Number(s.quantity)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="text-gray-500 mt-2">Total: {stockRows.reduce((a, s) => a + Number(s.quantity), 0)}</p>
+                <div className="flex gap-2 mt-3 flex-wrap">
+                  <Link to={`/inventory/kardex?product_id=${editing?.id}`} className="text-xs text-[rgb(var(--p600))] hover:underline">Ver Kardex completo</Link>
+                  <Link to="/inventory/transfers" className="text-xs text-[rgb(var(--p600))] hover:underline">Ir a Transferencias</Link>
+                </div>
+              </div>
+            )}
+            {editing?.manage_series && (
+              <div>
+                <p className="font-medium text-gray-700 mb-1">Números de serie</p>
+                {panelSerials.length === 0 ? (
+                  <p className="text-gray-400 text-xs">Sin series registradas (se registran al comprar o transferir).</p>
+                ) : (
+                  <div className="max-h-40 overflow-y-auto border border-gray-100 rounded-lg">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50 sticky top-0"><tr><th className="text-left px-2 py-1.5">Serie</th><th className="text-left px-2 py-1.5">Sucursal</th><th className="text-left px-2 py-1.5">Estado</th></tr></thead>
+                      <tbody>
+                        {panelSerials.map((s, i) => (
+                          <tr key={i} className="border-b border-gray-50"><td className="px-2 py-1 font-mono">{s.serial}</td><td className="px-2 py-1">{branchName(s.branch_id)}</td><td className="px-2 py-1">{s.status}</td></tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+            {!editing?.manage_stock && !editing?.manage_series && (
+              <p className="text-gray-500">Este producto no maneja stock ni series.</p>
+            )}
+          </div>
+        )}
 
         </div>
+        {activeTab === 'general' ? (
         <div className="modal-footer-safe shrink-0 border-t border-gray-100 px-4 sm:px-6 md:px-7 pt-3 bg-white flex flex-row gap-2">
           <button type="button" onClick={closeProductModal} disabled={saving || uploadingImage} className="touch-target sm:min-h-0 flex-1 py-2.5 sm:py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 font-medium disabled:opacity-50">Cancelar</button>
           <button type="button" onClick={handleSave} disabled={saving || uploadingImage} className="touch-target sm:min-h-0 flex-1 py-2.5 sm:py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50">
             {saving || uploadingImage ? 'Guardando...' : 'Guardar'}
           </button>
         </div>
+        ) : (
+        <div className="modal-footer-safe shrink-0 border-t border-gray-100 px-4 sm:px-6 md:px-7 pt-3 bg-white">
+          <button type="button" onClick={closeProductModal} className="touch-target sm:min-h-0 w-full py-2.5 sm:py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 font-medium">Cerrar</button>
+        </div>
+        )}
       </Modal>
 
       <ProductPresentationsModal
@@ -1993,27 +2123,6 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         onClose={() => setShowPresentationsModal(false)}
         onSave={setPresentations}
         showInitialStock={Boolean(form.manage_stock)}
-      />
-
-      <SaleUnitsModal
-        // Atado a panelProduct: si el Panel avanzado se cierra por cualquier vía (Escape, "Editar
-        // producto", "Cerrar") mientras este modal sigue abierto, se cierra con él en vez de
-        // quedar operable con un productId obsoleto (bug real: "producto no encontrado" al
-        // guardar, porque productId caía a 0).
-        open={showSaleUnitsModal && !!panelProduct}
-        productId={panelProduct?.id ?? 0}
-        productName={panelProduct?.name}
-        baseUnitLabel={productUnitFormDisplayName(panelProduct?.unit ?? '')}
-        onClose={() => setShowSaleUnitsModal(false)}
-        onChanged={reloadPanelSaleUnits}
-      />
-
-      <ProductAttributesModal
-        open={showAttributesModal && !!panelProduct}
-        productId={panelProduct?.id ?? 0}
-        productName={panelProduct?.name}
-        onClose={() => setShowAttributesModal(false)}
-        onChanged={reloadPanelAttributes}
       />
 
       {/* Modal Grupos de extras */}
@@ -2105,270 +2214,6 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           }}
         />
       )}
-
-      {/* Panel avanzado (Administrar producto) */}
-      <Modal open={!!panelProduct} onClose={closePanel} closeOnBackdropClick={false}>
-        {panelProduct && (
-          <>
-            <h3 className="font-bold text-gray-800 flex items-center gap-2">
-              <Package size={18} />
-              {panelProduct.name}
-            </h3>
-            <p className="text-xs text-gray-500 font-mono">{panelProduct.code || 'Sin código'}</p>
-
-            <div className="flex gap-1 border-b border-gray-100 pb-2 overflow-x-auto">
-              {(panelProduct.type === 'service'
-                ? (['datos', 'modificadores', 'unidades', 'atributos'] as const)
-                : (['datos', 'modificadores', 'unidades', 'atributos', 'stock'] as const)
-              ).map(
-                (tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setPanelTab(tab)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap ${
-                      panelTab === tab ? 'bg-[rgb(var(--p100))] text-[rgb(var(--p700))]' : 'text-gray-600 hover:bg-gray-100'
-                    }`}
-                  >
-                    {tab === 'datos' && 'Datos'}
-                    {tab === 'modificadores' && (panelProduct.type === 'service' ? 'Presentaciones' : 'Presentaciones y extras')}
-                    {tab === 'unidades' && 'Unidades de venta'}
-                    {tab === 'atributos' && 'Atributos'}
-                    {tab === 'stock' && 'Stock'}
-                  </button>
-                ),
-              )}
-            </div>
-
-            {panelLoading ? (
-              <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" /></div>
-            ) : (
-              <div className="min-h-[200px]">
-                {panelTab === 'datos' && panelDetail && (
-                  <div className="space-y-2 text-sm">
-                    <p><span className="text-gray-500">Categoría:</span> {panelDetail.data.category_id ? categories.find(c => c.id === panelDetail.data.category_id)?.name ?? panelDetail.data.category_id : '—'}</p>
-                    <p><span className="text-gray-500">Marca:</span> {panelDetail.data.brand_id ? brands.find(b => b.id === panelDetail.data.brand_id)?.name ?? panelDetail.data.brand_id : '—'}</p>
-                    <p>
-                      <span className="text-gray-500">Unidad:</span>{' '}
-                      {productUnitFormDisplayName(panelDetail.data.unit)}
-                    </p>
-                    <p><span className="text-gray-500">Precio venta:</span> S/ {Number(panelDetail.data.sale_price).toFixed(2)}</p>
-                    <p><span className="text-gray-500">Control stock:</span> {panelDetail.data.manage_stock ? 'Sí' : 'No'}</p>
-                    {panelDetail.data.manage_stock && <p><span className="text-gray-500">Stock mínimo:</span> {panelDetail.data.min_stock}</p>}
-                    {panelDetail.data.has_expiry_date && panelDetail.data.expiry_date && (
-                      <p>
-                        <span className="text-gray-500">Vencimiento:</span>{' '}
-                        {formatExpiryDisplay(String(panelDetail.data.expiry_date).slice(0, 10))}
-                      </p>
-                    )}
-                    <p><span className="text-gray-500">Series/lotes:</span> {panelDetail.data.manage_series ? 'Sí' : 'No'}</p>
-                    <p><span className="text-gray-500">Modificadores:</span> {panelDetail.data.has_modifiers ? 'Sí' : 'No'}</p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShow(false)
-                        closePanel()
-                        openEdit(panelProduct)
-                        setShow(true)
-                      }}
-                      className="mt-2 text-xs text-[rgb(var(--p600))] hover:underline"
-                    >
-                      {panelProduct.type === 'service' ? 'Editar servicio' : 'Editar producto'}
-                    </button>
-                  </div>
-                )}
-
-                {panelTab === 'modificadores' && panelDetail && (
-                  <div className="text-sm space-y-4">
-                    {panelDetail.data.has_variants && (panelDetail.presentations ?? []).length > 0 && (
-                      <div>
-                        <p className="font-medium text-gray-700 mb-1">Presentaciones</p>
-                        <ul className="space-y-1">
-                          {(panelDetail.presentations ?? []).map((pres, i) => (
-                            <li key={pres.id ?? i} className="text-gray-600 text-xs border border-gray-100 rounded-lg px-2 py-1.5">
-                              {pres.name} — S/ {Number(pres.sale_price).toFixed(2)}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                    {panelDetail.data.has_modifiers ? (
-                      <div className="space-y-3">
-                        <p className="text-gray-500">Grupos asignados y opciones:</p>
-                        {(panelDetail.modifier_group_ids ?? []).length === 0 ? (
-                          <p className="text-gray-400">Ninguno. Edita el producto para asignar grupos.</p>
-                        ) : (
-                          <ul className="space-y-2">
-                            {(panelDetail.modifier_group_ids ?? []).map(gid => {
-                              const g = modifierGroups.find(m => m.id === gid)
-                              if (!g) return <li key={gid}>ID {gid}</li>
-                              return (
-                                <li key={gid} className="border border-gray-100 rounded-lg p-2">
-                                  <p className="font-medium text-gray-800">{g.name}</p>
-                                  <p className="text-xs text-gray-500">Opciones: {(g.options ?? []).map(o => o.name + (o.extra_price ? ` (+S/ ${Number(o.extra_price).toFixed(2)})` : '')).join(', ') || '—'}</p>
-                                </li>
-                              )
-                            })}
-                          </ul>
-                        )}
-                      </div>
-                    ) : !panelDetail.data.has_variants ? (
-                      <p className="text-gray-500">
-                        {panelDetail.data.type === 'service'
-                          ? 'Este servicio no usa presentaciones.'
-                          : 'Este producto no usa presentaciones ni extras.'}
-                      </p>
-                    ) : null}
-                  </div>
-                )}
-
-                {panelTab === 'unidades' && (
-                  <div className="text-sm space-y-3">
-                    <p className="text-xs text-gray-600 leading-relaxed">
-                      Las unidades de venta permiten vender este producto en diferentes cantidades
-                      comerciales — por ejemplo Caja x12, Pack x6 o Unidad — con conversión hacia la
-                      unidad base ({productUnitFormDisplayName(panelProduct?.unit ?? '')}). No
-                      reemplazan las presentaciones ni tienen stock propio.
-                    </p>
-                    {panelSaleUnits.length > 0 ? (
-                      <ul className="space-y-1">
-                        {panelSaleUnits.map((u) => (
-                          <li
-                            key={u.id}
-                            className="text-gray-600 text-xs border border-gray-100 rounded-lg px-2 py-1.5 flex items-center justify-between gap-2"
-                          >
-                            <span>
-                              {u.name}
-                              {u.is_base && (
-                                <span className="ml-1 text-[10px] text-[rgb(var(--p600))] font-semibold">(base)</span>
-                              )}
-                              {' — factor '}{u.conversion_factor}{' — S/ '}{Number(u.price1).toFixed(2)}
-                            </span>
-                            <span
-                              className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-medium ${u.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}
-                            >
-                              {u.active ? 'Activa' : 'Inactiva'}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-gray-400">Aún no hay unidades de venta configuradas.</p>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setShowSaleUnitsModal(true)}
-                      className="w-full sm:w-auto px-4 py-2 rounded-xl text-sm font-medium border border-[rgb(var(--p300))] text-[rgb(var(--p700))] hover:bg-[rgb(var(--p100))]"
-                    >
-                      Gestionar unidades de venta
-                    </button>
-                  </div>
-                )}
-
-                {panelTab === 'atributos' && (
-                  <div className="text-sm space-y-3">
-                    <p className="text-xs text-gray-600 leading-relaxed">
-                      Datos descriptivos del producto (ej. Color → Rojo, Material → Acero). Son
-                      puramente informativos: no afectan precio, stock, ventas ni SUNAT.
-                    </p>
-                    {panelAttributes.length > 0 ? (
-                      <ul className="space-y-1">
-                        {panelAttributes.map((a) => (
-                          <li
-                            key={a.id}
-                            className="text-gray-600 text-xs border border-gray-100 rounded-lg px-2 py-1.5 flex items-center justify-between gap-2"
-                          >
-                            <span>{a.name} — {a.value}</span>
-                            <span
-                              className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-medium ${a.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}
-                            >
-                              {a.active ? 'Activo' : 'Inactivo'}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="text-gray-400">Aún no hay atributos configurados.</p>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setShowAttributesModal(true)}
-                      className="w-full sm:w-auto px-4 py-2 rounded-xl text-sm font-medium border border-[rgb(var(--p300))] text-[rgb(var(--p700))] hover:bg-[rgb(var(--p100))]"
-                    >
-                      Gestionar atributos
-                    </button>
-                  </div>
-                )}
-
-                {panelTab === 'stock' && (
-                  <div className="text-sm space-y-4">
-                    {panelProduct?.manage_stock && (
-                      <div className="overflow-x-auto">
-                        <p className="font-medium text-gray-700 mb-1">
-                          {panelProduct?.has_variants ? 'Stock por sucursal y presentación' : 'Stock por sucursal'}
-                        </p>
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="border-b">
-                              <th className="text-left py-2">Sucursal</th>
-                              {panelProduct?.has_variants && <th className="text-left py-2">Presentación</th>}
-                              <th className="text-right py-2">Cantidad</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {stockRows.length === 0 && (
-                              <tr><td colSpan={panelProduct?.has_variants ? 3 : 2} className="py-4 text-gray-400 text-center">Sin stock registrado</td></tr>
-                            )}
-                            {stockRows.map((s, i) => (
-                              <tr key={i} className="border-b border-gray-50">
-                                <td className="py-2">{branchName(s.branch_id)}</td>
-                                {panelProduct?.has_variants && <td className="py-2">{s.presentation_name || '—'}</td>}
-                                <td className="text-right py-2 font-mono">{Number(s.quantity)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                        <p className="text-gray-500 mt-2">Total: {stockRows.reduce((a, s) => a + Number(s.quantity), 0)}</p>
-                        <div className="flex gap-2 mt-3 flex-wrap">
-                          <Link to={`/inventory/kardex?product_id=${panelProduct?.id}`} className="text-xs text-[rgb(var(--p600))] hover:underline">Ver Kardex completo</Link>
-                          <Link to="/inventory/transfers" className="text-xs text-[rgb(var(--p600))] hover:underline">Ir a Transferencias</Link>
-                        </div>
-                      </div>
-                    )}
-                    {panelProduct?.manage_series && (
-                      <div>
-                        <p className="font-medium text-gray-700 mb-1">Números de serie</p>
-                        {panelSerials.length === 0 ? (
-                          <p className="text-gray-400 text-xs">Sin series registradas (se registran al comprar o transferir).</p>
-                        ) : (
-                          <div className="max-h-40 overflow-y-auto border border-gray-100 rounded-lg">
-                            <table className="w-full text-xs">
-                              <thead className="bg-gray-50 sticky top-0"><tr><th className="text-left px-2 py-1.5">Serie</th><th className="text-left px-2 py-1.5">Sucursal</th><th className="text-left px-2 py-1.5">Estado</th></tr></thead>
-                              <tbody>
-                                {panelSerials.map((s, i) => (
-                                  <tr key={i} className="border-b border-gray-50"><td className="px-2 py-1 font-mono">{s.serial}</td><td className="px-2 py-1">{branchName(s.branch_id)}</td><td className="px-2 py-1">{s.status}</td></tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {!panelProduct?.manage_stock && !panelProduct?.manage_series && (
-                      <p className="text-gray-500">Este producto no maneja stock ni series.</p>
-                    )}
-                  </div>
-                )}
-
-              </div>
-            )}
-
-            <div className="pt-3 border-t border-gray-100 mt-3">
-              <button type="button" onClick={closePanel} className="w-full py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">Cerrar</button>
-            </div>
-          </>
-        )}
-      </Modal>
 
       <ProductImportModal
         open={importModalOpen}

@@ -13,6 +13,10 @@ type Props = {
   onClose: () => void
   /** Se llama tras guardar o eliminar con éxito, para que el padre refresque su propio resumen. */
   onChanged?: () => void
+  /** Se renderiza sin el `<Modal>` propio (sin backdrop ni botón "Cerrar") — para insertarse como
+   * pestaña dentro de otro modal (Panel avanzado unificado de ProductsPage.tsx) en vez de apilarse
+   * como un modal más. El resto del comportamiento (cargar, guardar, eliminar) es idéntico. */
+  embedded?: boolean
 }
 
 function emptyRow(sortOrder: number): ProductAttribute {
@@ -50,7 +54,7 @@ function errorMessage(e: unknown, fallback: string): string {
  * product_service.go:1855-1863) — a diferencia de SaleUnit, que sí es soft delete. No cambia la UX
  * (de cualquier forma la fila desaparece de la lista), pero no hay que asumir que es reversible.
  */
-export function ProductAttributesModal({ open, productId, productName, onClose, onChanged }: Props) {
+export function ProductAttributesModal({ open, productId, productName, onClose, onChanged, embedded }: Props) {
   const { hasPermission } = useAuth()
   const canCreate = hasPermission('products.create')
   const canEdit = hasPermission('products.edit')
@@ -178,59 +182,97 @@ export function ProductAttributesModal({ open, productId, productName, onClose, 
     onClose()
   }
 
+  // embedded: sin flex/alturas fijas — vive dentro del scroll del modal contenedor (pestaña
+  // "Atributos" del Panel avanzado unificado), no necesita su propio viewport acotado.
+  const body = embedded ? (
+    <div className="space-y-3">
+      {loading ? (
+        <div className="flex items-center justify-center py-8">
+          <div className="w-6 h-6 border-2 border-gray-300 border-t-[rgb(var(--p600))] rounded-full animate-spin" />
+        </div>
+      ) : (
+        <ProductAttributesEditor
+          attributes={attributes}
+          canCreate={canCreate}
+          canEdit={canEdit}
+          canDelete={canDelete}
+          onChangeRow={handleChangeRow}
+          onAddRow={handleAddRow}
+          onRemoveRow={handleRemoveRow}
+        />
+      )}
+      {(canCreate || canEdit) && (
+        <button
+          type="button"
+          onClick={() => void handleSave()}
+          disabled={saving || loading}
+          className="w-full min-h-[44px] py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-50"
+        >
+          {saving ? 'Guardando…' : 'Guardar cambios'}
+        </button>
+      )}
+    </div>
+  ) : (
+    <div className="flex flex-col flex-1 min-h-0 -mx-1">
+      <div className="pb-3 border-b border-gray-100 shrink-0">
+        <h3 className="font-bold text-gray-900 text-lg">Atributos</h3>
+        {productName ? <p className="text-sm text-gray-500 mt-0.5 truncate">{productName}</p> : null}
+      </div>
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden py-4">
+        {loading ? (
+          <div className="flex-1 flex items-center justify-center py-8">
+            <div className="w-6 h-6 border-2 border-gray-300 border-t-[rgb(var(--p600))] rounded-full animate-spin" />
+          </div>
+        ) : (
+          <ProductAttributesEditor
+            attributes={attributes}
+            canCreate={canCreate}
+            canEdit={canEdit}
+            canDelete={canDelete}
+            onChangeRow={handleChangeRow}
+            onAddRow={handleAddRow}
+            onRemoveRow={handleRemoveRow}
+          />
+        )}
+      </div>
+      <div className="pt-3 border-t border-gray-100 flex gap-2 shrink-0">
+        <button
+          type="button"
+          onClick={handleClose}
+          disabled={saving}
+          className="flex-1 min-h-[48px] py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        >
+          Cerrar
+        </button>
+        {canCreate || canEdit ? (
+          <button
+            type="button"
+            onClick={() => void handleSave()}
+            disabled={saving || loading}
+            className="flex-1 min-h-[48px] py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-50"
+          >
+            {saving ? 'Guardando…' : 'Guardar cambios'}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  )
+
   return (
     <>
-      <Modal
-        open={open}
-        onClose={handleClose}
-        stacked
-        contentClassName="max-w-2xl max-h-[min(92dvh,760px)] flex flex-col"
-        closeOnBackdropClick={!saving}
-      >
-        <div className="flex flex-col flex-1 min-h-0 -mx-1">
-          <div className="pb-3 border-b border-gray-100 shrink-0">
-            <h3 className="font-bold text-gray-900 text-lg">Atributos</h3>
-            {productName ? <p className="text-sm text-gray-500 mt-0.5 truncate">{productName}</p> : null}
-          </div>
-          <div className="py-4 flex-1 min-h-0 flex flex-col overflow-hidden">
-            {loading ? (
-              <div className="flex-1 flex items-center justify-center py-8">
-                <div className="w-6 h-6 border-2 border-gray-300 border-t-[rgb(var(--p600))] rounded-full animate-spin" />
-              </div>
-            ) : (
-              <ProductAttributesEditor
-                attributes={attributes}
-                canCreate={canCreate}
-                canEdit={canEdit}
-                canDelete={canDelete}
-                onChangeRow={handleChangeRow}
-                onAddRow={handleAddRow}
-                onRemoveRow={handleRemoveRow}
-              />
-            )}
-          </div>
-          <div className="pt-3 border-t border-gray-100 flex gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={handleClose}
-              disabled={saving}
-              className="flex-1 min-h-[48px] py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            >
-              Cerrar
-            </button>
-            {canCreate || canEdit ? (
-              <button
-                type="button"
-                onClick={() => void handleSave()}
-                disabled={saving || loading}
-                className="flex-1 min-h-[48px] py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-50"
-              >
-                {saving ? 'Guardando…' : 'Guardar cambios'}
-              </button>
-            ) : null}
-          </div>
-        </div>
-      </Modal>
+      {embedded ? (
+        open ? body : null
+      ) : (
+        <Modal
+          open={open}
+          onClose={handleClose}
+          stacked
+          contentClassName="max-w-2xl max-h-[min(92dvh,760px)] flex flex-col"
+          closeOnBackdropClick={!saving}
+        >
+          {body}
+        </Modal>
+      )}
 
       <ConfirmDialog
         open={!!deleteTarget}
