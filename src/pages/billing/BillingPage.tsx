@@ -196,6 +196,7 @@ function BillingContent() {
   const [voidableBoletas, setVoidableBoletas] = useState<Sale[]>([])
   const [loadingVoidable, setLoadingVoidable] = useState(false)
   const [creatingVoided, setCreatingVoided] = useState(false)
+  const [voidedDetail, setVoidedDetail] = useState<SunatVoided | null>(null)
 
   const openVoidedModal = () => {
     setVoidedRows([{ key: 'v0', saleId: '', reason: '' }])
@@ -268,6 +269,16 @@ function BillingContent() {
       .then(({ voided: list }) => setVoidedList(list ?? []))
       .catch(() => toast.error('Error al cargar comunicaciones de baja'))
       .finally(() => setVoidedLoading(false))
+  }
+  const refreshVoidedStatus = (id: number) => {
+    setVoidedStatusLoading(id)
+    billingService.getVoidedStatus(id)
+      .then(updated => {
+        setVoidedList(prev => prev.map(x => x.id === updated.id ? updated : x))
+        setVoidedDetail(prev => (prev && prev.id === updated.id ? updated : prev))
+      })
+      .catch(() => toast.error('Error al consultar estado'))
+      .finally(() => setVoidedStatusLoading(null))
   }
 
   useEffect(() => {
@@ -676,21 +687,74 @@ function BillingContent() {
             </div>
           </div>
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 border-b border-gray-100"><tr>{['Fecha', 'Correlativo', 'Ticket', 'Estado', 'Detalles', 'Acción'].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>)}</tr></thead>
+            <thead className="bg-gray-50 border-b border-gray-100"><tr>{['Fecha', 'Correlativo', 'Comprobantes', 'Estado', 'Acciones'].map(h => <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>)}</tr></thead>
             <tbody>
-              {voidedLoading ? <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400"><RefreshCw size={20} className="animate-spin inline" /> Cargando...</td></tr> : voidedList.length === 0 ? <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400">Sin comunicaciones de baja.</td></tr> : voidedList.map(v => (
+              {voidedLoading ? <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400"><RefreshCw size={20} className="animate-spin inline" /> Cargando...</td></tr> : voidedList.length === 0 ? <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Sin comunicaciones de baja.</td></tr> : voidedList.map(v => (
               <tr key={v.id} className="border-b border-gray-50 hover:bg-gray-50">
-                <td className="px-4 py-3">{new Date(v.fec_comunicacion).toLocaleString()}</td>
-                <td className="px-4 py-3 font-mono">{v.correlativo}</td>
-                <td className="px-4 py-3 text-xs">{v.ticket || '—'}</td>
-                <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${(STATUS_COLORS as Record<string, string>)[v.status] ?? 'bg-gray-100 text-gray-600'}`}>{(STATUS_LABELS as Record<string, string>)[v.status] ?? v.status}</span></td>
-                <td className="px-4 py-3">{v.details_count}</td>
-                <td className="px-4 py-3">{v.ticket ? <button onClick={() => { setVoidedStatusLoading(v.id); billingService.getVoidedStatus(v.id).then(updated => { setVoidedList(prev => prev.map(x => x.id === updated.id ? updated : x)); }).catch(() => toast.error('Error')).finally(() => setVoidedStatusLoading(null)) }} disabled={voidedStatusLoading === v.id} className="text-xs px-2 py-1 rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200 disabled:opacity-50">{voidedStatusLoading === v.id ? <RefreshCw size={12} className="animate-spin inline" /> : <Search size={12} className="inline" />} Consultar estado</button> : null}</td>
+                <td className="px-4 py-3 text-gray-600">{new Date(v.fec_comunicacion).toLocaleString()}</td>
+                <td className="px-4 py-3">
+                  <div className="font-mono font-medium text-gray-800">{v.correlativo}</div>
+                  {v.ticket && <div className="text-[11px] text-gray-400 font-mono truncate max-w-[160px]">Ticket: {v.ticket}</div>}
+                </td>
+                <td className="px-4 py-3 text-center text-gray-600">{v.details_count}</td>
+                <td className="px-4 py-3">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${(STATUS_COLORS as Record<string, string>)[v.status] ?? 'bg-gray-100 text-gray-600'}`}>{(STATUS_LABELS as Record<string, string>)[v.status] ?? v.status}</span>
+                  {v.status === 'rejected' && v.sunat_message && (
+                    <p className="text-[11px] text-red-600 mt-1 max-w-[220px] truncate" title={v.sunat_message}>{v.sunat_message}</p>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-1">
+                    <button onClick={() => setVoidedDetail(v)} title="Ver detalle" className="p-1.5 rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100">
+                      <Eye size={14} />
+                    </button>
+                    {v.ticket && (
+                      <button onClick={() => refreshVoidedStatus(v.id)} disabled={voidedStatusLoading === v.id} title="Consultar estado en SUNAT" className="p-1.5 rounded-lg text-blue-600 hover:bg-blue-50 disabled:opacity-50">
+                        {voidedStatusLoading === v.id ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
+                      </button>
+                    )}
+                  </div>
+                </td>
               </tr>
             ))}
             </tbody>
           </table>
         </div>
+        {voidedDetail && (
+          <Modal open={!!voidedDetail} onClose={() => setVoidedDetail(null)} contentClassName="max-w-lg">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3 mb-4">
+              <h3 className="font-semibold text-gray-800">Comunicación de baja · {voidedDetail.correlativo}</h3>
+              <button onClick={() => setVoidedDetail(null)} className="p-1.5 hover:bg-gray-100 rounded-lg"><X size={16} /></button>
+            </div>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div><p className="text-[11px] text-gray-400 uppercase font-medium">Fecha</p><p>{new Date(voidedDetail.fec_comunicacion).toLocaleString()}</p></div>
+                <div><p className="text-[11px] text-gray-400 uppercase font-medium">Comprobantes</p><p>{voidedDetail.details_count}</p></div>
+                <div><p className="text-[11px] text-gray-400 uppercase font-medium">Ticket SUNAT</p><p className="font-mono text-xs break-all">{voidedDetail.ticket || '—'}</p></div>
+                <div>
+                  <p className="text-[11px] text-gray-400 uppercase font-medium">Estado</p>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${(STATUS_COLORS as Record<string, string>)[voidedDetail.status] ?? 'bg-gray-100 text-gray-600'}`}>{(STATUS_LABELS as Record<string, string>)[voidedDetail.status] ?? voidedDetail.status}</span>
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-600 uppercase mb-2">Respuesta SUNAT</p>
+                <SunatResponseDetail
+                  billingStatus={voidedDetail.status}
+                  invoice={{ sunat_message: voidedDetail.sunat_message, sunat_cdr_code: voidedDetail.sunat_code }}
+                />
+              </div>
+              {voidedDetail.ticket && (
+                <button
+                  onClick={() => refreshVoidedStatus(voidedDetail.id)}
+                  disabled={voidedStatusLoading === voidedDetail.id}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {voidedStatusLoading === voidedDetail.id ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />} Consultar estado en SUNAT
+                </button>
+              )}
+            </div>
+          </Modal>
+        )}
         <div className="bg-white rounded-2xl shadow-sm p-4">
           <h3 className="font-semibold text-gray-800 mb-3">Consulta estado comprobante (CDR)</h3>
           <div className="flex flex-wrap items-end gap-3 mb-4">
