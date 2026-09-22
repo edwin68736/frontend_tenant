@@ -546,8 +546,10 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     }
   }
 
-  const handleSave = async () => {
-    if (!form.name) { toast.error('Nombre requerido'); return }
+  /** Valida el formulario "General" y arma el payload — sin llamar al backend. Devuelve `null`
+   * (mostrando el toast correspondiente) si algo falta, para que el llamador aborte sin guardar. */
+  const buildPayload = (): CreateProductInput | null => {
+    if (!form.name) { toast.error('Nombre requerido'); return null }
     // El formulario sugiere un código al abrirse, pero puede haberse borrado: sin él el
     // producto se guarda y luego no se puede facturar (SUNAT lo exige por línea).
     if (!form.code?.trim()) {
@@ -586,7 +588,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         const raw = (form.expiry_date ?? '').trim()
         if (!raw) {
           toast.error('Indique la fecha de vencimiento')
-          return
+          return null
         }
         payload.expiry_date = raw.slice(0, 10)
       } else {
@@ -601,7 +603,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       const pres = presentations.filter((p) => p.name.trim())
       if (pres.length === 0) {
         toast.error('Agrega al menos una presentación con nombre')
-        return
+        return null
       }
       payload.presentations = pres.map((p) => ({
         id: p.id,
@@ -623,7 +625,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       const missingPrice = payload.presentations.find((p) => !(Number(p.sale_price) > 0))
       if (missingPrice) {
         toast.error(`La presentación «${missingPrice.name}» debe tener un precio mayor a S/ 0`)
-        return
+        return null
       }
     }
     if (editing) {
@@ -631,33 +633,81 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     } else if (!payload.manage_stock || !(payload.initial_stock != null && payload.initial_stock > 0)) {
       delete payload.initial_stock
     }
-    setSaving(true)
+    return payload
+  }
+
+  /** Crea o actualiza el producto (según haya o no `editing`) y sube la imagen pendiente si hay.
+   * No cierra el modal ni recarga el listado — eso lo decide cada llamador (`handleSave` vs
+   * `ensureProductCreated`). Devuelve el producto persistido, o `null` si la request falló
+   * (ya se mostró el toast de error). `imageFailed` indica que el producto sí se guardó pero la
+   * imagen no — el llamador decide si igual lo trata como éxito. */
+  const persistProduct = async (
+    payload: CreateProductInput,
+  ): Promise<{ product: Product; imageFailed: boolean } | null> => {
     try {
-      let productId = editing?.id
-      if (editing) {
-        await productsService.update(editing.id, payload)
-      } else {
-        const created = await productsService.create(payload)
-        productId = created.id
-      }
-      if (pendingImageFile && productId) {
+      const product = editing ? editing : await productsService.create(payload)
+      if (editing) await productsService.update(editing.id, payload)
+      let imageFailed = false
+      if (pendingImageFile) {
         setUploadingImage(true)
         try {
-          await productsService.uploadImage(productId, pendingImageFile)
+          await productsService.uploadImage(product.id, pendingImageFile)
         } catch (err: any) {
           toast.error(err.response?.data?.error ?? 'Producto guardado, pero falló la imagen')
-          closeProductModal()
-          load()
-          return
+          imageFailed = true
         } finally {
           setUploadingImage(false)
         }
       }
-      toast.success(editing ? 'Producto actualizado' : 'Producto creado')
-      closeProductModal()
-      load()
-    } catch (e: any) { toast.error(e.response?.data?.error ?? 'Error') }
-    finally { setSaving(false) }
+      return { product, imageFailed }
+    } catch (e: any) {
+      toast.error(e.response?.data?.error ?? 'Error')
+      return null
+    }
+  }
+
+  const handleSave = async () => {
+    const payload = buildPayload()
+    if (!payload) return
+    setSaving(true)
+    const result = await persistProduct(payload)
+    setSaving(false)
+    if (!result) return
+    if (!result.imageFailed) toast.success(editing ? 'Producto actualizado' : 'Producto creado')
+    closeProductModal()
+    load()
+  }
+
+  /** Si el producto ya existe (`editing`), no hace nada. Si es un alta en curso, lo guarda de
+   * inmediato con los datos ya cargados en "General" — igual que el sistema anterior, donde
+   * unidades de venta/precios por sucursal/atributos se configuran en el mismo alta sin un paso
+   * explícito de "guardar y reabrir". Se dispara al intentar abrir una pestaña que requiere un
+   * producto ya persistido (Unidades de venta, Atributos). */
+  const ensureProductCreated = async (): Promise<boolean> => {
+    if (editing) return true
+    const payload = buildPayload()
+    if (!payload) return false
+    setSaving(true)
+    const result = await persistProduct(payload)
+    setSaving(false)
+    if (!result) return false
+    setEditing(result.product)
+    setPanelLoading(true)
+    try {
+      const [detail, b] = await Promise.all([
+        productsService.get(result.product.id),
+        companyService.listBranches(),
+      ])
+      setPanelDetail(detail)
+      setBranches(b ?? [])
+    } catch {
+      // Igual que openEdit: si el GET falla, seguimos con lo que ya tenemos.
+    } finally {
+      setPanelLoading(false)
+    }
+    toast.success('Producto creado — ya puedes agregar unidades de venta, atributos, etc.')
+    load()
+    return true
   }
 
   const handleToggle = async (p: Product) => {
@@ -1471,31 +1521,35 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               : 'Nuevo producto'}
         </h3>
 
-        {/* Pestañas: solo con producto ya guardado (unidades/atributos/stock no aplican al alta,
-            mismo criterio de siempre — ver SaleUnitsModal.tsx/ProductAttributesModal.tsx). */}
-        {editing && (
-          <div className="flex gap-1 border-b border-gray-100 pb-2 overflow-x-auto -mt-1">
-            {(pageMode === 'service'
-              ? (['general', 'modificadores', 'unidades', 'atributos'] as const)
-              : (['general', 'modificadores', 'unidades', 'atributos', 'stock'] as const)
-            ).map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setActiveTab(tab)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap ${
-                  activeTab === tab ? 'bg-[rgb(var(--p100))] text-[rgb(var(--p700))]' : 'text-gray-600 hover:bg-gray-100'
-                }`}
-              >
-                {tab === 'general' && 'General'}
-                {tab === 'modificadores' && (pageMode === 'service' ? 'Presentaciones' : 'Presentaciones y extras')}
-                {tab === 'unidades' && 'Unidades de venta'}
-                {tab === 'atributos' && 'Atributos'}
-                {tab === 'stock' && 'Stock'}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Pestañas: visibles también al crear — como en el sistema anterior, las unidades de
+            venta/precios por sucursal/atributos se configuran en la misma alta. Si el producto
+            todavía no existe, abrir una pestaña distinta de "General" lo guarda primero con los
+            datos ya cargados (ver ensureProductCreated). */}
+        <div className="flex gap-1 border-b border-gray-100 pb-2 overflow-x-auto -mt-1">
+          {(pageMode === 'service'
+            ? (['general', 'modificadores', 'unidades', 'atributos'] as const)
+            : (['general', 'modificadores', 'unidades', 'atributos', 'stock'] as const)
+          ).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              disabled={saving}
+              onClick={async () => {
+                if (tab !== 'general' && !(await ensureProductCreated())) return
+                setActiveTab(tab)
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap disabled:opacity-50 ${
+                activeTab === tab ? 'bg-[rgb(var(--p100))] text-[rgb(var(--p700))]' : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              {tab === 'general' && 'General'}
+              {tab === 'modificadores' && (pageMode === 'service' ? 'Presentaciones' : 'Presentaciones y extras')}
+              {tab === 'unidades' && 'Unidades de venta'}
+              {tab === 'atributos' && 'Atributos'}
+              {tab === 'stock' && 'Stock'}
+            </button>
+          ))}
+        </div>
 
         {activeTab === 'general' && <>
         {pageMode === 'product' && (
