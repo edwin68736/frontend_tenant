@@ -3059,7 +3059,7 @@ function SalesRegisterContent({
       <Modal
         open={showProductPicker}
         onClose={() => setShowProductPicker(false)}
-        contentClassName="max-w-2xl"
+        contentClassName="max-w-4xl"
         closeOnBackdropClick={false}
       >
         <ProductPickerModal

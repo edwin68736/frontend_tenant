@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Search, X } from 'lucide-react'
+import { Boxes, History, Search, Tag, X } from 'lucide-react'
 import { productsService, getProductImageUrl, type Product } from '@/services/products.service'
 import { useBranch } from '@/contexts/BranchContext'
 import { formatSaleMoney } from '@/utils/formatMoney'
@@ -8,6 +8,7 @@ import {
   productConfigurationBadge,
   productNeedsSaleConfiguration,
 } from '@/utils/productModifiers'
+import { PosProductInfoModal, type PosProductInfoMode } from '@/components/pos/PosProductInfoModal'
 
 const PER_PAGE = 10
 
@@ -46,6 +47,12 @@ export function ProductPickerModal({
   const [products, setProducts] = useState<Product[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
+  /** Info rápida (stock/compra/precio) — mismas opciones que la tarjeta de producto en el POS. */
+  const [productInfo, setProductInfo] = useState<{ mode: PosProductInfoMode; product: Product } | null>(null)
+  const openInfo = (mode: PosProductInfoMode, p: Product) => (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setProductInfo({ mode, product: p })
+  }
 
   const loadProducts = () => {
     setLoading(true)
@@ -126,6 +133,7 @@ export function ProductPickerModal({
                   código e imagen al final por ser de apoyo. */}
               <tr>
                 <th className="w-[5.5rem] md:w-[7rem] px-2 md:px-4 py-2.5" />
+                <th className="w-[6.5rem] px-2 py-2.5" />
                 <th className="text-left px-2 md:px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase">Producto</th>
                 <th className="text-left px-2 md:px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">
                   {priceLabel}
@@ -148,6 +156,37 @@ export function ProductPickerModal({
                     >
                       {needsConfig ? 'Configurar' : 'Agregar'}
                     </button>
+                  </td>
+                  <td className="px-2 py-2.5">
+                    <div className="flex w-[6rem] rounded-lg border border-gray-200 divide-x divide-gray-200 overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={openInfo('stock', p)}
+                        title="Stock por sucursal"
+                        aria-label="Ver stock por sucursal"
+                        className="flex-1 flex items-center justify-center py-1.5 text-gray-500 hover:text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))]"
+                      >
+                        <Boxes size={13} aria-hidden />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={openInfo('purchase', p)}
+                        title="Historial de compras"
+                        aria-label="Ver historial de compras"
+                        className="flex-1 flex items-center justify-center py-1.5 text-gray-500 hover:text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))]"
+                      >
+                        <History size={13} aria-hidden />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={openInfo('price', p)}
+                        title="Precios"
+                        aria-label="Ver precios"
+                        className="flex-1 flex items-center justify-center py-1.5 text-gray-500 hover:text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))]"
+                      >
+                        <Tag size={13} aria-hidden />
+                      </button>
+                    </div>
                   </td>
                   <td className="px-2 md:px-4 py-2.5">
                     <span className="font-medium text-gray-800">{p.name}</span>
@@ -251,6 +290,13 @@ export function ProductPickerModal({
           <span className="text-gray-400 font-normal">[ESC]</span>
         </button>
       </div>
+
+      <PosProductInfoModal
+        open={productInfo != null}
+        onClose={() => setProductInfo(null)}
+        mode={productInfo?.mode ?? null}
+        product={productInfo?.product ?? null}
+      />
     </>
   )
 }
