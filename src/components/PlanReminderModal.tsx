@@ -73,6 +73,9 @@ export default function PlanReminderModal() {
   const dueIso = nextPaymentDate(sub)
   const debt = ctx?.has_real_debt ? (ctx.display_debt_amount ?? sub.pending_amount) : 0
   const isCritical = tier === 'suspended' || tier === 'blocked' || tier === 'overdue'
+  // Antes de suspender, avisar el costo de reconexión aparte — una vez suspendido, ese cargo
+  // ya está sumado dentro de `debt` (ver BillingCycleAmountDue), mostrarlo dos veces confunde.
+  const reconnectionFee = !isCritical ? (ctx?.reconnection_fee ?? 0) : 0
   const supportHref = buildSupportWhatsAppHref(hub.support, DEFAULT_SUPPORT_WHATSAPP_MESSAGE)
 
   return (
@@ -110,7 +113,18 @@ export default function PlanReminderModal() {
             </span>
           </div>
         ) : null}
+        {reconnectionFee > 0 ? (
+          <div className="flex items-center justify-between px-3 py-2.5">
+            <span className="text-gray-500">Si se suspende, reconexión</span>
+            <span className="font-bold text-amber-600">+{formatMoney(reconnectionFee)}</span>
+          </div>
+        ) : null}
       </div>
+      {reconnectionFee > 0 ? (
+        <p className="text-xs text-amber-700 -mt-1">
+          Paga antes del vencimiento para evitar este cargo adicional.
+        </p>
+      ) : null}
 
       <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
         <button

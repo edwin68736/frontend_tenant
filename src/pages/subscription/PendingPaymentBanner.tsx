@@ -26,9 +26,14 @@ export default function PendingPaymentBanner({
   const n = invoices.length
 
   const title = n === 1 ? 'Tienes 1 pago pendiente' : `Tienes ${n} pagos pendientes`
+  // Antes de suspender, avisar el costo de reconexión aparte — así el pago no llega como
+  // sorpresa cuando la cuenta ya se suspendió y el monto viene con el recargo sumado.
+  const reconnectionFee = !suspended ? Math.max(...invoices.map((inv) => inv.reconnection_fee || 0), 0) : 0
   const subtitle = suspended
     ? 'Tu servicio está suspendido por falta de pago. Realiza el pago para reactivarlo.'
-    : 'Por favor, realiza el pago para mantener tu servicio activo y sin interrupciones.'
+    : reconnectionFee > 0
+      ? `Realiza el pago para mantener tu servicio activo. Si se suspende, reactivarlo cuesta ${formatMoney(reconnectionFee)} adicionales.`
+      : 'Por favor, realiza el pago para mantener tu servicio activo y sin interrupciones.'
 
   const tone = suspended
     ? { wrap: 'border-red-200 bg-red-50', icon: 'bg-red-100 text-red-700', btn: 'bg-red-600 hover:bg-red-700' }

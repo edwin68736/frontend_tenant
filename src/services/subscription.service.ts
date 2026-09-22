@@ -83,6 +83,10 @@ export interface BillingContextView {
   current_payment_tone: 'success' | 'warning' | 'danger' | 'info' | 'muted'
   has_real_debt: boolean
   display_debt_amount?: number
+  /** Cargo configurado si la cuenta llega a suspenderse (Cobros SaaS). Se expone siempre,
+   *  antes de suspender, para avisar al tenant de antemano — no solo cuando ya está sumado
+   *  al monto pendiente (eso pasa recién una vez suspendido). */
+  reconnection_fee: number
   /** Plazo del cobro en curso: dia limite y dias restantes (negativo = plazo agotado). */
   payment_due_date?: string
   payment_days_left?: number
