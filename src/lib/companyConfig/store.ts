@@ -126,12 +126,25 @@ export function getCompanyLogoDataUrlSync(logoUrl?: string | null): string | nul
 }
 
 /**
- * Logo a imprimir en cualquier comprobante. Sale de la config de la empresa cargada al
+ * Logo a imprimir en un comprobante. Por defecto sale de la config de la empresa cargada al
  * iniciar sesión, no del print_data de cada venta: el logo es del emisor y no cambia por
  * venta, así que una venta vieja o un print_data sin logo no deben dejar el ticket sin él.
- * Devuelve el data URL cacheado (sin CORS) y, si aún no se descargó, la URL remota.
+ *
+ * `preferredUrl` permite pisar ese logo global con uno más específico ya resuelto por el
+ * backend (ej. print_data.company.logo_url, que desde la Fase de logo-por-sucursal trae el
+ * logo propio de la sucursal emisora cuando lo tiene — ver pkg/branchlogo.ResolveURL en el
+ * backend). Si aún no está cacheado como data URL se dispara su descarga en segundo plano
+ * (para la próxima impresión) y mientras tanto se devuelve la URL remota tal cual.
  */
-export function getCompanyLogoForPrint(): string | null {
+export function getCompanyLogoForPrint(preferredUrl?: string | null): string | null {
+  const preferred = String(preferredUrl ?? '').trim()
+  if (preferred) {
+    if (preferred.startsWith('data:')) return preferred
+    const cached = getCompanyLogoDataUrlSync(preferred)
+    if (cached) return cached
+    void ensureCompanyLogoDataUrl(preferred)
+    return preferred
+  }
   const cfg = getCompanyConfigCache()
   // El backend ya lo manda embebido: sin red, sin CORS, funciona en cualquier dispositivo.
   const embedded = String(cfg?.logo_data_url ?? '').trim()

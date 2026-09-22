@@ -673,8 +673,9 @@ export async function buildSaleDocumentEscPos(
   const out: number[] = []
   out.push(...escposInit())
 
-  // El logo sale de la empresa (cargada al iniciar sesión), no del print_data de la venta.
-  const logoUrl = getCompanyLogoForPrint()
+  // Logo: el de la sucursal emisora si tiene uno propio (ya resuelto por el backend en
+  // printData.company.logo_url), si no el global de la empresa cargado al iniciar sesión.
+  const logoUrl = getCompanyLogoForPrint(printData.company?.logo_url)
   const showLogo = !nvLayout || nvLayout.showLogo
   if (logoUrl && showLogo) {
     const logoRaster = await buildEscPosLogoRaster(logoUrl, paperWidthMm)

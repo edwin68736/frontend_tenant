@@ -88,6 +88,10 @@ export interface BranchRow {
   fiscal_domicile_code?: string
   is_main: boolean
   active?: boolean
+  /** Logo propio de la sucursal. Vacío = usa el logo global de la empresa (logo_url arriba). */
+  logo_url?: string
+  /** Logo de la sucursal ya embebido por el backend (mismo mecanismo que logo_data_url global). */
+  logo_data_url?: string
 }
 
 export interface SeriesDocumentType {
@@ -270,6 +274,26 @@ export const companyService = {
   updateBranch: (id: number, data: Partial<BranchRow>) =>
     api.put(`/api/company/branches/${id}`, data).then((r) => r.data),
   deleteBranch: (id: number) => api.delete(`/api/company/branches/${id}`).then((r) => r.data),
+  /** Sube el logo propio de una sucursal. Devuelve URL /uploads/tenants/{RUC}/company/branches/{id}/logo.* */
+  uploadBranchLogo: (branchId: number, file: File) => {
+    const fd = new FormData()
+    fd.append('image', file)
+    return api
+      .post<{ success: boolean; logo_url: string; data: BranchRow }>(
+        `/api/company/branches/${branchId}/logo`,
+        fd,
+        { headers: { 'Content-Type': 'multipart/form-data' } },
+      )
+      .then((r) => {
+        clearEscPosImageRasterCache() // logo nuevo en URL estable: invalidar raster cacheado
+        return r.data
+      })
+  },
+  deleteBranchLogo: (branchId: number) =>
+    api.delete<{ success: boolean; data: BranchRow }>(`/api/company/branches/${branchId}/logo`).then((r) => {
+      clearEscPosImageRasterCache()
+      return r.data
+    }),
   /**
    * Series del tenant. Devuelve SOLO las activas: una serie desactivada no debe poder
    * elegirse al emitir. `include_inactive` es para la pantalla de configuración, que

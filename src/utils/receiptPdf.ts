@@ -283,8 +283,9 @@ export async function generateReceiptPdf(
     // Logo (alta resolución para impresión)
     addSpace(3)
     const showLogo = !nvLayout || nvLayout.showLogo
-    // El logo sale de la empresa (cargada al iniciar sesión), no del print_data de la venta.
-    const companyLogo = getCompanyLogoForPrint()
+    // Logo: el de la sucursal emisora si tiene uno propio (ya resuelto por el backend en
+    // data.company.logo_url), si no el global de la empresa cargado al iniciar sesión.
+    const companyLogo = getCompanyLogoForPrint(data.company?.logo_url)
     if (showLogo && companyLogo) {
       try {
         const logo = await resolveReceiptLogoForPdf(companyLogo)

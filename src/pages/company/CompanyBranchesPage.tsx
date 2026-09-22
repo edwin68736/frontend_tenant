@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Pencil, Trash2, MapPin } from 'lucide-react'
+import { Plus, Pencil, Trash2, MapPin, ImagePlus, X } from 'lucide-react'
 import { companyService, type BranchRow } from '@/services/company.service'
+import { resolveCompanyLogoDisplayUrl } from '@/config/apiBaseUrl'
 import { PlanLimitBanner } from '@/components/ui/PlanLimitBanner'
 import { Modal } from '@/components/ui/Modal'
 
@@ -20,6 +21,8 @@ export default function CompanyBranchesPage() {
   const [editing, setEditing] = useState<BranchRow | null>(null)
   const [form, setForm] = useState<Partial<BranchRow>>(empty())
   const [saving, setSaving] = useState(false)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const logoInputRef = useRef<HTMLInputElement>(null)
 
   const load = () =>
     companyService
@@ -46,8 +49,52 @@ export default function CompanyBranchesPage() {
       phone: b.phone,
       fiscal_domicile_code: b.fiscal_domicile_code ?? '',
       is_main: b.is_main,
+      logo_url: b.logo_url,
+      logo_data_url: b.logo_data_url,
     })
     setShow(true)
+  }
+
+  const handleBranchLogoFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !editing) return
+    if (!file.type.startsWith('image/')) {
+      toast.error('Selecciona una imagen (PNG, JPG, etc.)')
+      return
+    }
+    setUploadingLogo(true)
+    void companyService
+      .uploadBranchLogo(editing.id, file)
+      .then((res) => {
+        const logo_url = res.logo_url ?? res.data?.logo_url ?? ''
+        setForm((f) => ({ ...f, logo_url, logo_data_url: res.data?.logo_data_url }))
+        toast.success('Logo de la sucursal guardado')
+        void load()
+      })
+      .catch((err: { response?: { data?: { error?: string } } }) => {
+        toast.error(err.response?.data?.error ?? 'Error al guardar el logo')
+      })
+      .finally(() => {
+        setUploadingLogo(false)
+        if (logoInputRef.current) logoInputRef.current.value = ''
+      })
+  }
+
+  const clearBranchLogo = () => {
+    if (!editing) return
+    setUploadingLogo(true)
+    void companyService
+      .deleteBranchLogo(editing.id)
+      .then(() => {
+        setForm((f) => ({ ...f, logo_url: '', logo_data_url: '' }))
+        if (logoInputRef.current) logoInputRef.current.value = ''
+        toast.success('Logo de la sucursal eliminado')
+        void load()
+      })
+      .catch((err: { response?: { data?: { error?: string } } }) => {
+        toast.error(err.response?.data?.error ?? 'Error al quitar el logo')
+      })
+      .finally(() => setUploadingLogo(false))
   }
 
   const handleSave = async () => {
@@ -119,7 +166,7 @@ export default function CompanyBranchesPage() {
           <table className="w-full text-sm min-w-[720px]">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                {['Nombre', 'Dirección', 'Teléfono', 'Cód. domicilio fiscal', 'Principal', ''].map((h) => (
+                {['Logo', 'Nombre', 'Dirección', 'Teléfono', 'Cód. domicilio fiscal', 'Principal', ''].map((h) => (
                   <th key={h || 'actions'} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase whitespace-nowrap">
                     {h}
                   </th>
@@ -129,6 +176,17 @@ export default function CompanyBranchesPage() {
             <tbody>
               {branches.map((b) => (
                 <tr key={b.id} className="border-b border-gray-50 hover:bg-gray-50">
+                  <td className="px-4 py-3">
+                    {b.logo_data_url || b.logo_url ? (
+                      <img
+                        src={resolveCompanyLogoDisplayUrl(b.logo_data_url || b.logo_url)}
+                        alt={`Logo ${b.name}`}
+                        className="h-8 w-8 rounded-lg object-contain border border-gray-200 bg-white"
+                      />
+                    ) : (
+                      <span className="text-gray-300 text-xs">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 font-medium text-gray-800">
                     <span className="inline-flex items-center gap-2">
                       <MapPin size={14} className="text-gray-400" />
@@ -205,6 +263,60 @@ export default function CompanyBranchesPage() {
             />
             Sucursal principal
           </label>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Logo de la sucursal</label>
+            {editing ? (
+              <div className="flex items-center gap-3">
+                {form.logo_data_url || form.logo_url ? (
+                  <img
+                    src={resolveCompanyLogoDisplayUrl(form.logo_data_url || form.logo_url)}
+                    alt="Logo de la sucursal"
+                    className="h-12 w-12 rounded-lg object-contain border border-gray-200 bg-white"
+                  />
+                ) : (
+                  <div className="h-12 w-12 rounded-lg border border-dashed border-gray-300 flex items-center justify-center text-gray-300">
+                    <ImagePlus size={18} />
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => logoInputRef.current?.click()}
+                    disabled={uploadingLogo}
+                    className="px-3 py-1.5 border border-gray-200 rounded-lg text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    {form.logo_url ? 'Cambiar logo' : 'Cargar logo'}
+                  </button>
+                  {form.logo_url && (
+                    <button
+                      type="button"
+                      onClick={clearBranchLogo}
+                      disabled={uploadingLogo}
+                      className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg disabled:opacity-50"
+                      title="Quitar logo"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                  <input
+                    ref={logoInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleBranchLogoFile}
+                  />
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500">Guarde la sucursal primero para poder cargarle un logo propio.</p>
+            )}
+            <p className="text-xs text-gray-500 mt-1">
+              Opcional. Si no se configura, los comprobantes de esta sucursal usan el logo general de la empresa
+              (Ajustes → Empresa).
+            </p>
+          </div>
+
           <div className="flex gap-2 pt-2">
             <button
               type="button"

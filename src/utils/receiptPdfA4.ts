@@ -208,10 +208,11 @@ async function drawHeader(
   const infoX = MARGIN + (showLogo ? logoMaxW + 4 : 0)
   const infoW = boxX - infoX - 4
 
-  // El logo sale de la empresa (cargada al iniciar sesión), no del print_data de la venta.
+  // Logo: el de la sucursal emisora si tiene uno propio (ya resuelto por el backend en
+  // data.company.logo_url), si no el global de la empresa cargado al iniciar sesión.
   // Se resuelve aquí pero se dibuja al final del bloque: para centrarlo verticalmente hay
   // que conocer primero el alto real de la cabecera (datos de empresa vs. recuadro).
-  const companyLogo = getCompanyLogoForPrint()
+  const companyLogo = getCompanyLogoForPrint(data.company?.logo_url)
   let pendingLogo: { logo: Awaited<ReturnType<typeof resolveReceiptLogoForPdf>>; w: number; h: number } | null =
     null
   if (showLogo && companyLogo) {
