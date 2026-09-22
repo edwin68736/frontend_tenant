@@ -16,6 +16,7 @@ export const PERMISSION_MODULE_LABELS: Record<string, string> = {
   payables: 'Cuentas por pagar',
   cashbank: 'Caja y bancos',
   billing: 'Facturación electrónica',
+  reports: 'Reportes',
   fleet: 'Transportistas y flota',
   memberships: 'Membresías',
   ecommerce: 'Tienda virtual',
@@ -95,6 +96,14 @@ const PERMISSION_FALLBACK_LABELS: Record<string, string> = {
   'fleet.manage': 'Gestionar transportistas, conductores y vehículos',
   'subscription.view': 'Ver suscripción y facturación de Tukifac',
   'subscription.manage': 'Registrar pagos y comprar paquetes de documentos',
+  'reports.manage': 'Ver todos los reportes',
+  'reports.sales': 'Ver reporte de ventas',
+  'reports.sales_by_product': 'Ver reporte de ventas por producto',
+  'reports.notes': 'Ver reporte de notas de crédito/débito',
+  'reports.products': 'Ver reporte de productos',
+  'reports.purchases': 'Ver reporte de compras',
+  'reports.kardex': 'Ver reporte de kardex',
+  'reports.cash': 'Ver reporte de caja',
 }
 
 const MODULE_ORDER = [
@@ -109,6 +118,7 @@ const MODULE_ORDER = [
   'contacts',
   'cashbank',
   'billing',
+  'reports',
   'fleet',
   'ecommerce',
   'memberships',

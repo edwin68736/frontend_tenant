@@ -220,15 +220,20 @@ function AppRoutes() {
         <Route path="modules" element={<Lazy><Protected perm="modules.manage"><ModulesPage /></Protected></Lazy>} />
         <Route path="memberships" element={<Lazy><Protected perm="memberships.view"><MembershipsPage /></Protected></Lazy>} />
         <Route path="sales/pedidos-web" element={<Lazy><Protected perm="ecommerce.orders"><PedidosWebPage /></Protected></Lazy>} />
+        {/* reports.*: permiso propio por reporte (no el .view del módulo dueño de los datos) —
+            solo gatea la PÁGINA; los endpoints que consumen cada reporte se quedan exigiendo el
+            permiso de su módulo real, sin cambios. reports.manage implica todos (regla genérica
+            "{modulo}.manage", ver src/lib/permissions.ts) sin declararlo aparte acá. Ver
+            v143_reports_permissions.go. */}
         <Route path="reports" element={<Lazy><ReportsLayout /></Lazy>}>
           <Route index element={<Navigate to="/reports/sales" replace />} />
-          <Route path="sales" element={<Lazy><Protected perm="sales.view"><SalesReportPage /></Protected></Lazy>} />
-          <Route path="products" element={<Lazy><Protected perm="products.view"><ProductsReportPage /></Protected></Lazy>} />
-          <Route path="sales-by-product" element={<Lazy><Protected perm="sales.view"><SalesByProductReportPage /></Protected></Lazy>} />
-          <Route path="notes" element={<Lazy><Protected perm="sales.view"><NotesReportPage /></Protected></Lazy>} />
-          <Route path="purchases" element={<Lazy><Protected perm="purchases.view"><PurchasesReportPage /></Protected></Lazy>} />
-          <Route path="kardex" element={<Lazy><Protected perm="inventory.view"><KardexReportPage /></Protected></Lazy>} />
-          <Route path="cash" element={<Lazy><Protected perm="cashbank.view"><CashReportPage /></Protected></Lazy>} />
+          <Route path="sales" element={<Lazy><Protected perm="reports.sales"><SalesReportPage /></Protected></Lazy>} />
+          <Route path="products" element={<Lazy><Protected perm="reports.products"><ProductsReportPage /></Protected></Lazy>} />
+          <Route path="sales-by-product" element={<Lazy><Protected perm="reports.sales_by_product"><SalesByProductReportPage /></Protected></Lazy>} />
+          <Route path="notes" element={<Lazy><Protected perm="reports.notes"><NotesReportPage /></Protected></Lazy>} />
+          <Route path="purchases" element={<Lazy><Protected perm="reports.purchases"><PurchasesReportPage /></Protected></Lazy>} />
+          <Route path="kardex" element={<Lazy><Protected perm="reports.kardex"><KardexReportPage /></Protected></Lazy>} />
+          <Route path="cash" element={<Lazy><Protected perm="reports.cash"><CashReportPage /></Protected></Lazy>} />
         </Route>
         {/* Restaurant (Tukichef ERP-side): autorización propia vía pkg/restaurantperm en el
             backend (EmployeeType/PIN, no TenantPermission genérico) — no se gatea aquí para no
