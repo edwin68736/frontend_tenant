@@ -31,7 +31,10 @@ export function PdfViewerHost() {
 
   return (
     <PortalModal open onClose={closePdfViewer} className="max-w-4xl">
-      <div className="relative flex max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+      {/* h-[85vh] (no solo max-h): con max-h a secas el modal se encoge al tamaño natural de sus
+          hijos —el iframe no tiene una altura intrínseca real para crecer hacia ella— y el
+          visor terminaba con ~150px de alto en vez de usar el espacio disponible. */}
+      <div className="relative flex h-[85vh] max-h-[90vh] w-full flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
           <h3 className="truncate text-sm font-bold text-gray-800">{req.title}</h3>
           <div className="flex items-center gap-1">
@@ -61,6 +64,11 @@ export function PdfViewerHost() {
             url={req.url}
             title={req.title}
             embedOptions={req.fit ? { fit: req.fit } : undefined}
+            // Este contenedor (min-h-0 flex-1) ya tiene toda la altura sobrante del modal
+            // (hasta max-h-90vh) — sin esto, PdfBlobViewer usa su tope por defecto de 520px y un
+            // A4 con fit:"page" (zoom=page-fit) termina encogido a ~40% para caber ahí, con medio
+            // modal vacío alrededor. h-full deja que el iframe use toda esa altura real.
+            className="h-full w-full border-0 bg-white"
           />
         </div>
       </div>

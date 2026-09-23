@@ -135,7 +135,9 @@ export function PdfBlobViewer({ url, title = 'Comprobante PDF', className, embed
       <iframe
         src={pdfEmbedSrc(url, embedOptions)}
         title={title}
-        className={className ?? 'h-[min(70vh,520px)] min-h-[320px] w-full border-0 bg-white'}
+        // Con fit:"page" (A4) el navegador encoge el zoom para que la página entera quepa en
+        // esta altura — un tope bajo se ve "alejado y pequeño" con la mitad del visor vacía.
+        className={className ?? 'h-[min(78vh,640px)] min-h-[320px] w-full border-0 bg-white'}
       />
     )
   }
