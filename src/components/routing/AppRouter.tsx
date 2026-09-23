@@ -65,6 +65,7 @@ const ReportsLayout = lazy(() => import('@/pages/reports/ReportsLayout'))
 const SalesReportPage = lazy(() => import('@/pages/reports/SalesReportPage'))
 const ProductsReportPage = lazy(() => import('@/pages/reports/ProductsReportPage'))
 const SalesByProductReportPage = lazy(() => import('@/pages/reports/SalesByProductReportPage'))
+const ProfitDetailReportPage = lazy(() => import('@/pages/reports/ProfitDetailReportPage'))
 const NotesReportPage = lazy(() => import('@/pages/reports/NotesReportPage'))
 const PurchasesReportPage = lazy(() => import('@/pages/reports/PurchasesReportPage'))
 const KardexReportPage = lazy(() => import('@/pages/reports/KardexReportPage'))
@@ -230,6 +231,7 @@ function AppRoutes() {
           <Route path="sales" element={<Lazy><Protected perm="reports.sales"><SalesReportPage /></Protected></Lazy>} />
           <Route path="products" element={<Lazy><Protected perm="reports.products"><ProductsReportPage /></Protected></Lazy>} />
           <Route path="sales-by-product" element={<Lazy><Protected perm="reports.sales_by_product"><SalesByProductReportPage /></Protected></Lazy>} />
+          <Route path="profit" element={<Lazy><Protected perm="reports.profit"><ProfitDetailReportPage /></Protected></Lazy>} />
           <Route path="notes" element={<Lazy><Protected perm="reports.notes"><NotesReportPage /></Protected></Lazy>} />
           <Route path="purchases" element={<Lazy><Protected perm="reports.purchases"><PurchasesReportPage /></Protected></Lazy>} />
           <Route path="kardex" element={<Lazy><Protected perm="reports.kardex"><KardexReportPage /></Protected></Lazy>} />

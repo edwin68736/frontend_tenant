@@ -104,6 +104,7 @@ const PERMISSION_FALLBACK_LABELS: Record<string, string> = {
   'reports.purchases': 'Ver reporte de compras',
   'reports.kardex': 'Ver reporte de kardex',
   'reports.cash': 'Ver reporte de caja',
+  'reports.profit': 'Ver reporte de utilidades',
 }
 
 const MODULE_ORDER = [

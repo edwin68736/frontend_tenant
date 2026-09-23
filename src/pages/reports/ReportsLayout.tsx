@@ -8,6 +8,7 @@ export default function ReportsLayout() {
     '/reports/sales': 'Reporte de ventas',
     '/reports/products': 'Reporte de productos',
     '/reports/sales-by-product': 'Reporte de ventas por producto',
+    '/reports/profit': 'Utilidades detallado',
     '/reports/purchases': 'Reporte de compras',
     '/reports/kardex': 'Reporte de kardex',
     '/reports/cash': 'Reporte de caja',

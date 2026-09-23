@@ -303,6 +303,7 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'rep-ventas', to: '/reports/sales', label: 'Reporte de ventas', icon: <Receipt size={14} />, module: 'sales', permission: 'reports.sales' },
       { id: 'rep-productos', to: '/reports/products', label: 'Reporte de productos', icon: <Tag size={14} />, module: 'products', permission: 'reports.products' },
       { id: 'rep-ventas-producto', to: '/reports/sales-by-product', label: 'Ventas por producto', icon: <BarChart3 size={14} />, module: 'sales', permission: 'reports.sales_by_product' },
+      { id: 'rep-utilidades', to: '/reports/profit', label: 'Utilidades', icon: <TrendingUp size={14} />, module: 'sales', permission: 'reports.profit' },
       { id: 'rep-notas', to: '/reports/notes', label: 'Notas de crédito/débito', icon: <FileSignature size={14} />, module: 'billing', permission: 'reports.notes' },
       { id: 'rep-compras', to: '/reports/purchases', label: 'Reporte de compras', icon: <Truck size={14} />, module: 'purchases', permission: 'reports.purchases' },
       { id: 'rep-kardex', to: '/reports/kardex', label: 'Reporte de kardex', icon: <ListOrdered size={14} />, module: 'inventory', permission: 'reports.kardex' },

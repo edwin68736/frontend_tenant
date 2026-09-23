@@ -313,6 +313,37 @@ export interface SalesByProductSummary {
   products_count: number
 }
 
+/** Reporte "Utilidades detallado": una fila por línea de venta con su ganancia. */
+export interface ProfitDetailRow {
+  sale_item_id: number
+  sale_id: number
+  issue_date: string
+  doc_type: string
+  series: string
+  number: string
+  contact_name: string
+  contact_doc_number: string
+  product_name: string
+  quantity: number
+  /**
+   * Costo ACTUAL del producto en catálogo (join en vivo) — no un snapshot histórico al momento de
+   * la venta, porque tenant_sale_items no guarda ese dato. Si el costo cambió después de esa
+   * venta, esta fila refleja el costo de hoy. 0 si el producto no tiene costo o no existe en
+   * catálogo (ítem manual) — en ese caso la ganancia unidad es el precio de venta completo.
+   */
+  purchase_price: number
+  sale_price: number
+  profit_unit: number
+  profit_total: number
+}
+
+export interface ProfitDetailSummary {
+  line_items: number
+  distinct_sales: number
+  total_sales: number
+  total_profit: number
+}
+
 /** Totales globales del listado con los mismos filtros (no solo la página actual). */
 export interface SaleListSummary {
   sum_total: number
@@ -453,6 +484,30 @@ export const salesService = {
           line_items: 0,
           distinct_sales: 0,
           products_count: 0,
+        },
+      })),
+
+  /** Reporte: Utilidades detallado — ganancia por línea de venta (precio venta - costo actual). */
+  listProfitDetail: (params?: {
+    from?: string
+    to?: string
+    branch_id?: number
+    category_id?: number
+    /** Busca por código o nombre de producto. */
+    q?: string
+  }) =>
+    api
+      .get<{
+        data: ProfitDetailRow[]
+        summary: ProfitDetailSummary
+      }>('/api/sales/profit-detail', { params: params ?? {} })
+      .then(r => ({
+        data: r.data.data ?? [],
+        summary: r.data.summary ?? {
+          line_items: 0,
+          distinct_sales: 0,
+          total_sales: 0,
+          total_profit: 0,
         },
       })),
 
