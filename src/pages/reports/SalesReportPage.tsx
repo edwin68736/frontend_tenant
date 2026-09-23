@@ -523,7 +523,12 @@ export default function SalesReportPage() {
               <thead className="bg-gray-50 sticky top-0">
                 <tr>
                   {COLS.map(c => (
-                    <th key={String(c.key)} className="text-left px-4 py-2 text-xs font-semibold text-gray-500">{c.label}</th>
+                    <th
+                      key={String(c.key)}
+                      className={`text-left px-4 py-2 text-xs font-semibold text-gray-500 ${c.key === 'contact_name' ? '' : 'whitespace-nowrap'}`}
+                    >
+                      {c.label}
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -533,7 +538,16 @@ export default function SalesReportPage() {
                     {COLS.map(col => {
                       const val = row[col.key as keyof typeof row]
                       const text = col.format ? col.format(val, row) : String(val ?? '')
-                      return <td key={String(col.key)} className="px-4 py-2">{text}</td>
+                      // Ninguna columna hace salto de línea salvo Cliente (nombre/razón social
+                      // puede ser largo) — pedido explícito del usuario.
+                      return (
+                        <td
+                          key={String(col.key)}
+                          className={`px-4 py-2 ${col.key === 'contact_name' ? '' : 'whitespace-nowrap'}`}
+                        >
+                          {text}
+                        </td>
+                      )
                     })}
                   </tr>
                 )) : (
