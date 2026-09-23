@@ -326,10 +326,12 @@ export interface ProfitDetailRow {
   product_name: string
   quantity: number
   /**
-   * Costo ACTUAL del producto en catálogo (join en vivo) — no un snapshot histórico al momento de
-   * la venta, porque tenant_sale_items no guarda ese dato. Si el costo cambió después de esa
-   * venta, esta fila refleja el costo de hoy. 0 si el producto no tiene costo o no existe en
-   * catálogo (ítem manual) — en ese caso la ganancia unidad es el precio de venta completo.
+   * Costo del producto AL MOMENTO de esa venta (snapshot guardado en tenant_sale_items al vender,
+   * desde v145_sale_item_purchase_price_snapshot.go) — no cambia si después se edita el costo del
+   * producto en catálogo. Ventas anteriores a esa migración no tienen snapshot: el backend cae al
+   * costo actual del catálogo como resguardo, así que para esas sí puede diferir del costo real de
+   * ese día. 0 si el producto no tiene costo o no existe en catálogo (ítem manual) — en ese caso
+   * la ganancia unidad es el precio de venta completo.
    */
   purchase_price: number
   sale_price: number

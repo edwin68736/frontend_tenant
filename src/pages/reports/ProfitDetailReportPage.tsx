@@ -225,8 +225,9 @@ export default function ProfitDetailReportPage() {
           </div>
         </div>
         <p className="mt-3 text-xs text-gray-500">
-          Ganancia = precio de venta − costo actual del producto (si no tiene costo registrado, la ganancia es el
-          precio de venta completo). Solo ventas no anuladas.
+          Ganancia = precio de venta − costo del producto al momento de la venta (si no tiene costo registrado, la
+          ganancia es el precio de venta completo). Ventas anteriores a esta actualización muestran el costo actual
+          del catálogo, no el histórico. Solo ventas no anuladas.
         </p>
         <div className="flex flex-wrap gap-2 mt-3">
           <button
