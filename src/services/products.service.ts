@@ -58,6 +58,13 @@ export interface Product {
   manage_series?: boolean
   has_variants?: boolean
   has_modifiers?: boolean
+  /**
+   * true/false si viene del catálogo (GET /api/products, batcheado server-side) — el POS lo usa
+   * para saber sin red si debe abrir el selector de unidad de venta. undefined solo en productos
+   * que NO vienen de ese listado (ej. lookup por código de barras): ahí sigue haciendo falta
+   * preguntar con productsService.listSaleUnits, ver addToCart en POSPage.tsx.
+   */
+  has_sale_units?: boolean
   /** Es un combo/promoción: agrupa otros productos a un precio fijo. */
   has_combo?: boolean
   combo_groups?: ComboGroup[]

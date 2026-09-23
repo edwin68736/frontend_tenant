@@ -358,6 +358,10 @@ function POSContent() {
   // con productsService.listSaleUnits por producto. Se cachea (incluso vacío) para no repetir la
   // consulta en cada click sobre el mismo producto; un ref porque no debe disparar renders.
   const saleUnitsCacheRef = useRef<Map<number, boolean>>(new Map())
+  // Evita disparar un segundo GET idéntico si el usuario hace doble clic sobre el mismo producto
+  // antes de que el primer fetch (el fallback de abajo, cuando has_sale_units no vino en el
+  // catálogo) resuelva — sin esto cada click repetido sumaba su propia espera de red.
+  const saleUnitsInFlightRef = useRef<Map<number, Promise<boolean>>>(new Map())
 
   const directAddToCart = useCallback(
     (product: Product, sourceEl?: HTMLElement) => {
@@ -396,7 +400,21 @@ function POSContent() {
         return
       }
       // Producto "simple" para presentaciones/extras/series — puede seguir siéndolo, o tener
-      // SaleUnits activas configuradas en Fase 7B (el catálogo no las trae, hay que preguntar).
+      // SaleUnits activas configuradas en Fase 7B. El catálogo (GET /api/products) ya trae
+      // has_sale_units batcheado — evita el fetch-por-producto-nuevo que hacía que el primer
+      // click sobre cada producto distinto esperara un round-trip antes del fly-to-cart/sonido
+      // (más lento cuantos más productos distintos se agregaban seguido, por el límite de
+      // conexiones concurrentes del navegador). Solo faltan productos que no vienen de ese
+      // listado (ej. lookup por código de barras) — ahí has_sale_units es undefined y se cae al
+      // fetch de siempre, cacheado para no repetirlo.
+      if (product.has_sale_units === true) {
+        openConfigureModal(product, sourceEl)
+        return
+      }
+      if (product.has_sale_units === false) {
+        directAddToCart(product, sourceEl)
+        return
+      }
       const hasSaleUnits = saleUnitsCacheRef.current.get(product.id)
       if (hasSaleUnits === true) {
         openConfigureModal(product, sourceEl)
@@ -406,18 +424,22 @@ function POSContent() {
         directAddToCart(product, sourceEl)
         return
       }
-      productsService
-        .listSaleUnits(product.id)
-        .then((units) => {
-          const found = (units ?? []).length > 0
-          saleUnitsCacheRef.current.set(product.id, found)
-          if (found) openConfigureModal(product, sourceEl)
-          else directAddToCart(product, sourceEl)
-        })
-        .catch(() => {
-          saleUnitsCacheRef.current.set(product.id, false)
-          directAddToCart(product, sourceEl)
-        })
+      let pending = saleUnitsInFlightRef.current.get(product.id)
+      if (!pending) {
+        pending = productsService
+          .listSaleUnits(product.id)
+          .then((units) => (units ?? []).length > 0)
+          .catch(() => false)
+          .finally(() => {
+            saleUnitsInFlightRef.current.delete(product.id)
+          })
+        saleUnitsInFlightRef.current.set(product.id, pending)
+      }
+      void pending.then((found) => {
+        saleUnitsCacheRef.current.set(product.id, found)
+        if (found) openConfigureModal(product, sourceEl)
+        else directAddToCart(product, sourceEl)
+      })
     },
     [cancelFlyAnimations, directAddToCart, openConfigureModal],
   )
