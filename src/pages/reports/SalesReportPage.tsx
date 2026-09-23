@@ -37,21 +37,27 @@ function formatSaleStatus(status?: string) {
   return SALE_STATUS_LABELS[k] || status || '—'
 }
 
-/** El backend suele guardar `number` como SERIE-00001234; no debe concatenarse serie otra vez. */
-function formatSaleComprobante(docType: string, series: string, numberRaw: string | number | undefined): string {
+/** Tipo CP/Doc (catálogo 01 SUNAT) a partir del doc_type textual — no hay columna sunat_code
+ *  propia en Sale para el documento de la venta (sí la hay para notas/percepciones vinculadas). */
+function sunatDocTypeCode(docType?: string | null): string {
+  const dt = String(docType || '').toUpperCase()
+  if (dt.startsWith('FACTURA')) return '01'
+  if (dt.startsWith('BOLETA')) return '03'
+  if (dt.includes('NOTA') && dt.includes('CREDITO')) return '07'
+  if (dt.includes('NOTA') && dt.includes('DEBITO')) return '08'
+  if (dt.includes('NOTA') && dt.includes('VENTA')) return '00'
+  return '—'
+}
+
+/** Serie-correlativo SIN ceros a la izquierda (a diferencia del PDF/impresión, que sí los usa
+ *  para cumplir el formato SUNAT). El backend suele guardar `number` como SERIE-00001234. */
+function serieCorrelativoSinCeros(series: string, numberRaw: string | number | undefined): string {
   const s = String(series || '').trim()
   const n = String(numberRaw ?? '').trim()
-  if (!n && !s) return String(docType || '').trim()
-  if (n.includes('-')) {
-    return `${docType} ${n}`.trim()
-  }
-  if (/^\d+$/.test(n) && s) {
-    return `${docType} ${s}-${n.padStart(8, '0')}`.trim()
-  }
-  if (s) {
-    return `${docType} ${s}-${n}`.trim()
-  }
-  return `${docType} ${n}`.trim()
+  const correlativoRaw = n.includes('-') ? n.slice(n.lastIndexOf('-') + 1) : n
+  const correlativo = correlativoRaw.replace(/^0+(?=\d)/, '') || correlativoRaw
+  if (!correlativo) return s || '—'
+  return s ? `${s}-${correlativo}` : correlativo
 }
 
 /** Colores reconocibles en las tarjetas de totales por método */
@@ -109,57 +115,51 @@ const fmtMoneyCell = (v: unknown) => {
 
 /** Fila del reporte con los campos que se calculan en el cliente (no vienen del backend). */
 type ReportSaleRow = Sale & {
-  doc_display?: string
+  /** doc_type/series/number "efectivos" — con el mismo fallback a display_* que antes solo
+   *  aplicaba en pantalla (NV ya convertida a factura/boleta: se muestra la electrónica, no la
+   *  NV original). Ahora se calculan una sola vez acá para que pantalla, PDF y Excel muestren
+   *  siempre lo mismo. */
+  doc_type_effective?: string
+  doc_sunat_code?: string
+  serie_sin_ceros?: string
+  /** Estado ante SUNAT del comprobante de ESTA venta (billing_status) — no confundir con el
+   *  estado de una percepción/retención vinculada (esa vive en linked_perception, ver RR/Estado RR). */
+  cpe_status?: string
   /** total en positivo para comprobantes normales; 0 para ventas anuladas (status='cancelled')
    *  y para notas de crédito (doc_type='NOTA_CREDITO'). La venta anulada no debe sumar porque
    *  ya no es un ingreso real, y si además la NC restara su propio monto la reversión se
    *  contaría dos veces y el neto quedaría negativo de más — mismo cálculo que sum_active en
    *  el backend (saleListSummary: status != 'cancelled' AND doc_type != 'NOTA_CREDITO'), para
    *  que la fila de totales del Excel siempre cuadre con las tarjetas de arriba, incluso cuando
-   *  el filtro "Estado venta" muestra anuladas o todas. "Total factura" sigue mostrando el
+   *  el filtro "Estado venta" muestra anuladas o todas. "Total facturado" sigue mostrando el
    *  monto tal cual lo declara el documento/SUNAT, sin tocar. */
   net_effect?: number
 }
 
-/** Columnas PDF (string); Excel puede marcar montos como `excelNumber` para celdas numéricas. */
+/** Columnas PDF (string); Excel puede marcar montos como `excelNumber` para celdas numéricas.
+ *  Orden fijo pedido por el usuario — no reordenar sin confirmar con él. */
 const COLS: ExcelExportColumn<ReportSaleRow>[] = [
   { key: 'issue_date', label: 'Fecha', format: formatIssueDate },
-  { key: 'doc_display', label: 'Comprobante', format: (_, r) => formatSaleComprobante((r as Sale).doc_type, (r as Sale).series, (r as Sale).number) },
-  { key: 'contact_name', label: 'Cliente' },
+  { key: 'doc_sunat_code', label: 'Tipo CP/Doc' },
+  { key: 'doc_type_effective', label: 'Comprobante' },
+  { key: 'serie_sin_ceros', label: 'Serie' },
   { key: 'contact_doc_number', label: 'N° documento', format: (v: unknown) => String(v ?? '') || '—' },
-  { key: 'user_name', label: 'Registrado por' },
+  { key: 'contact_name', label: 'Cliente' },
   { key: 'subtotal', label: 'Subtotal', format: fmtMoneyCell, excelNumber: true },
   { key: 'tax_amount', label: 'IGV', format: fmtMoneyCell, excelNumber: true },
-  { key: 'total', label: 'Total factura', format: fmtMoneyCell, excelNumber: true },
-  { key: 'net_effect', label: 'Efecto neto', format: fmtMoneyCell, excelNumber: true },
-  { key: 'change_amount', label: 'Vuelto', format: (v: unknown) => (Number(v) > 0 ? fmtMoneyCell(v) : '—'), excelNumber: true },
+  { key: 'total', label: 'Total facturado', format: fmtMoneyCell, excelNumber: true },
+  { key: 'net_effect', label: 'Efectivo neto', format: fmtMoneyCell, excelNumber: true },
   { key: 'detraccion_amount', label: 'Detracción SPOT', format: (v: unknown, r) => (r as Sale).has_detraccion ? fmtMoneyCell(v) : '—', excelNumber: true },
-  { key: 'net_payable', label: 'Neto cobrable', format: fmtMoneyCell, excelNumber: true },
+  { key: 'net_payable', label: 'Neto cobrado', format: fmtMoneyCell, excelNumber: true },
+  { key: 'cpe_status', label: 'CPE' },
   {
     key: 'operation_type_code',
     label: 'Tipo operación',
     format: (v: unknown) => formatOperationTypeCode(String(v || '')),
   },
+  { key: 'user_name', label: 'Registrado por' },
   { key: 'payment_method', label: 'Método pago', format: (v: unknown) => formatPaymentMethod(String(v || '')) },
   { key: 'status', label: 'Estado', format: (v: unknown) => formatSaleStatus(String(v || '')) },
-  {
-    key: 'linked_perception',
-    label: 'CPE',
-    format: (_v: unknown, r: Sale) => {
-      const cpe = r.linked_perception
-      if (!cpe) return '—'
-      return `${cpe.series}-${cpe.correlative}`
-    },
-  },
-  {
-    key: 'linked_perception_status',
-    label: 'Estado CPE',
-    format: (_v: unknown, r: Sale) => {
-      const cpe = r.linked_perception
-      if (!cpe) return '—'
-      return billingStatusLabel(normalizeBillingStatus(cpe.billing_status || cpe.status))
-    },
-  },
   {
     key: 'linked_rr',
     label: 'RR',
@@ -222,15 +222,26 @@ export default function SalesReportPage() {
   })
 
   /** Campos calculados en cliente, compartidos por la tabla en pantalla y ambas exportaciones
-   *  (así la fila de totales del Excel siempre cuadra con lo que se ve arriba). */
+   *  (así la fila de totales del Excel siempre cuadra con lo que se ve arriba, y pantalla/PDF/
+   *  Excel siempre muestran exactamente lo mismo). */
   const withComputedFields = (sales: Sale[]): ReportSaleRow[] =>
-    (sales ?? []).map((s) => ({
-      ...s,
-      doc_display: formatSaleComprobante(s.doc_type, s.series, s.number),
-      detraccion_amount: s.has_detraccion ? (s.detraccion_amount ?? 0) : 0,
-      net_payable: s.has_detraccion ? (s.net_payable ?? s.total) : s.total,
-      net_effect: (String(s.status || '').toLowerCase() === 'cancelled' || s.doc_type === 'NOTA_CREDITO') ? 0 : s.total,
-    }))
+    (sales ?? []).map((s) => {
+      // NV ya convertida a factura/boleta: se muestra la electrónica (display_*), no la NV
+      // original — antes esto solo aplicaba en pantalla, ahora aplica también en PDF/Excel.
+      const effectiveDocType = s.display_doc_type || s.doc_type
+      const effectiveSeries = s.display_series ?? s.series
+      const effectiveNumber = s.display_number ?? s.number
+      return {
+        ...s,
+        doc_type_effective: effectiveDocType,
+        doc_sunat_code: sunatDocTypeCode(effectiveDocType),
+        serie_sin_ceros: serieCorrelativoSinCeros(effectiveSeries, effectiveNumber),
+        cpe_status: billingStatusLabel(normalizeBillingStatus(s.billing_status)),
+        detraccion_amount: s.has_detraccion ? (s.detraccion_amount ?? 0) : 0,
+        net_payable: s.has_detraccion ? (s.net_payable ?? s.total) : s.total,
+        net_effect: (String(s.status || '').toLowerCase() === 'cancelled' || s.doc_type === 'NOTA_CREDITO') ? 0 : s.total,
+      }
+    })
 
   const load = async () => {
     setLoading(true)
@@ -520,13 +531,7 @@ export default function SalesReportPage() {
                 {data.length ? data.map((row, i) => (
                   <tr key={row.id ?? i} className="border-b border-gray-50">
                     {COLS.map(col => {
-                      const val = col.key === 'doc_display'
-                        ? formatSaleComprobante(
-                            (row.display_doc_type || row.doc_type) as string,
-                            (row.display_series ?? row.series) as string,
-                            (row.display_number ?? row.number) as string,
-                          )
-                        : row[col.key as keyof typeof row]
+                      const val = row[col.key as keyof typeof row]
                       const text = col.format ? col.format(val, row) : String(val ?? '')
                       return <td key={String(col.key)} className="px-4 py-2">{text}</td>
                     })}
