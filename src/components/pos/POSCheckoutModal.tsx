@@ -9,7 +9,15 @@ import { calcCheckoutDiscountAmount } from '@/utils/checkoutDiscount'
 import type { PosSeriesRow } from '@/utils/posCheckoutSeries'
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { formatMoney } from '@/utils/format'
-import { formatAmountDisplay, paidCoversTotal, roundDisplay, roundSunat, sumMoney, calcPaymentChange } from '@/utils/money'
+import {
+  formatAmountDisplay,
+  paidCoversTotal,
+  roundDisplay,
+  roundSunat,
+  sumMoney,
+  calcPaymentChange,
+  nonCashOverpay,
+} from '@/utils/money'
 import { filterPosCheckoutSeriesForModal } from '@/utils/posCheckoutSeries'
 import { BranchSeriesEmptyState } from '@/components/pos/BranchSeriesEmptyState'
 import { CheckoutCartBillingFields } from '@/components/pos/CheckoutCartBillingFields'
@@ -181,9 +189,15 @@ export function POSCheckoutModal({
   const isModeSimple = paymentSlotsCount === 1
   const paid = sumMoney(...payments.map((p) => Number(p.amount) || 0))
   const change = calcPaymentChange(paid, payableTotal)
+  const blockedOverpay = nonCashOverpay(payments, payableTotal)
   const exactPayment =
     Math.abs(roundDisplay(paid) - roundDisplay(payableTotal)) < 0.02 && paid > 0
-  const canSubmit = paidCoversTotal(paid, payableTotal) && seriesId > 0 && !loading && !confirmDisabled
+  const canSubmit =
+    paidCoversTotal(paid, payableTotal) &&
+    seriesId > 0 &&
+    !loading &&
+    !confirmDisabled &&
+    blockedOverpay <= 0
 
   const defaultMethodCode = methodOptions[0]?.code ?? 'cash'
 
@@ -496,6 +510,12 @@ export function POSCheckoutModal({
                   <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
                     Pago exacto
                   </span>
+                )}
+                {blockedOverpay > 0 && (
+                  <div className="rounded-lg border border-red-200 bg-red-50 px-2.5 py-2 text-xs text-red-700">
+                    Los métodos electrónicos no admiten vuelto — reduce el monto en{' '}
+                    {formatMoney(blockedOverpay)} o agrega ese excedente como efectivo.
+                  </div>
                 )}
 
                 <div className="rounded-xl border border-stone-200 bg-stone-50/80 px-3 py-2.5 space-y-1">

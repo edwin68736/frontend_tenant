@@ -79,7 +79,7 @@ import {
 import { UnitQuantityInput } from '@/components/ui/UnitQuantityInput'
 import { PRODUCT_IGV_AFFECTATION_OPTIONS, stripAffectationCodePrefix } from '@/constants/igvAffectation'
 import type { CheckoutDiscountMode } from '@/utils/checkoutDiscount'
-import { roundSunat, calcPaymentChange, sumMoney } from '@/utils/money'
+import { roundSunat, calcPaymentChange, sumMoney, nonCashOverpay } from '@/utils/money'
 import { quotationsService } from '@/services/quotations.service'
 import { useBarcodeProductScanner } from '@/hooks/useBarcodeProductScanner'
 import { BarcodeScannerModal } from '@/components/barcode/BarcodeScannerModal'
@@ -1134,6 +1134,11 @@ function SalesRegisterContent({
     [paymentsTotalPaid, directPayableTarget],
   )
 
+  const blockedOverpay = useMemo(
+    () => nonCashOverpay(payments, directPayableTarget),
+    [payments, directPayableTarget],
+  )
+
   const creditAmount = useMemo(
     () => roundMoney(Math.max(0, directPayableTarget - paymentsTotalPaid)),
     [directPayableTarget, paymentsTotalPaid],
@@ -1509,6 +1514,10 @@ function SalesRegisterContent({
               ? 'Los pagos directos no cubren el neto cobrable'
               : 'El total de pagos no cubre el monto de la venta',
           )
+          return
+        }
+        if (nonCashOverpay(validPayments, requiredDirect) > 0) {
+          toast.error('Los métodos electrónicos no admiten vuelto — ajusta el monto o agrega efectivo por el excedente')
           return
         }
       }
@@ -2749,6 +2758,12 @@ function SalesRegisterContent({
                       Falta {fmt(Math.max(0, directPayableTarget - paymentsTotalPaid))}
                     </p>
                   )}
+                  {blockedOverpay > 0 && (
+                    <p className="text-[11px] text-red-600 bg-red-50 border border-red-100 rounded-lg px-2.5 py-2">
+                      Los métodos electrónicos no admiten vuelto — reduce el monto en {fmt(blockedOverpay)} o
+                      agrega ese excedente como efectivo.
+                    </p>
+                  )}
                   {paymentConditionCode === 'credit' && creditAmount > 0.009 && (
                     <p className="text-[11px] text-[rgb(var(--p700))]">
                       Anticipo {fmt(paymentsTotalPaid)} · Saldo a crédito {fmt(creditAmount)}
@@ -3040,7 +3055,9 @@ function SalesRegisterContent({
           <button
             type="button"
             onClick={handleSave}
-            disabled={saving || items.length === 0 || (!isQuotation && !cashSession) || creditInvalid}
+            disabled={
+              saving || items.length === 0 || (!isQuotation && !cashSession) || creditInvalid || blockedOverpay > 0
+            }
             className="order-1 sm:order-3 md:order-none w-full md:w-auto inline-flex items-center justify-center px-3 md:px-6 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50 md:min-w-[9rem]"
           >
             {saving

@@ -59,3 +59,26 @@ export function paidCoversTotal(paid: number, expected: number): boolean {
 export function calcPaymentChange(paid: number, payable: number): number {
   return Math.max(0, roundDisplay(paid - payable))
 }
+
+/** El vuelto solo puede salir de efectivo — mismo código que usa el catálogo de métodos de pago. */
+export function isCashPaymentCode(code: string | null | undefined): boolean {
+  return String(code ?? '').trim().toLowerCase() === 'cash'
+}
+
+/**
+ * Excedente que ningún método no-efectivo puede cubrir por sí solo (no existe "vuelto" real por
+ * Yape/Plin/tarjeta/transferencia). Devuelve 0 si los métodos no-efectivo no superan el total a
+ * pagar; en otro caso, el excedente que hay que corregir (agregando efectivo o reduciendo el
+ * monto) antes de poder guardar la venta. Mismo criterio que backend_go
+ * (sale_service.go::sumNonCashDirectPayments + validación en SaleService.Create).
+ */
+export function nonCashOverpay(
+  payments: Array<{ method: string; amount: number | string }>,
+  payable: number,
+): number {
+  const nonCash = sumMoney(
+    ...payments.filter((p) => !isCashPaymentCode(p.method)).map((p) => Number(p.amount) || 0),
+  )
+  const excess = roundDisplay(nonCash) - roundDisplay(payable)
+  return excess > PAYMENT_TOLERANCE ? roundDisplay(excess) : 0
+}

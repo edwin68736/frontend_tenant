@@ -35,7 +35,7 @@ import { docTypeShortLabel } from '@/utils/paymentMethodVisual'
 import { BranchSeriesEmptyState } from '@/components/pos/BranchSeriesEmptyState'
 import { pickVariosContactId, isFacturaDocType, checkoutContactIsValid, isVariosContact } from '@/utils/checkoutContacts'
 import { pickDefaultCheckoutSeries } from '@/utils/posCheckoutSeries'
-import { paidCoversTotal, roundSunat, sumMoney } from '@/utils/money'
+import { paidCoversTotal, roundSunat, sumMoney, nonCashOverpay } from '@/utils/money'
 import type { CheckoutDiscountMode } from '@/utils/checkoutDiscount'
 import { buildTaxConfigFromSunat } from '@/constants/tax'
 import { findPaymentMethodRecord, isPaymentMethodLinkedForSale } from '@/utils/paymentMethodCheckout'
@@ -692,6 +692,10 @@ function POSContent() {
       toast.error('El monto pagado debe cubrir el total')
       return
     }
+    if (nonCashOverpay(payments, payableTotal) > 0) {
+      toast.error('Los métodos electrónicos no admiten vuelto — ajusta el monto o agrega efectivo por el excedente')
+      return
+    }
 
     const contactForCheckout = contacts.find((c) => c.id === effectiveContactId) ?? null
     if (!checkoutContactIsValid(contactForCheckout, docType, selectedSeries.sunat_code)) {
@@ -788,6 +792,11 @@ function POSContent() {
             sale_unit_id: i.sale_unit?.id,
             code: i.product.code,
             description: i.product.name,
+            // Siempre la unidad base del catálogo, aunque la línea use sale_unit_id: el campo
+            // `unit` persistido se resuelve 100% server-side (ignora este string) y usa el código
+            // propio de la SaleUnit cuando corresponde — ver resolveSaleItemUnitCode en
+            // sale_service_calc.go y los tests de sale_unit_unit_code_test.go ("Corrección Unidad
+            // Comercial Fiscal"). Este valor solo llena el campo requerido del payload.
             unit: i.product.unit,
             quantity: i.quantity,
             unit_price: unitPrice,
