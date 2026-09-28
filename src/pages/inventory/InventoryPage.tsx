@@ -157,7 +157,11 @@ function InventoryContent() {
       .catch(() => { if (!cancelled) toast.error('Error al cargar el stock') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [q, categoryId, branchId, lowStockOnly, expiringSoonOnly, stockLessThanNum, needsClientFilter, page, perPage])
+    // activeBranchId: cuando el filtro local "Sucursal" está en "Todas" (branchId === ''), el
+    // backend usa la sucursal activa del token como default — pero sin este dep, cambiar de
+    // sucursal desde el selector del header no refrescaba la tabla (quedaba con el stock de la
+    // sucursal anterior hasta navegar fuera y volver). Bug reportado 2026-09-28.
+  }, [q, categoryId, branchId, lowStockOnly, expiringSoonOnly, stockLessThanNum, needsClientFilter, page, perPage, activeBranchId])
 
   const totalPages = Math.max(1, Math.ceil(total / perPage))
   const showBranchColumn = branches.length > 1 && !branchId
