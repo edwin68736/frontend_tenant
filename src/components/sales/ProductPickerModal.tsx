@@ -195,6 +195,11 @@ export function ProductPickerModal({
                         Último
                       </span>
                     ) : null}
+                    {(p.category_name || p.brand_name) ? (
+                      <span className="block text-[10px] text-gray-400 mt-0.5">
+                        {[p.category_name, p.brand_name].filter(Boolean).join(' · ')}
+                      </span>
+                    ) : null}
                     {configBadge ? (
                       <span className="block text-[10px] text-[rgb(var(--p700))] mt-0.5">{configBadge}</span>
                     ) : null}
