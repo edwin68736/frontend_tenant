@@ -26,8 +26,6 @@ import {
   formatTipoDocIdentidadDisplay,
   toTipoDocIdentidadCode,
 } from '@/constants/sunat'
-import { DEFAULT_CONTACT_ADDRESS, DEFAULT_CONTACT_UBIGEO_DISTRITO } from '@/constants/contactDefaults'
-
 export type ContactListType = 'customer' | 'supplier'
 
 type ContactsListConfig = {
@@ -36,13 +34,18 @@ type ContactsListConfig = {
   pageSubtitle: string
 }
 
+// Dirección/ubigeo del contacto son opcionales a propósito: SUNAT no exige dirección del cliente
+// en factura ni boleta (solo la del emisor) — dejarlo vacío es válido y correcto, no un dato
+// faltante. Hasta 2026-09 se pre-llenaba con "Arequipa" fijo, lo que terminaba impreso como
+// dirección real del cliente en el comprobante sin importar en qué departamento estuviera el
+// tenant — ver pkg/database/tenant_contact_defaults.go en backend_principal.
 const empty = (type: ContactListType): CreateContactInput => ({
   type,
   doc_type: '6',
   doc_number: '',
   business_name: '',
   trade_name: '',
-  address: DEFAULT_CONTACT_ADDRESS,
+  address: '',
   ubigeo: '',
   phone: '',
   email: '',
@@ -164,7 +167,7 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
     setEditing(null)
     resetExtras()
     setForm({ ...empty(contactType), type: contactType })
-    setUbigeo(ubigeoToIds(DEFAULT_CONTACT_UBIGEO_DISTRITO))
+    setUbigeo(ubigeoToIds(''))
     setShowForm(true)
   }
 
@@ -204,8 +207,7 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
   const openEdit = (c: Contact) => {
     setEditing(c)
     resetExtras()
-    const rawUbi = (c.ubigeo ?? '').trim()
-    const ubi = rawUbi || DEFAULT_CONTACT_UBIGEO_DISTRITO
+    const ubi = (c.ubigeo ?? '').trim()
     const ids = ubigeoToIds(ubi)
     const rawAddr = (c.address ?? '').trim()
     setForm({
@@ -214,7 +216,7 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
       doc_number: c.doc_number,
       business_name: c.business_name,
       trade_name: c.trade_name,
-      address: rawAddr || DEFAULT_CONTACT_ADDRESS,
+      address: rawAddr,
       ubigeo: ubi,
       phone: c.phone,
       email: c.email,
