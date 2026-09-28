@@ -1,5 +1,5 @@
 ﻿import QRCode from 'qrcode'
-import { scaleLogoDimension } from '@/services/printers/logoPrintSize'
+import { readLogoPrintSize, scaleLogoDimension } from '@/services/printers/logoPrintSize'
 
 /** Ancho imprimible en puntos (58 mm ≈ 384, 80 mm ≈ 576). */
 export function escposPrintWidthPx(paperWidthMm: 58 | 80): number {
@@ -21,11 +21,11 @@ export function clearEscPosImageRasterCache(): void {
 // papel (escposPrintWidthPx) para que «grande» nunca corte la imagen.
 function escposLogoMaxWidthPx(paperWidthMm: 58 | 80): number {
   const base = paperWidthMm === 58 ? 320 : 420
-  return Math.min(scaleLogoDimension(base), escposPrintWidthPx(paperWidthMm))
+  return Math.min(scaleLogoDimension(base, readLogoPrintSize('ticket')), escposPrintWidthPx(paperWidthMm))
 }
 
 function escposLogoMaxHeightPx(paperWidthMm: 58 | 80): number {
-  return scaleLogoDimension(paperWidthMm === 58 ? 96 : 120)
+  return scaleLogoDimension(paperWidthMm === 58 ? 96 : 120, readLogoPrintSize('ticket'))
 }
 
 function loadImageElement(src: string): Promise<HTMLImageElement> {

@@ -1,4 +1,3 @@
-import { scaleLogoDimension } from '@/services/printers/logoPrintSize'
 import { openPdfViewer } from '@/components/pdf/pdfViewerStore'
 import { getCompanyLogoForPrint } from '@/lib/companyConfig/store'
 import { jsPDF, GState } from 'jspdf'
@@ -34,6 +33,7 @@ import { fitReceiptLogoMm, resolveReceiptLogoForPdf } from '@/utils/receiptLogoP
 import { rasterPxForMm } from '@/utils/receiptPdfRaster'
 import { renderReceiptA4 } from '@/utils/receiptPdfA4'
 import { getNotaVentaPrintLayout } from '@/services/printers/notaVentaPrintLayout'
+import { normalizeLogoPrintSize, scaleLogoDimension } from '@/services/printers/logoPrintSize'
 
 const FONT_SIZE = 10
 const FONT_SIZE_SM = 8
@@ -291,8 +291,9 @@ export async function generateReceiptPdf(
         const logo = await resolveReceiptLogoForPdf(companyLogo)
         if (logo) {
           // Tamaño base = «mediano»; el ajuste local lo escala a pequeño o grande.
-          const maxW = Math.min(scaleLogoDimension(paperMm === 58 ? 28 : 32), innerW)
-          const maxH = scaleLogoDimension(paperMm === 58 ? 10 : 12)
+          const logoSizeTicket = normalizeLogoPrintSize(data.company.logo_size_ticket)
+          const maxW = Math.min(scaleLogoDimension(paperMm === 58 ? 28 : 32, logoSizeTicket), innerW)
+          const maxH = scaleLogoDimension(paperMm === 58 ? 10 : 12, logoSizeTicket)
           const { w, h } = fitReceiptLogoMm(logo.naturalW, logo.naturalH, maxW, maxH)
           doc.addImage(logo.dataUrl, logo.format, (pageW - w) / 2, y, w, h, undefined, 'NONE')
           y += h + 5

@@ -1,7 +1,12 @@
-/** Tamaño del logo en comprobantes (ESC/POS y PDF). Ajuste local del dispositivo. */
-export type LogoPrintSize = 'pequeno' | 'mediano' | 'grande'
+/**
+ * Tamaño del logo en TODOS los comprobantes (factura/boleta/NV), separado por formato:
+ * ticket (rollo térmico, PDF y ESC/POS directo) y A4 tienen proporciones muy distintas.
+ * Ajuste a nivel tenant (servidor, vía companyService.updateConfig), igual en todas las cajas.
+ */
+import { getCompanyConfigCache } from '@/lib/companyConfig/store'
 
-const STORAGE_KEY = 'tukifac_logo_print_size_v1'
+export type LogoPrintSize = 'pequeno' | 'mediano' | 'grande'
+export type LogoPrintFormat = 'ticket' | 'a4'
 
 export const DEFAULT_LOGO_PRINT_SIZE: LogoPrintSize = 'mediano'
 
@@ -21,25 +26,22 @@ const SCALE: Record<LogoPrintSize, number> = {
   grande: 1.35,
 }
 
-export function readLogoPrintSize(): LogoPrintSize {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw === 'pequeno' || raw === 'mediano' || raw === 'grande') return raw
-  } catch {
-    /* noop */
-  }
-  return DEFAULT_LOGO_PRINT_SIZE
+export function normalizeLogoPrintSize(raw: unknown): LogoPrintSize {
+  return raw === 'pequeno' || raw === 'grande' ? raw : DEFAULT_LOGO_PRINT_SIZE
 }
 
-export function saveLogoPrintSize(size: LogoPrintSize) {
-  try {
-    localStorage.setItem(STORAGE_KEY, size)
-  } catch {
-    /* quota */
-  }
+/**
+ * Tamaño configurado a nivel tenant para el formato dado, leído del caché local de config.
+ * Solo para contextos sin un `PrintData` a mano (ESC/POS directo, movimientos de caja). Los
+ * comprobantes de venta (ticket/A4) deben preferir `data.company.logo_size_ticket`/`_a4`
+ * (vía `normalizeLogoPrintSize`), que reflejan el snapshot ya resuelto por el backend.
+ */
+export function readLogoPrintSize(format: LogoPrintFormat): LogoPrintSize {
+  const cfg = getCompanyConfigCache()
+  return normalizeLogoPrintSize(format === 'ticket' ? cfg?.logo_size_ticket : cfg?.logo_size_a4)
 }
 
-/** Escala una medida base del logo según el ajuste guardado. */
-export function scaleLogoDimension(base: number): number {
-  return base * SCALE[readLogoPrintSize()]
+/** Escala una medida base del logo según el tamaño ya resuelto. */
+export function scaleLogoDimension(base: number, size: LogoPrintSize): number {
+  return base * SCALE[size]
 }

@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf'
 import { getCompanyConfigCache, getCompanyLogoForPrint } from '@/lib/companyConfig/store'
 import { fitReceiptLogoMm, resolveReceiptLogoForPdf } from '@/utils/receiptLogoPdf'
-import { scaleLogoDimension } from '@/services/printers/logoPrintSize'
+import { readLogoPrintSize, scaleLogoDimension } from '@/services/printers/logoPrintSize'
 import {
   normalizeTicketPaperWidth,
   ticketMarginMm,
@@ -139,8 +139,9 @@ export async function generateCashMovementReceiptPdf(
     try {
       const logo = await resolveReceiptLogoForPdf(companyLogo)
       if (logo) {
-        const maxW = Math.min(scaleLogoDimension(paperMm === 58 ? 26 : 30), innerW)
-        const maxH = scaleLogoDimension(paperMm === 58 ? 9 : 11)
+        const logoSizeTicket = readLogoPrintSize('ticket')
+        const maxW = Math.min(scaleLogoDimension(paperMm === 58 ? 26 : 30, logoSizeTicket), innerW)
+        const maxH = scaleLogoDimension(paperMm === 58 ? 9 : 11, logoSizeTicket)
         const { w, h } = fitReceiptLogoMm(logo.naturalW, logo.naturalH, maxW, maxH)
         doc.addImage(logo.dataUrl, logo.format, (pageW - w) / 2, y, w, h, undefined, 'NONE')
         y += h + 3

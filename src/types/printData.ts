@@ -179,6 +179,9 @@ export interface PrintCompany {
   show_igv_breakdown?: boolean
   /** Solo nota de venta (SUNAT 00): mostrar razón social del emisor en el impreso. Default true. */
   show_business_name_on_sale_note?: boolean
+  /** Tamaño del logo por formato (todos los comprobantes): pequeno | mediano | grande. */
+  logo_size_ticket?: string
+  logo_size_a4?: string
 }
 
 export interface PrintBankAccount {

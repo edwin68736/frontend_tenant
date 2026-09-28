@@ -1,4 +1,4 @@
-import { scaleLogoDimension } from '@/services/printers/logoPrintSize'
+import { normalizeLogoPrintSize, scaleLogoDimension } from '@/services/printers/logoPrintSize'
 import { getCompanyLogoForPrint } from '@/lib/companyConfig/store'
 import { jsPDF } from 'jspdf'
 import QRCode from 'qrcode'
@@ -200,8 +200,9 @@ async function drawHeader(
   const { doc } = ctx
   const top = MARGIN
   // Tamaño base = «mediano»; el ajuste local lo escala a pequeño o grande.
-  const logoMaxW = scaleLogoDimension(36)
-  const logoMaxH = scaleLogoDimension(22)
+  const logoSizeA4 = normalizeLogoPrintSize(data.company.logo_size_a4)
+  const logoMaxW = scaleLogoDimension(36, logoSizeA4)
+  const logoMaxH = scaleLogoDimension(22, logoSizeA4)
   const boxW = 62
   const boxX = PAGE_W - MARGIN - boxW
   const showLogo = !nvLayout || nvLayout.showLogo

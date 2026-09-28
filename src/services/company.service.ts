@@ -37,6 +37,9 @@ export interface CompanyConfig {
    * la razón social se sigue mostrando igual.
    */
   show_business_name_on_sale_note?: boolean
+  /** Tamaño del logo en TODOS los comprobantes, separado por formato: pequeno | mediano | grande. */
+  logo_size_ticket?: string
+  logo_size_a4?: string
   wallet_provider?: string
   wallet_phone?: string
   wallet_qr_url?: string

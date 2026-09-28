@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { ErpCompanySettings } from '@/components/settings/erp/ErpCompanySettings'
 import { ReceiptWalletSettings } from '@/components/company/ReceiptWalletSettings'
 import { SaleNoteBrandingSettings } from '@/components/company/SaleNoteBrandingSettings'
+import { LogoSizeSettings } from '@/components/company/LogoSizeSettings'
 import CompanySunatPage from '@/pages/company/CompanySunatPage'
 import CompanyBranchesPage from '@/pages/company/CompanyBranchesPage'
 import CompanySeriesPage from '@/pages/company/CompanySeriesPage'
@@ -47,6 +48,7 @@ export function ErpSettingsTab() {
       {tab === 'empresa' && <ErpCompanySettings />}
       {tab === 'comprobantes' && (
         <div className="space-y-5">
+          <LogoSizeSettings />
           <ReceiptWalletSettings />
           <SaleNoteBrandingSettings />
         </div>
