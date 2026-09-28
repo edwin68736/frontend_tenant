@@ -305,9 +305,14 @@ export async function generateReceiptPdf(
     // Encabezado empresa: nombre comercial destacado, razón social debajo
     const tradeName = String(data.company.trade_name ?? '').trim()
     const businessName = String(data.company.business_name ?? '').trim()
+    // Solo nota de venta: si se ocultó la razón social Y hay nombre comercial con el
+    // que reemplazarla, no repetirla debajo. Sin nombre comercial, se muestra igual.
+    const hideBusinessNameOnSaleNote =
+      Boolean(nvLayout) && data.company.show_business_name_on_sale_note === false && Boolean(tradeName)
     const showBusinessName =
       Boolean(businessName) &&
-      businessName.localeCompare(tradeName, undefined, { sensitivity: 'accent' }) !== 0
+      businessName.localeCompare(tradeName, undefined, { sensitivity: 'accent' }) !== 0 &&
+      !hideBusinessNameOnSaleNote
     if (tradeName) {
       addTicketWrappedCenter(tradeName, FONT_SIZE_COMMERCIAL, true)
       if (showBusinessName) addTicketWrappedCenter(businessName, FONT_SIZE)

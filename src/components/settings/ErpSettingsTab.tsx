@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { ErpCompanySettings } from '@/components/settings/erp/ErpCompanySettings'
 import { ReceiptWalletSettings } from '@/components/company/ReceiptWalletSettings'
+import { SaleNoteBrandingSettings } from '@/components/company/SaleNoteBrandingSettings'
 import CompanySunatPage from '@/pages/company/CompanySunatPage'
 import CompanyBranchesPage from '@/pages/company/CompanyBranchesPage'
 import CompanySeriesPage from '@/pages/company/CompanySeriesPage'
@@ -44,7 +45,12 @@ export function ErpSettingsTab() {
       </div>
 
       {tab === 'empresa' && <ErpCompanySettings />}
-      {tab === 'comprobantes' && <ReceiptWalletSettings />}
+      {tab === 'comprobantes' && (
+        <div className="space-y-5">
+          <ReceiptWalletSettings />
+          <SaleNoteBrandingSettings />
+        </div>
+      )}
       {tab === 'impuestos' && <CompanySunatPage />}
       {tab === 'sucursales' && <CompanyBranchesPage />}
       {tab === 'series' && <CompanySeriesPage />}

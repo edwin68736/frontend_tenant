@@ -31,6 +31,12 @@ export interface CompanyConfig {
   terms_and_conditions?: string
   /** Preferencia global: mostrar términos en ventas/cotizaciones nuevas. */
   show_terms_conditions?: boolean
+  /**
+   * Solo nota de venta (SUNAT 00): mostrar razón social del emisor en el impreso.
+   * Si es false, se muestra nombre comercial en su lugar; sin nombre comercial,
+   * la razón social se sigue mostrando igual.
+   */
+  show_business_name_on_sale_note?: boolean
   wallet_provider?: string
   wallet_phone?: string
   wallet_qr_url?: string

@@ -177,6 +177,8 @@ export interface PrintCompany {
    * lleva el IGV; ocultarlo en el impreso cumple el Reglamento de CP, Art. 8).
    */
   show_igv_breakdown?: boolean
+  /** Solo nota de venta (SUNAT 00): mostrar razón social del emisor en el impreso. Default true. */
+  show_business_name_on_sale_note?: boolean
 }
 
 export interface PrintBankAccount {

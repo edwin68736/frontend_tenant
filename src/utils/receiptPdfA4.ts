@@ -227,7 +227,13 @@ async function drawHeader(
     }
   }
 
-  const companyName = (data.company.business_name || data.company.trade_name || '—').toUpperCase()
+  const tradeName = String(data.company.trade_name ?? '').trim()
+  const businessName = String(data.company.business_name ?? '').trim()
+  // Solo nota de venta: si se ocultó la razón social y hay nombre comercial, se usa este
+  // en el encabezado en vez de la razón social. Sin nombre comercial, se muestra igual.
+  const hideBusinessNameOnSaleNote =
+    Boolean(nvLayout) && data.company.show_business_name_on_sale_note === false && Boolean(tradeName)
+  const companyName = (hideBusinessNameOnSaleNote ? tradeName : businessName || tradeName || '—').toUpperCase()
   setFont(doc, FONT_TITLE, 'bold')
   let cy = top + 3
   {

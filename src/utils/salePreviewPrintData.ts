@@ -482,6 +482,7 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
       additional_notes: companyConfig?.additional_notes?.trim() || undefined,
       // Nuevo RUS: no discriminar IGV en el impreso (solo el total). El XML sí lo lleva.
       show_igv_breakdown: String(companyConfig?.taxpayer_regime ?? '').toLowerCase() !== 'nrus',
+      show_business_name_on_sale_note: companyConfig?.show_business_name_on_sale_note !== false,
     },
     branch: {
       name: branchName || 'Principal',
