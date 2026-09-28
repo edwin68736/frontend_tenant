@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Package, Upload, Download, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Barcode, Trash2, CheckCircle, Eye, EyeOff, Keyboard, Loader2, Tag, SlidersHorizontal, X } from 'lucide-react'
+import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Package, Upload, Download, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Barcode, Trash2, CheckCircle, Eye, EyeOff, Keyboard, Loader2, Tag, SlidersHorizontal, X, Store } from 'lucide-react'
 import { ProductImportModal } from '@/components/products/ProductImportModal'
 import { ProductPriceUpdateModal } from '@/components/products/ProductPriceUpdateModal'
 import { BulkDeleteProductsPinModal } from '@/components/products/BulkDeleteProductsPinModal'
@@ -1758,8 +1758,9 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 type="button"
                 onClick={() => void openBranchPrices()}
                 disabled={saving}
-                className="text-[11px] font-semibold text-[rgb(var(--p700))] hover:text-[rgb(var(--p900))] disabled:opacity-50"
+                className="flex items-center gap-1 text-[11px] font-semibold text-[rgb(var(--p700))] hover:text-[rgb(var(--p900))] disabled:opacity-50"
               >
+                <Store size={12} aria-hidden />
                 Precio por sucursal
               </button>
             </div>
