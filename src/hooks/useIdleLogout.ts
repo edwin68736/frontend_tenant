@@ -3,10 +3,12 @@ import { toast } from 'sonner'
 import { redirectToLogin } from '@/services/api'
 import { ensureIdleActivity, markIdleActivity, clearIdleActivity, msSinceLastActivity } from '@/lib/idleSession'
 
-// Decidido con el usuario (14-sep-2026): 30 min de inactividad en Tukifac (ERP, un usuario por
-// equipo). Tukichef queda fuera a propósito por ahora — terminal compartida entre varios
-// empleados durante el turno, necesita su propio umbral/comportamiento (pendiente aparte).
-const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000
+// Decidido con el usuario (28-sep-2026, antes 30 min desde 14-sep-2026): los 30 min resultaban
+// demasiado cortos en la práctica — un negocio con tráfico de clientes espaciado deja la caja sin
+// tocar más de media hora y el cajero terminaba con logout inesperado a mitad de turno. Subido a
+// 3h. Tukichef queda fuera a propósito por ahora — terminal compartida entre varios empleados
+// durante el turno, necesita su propio umbral/comportamiento (pendiente aparte).
+const INACTIVITY_TIMEOUT_MS = 3 * 60 * 60 * 1000
 const WARNING_BEFORE_MS = 5 * 60 * 1000
 const CHECK_INTERVAL_MS = 15 * 1000
 // mousemove/scroll disparan decenas de eventos por segundo — no tiene sentido pisar

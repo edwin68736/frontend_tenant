@@ -67,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isLoading: true,
   })
 
-  // Cierre de sesión automático por inactividad (30 min) — ver hooks/useIdleLogout.ts.
+  // Cierre de sesión automático por inactividad (3h) — ver hooks/useIdleLogout.ts.
   useIdleLogout(state.isAuthenticated)
 
   // Restaurar sesión o acceso maestro (/?master_sso=...) — sin recarga de página
