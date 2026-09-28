@@ -230,11 +230,23 @@ async function drawHeader(
 
   const tradeName = String(data.company.trade_name ?? '').trim()
   const businessName = String(data.company.business_name ?? '').trim()
+  const isBoleta = String(data.sunat_code ?? '').trim() === '03'
   // Solo nota de venta: si se ocultó la razón social y hay nombre comercial, se usa este
   // en el encabezado en vez de la razón social. Sin nombre comercial, se muestra igual.
   const hideBusinessNameOnSaleNote =
     Boolean(nvLayout) && data.company.show_business_name_on_sale_note === false && Boolean(tradeName)
-  const companyName = (hideBusinessNameOnSaleNote ? tradeName : businessName || tradeName || '—').toUpperCase()
+  // Boleta: nombre comercial destacado (igual que en ticket) con razón social debajo si
+  // difiere. Factura: solo razón social — es el documento formal para la contabilidad del
+  // cliente, no debe mostrar una marca comercial que no coincide con su registro SUNAT.
+  const highlightTradeNameOnBoleta = isBoleta && Boolean(tradeName)
+  const companyName = (
+    highlightTradeNameOnBoleta || hideBusinessNameOnSaleNote ? tradeName : businessName || tradeName || '—'
+  ).toUpperCase()
+  const showBusinessNameSecondary =
+    highlightTradeNameOnBoleta &&
+    Boolean(businessName) &&
+    businessName.localeCompare(tradeName, undefined, { sensitivity: 'accent' }) !== 0
+
   setFont(doc, FONT_TITLE, 'bold')
   let cy = top + 3
   {
@@ -242,6 +254,14 @@ async function drawHeader(
     nameLines.forEach((line, i) => {
       drawCompanyInfoLine(doc, line, infoX, cy, infoW, i < nameLines.length - 1)
       cy += LINE_H + 0.2
+    })
+  }
+  if (showBusinessNameSecondary) {
+    setFont(doc, FONT_SM, 'normal')
+    const secLines: string[] = doc.splitTextToSize(businessName.toUpperCase(), infoW)
+    secLines.forEach((line, i) => {
+      drawCompanyInfoLine(doc, line, infoX, cy, infoW, i < secLines.length - 1)
+      cy += LINE_H - 0.2
     })
   }
 
