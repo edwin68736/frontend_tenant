@@ -9,6 +9,7 @@ import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { ProductPresentationsModal } from '@/components/products/ProductPresentationsModal'
 import { SaleUnitsModal } from '@/components/products/SaleUnitsModal'
 import { ProductAttributesModal } from '@/components/products/ProductAttributesModal'
+import { ProductBranchPricesPanel } from '@/components/products/ProductBranchPricesPanel'
 import { ModifierOptionsEditor } from '@/components/modifiers/ModifierOptionsEditor'
 import { productsService, getProductImageUrl, type Product, type Category, type Brand, type Unit, type CreateProductInput, type ModifierGroup, type ProductCatalogType, type ProductPresentation, type BulkDeleteProductsResult } from '@/services/products.service'
 import { createEmptyOptionDraft, draftsFromApiOptions, optionDraftsToPayload, validateOptionDrafts, type ModifierOptionDraft } from '@/utils/modifierOptionText'
@@ -211,6 +212,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const [savingGroup, setSavingGroup] = useState(false)
   const [presentations, setPresentations] = useState<ProductPresentation[]>([])
   const [showPresentationsModal, setShowPresentationsModal] = useState(false)
+  const [branchPricesOpen, setBranchPricesOpen] = useState(false)
 
   // Panel avanzado — unificado con el modal de alta/edición (una sola pantalla con pestañas, en
   // vez de "Editar" + "Administrar" abriendo dos modales separados que a su vez abrían otros
@@ -708,6 +710,13 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     toast.success('Producto creado — ya puedes agregar unidades de venta, atributos, etc.')
     load()
     return true
+  }
+
+  /** Precio por sucursal de un producto "normal": mismo patrón que las pestañas Unidades/Atributos
+   * (ensureProductCreated) — si es un alta en curso, guarda primero con lo cargado en General. */
+  const openBranchPrices = async () => {
+    if (!(await ensureProductCreated())) return
+    setBranchPricesOpen(true)
   }
 
   const handleToggle = async (p: Product) => {
@@ -1743,7 +1752,17 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         {brandField}
         <div className={PRODUCT_FORM_GRID}>
           <div className="min-w-0">
-            <label className="block text-xs font-medium text-gray-600 mb-1">Precio venta *</label>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <label className="block text-xs font-medium text-gray-600">Precio venta *</label>
+              <button
+                type="button"
+                onClick={() => void openBranchPrices()}
+                disabled={saving}
+                className="text-[11px] font-semibold text-[rgb(var(--p700))] hover:text-[rgb(var(--p900))] disabled:opacity-50"
+              >
+                Precio por sucursal
+              </button>
+            </div>
             {/* MoneyAmountInput: permite vaciar y teclear libre; el input number crudo con
                 value=0 no dejaba borrar el cero (Number('')||0 lo devolvía a 0). */}
             <MoneyAmountInput
@@ -2276,6 +2295,14 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           setImportModalOpen(false)
           load()
         }}
+      />
+
+      <ProductBranchPricesPanel
+        open={branchPricesOpen}
+        productId={editing?.id ?? 0}
+        productName={editing?.name}
+        globalSalePrice={form.sale_price}
+        onClose={() => setBranchPricesOpen(false)}
       />
 
       <ProductPriceUpdateModal

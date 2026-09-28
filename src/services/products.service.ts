@@ -287,6 +287,19 @@ export interface SaleUnitBranchPrice {
 }
 
 /**
+ * Override de TenantProduct.sale_price para una sucursal puntual — independiente de SaleUnit a
+ * propósito: no activa el selector de "elegir unidad" del POS (ver has_sale_units). Un solo
+ * precio, sin niveles 2/3 (eso es multiprecios, concepto de SaleUnit).
+ */
+export interface ProductBranchPrice {
+  id?: number
+  product_id?: number
+  branch_id: number
+  sale_price: number
+  active: boolean
+}
+
+/**
  * Atributo descriptivo simple de un producto (ej. "Color" / "Rojo"). Puramente informativo: no
  * genera stock, precio ni conversión — no confundir con SaleUnit ni con ProductPresentation.
  */
@@ -732,6 +745,31 @@ export const productsService = {
 
   deleteSaleUnitBranchPrice: (productId: number, saleUnitId: number, branchId: number) =>
     api.delete(`/api/products/${productId}/sale-units/${saleUnitId}/branch-prices/${branchId}`).then(r => r.data),
+
+  // ---- Precio por sucursal de un producto "normal" (sin unidades de venta) ----
+  // Independiente de SaleUnit a propósito: no activa el selector de "elegir unidad" del POS
+  // (ver comentario de TenantProductBranchPrice en el backend).
+
+  listProductBranchPrices: (productId: number) =>
+    api
+      .get<{ data: ProductBranchPrice[] }>(`/api/products/${productId}/branch-prices`)
+      .then(r => r.data.data ?? []),
+
+  getProductBranchPrice: (productId: number, branchId: number) =>
+    api.get<{ data: ProductBranchPrice }>(`/api/products/${productId}/branch-prices/${branchId}`).then(r => r.data.data),
+
+  createProductBranchPrice: (productId: number, branchId: number, input: ProductBranchPrice) =>
+    api
+      .post<{ data: ProductBranchPrice }>(`/api/products/${productId}/branch-prices/${branchId}`, input)
+      .then(r => r.data.data),
+
+  updateProductBranchPrice: (productId: number, branchId: number, input: ProductBranchPrice) =>
+    api
+      .put<{ data: ProductBranchPrice }>(`/api/products/${productId}/branch-prices/${branchId}`, input)
+      .then(r => r.data.data),
+
+  deleteProductBranchPrice: (productId: number, branchId: number) =>
+    api.delete(`/api/products/${productId}/branch-prices/${branchId}`).then(r => r.data),
 
   // ---- Atributos descriptivos (Fase 7C) ----
   // NOTA: igual que sale_units, GET /api/products/:id NO incluye attributes — pedirlas aparte.
