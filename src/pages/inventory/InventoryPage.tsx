@@ -299,7 +299,9 @@ function InventoryContent() {
                   rows.map((row) => {
                     const status = stockStatus(row)
                     const expanded = expandedId === row.id
-                    const canExpand = showBranchColumn && (row.stock_by_branch ?? []).length > 0
+                    const canExpand =
+                      (showBranchColumn && (row.stock_by_branch ?? []).length > 0) ||
+                      (row.stock_by_presentation ?? []).length > 0
                     const expiryStatus = row.has_expiry_date && row.expiry_date ? getProductExpiryStatus(row.expiry_date) : null
                     return (
                       <Fragment key={row.id}>
@@ -371,13 +373,32 @@ function InventoryContent() {
                           <tr className="border-b border-gray-50 bg-gray-50/50">
                             <td />
                             <td colSpan={7} className="px-4 py-2">
-                              <div className="flex flex-wrap gap-2">
-                                {(row.stock_by_branch ?? []).map((b) => (
-                                  <span key={`${row.id}-${b.branch_id}`} className="text-xs px-2 py-1 rounded-lg bg-white border border-gray-200 text-gray-600">
-                                    {b.branch_name}: <strong className="text-gray-800">{b.quantity}</strong>
-                                  </span>
-                                ))}
-                              </div>
+                              {(row.stock_by_presentation ?? []).length > 0 ? (
+                                // Producto con presentaciones: el total de la fila suma todas; aquí se ve
+                                // cuánto hay de cada una (y en qué sucursal).
+                                <div className="flex flex-wrap gap-2">
+                                  {(row.stock_by_presentation ?? []).map((pr) => (
+                                    <span
+                                      key={`${row.id}-${pr.presentation_id}-${pr.branch_id}`}
+                                      className="text-xs px-2 py-1 rounded-lg bg-white border border-gray-200 text-gray-600"
+                                    >
+                                      {pr.presentation_name}
+                                      <span className="text-gray-400"> · {pr.branch_name}</span>:{' '}
+                                      <strong className={Number(pr.quantity) <= 0 ? 'text-red-600' : 'text-gray-800'}>
+                                        {pr.quantity}
+                                      </strong>
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="flex flex-wrap gap-2">
+                                  {(row.stock_by_branch ?? []).map((b) => (
+                                    <span key={`${row.id}-${b.branch_id}`} className="text-xs px-2 py-1 rounded-lg bg-white border border-gray-200 text-gray-600">
+                                      {b.branch_name}: <strong className="text-gray-800">{b.quantity}</strong>
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                             </td>
                           </tr>
                         )}

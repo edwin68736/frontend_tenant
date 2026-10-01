@@ -57,6 +57,8 @@ export interface Product {
   manage_stock: boolean
   manage_series?: boolean
   has_variants?: boolean
+  /** Precio de la presentación activa más barata (solo productos con presentaciones). */
+  min_presentation_price?: number
   has_modifiers?: boolean
   /**
    * true/false si viene del catálogo (GET /api/products, batcheado server-side) — el POS lo usa
@@ -88,6 +90,15 @@ export interface Product {
 export interface ProductReportRow extends Product {
   stock_total: number
   stock_by_branch: { branch_id: number; branch_name: string; quantity: number }[]
+  /** Solo productos con presentaciones: stock de cada presentación por sucursal. */
+  stock_by_presentation?: {
+    presentation_id: number
+    presentation_name: string
+    branch_id: number
+    branch_name: string
+    quantity: number
+  }[]
+  min_presentation_price?: number
   serials: string[]
   serial_count: number
 }

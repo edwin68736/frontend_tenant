@@ -1400,7 +1400,16 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 <td className="px-4 py-3 text-gray-500 text-xs">
                   {p.category_name ?? categories.find((c) => c.id === p.category_id)?.name ?? '-'}
                 </td>
-                <td className="px-4 py-3 font-semibold text-gray-800">S/ {Number(p.sale_price).toFixed(2)}</td>
+                <td className="px-4 py-3 font-semibold text-gray-800">
+                  {p.has_variants && p.min_presentation_price !== undefined && !(Number(p.sale_price) > 0) ? (
+                    <>
+                      <span className="block text-[10px] font-normal text-gray-400">Desde</span>
+                      S/ {Number(p.min_presentation_price).toFixed(2)}
+                    </>
+                  ) : (
+                    <>S/ {Number(p.sale_price).toFixed(2)}</>
+                  )}
+                </td>
                 <td className="px-4 py-3"><span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded font-mono">{p.igv_affectation_type}</span></td>
                 {pageMode === 'product' && (
                   <>

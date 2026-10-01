@@ -791,7 +791,13 @@ function POSContent() {
             // cantidad base ni se multiplican por el factor; eso lo hace el backend.
             sale_unit_id: i.sale_unit?.id,
             code: i.product.code,
-            description: i.product.name,
+            // Con presentación elegida el nombre la incluye: si no, el ticket/comprobante muestra
+            // dos líneas "Pantalla" que solo se distinguen por el precio.
+            description: (() => {
+              const variant = i.modifiers.find((m) => m.type === 'variant')
+              const name = variant?.option_name?.trim()
+              return name ? `${i.product.name} - ${name}` : i.product.name
+            })(),
             // Siempre la unidad base del catálogo, aunque la línea use sale_unit_id: el campo
             // `unit` persistido se resuelve 100% server-side (ignora este string) y usa el código
             // propio de la SaleUnit cuando corresponde — ver resolveSaleItemUnitCode en
@@ -1095,7 +1101,13 @@ function POSContent() {
                 {products.filter(p => p.active).map(p => {
                   const imgUrl = getProductImageUrl(p.image_url)
                   const configBadge = productConfigurationBadge(p)
-                  const priceLabel = `${productNeedsSaleConfiguration(p) ? 'Desde ' : ''}${formatMoney(Number(p.sale_price))}`
+                  // Un producto con presentaciones suele tener sale_price 0 (el precio real vive en
+                  // cada presentación): se muestra la más barata en vez de "Desde S/ 0.00".
+                  const shownPrice =
+                    p.has_variants && p.min_presentation_price !== undefined && !(Number(p.sale_price) > 0)
+                      ? Number(p.min_presentation_price)
+                      : Number(p.sale_price)
+                  const priceLabel = `${productNeedsSaleConfiguration(p) ? 'Desde ' : ''}${formatMoney(shownPrice)}`
                   const onPick = (e: React.MouseEvent<HTMLButtonElement>) => {
                     const visual = (e.currentTarget as HTMLElement).querySelector(
                       '[data-product-visual]',
