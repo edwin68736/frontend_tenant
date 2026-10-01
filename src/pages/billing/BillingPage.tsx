@@ -37,7 +37,12 @@ import {
 } from '@/utils/despatchSeries'
 import { DocumentViewerModal } from '@/components/ui/DocumentViewerModal'
 import { useAuth } from '@/contexts/AuthContext'
-import { getTodayPeru, formatDisplayDatePeru } from '@/utils/datesPeru'
+import {
+  formatDisplayDatePeru,
+  getMaxIssueDatePeru,
+  getMinIssueDatePeru,
+  getTodayPeru,
+} from '@/utils/datesPeru'
 import { formatSaleDocumentNumber } from '@/utils/format'
 import { formatSaleMoney } from '@/utils/formatMoney'
 import { createLocalReceiptPdfObjectUrl, downloadLocalReceiptPdf } from '@/utils/localReceiptPdf'
@@ -134,6 +139,8 @@ function BillingContent() {
   const [voidNcReason, setVoidNcReason] = useState('')
   const [voidNcReasonCode, setVoidNcReasonCode] = useState('01')
   const [voidNcSubmitting, setVoidNcSubmitting] = useState(false)
+  // Fecha de emisión de la nota de crédito (YYYY-MM-DD, Perú).
+  const [voidNcIssueDate, setVoidNcIssueDate] = useState(() => getTodayPeru())
   // true = acción rápida "Anular" del menú: motivo fijo en "01", sin mostrar el selector.
   // false = "Nota de crédito": selector completo del catálogo SUNAT.
   const [voidNcLockedToVoid, setVoidNcLockedToVoid] = useState(false)
@@ -443,6 +450,7 @@ function BillingContent() {
     setVoidNcTarget({ id: sale.id, series: sale.series, number: sale.number })
     setVoidNcReason('')
     setVoidNcReasonCode('01')
+    setVoidNcIssueDate(getTodayPeru())
     setVoidNcLockedToVoid(lockToVoid)
     setVoidNcOrigItems([])
     setVoidNcSelections({})
@@ -463,6 +471,12 @@ function BillingContent() {
   }
 
   const voidNcPartialMode = !voidNcLockedToVoid && CREDIT_NOTE_PARTIAL_REASON_CODES.has(voidNcReasonCode)
+
+  // Rango de la fecha de la nota: hoy − 3 días … hoy (con hoy = 01/10 se elige hasta el 28/09) y
+  // nunca futura. No depende de la fecha del comprobante que se anula.
+  const voidNcIssueMax = getMaxIssueDatePeru()
+  const voidNcIssueMin = getMinIssueDatePeru()
+  const voidNcIssueDateInvalid = !voidNcIssueDate || voidNcIssueDate < voidNcIssueMin || voidNcIssueDate > voidNcIssueMax
 
   const toggleVoidNcItem = (item: SaleItem, checked: boolean) => {
     setVoidNcSelections((prev) => {
@@ -488,9 +502,21 @@ function BillingContent() {
       toast.error('Seleccione al menos un ítem para la nota parcial')
       return
     }
+    if (voidNcIssueDateInvalid) {
+      toast.error(
+        `La fecha de emisión debe estar entre ${formatDisplayDatePeru(voidNcIssueMin)} y ${formatDisplayDatePeru(voidNcIssueMax)}`,
+      )
+      return
+    }
     setVoidNcSubmitting(true)
     try {
-      const res = await billingService.voidWithCreditNote(voidNcTarget.id, voidNcReason.trim(), voidNcReasonCode, items)
+      const res = await billingService.voidWithCreditNote(
+        voidNcTarget.id,
+        voidNcReason.trim(),
+        voidNcReasonCode,
+        items,
+        voidNcIssueDate,
+      )
       if (res.success) {
         toast.success(res.message ?? 'Nota de crédito encolada')
         setVoidNcOpen(false)
@@ -1737,6 +1763,24 @@ function BillingContent() {
             )}
           </>
         )}
+        <label className="block text-xs font-medium text-gray-600 mb-1">Fecha de emisión *</label>
+        <input
+          type="date"
+          value={voidNcIssueDate}
+          min={voidNcIssueMin}
+          max={voidNcIssueMax}
+          title={`Entre ${voidNcIssueMin} y ${voidNcIssueMax} (hora Perú)`}
+          // Sin recortar al escribir: al teclear "28" el valor intermedio sería 28/10 (futuro) y se
+          // corregiría a hoy, imposibilitando llegar al 28/09. El rango se valida al confirmar.
+          onChange={(e) => setVoidNcIssueDate(e.target.value)}
+          disabled={voidNcSubmitting}
+          className={`w-full border rounded-xl px-3 py-2 text-sm mb-1 ${voidNcIssueDateInvalid ? 'border-red-400' : 'border-gray-200'}`}
+        />
+        <p className={`text-[11px] mb-3 ${voidNcIssueDateInvalid ? 'text-red-600' : 'text-gray-500'}`}>
+          {voidNcIssueDateInvalid
+            ? `Fecha fuera de rango: elija entre ${formatDisplayDatePeru(voidNcIssueMin)} y ${formatDisplayDatePeru(voidNcIssueMax)}.`
+            : `Puede ser hoy o hasta 3 días antes (desde ${formatDisplayDatePeru(voidNcIssueMin)}); no se admiten fechas futuras.`}
+        </p>
         <label className="block text-xs font-medium text-gray-600 mb-1">Motivo (texto para SUNAT)</label>
         <textarea
           value={voidNcReason}

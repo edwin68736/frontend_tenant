@@ -130,8 +130,17 @@ export const billingService = {
     reason: string,
     reasonCode: string,
     items: { original_item_id: number; quantity: number }[] = [],
+    /** Fecha de emisión de la nota (AAAA-MM-DD, hora Perú). Vacía = hoy. */
+    issueDate?: string,
   ): Promise<{ success: boolean; message?: string; nc_sale?: unknown; invoice?: unknown }> =>
-    api.post(`/api/billing/void-with-credit-note/${saleId}`, { reason, reason_code: reasonCode, items }).then(r => r.data),
+    api
+      .post(`/api/billing/void-with-credit-note/${saleId}`, {
+        reason,
+        reason_code: reasonCode,
+        items,
+        ...(issueDate ? { issue_date: issueDate } : {}),
+      })
+      .then(r => r.data),
 
   /** Emite una nota de débito (08) sobre una factura/boleta aceptada. reasonCode: catálogo SUNAT 10. */
   createDebitNote: (
