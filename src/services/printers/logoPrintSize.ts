@@ -21,14 +21,15 @@ export const LOGO_PRINT_SIZE_OPTIONS: { value: LogoPrintSize; label: string; hin
  * (ticket 32×12 mm en rollo de 80, A4 36×22 mm) son la medida «1».
  *
  * Los usuarios reportaron que los tres tamaños se veían chicos («grande» parecía mediano,
- * «mediano» parecía pequeño y «pequeño» un micrologo), así que la escala sube: el nuevo
- * «pequeño» equivale al antiguo «mediano». El ticket puede crecer más porque el rollo tiene
- * ancho para el logo completo; en A4 el logo comparte la cabecera con los datos de la empresa
- * y el recuadro del documento, así que la escala es más contenida.
+ * «mediano» parecía pequeño y «pequeño» un micrologo), y tras una primera subida pidieron más:
+ * el nuevo «pequeño» ya supera al antiguo «mediano». En ticket la escala es 1.3 / 2 / 2.6; en
+ * rollo de 80 mm el ancho se topa al imprimible, así que lo más grande crece sobre todo en
+ * alto. En A4 el logo comparte la cabecera con los datos de la empresa y el recuadro del
+ * documento, así que la escala es más contenida (1 / 1.5 / 1.9).
  */
 const SCALE: Record<LogoPrintFormat, Record<LogoPrintSize, number>> = {
-  ticket: { pequeno: 1, mediano: 1.5, grande: 2 },
-  a4: { pequeno: 1, mediano: 1.4, grande: 1.8 },
+  ticket: { pequeno: 1.3, mediano: 2, grande: 2.6 },
+  a4: { pequeno: 1, mediano: 1.5, grande: 1.9 },
 }
 
 export function normalizeLogoPrintSize(raw: unknown): LogoPrintSize {
