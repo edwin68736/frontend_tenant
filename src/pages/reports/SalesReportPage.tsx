@@ -126,7 +126,7 @@ type ReportSaleRow = Sale & {
    *  estado de una percepción/retención vinculada (esa vive en linked_perception, ver RR/Estado RR). */
   cpe_status?: string
   /** total en positivo para comprobantes normales; 0 para ventas anuladas (status='cancelled')
-   *  y para notas de crédito (doc_type='NOTA_CREDITO'). La venta anulada no debe sumar porque
+   *  y para notas de crédito/débito (doc_type='NOTA_CREDITO' o 'NOTA_DEBITO'). La venta anulada no debe sumar porque
    *  ya no es un ingreso real, y si además la NC restara su propio monto la reversión se
    *  contaría dos veces y el neto quedaría negativo de más — mismo cálculo que sum_active en
    *  el backend (saleListSummary: status != 'cancelled' AND doc_type != 'NOTA_CREDITO'), para
@@ -202,7 +202,10 @@ export default function SalesReportPage() {
     const params: Parameters<typeof salesService.list>[0] = {}
     if (filters.from) params.from = filters.from
     if (filters.to) params.to = filters.to
-    if (filters.branch_id) params.branch_id = Number(filters.branch_id)
+    // Mismo alcance que el dashboard: sin sucursal elegida son TODAS (el valor vacío caía en la sucursal
+    // activa) y los comprobantes de conversión NV→FE y el tipo efectivo se cuentan como en sus gráficos.
+    params.branch_id = filters.branch_id ? Number(filters.branch_id) : 'all'
+    params.scope = 'commercial'
     if (filters.doc_type_group === 'notes') params.sunat_code = '00'
     if (filters.doc_type_group === 'facturas_boletas') params.sunat_code = '01,03'
     if (filters.doc_type_group === 'factura') params.sunat_code = '01'
@@ -239,7 +242,7 @@ export default function SalesReportPage() {
         cpe_status: billingStatusLabel(normalizeBillingStatus(s.billing_status)),
         detraccion_amount: s.has_detraccion ? (s.detraccion_amount ?? 0) : 0,
         net_payable: s.has_detraccion ? (s.net_payable ?? s.total) : s.total,
-        net_effect: (String(s.status || '').toLowerCase() === 'cancelled' || s.doc_type === 'NOTA_CREDITO') ? 0 : s.total,
+        net_effect: (String(s.status || '').toLowerCase() === 'cancelled' || s.doc_type === 'NOTA_CREDITO' || s.doc_type === 'NOTA_DEBITO') ? 0 : s.total,
       }
     })
 
@@ -504,7 +507,7 @@ export default function SalesReportPage() {
             )
           })}
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Total general</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Total general (incl. anuladas)</p>
             <p className="text-2xl font-bold text-slate-900">S/ {stats.amountTotal.toFixed(2)}</p>
           </div>
         </div>

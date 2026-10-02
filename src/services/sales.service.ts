@@ -439,7 +439,10 @@ export const salesService = {
     payment_mode?: string
     sunat_code?: string
     contact_id?: number
-    branch_id?: number
+    /** Número = esa sucursal; 'all' = todas (solo quien puede cambiar de sucursal; el resto queda en la suya). Sin valor = sucursal activa. */
+    branch_id?: number | 'all'
+    /** 'commercial' = mismo alcance que el dashboard (reporte de ventas): sin comprobantes hijo de conversión NV→FE y filtro por tipo de comprobante efectivo. */
+    scope?: 'commercial'
     page?: number
     per_page?: number
     /** all | active | cancelled — alineado con reporte de ventas */
@@ -467,7 +470,7 @@ export const salesService = {
   listByProduct: (params?: {
     from?: string
     to?: string
-    branch_id?: number
+    branch_id?: number | 'all'
     category_id?: number
     /** Busca por código o nombre de producto. */
     q?: string
@@ -493,7 +496,7 @@ export const salesService = {
   listProfitDetail: (params?: {
     from?: string
     to?: string
-    branch_id?: number
+    branch_id?: number | 'all'
     category_id?: number
     /** Busca por código o nombre de producto. */
     q?: string

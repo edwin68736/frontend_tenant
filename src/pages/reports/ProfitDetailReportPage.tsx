@@ -95,10 +95,11 @@ export default function ProfitDetailReportPage() {
   const load = async () => {
     setLoading(true)
     try {
-      const params: { from?: string; to?: string; branch_id?: number; category_id?: number; q?: string } = {}
+      const params: { from?: string; to?: string; branch_id?: number | 'all'; category_id?: number; q?: string } = {}
       if (filters.from) params.from = filters.from
       if (filters.to) params.to = filters.to
-      if (filters.branch_id) params.branch_id = Number(filters.branch_id)
+      // Sin sucursal elegida el selector dice «Todas»: se pide 'all' explícito (vacío = sucursal activa).
+      params.branch_id = filters.branch_id ? Number(filters.branch_id) : 'all'
       if (filters.category_id) params.category_id = Number(filters.category_id)
       if (filters.q.trim()) params.q = filters.q.trim()
       const { data: list, summary: sm } = await salesService.listProfitDetail(params)

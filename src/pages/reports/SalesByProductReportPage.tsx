@@ -119,10 +119,12 @@ export default function SalesByProductReportPage() {
   const load = async () => {
     setLoading(true)
     try {
-      const params: { from?: string; to?: string; branch_id?: number; category_id?: number; q?: string; product_type?: string } = {}
+      const params: { from?: string; to?: string; branch_id?: number | 'all'; category_id?: number; q?: string; product_type?: string } = {}
       if (filters.from) params.from = filters.from
       if (filters.to) params.to = filters.to
-      if (filters.branch_id) params.branch_id = Number(filters.branch_id)
+      // Sin sucursal elegida el selector dice «Todas las sucursales»: se pide 'all' explícito (el valor
+      // vacío caía en la sucursal activa del usuario).
+      params.branch_id = filters.branch_id ? Number(filters.branch_id) : 'all'
       if (filters.category_id) params.category_id = Number(filters.category_id)
       if (filters.q.trim()) params.q = filters.q.trim()
       if (filters.product_type) params.product_type = filters.product_type
