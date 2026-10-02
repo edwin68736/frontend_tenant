@@ -57,6 +57,7 @@ const PERMISSION_FALLBACK_LABELS: Record<string, string> = {
   'sales.view': 'Ver ventas',
   'sales.create': 'Crear ventas',
   'sales.cancel': 'Anular ventas',
+  'sales.void_rejected': 'Anular localmente un comprobante rechazado por SUNAT',
   'sales.pos': 'Usar punto de venta (incluye ver productos y registrar ventas)',
   'quotations.view': 'Ver cotizaciones',
   'quotations.create': 'Crear cotizaciones',

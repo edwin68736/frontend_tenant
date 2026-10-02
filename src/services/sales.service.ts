@@ -527,6 +527,15 @@ export const salesService = {
   cancelNotaVenta: (saleId: number, reason: string) =>
     api.post<{ success: boolean }>(`/api/sales/${saleId}/cancel`, { reason }).then((r) => r.data),
 
+  /**
+   * Anula localmente una factura o boleta que SUNAT rechazó: revierte caja, bancos, stock y
+   * anticipos, y la venta deja de contar como venta válida. No genera nota de crédito ni baja
+   * (SUNAT nunca aceptó el comprobante). El backend exige sales.void_rejected y que el
+   * comprobante siga rechazado tras sincronizar con el facturador.
+   */
+  voidRejected: (saleId: number, reason: string) =>
+    api.post<{ success: boolean; message?: string }>(`/api/sales/${saleId}/void-rejected`, { reason }).then((r) => r.data),
+
   create: (data: CreateSaleInput): Promise<{ id: number; doc_type: string; series: string; number: string; total: number; billing_status: string; print_data?: import('@/types/printData').PrintData }> =>
     api.post('/api/sales', data).then(r => {
       const d = r.data as {

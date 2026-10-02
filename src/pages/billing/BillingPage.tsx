@@ -117,6 +117,11 @@ function BillingContent() {
   // al hacer clic y recibir el 403.
   const canVoidCreditNote = hasPermission('billing.credit_note')
   const canDebitNote = hasPermission('billing.debit_note')
+  // POST /sales/:id/void-rejected exige sales.void_rejected; el botón solo se ofrece a quien lo tiene.
+  const canVoidRejected = hasPermission('sales.void_rejected')
+  const [voidRejTarget, setVoidRejTarget] = useState<{ id: number; number: string } | null>(null)
+  const [voidRejReason, setVoidRejReason] = useState('')
+  const [voidRejSubmitting, setVoidRejSubmitting] = useState(false)
   const [sunatEnabled, setSunatEnabled] = useState<boolean | null>(null)
   const [searchParams] = useSearchParams()
   const [viewMode, setViewMode] = useState<'invoices' | 'credit_notes' | 'summaries_voided'>('invoices')
@@ -378,6 +383,28 @@ function BillingContent() {
       toast.error(e.response?.data?.error ?? e.message ?? 'Error reenviando', { id: tid })
     } finally {
       setResending(null)
+    }
+  }
+
+  const handleVoidRejected = async () => {
+    if (!voidRejTarget) return
+    const reason = voidRejReason.trim()
+    if (!reason) {
+      toast.error('Indique el motivo de la anulación')
+      return
+    }
+    setVoidRejSubmitting(true)
+    try {
+      await salesService.voidRejected(voidRejTarget.id, reason)
+      toast.success('Venta anulada. Se revirtió la caja y se repuso el stock.')
+      setVoidRejTarget(null)
+      setVoidRejReason('')
+      setDetail(null)
+      void load()
+    } catch (e: any) {
+      toast.error(e.response?.data?.error ?? e.message ?? 'No se pudo anular la venta rechazada')
+    } finally {
+      setVoidRejSubmitting(false)
     }
   }
 
@@ -1297,6 +1324,17 @@ function BillingContent() {
                           onClick: () => void handleResend(s.id),
                         },
                         {
+                          // Un comprobante rechazado nunca existió para SUNAT: no se anula con NC ni
+                          // baja, sino localmente (revierte caja, stock y anticipos).
+                          hidden: !(canVoidRejected && viewMode === 'invoices' && s.billing_status === 'rejected' && !isSaleCancelled(s)),
+                          icon: <Ban size={14} className="text-red-600" />,
+                          label: 'Anular venta rechazada',
+                          onClick: () => {
+                            setVoidRejTarget({ id: s.id, number: formatSaleDocumentNumber(s.series, s.number) })
+                            setVoidRejReason('')
+                          },
+                        },
+                        {
                           // Antes solo facturas/boletas (viewMode 'invoices') — el backend
                           // (ReissueSale) ya era genérico, no exigía ese tipo de documento;
                           // faltaba mostrar el botón también en la pestaña de notas para que
@@ -1452,6 +1490,18 @@ function BillingContent() {
                     className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-xl text-sm font-medium hover:bg-amber-700 disabled:opacity-50">
                     {resending === detail.sale.id ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
                     Reenviar a SUNAT
+                  </button>
+                )}
+                {canVoidRejected && viewMode === 'invoices' && detail.sale.billing_status === 'rejected' && !isSaleCancelled(detail.sale) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVoidRejTarget({ id: detail.sale.id, number: formatSaleDocumentNumber(detail.sale.series, detail.sale.number) })
+                      setVoidRejReason('')
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-medium hover:bg-red-700"
+                  >
+                    <Ban size={14} /> Anular venta rechazada
                   </button>
                 )}
                 {viewMode === 'invoices' && normalizeBillingStatus(detail.sale.billing_status) === 'accepted' && !isSaleCancelled(detail.sale) && !detail.linked_perception && (
@@ -1644,6 +1694,47 @@ function BillingContent() {
         title={viewMode === 'credit_notes' ? `Nota de ${noteKind === 'debit' ? 'débito' : 'crédito'} (PDF)` : 'Comprobante PDF'}
         downloadName={documentViewerName ?? undefined}
       />
+
+      <Modal open={!!voidRejTarget} onClose={() => !voidRejSubmitting && setVoidRejTarget(null)} contentClassName="max-w-md">
+        <h3 className="mb-1 font-bold text-gray-800">Anular venta rechazada</h3>
+        {voidRejTarget && (
+          <p className="mb-3 text-sm text-gray-600">
+            Comprobante <span className="font-mono font-semibold text-gray-800">{voidRejTarget.number}</span>
+          </p>
+        )}
+        <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          SUNAT rechazó este comprobante, así que no se anula con nota de crédito. Se revertirán los
+          pagos de caja y bancos, se repondrá el stock y se devolverán los anticipos aplicados. La venta
+          dejará de contar como válida. El correlativo no se reutiliza. Esta acción no se puede deshacer.
+        </p>
+        <label className="mb-1 block text-xs font-medium text-gray-600">Motivo *</label>
+        <textarea
+          value={voidRejReason}
+          onChange={(e) => setVoidRejReason(e.target.value)}
+          rows={3}
+          placeholder="Ej. Numeración duplicada en SUNAT, datos del cliente incorrectos…"
+          className="mb-4 w-full resize-none rounded-xl border border-gray-200 px-3 py-2 text-sm"
+          disabled={voidRejSubmitting}
+        />
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setVoidRejTarget(null)}
+            disabled={voidRejSubmitting}
+            className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleVoidRejected()}
+            disabled={voidRejSubmitting || !voidRejReason.trim()}
+            className="flex-1 rounded-xl bg-red-600 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+          >
+            {voidRejSubmitting ? 'Anulando…' : 'Anular venta rechazada'}
+          </button>
+        </div>
+      </Modal>
 
       <Modal open={voidNcOpen} onClose={() => !voidNcSubmitting && setVoidNcOpen(false)} contentClassName="max-w-md">
         <div className="flex items-center justify-between mb-4">
