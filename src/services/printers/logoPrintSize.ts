@@ -11,19 +11,24 @@ export type LogoPrintFormat = 'ticket' | 'a4'
 export const DEFAULT_LOGO_PRINT_SIZE: LogoPrintSize = 'mediano'
 
 export const LOGO_PRINT_SIZE_OPTIONS: { value: LogoPrintSize; label: string; hint: string }[] = [
-  { value: 'pequeno', label: 'Pequeño', hint: 'Ocupa menos papel.' },
+  { value: 'pequeno', label: 'Pequeño', hint: 'Discreto, ocupa poco papel.' },
   { value: 'mediano', label: 'Mediano', hint: 'Tamaño recomendado.' },
-  { value: 'grande', label: 'Grande', hint: 'Más visible en el comprobante.' },
+  { value: 'grande', label: 'Grande', hint: 'Máxima visibilidad en el comprobante.' },
 ]
 
 /**
- * Factor aplicado al tamaño base del logo. «mediano» es 1 a propósito: los tamaños base de
- * los renderers son el mediano, así que quien no toque el ajuste imprime igual que siempre.
+ * Factor aplicado al tamaño base del logo, por formato. Los tamaños base de los renderers
+ * (ticket 32×12 mm en rollo de 80, A4 36×22 mm) son la medida «1».
+ *
+ * Los usuarios reportaron que los tres tamaños se veían chicos («grande» parecía mediano,
+ * «mediano» parecía pequeño y «pequeño» un micrologo), así que la escala sube: el nuevo
+ * «pequeño» equivale al antiguo «mediano». El ticket puede crecer más porque el rollo tiene
+ * ancho para el logo completo; en A4 el logo comparte la cabecera con los datos de la empresa
+ * y el recuadro del documento, así que la escala es más contenida.
  */
-const SCALE: Record<LogoPrintSize, number> = {
-  pequeno: 0.7,
-  mediano: 1,
-  grande: 1.35,
+const SCALE: Record<LogoPrintFormat, Record<LogoPrintSize, number>> = {
+  ticket: { pequeno: 1, mediano: 1.5, grande: 2 },
+  a4: { pequeno: 1, mediano: 1.4, grande: 1.8 },
 }
 
 export function normalizeLogoPrintSize(raw: unknown): LogoPrintSize {
@@ -41,7 +46,10 @@ export function readLogoPrintSize(format: LogoPrintFormat): LogoPrintSize {
   return normalizeLogoPrintSize(format === 'ticket' ? cfg?.logo_size_ticket : cfg?.logo_size_a4)
 }
 
-/** Escala una medida base del logo según el tamaño ya resuelto. */
-export function scaleLogoDimension(base: number, size: LogoPrintSize): number {
-  return base * SCALE[size]
+/**
+ * Escala una medida base del logo según el tamaño ya resuelto y el formato (ticket por
+ * defecto). Quien dibuje el logo debe topar el ancho al imprimible del papel.
+ */
+export function scaleLogoDimension(base: number, size: LogoPrintSize, format: LogoPrintFormat = 'ticket'): number {
+  return base * SCALE[format][size]
 }

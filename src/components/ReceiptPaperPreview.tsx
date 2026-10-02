@@ -15,6 +15,7 @@ import {
 } from '@/utils/receiptBonificacion'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
 import { TUKIFAC_APP_NAME } from '@/lib/appVersion'
+import { normalizeLogoPrintSize, scaleLogoDimension } from '@/services/printers/logoPrintSize'
 
 /**
  * Emulación en HTML del comprobante como "papel", para plataformas donde el PDF no
@@ -50,6 +51,12 @@ export function ReceiptPaperPreview({
   const addr = getPrintIssuerAddress(printData)
   const money = (n: number) => formatMoney(n, printData.currency)
   const isTicket = format === 'ticket'
+  // Mismo tamaño que el PDF real: la base en mm (ticket 32×12, A4 36×22) escalada por el ajuste de
+  // la empresa y convertida a px según el ancho de este papel simulado (300 px ≈ 80 mm, 540 px ≈ 210 mm).
+  const logoSize = normalizeLogoPrintSize(isTicket ? c?.logo_size_ticket : c?.logo_size_a4)
+  const logoPxPerMm = isTicket ? 300 / 80 : 540 / 210
+  const logoMaxWpx = scaleLogoDimension(isTicket ? 32 : 36, logoSize, format) * logoPxPerMm
+  const logoMaxHpx = scaleLogoDimension(isTicket ? 12 : 22, logoSize, format) * logoPxPerMm
   const businessName = c?.business_name?.trim()
   const tradeName = c?.trade_name?.trim()
   const showBusiness = Boolean(businessName) && businessName !== tradeName
@@ -66,7 +73,12 @@ export function ReceiptPaperPreview({
       >
         {logo && (
           <div className="mb-2 flex justify-center">
-            <img src={logo} alt="logo" className="max-h-16 max-w-[70%] object-contain" />
+            <img
+              src={logo}
+              alt="logo"
+              className="object-contain"
+              style={{ maxWidth: `min(${logoMaxWpx}px, 100%)`, maxHeight: `${logoMaxHpx}px` }}
+            />
           </div>
         )}
 

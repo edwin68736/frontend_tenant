@@ -201,8 +201,8 @@ async function drawHeader(
   const top = MARGIN
   // Tamaño base = «mediano»; el ajuste local lo escala a pequeño o grande.
   const logoSizeA4 = normalizeLogoPrintSize(data.company.logo_size_a4)
-  const logoMaxW = scaleLogoDimension(36, logoSizeA4)
-  const logoMaxH = scaleLogoDimension(22, logoSizeA4)
+  const logoMaxW = scaleLogoDimension(36, logoSizeA4, 'a4')
+  const logoMaxH = scaleLogoDimension(22, logoSizeA4, 'a4')
   const boxW = 62
   const boxX = PAGE_W - MARGIN - boxW
   const showLogo = !nvLayout || nvLayout.showLogo
@@ -335,7 +335,10 @@ async function drawHeader(
     )
   }
 
-  ctx.y = Math.max(cy, showDocBox ? top + boxH : top) + 8
+  // El logo grande puede ser más alto que los datos de empresa y el recuadro: el contenido
+  // que sigue debe empezar debajo del que sea más alto, o se solapa con el logo.
+  const logoBottom = pendingLogo?.logo ? top + pendingLogo.h : top
+  ctx.y = Math.max(cy, showDocBox ? top + boxH : top, logoBottom) + 8
 }
 
 function drawCustomerBlock(
