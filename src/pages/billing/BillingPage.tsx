@@ -1705,7 +1705,8 @@ function BillingContent() {
         <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
           SUNAT rechazó este comprobante, así que no se anula con nota de crédito. Se revertirán los
           pagos de caja y bancos, se repondrá el stock y se devolverán los anticipos aplicados. La venta
-          dejará de contar como válida. El correlativo no se reutiliza. Esta acción no se puede deshacer.
+          dejará de contar como válida. Si el comprobante nació de una nota de venta, esa nota de venta también
+          se anula y se revierten su pago y su stock. El correlativo no se reutiliza. Esta acción no se puede deshacer.
         </p>
         <label className="mb-1 block text-xs font-medium text-gray-600">Motivo *</label>
         <textarea
