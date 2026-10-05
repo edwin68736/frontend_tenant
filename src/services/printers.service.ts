@@ -834,9 +834,10 @@ export async function printDocumentAuto(printData: PrintData): Promise<string> {
   const cfg = getConfiguredPrinter('documentos')
   if (!cfg) return 'Impresora de documentos no configurada'
   // Sonido tipo caja registradora ANTES de imprimir (Windows/Tauri, Android/Capacitor y navegador
-  // por igual) — pedido del usuario. Arranca ya y se arma el ticket mientras suena; se espera a que
-  // termine antes de enviarlo, porque si sonara a la vez que la ticketera (pitido y corte del
-  // papel) se taparían. Una falla de audio nunca afecta la impresión: ver playSaleReceiptSound.
+  // por igual) — pedido del usuario. Arranca ya y se arma el ticket mientras suena; se espera un
+  // instante (SALE_SOUND_LEAD_MS) para que el golpe principal suene antes de que la ticketera
+  // arranque y se tapen entre sí, sin retrasar el ticket lo que dura todo el audio (2,2 s). Una falla
+  // de audio nunca afecta la impresión: ver playSaleReceiptSound.
   const soundDone = playSaleReceiptSound()
   const data = await buildSaleDocumentEscPos(printData, cfg.paperWidthMm, {
     openDrawer: Boolean(cfg.openDrawerOnPrint),

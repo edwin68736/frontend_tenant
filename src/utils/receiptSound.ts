@@ -35,12 +35,15 @@ async function loadBuffer(ctx: AudioContext): Promise<AudioBuffer | null> {
 
 /**
  * Llamar ANTES de enviar un comprobante de venta a la ticketera (ver printDocumentAuto en
- * printers.service.ts). Devuelve una promesa que se resuelve cuando termina el sonido (con un tope),
- * para que quien imprime la espere: si el sonido sonara a la vez que la ticketera (su pitido y el
- * corte del papel), se taparían entre sí. Best-effort: nunca rechaza ni debe romper el flujo de
- * impresión si el WebView bloquea el audio o no hay altavoz (en ese caso resuelve al instante).
+ * printers.service.ts). Devuelve una promesa que se resuelve cuando el sonido termina o pasan
+ * `leadMs` (lo que ocurra primero): quien imprime la espera para que el golpe principal del sonido
+ * suene antes de que la ticketera arranque (su pitido y el corte del papel lo taparían), SIN
+ * retrasar el ticket durante toda la duración del audio (2,2 s). Best-effort: nunca rechaza ni debe
+ * romper el flujo de impresión si el WebView bloquea el audio o no hay altavoz (resuelve al instante).
  */
-export function playSaleReceiptSound(maxWaitMs = 2500): Promise<void> {
+export const SALE_SOUND_LEAD_MS = 700
+
+export function playSaleReceiptSound(maxWaitMs = SALE_SOUND_LEAD_MS): Promise<void> {
   return new Promise<void>((resolve) => {
     try {
       const ctx = getAudioContext()
