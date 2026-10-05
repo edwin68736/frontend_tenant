@@ -6,6 +6,7 @@ import { salesService, type Sale, type SaleListSummary } from '@/services/sales.
 import { companyService } from '@/services/company.service'
 import { cashbankService, type PaymentMethodRecord } from '@/services/cashbank.service'
 import { exportTableToPdf, type ExportColumn as PdfExportColumn } from '@/utils/exportPdf'
+import { OnlyCancelledSwitch } from '@/components/ui/OnlyCancelledSwitch'
 import { exportTableToExcel, type ExportColumn as ExcelExportColumn } from '@/utils/exportExcel'
 import { formatDisplayDatePeru, getTodayPeru } from '@/utils/datesPeru'
 import {
@@ -562,6 +563,14 @@ export default function SalesReportPage() {
               onChange={e => { setSearchCustomer(e.target.value); setPage(1) }}
             />
           </div>
+          {/* Atajo del filtro "Estado venta": encendido = Anuladas; apagado = Todas. */}
+          <OnlyCancelledSwitch
+            checked={filters.sale_status === 'cancelled'}
+            onChange={(v) => {
+              setFilters((f) => ({ ...f, sale_status: v ? 'cancelled' : 'all' }))
+              setPage(1)
+            }}
+          />
           <button
             type="button"
             onClick={() => void exportPdf()}

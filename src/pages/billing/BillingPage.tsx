@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { OnlyCancelledSwitch } from '@/components/ui/OnlyCancelledSwitch'
 import { createPortal } from 'react-dom'
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -127,6 +128,8 @@ function BillingContent() {
   const [searchParams] = useSearchParams()
   const [viewMode, setViewMode] = useState<'invoices' | 'credit_notes' | 'summaries_voided'>('invoices')
   const [filterStatus, setFilterStatus] = useState<string>(() => searchParams.get('status') || '')
+  /** Solo comprobantes anulados (sale_status=cancelled). Apagado = anuladas y no anuladas juntas. */
+  const [onlyCancelled, setOnlyCancelled] = useState(false)
   // Solo aplica a la pestaña "Facturas y boletas"; '' = ambos tipos (comportamiento previo).
   const [docTypeFilter, setDocTypeFilter] = useState<'' | '01' | '03'>('')
   const [searchTerm, setSearchTerm] = useState('')
@@ -242,6 +245,7 @@ function BillingContent() {
         from: dateRange.from || undefined,
         to: dateRange.to || undefined,
         billing_status: filterStatus || undefined,
+        sale_status: onlyCancelled ? 'cancelled' : undefined,
         page,
         per_page: perPage,
       })
@@ -257,6 +261,7 @@ function BillingContent() {
       from: dateRange.from || undefined,
       to: dateRange.to || undefined,
       billing_status: filterStatus || undefined,
+      sale_status: onlyCancelled ? 'cancelled' : undefined,
       sunat_code: docTypeFilter || '01,03',
       page,
       per_page: perPage,
@@ -309,7 +314,7 @@ function BillingContent() {
     if (status && ['pending', 'error', 'rejected', 'sent', 'accepted'].includes(status)) setFilterStatus(status)
   }, [searchParams])
 
-  useEffect(() => { load() }, [viewMode, noteKind, filterStatus, docTypeFilter, searchTerm, dateRange.from, dateRange.to, page, perPage])
+  useEffect(() => { load() }, [viewMode, noteKind, filterStatus, onlyCancelled, docTypeFilter, searchTerm, dateRange.from, dateRange.to, page, perPage])
 
   useEffect(() => {
     const id = (location.state as { openSaleId?: number } | null)?.openSaleId
@@ -998,6 +1003,13 @@ function BillingContent() {
             </option>
           ))}
         </select>
+        <OnlyCancelledSwitch
+          checked={onlyCancelled}
+          onChange={(v) => {
+            setOnlyCancelled(v)
+            setPage(1)
+          }}
+        />
         {viewMode === 'invoices' && (
           <select
             className="border border-gray-200 rounded-xl px-3 py-2 text-sm min-w-[150px]"

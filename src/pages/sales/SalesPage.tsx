@@ -29,6 +29,7 @@ import { formatPaymentMethodLabel } from '@/utils/paymentMethodLabel'
 import { formatSaleMoney } from '@/utils/formatMoney'
 import { enrichPrintDataWithSaleUnitNames, resolveSaleUnitNames, saleLineUnitLabel } from '@/utils/saleUnitNames'
 import { SearchableSelect } from '@/components/SearchableSelect'
+import { OnlyCancelledSwitch } from '@/components/ui/OnlyCancelledSwitch'
 import { quickAddDefaultsFromQuery } from '@/utils/contactQuickAdd'
 import { contactsService, type Contact } from '@/services/contacts.service'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
@@ -97,6 +98,8 @@ function SalesContent() {
 
   const [emitOpen, setEmitOpen] = useState(false)
   // Anulación de nota de venta: exige motivo, igual que la baja SUNAT de un electrónico.
+  /** Solo notas de venta anuladas (sale_status=cancelled). Apagado = anuladas y no anuladas juntas. */
+  const [onlyCancelled, setOnlyCancelled] = useState(false)
   const [cancelTarget, setCancelTarget] = useState<Sale | null>(null)
   const [cancelReason, setCancelReason] = useState('')
   const [cancelling, setCancelling] = useState(false)
@@ -130,6 +133,7 @@ function SalesContent() {
         from: dateRange.from || undefined,
         to: dateRange.to || undefined,
         sunat_code: '00',
+        sale_status: onlyCancelled ? 'cancelled' : undefined,
         page,
         per_page: perPage,
       })
@@ -143,7 +147,7 @@ function SalesContent() {
 
   useEffect(() => {
     void load()
-  }, [q, dateRange.from, dateRange.to, page, perPage])
+  }, [q, dateRange.from, dateRange.to, onlyCancelled, page, perPage])
 
   useEffect(() => {
     if (!waMenu) return
@@ -475,6 +479,13 @@ function SalesContent() {
             value={dateRange.to}
             onChange={(e) => {
               setDateRange((prev) => ({ ...prev, to: e.target.value }))
+              setPage(1)
+            }}
+          />
+          <OnlyCancelledSwitch
+            checked={onlyCancelled}
+            onChange={(v) => {
+              setOnlyCancelled(v)
               setPage(1)
             }}
           />
