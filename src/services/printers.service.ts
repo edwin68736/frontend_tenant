@@ -833,13 +833,15 @@ export async function printPrecuentaAuto(input: {
 export async function printDocumentAuto(printData: PrintData): Promise<string> {
   const cfg = getConfiguredPrinter('documentos')
   if (!cfg) return 'Impresora de documentos no configurada'
+  // Sonido tipo caja registradora ANTES de imprimir (Windows/Tauri, Android/Capacitor y navegador
+  // por igual) — pedido del usuario. Arranca ya y se arma el ticket mientras suena; se espera a que
+  // termine antes de enviarlo, porque si sonara a la vez que la ticketera (pitido y corte del
+  // papel) se taparían. Una falla de audio nunca afecta la impresión: ver playSaleReceiptSound.
+  const soundDone = playSaleReceiptSound()
   const data = await buildSaleDocumentEscPos(printData, cfg.paperWidthMm, {
     openDrawer: Boolean(cfg.openDrawerOnPrint),
   })
-  // Sonido tipo caja registradora al enviar el comprobante a la ticketera (Windows/Tauri y
-  // Android/Capacitor por igual) — pedido del usuario. No se espera ni se deja que una falla de
-  // audio afecte la impresión: ver playSaleReceiptSound.
-  playSaleReceiptSound()
+  await soundDone
   return printRawEscPos({ ...cfg, data, docName: `${TUKIFAC_APP_NAME} - Documento` })
 }
 

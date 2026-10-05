@@ -1338,7 +1338,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 )}
                 <td className="px-4 py-3 font-mono text-xs text-gray-500">{p.code || '-'}</td>
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
+                  {/* max-w: sin tope, una descripción larga ensancha toda la tabla (el truncate no actúa). */}
+                  <div className="flex items-center gap-2 max-w-[26rem]">
                     {pageMode === 'product' ? (
                       <button
                         type="button"
@@ -1392,7 +1393,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                     <div className="min-w-0">
                       <p className="font-medium text-gray-800 truncate">{p.name}</p>
                       {p.description && (
-                        <p className="text-xs text-gray-500 truncate">{p.description}</p>
+                        <p className="text-xs text-gray-500 truncate" title={p.description}>{p.description}</p>
                       )}
                     </div>
                   </div>

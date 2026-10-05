@@ -34,23 +34,41 @@ async function loadBuffer(ctx: AudioContext): Promise<AudioBuffer | null> {
 }
 
 /**
- * Llamar justo al enviar un comprobante de venta a la ticketera (ver printDocumentAuto en
- * printers.service.ts). Best-effort: nunca debe romper el flujo de impresión ni de venta si el
- * WebView bloquea el audio o no hay altavoz.
+ * Llamar ANTES de enviar un comprobante de venta a la ticketera (ver printDocumentAuto en
+ * printers.service.ts). Devuelve una promesa que se resuelve cuando termina el sonido (con un tope),
+ * para que quien imprime la espere: si el sonido sonara a la vez que la ticketera (su pitido y el
+ * corte del papel), se taparían entre sí. Best-effort: nunca rechaza ni debe romper el flujo de
+ * impresión si el WebView bloquea el audio o no hay altavoz (en ese caso resuelve al instante).
  */
-export function playSaleReceiptSound(): void {
-  try {
-    const ctx = getAudioContext()
-    if (!ctx) return
-    if (!bufferPromise) bufferPromise = loadBuffer(ctx)
-    void bufferPromise.then((buffer) => {
-      if (!buffer) return
-      const source = ctx.createBufferSource()
-      source.buffer = buffer
-      source.connect(ctx.destination)
-      source.start()
-    })
-  } catch {
-    /* nunca debe romper la impresión */
-  }
+export function playSaleReceiptSound(maxWaitMs = 2500): Promise<void> {
+  return new Promise<void>((resolve) => {
+    try {
+      const ctx = getAudioContext()
+      if (!ctx) return resolve()
+      if (!bufferPromise) bufferPromise = loadBuffer(ctx)
+      const safety = window.setTimeout(resolve, maxWaitMs)
+      void bufferPromise
+        .then((buffer) => {
+          if (!buffer) {
+            window.clearTimeout(safety)
+            return resolve()
+          }
+          const source = ctx.createBufferSource()
+          source.buffer = buffer
+          source.connect(ctx.destination)
+          source.onended = () => {
+            window.clearTimeout(safety)
+            resolve()
+          }
+          source.start()
+        })
+        .catch(() => {
+          window.clearTimeout(safety)
+          resolve()
+        })
+    } catch {
+      /* nunca debe romper la impresión */
+      resolve()
+    }
+  })
 }
