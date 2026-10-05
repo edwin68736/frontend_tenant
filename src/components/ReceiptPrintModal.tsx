@@ -16,6 +16,7 @@ import {
   printDocumentAuto,
 } from '@/services/printers.service'
 import { PdfBlobViewer } from '@/components/PdfBlobViewer'
+import { configuredTicketPaperMm, normalizeTicketPaperWidth } from '@/utils/receiptTicketPaper'
 
 type PdfFormat = 'ticket' | 'a4'
 
@@ -94,8 +95,7 @@ export function ReceiptPrintModal({
       : { title: 'Recibo de venta', subtitle: 'Comprobante generado correctamente', footer: 'Venta registrada' }
 
   const ticketPdfOptions = useCallback((): ReceiptPdfOptions => {
-    const mm = printerCfg?.paperWidthMm === 58 ? 58 : 80
-    return { paperWidthMm: mm }
+    return { paperWidthMm: normalizeTicketPaperWidth(printerCfg?.paperWidthMm ?? configuredTicketPaperMm()) }
   }, [printerCfg?.paperWidthMm])
 
   const displayNumber = saleNumber || printData?.number || '—'

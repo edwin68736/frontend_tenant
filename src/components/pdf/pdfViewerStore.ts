@@ -16,6 +16,13 @@ export type PdfViewerRequest = {
   fileName?: string
   /** Se llama al cerrar, para liberar el object URL. */
   onClose?: () => void
+  /** false = oculta la barra del visor nativo (su botón de imprimir no respeta el tamaño de ticket). */
+  nativeToolbar?: boolean
+  /**
+   * Si se indica, el visor muestra un botón "Imprimir" propio. Puede devolver un mensaje de éxito
+   * (impresión directa); sin mensaje se asume que el usuario ya vio el diálogo de impresión.
+   */
+  onPrint?: () => Promise<string | undefined | void>
 }
 
 type Listener = (req: PdfViewerRequest | null) => void

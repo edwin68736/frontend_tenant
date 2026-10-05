@@ -23,6 +23,7 @@ import { getPrintIssuerAddress } from '@/utils/printIssuer'
 import { trimCompanyAdditionalNotes } from '@/utils/receiptCompanyNotes'
 import { getCreditNoteReference } from '@/utils/receiptCreditNoteRef'
 import {
+  configuredTicketPaperMm,
   normalizeTicketPaperWidth,
   ticketMarginMm,
   ticketPageWidthMm,
@@ -196,7 +197,7 @@ export async function generateReceiptPdf(
   options?: ReceiptPdfOptions,
 ): Promise<jsPDF> {
   const isTicket = format === 'ticket'
-  const paperMm = normalizeTicketPaperWidth(options?.paperWidthMm)
+  const paperMm = normalizeTicketPaperWidth(options?.paperWidthMm ?? configuredTicketPaperMm())
   const nvLayout = getNotaVentaPrintLayout(data.sunat_code)
   const showPaymentCondition = !nvLayout || nvLayout.showPaymentCondition
   const pageW = isTicket ? ticketPageWidthMm(paperMm) : A4_WIDTH
@@ -649,11 +650,27 @@ export async function openReceiptPdfInNewTab(
     fit: format === 'a4' ? 'page' : undefined,
     fileName: receiptPdfFileName(data, format),
     onClose: () => URL.revokeObjectURL(url),
+    // Ticket: la barra del visor nativo imprimiría el PDF escalado a la hoja que tenga la
+    // impresora; se oculta y se ofrece un "Imprimir" propio que respeta 58/80 mm. En escritorio y
+    // Android (impresión directa) va a la ticketera configurada, igual que al cobrar.
+    ...(format === 'ticket'
+      ? {
+          nativeToolbar: false,
+          onPrint: async () => {
+            const { isNativePrintAvailable, printDocumentAuto } = await import('@/services/printers.service')
+            if (isNativePrintAvailable()) {
+              return (await printDocumentAuto(data)) || 'Comprobante enviado a la impresora'
+            }
+            await printReceiptPdf(data, 'ticket', options)
+            return undefined
+          },
+        }
+      : {}),
   })
 }
 
 /** Espera a que el usuario cierre el diálogo de impresión del navegador (imprimir o cancelar). */
-function waitForBrowserPrintDialog(printWindow: Window): Promise<void> {
+export function waitForBrowserPrintDialog(printWindow: Window): Promise<void> {
   return new Promise((resolve) => {
     let settled = false
     let printDialogOpened = false
@@ -719,6 +736,13 @@ export async function printReceiptPdf(
   format: 'a4' | 'ticket' = 'a4',
   options?: ReceiptPdfOptions,
 ): Promise<void> {
+  // Ticket: hoja del tamaño exacto del rollo (58/80 mm) en vez de un PDF que el visor escala.
+  if (format === 'ticket') {
+    const { printTicketAsPage } = await import('@/utils/receiptPng')
+    await printTicketAsPage(data, options)
+    return
+  }
+
   const blob = await printDataToPdfBlob(data, format, options)
   const url = URL.createObjectURL(blob)
 

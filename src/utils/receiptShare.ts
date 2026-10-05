@@ -3,6 +3,7 @@ import type { PrintData } from '@/types/printData'
 import { isCapacitorAndroid, isTauriDesktop } from '@/lib/platform/detect'
 import { getConfiguredPrinter } from '@/services/printers.service'
 import { printDataToPdfBlob, receiptPdfFileName } from '@/utils/receiptPdf'
+import { configuredTicketPaperMm, normalizeTicketPaperWidth } from '@/utils/receiptTicketPaper'
 import { downloadBlob } from '@/utils/downloadBlob'
 import { openExternalUrl } from '@/utils/supportWhatsApp'
 
@@ -95,7 +96,9 @@ export async function shareBlobFile(
 export async function shareReceiptPdf(data: PrintData, format: 'a4' | 'ticket'): Promise<void> {
   const cfg = getConfiguredPrinter('documentos')
   const pdfOpts =
-    format === 'ticket' ? { paperWidthMm: cfg?.paperWidthMm === 58 ? (58 as const) : (80 as const) } : undefined
+    format === 'ticket'
+      ? { paperWidthMm: normalizeTicketPaperWidth(cfg?.paperWidthMm ?? configuredTicketPaperMm()) }
+      : undefined
   const blob = await printDataToPdfBlob(data, format, pdfOpts)
   const fileName = receiptPdfFileName(data, format)
   const label = format === 'ticket' ? 'ticket' : 'A4'

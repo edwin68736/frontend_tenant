@@ -25,6 +25,7 @@ import { SearchableSelect } from '@/components/SearchableSelect'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
 import { quotationsService, type Quotation, type QuotationConvertTarget } from '@/services/quotations.service'
 import { PrintDocButton } from '@/components/print/PrintDocButton'
+import { configuredTicketPaperMm } from '@/utils/receiptTicketPaper'
 import { companyService, tenantCanEmitFactura } from '@/services/company.service'
 import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
 import { contactsService, type Contact } from '@/services/contacts.service'
@@ -969,7 +970,7 @@ function QuotationsContent() {
               onChange={(e) => setEmailFormat(e.target.value as 'a4' | 'ticket')}
             >
               <option value="a4">A4</option>
-              <option value="ticket">Ticket (80 mm)</option>
+              <option value="ticket">Ticket ({configuredTicketPaperMm()} mm)</option>
             </select>
           </div>
           <div className="flex justify-end gap-2 pt-2">

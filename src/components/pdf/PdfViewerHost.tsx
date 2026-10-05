@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Download, X } from 'lucide-react'
+import { Download, Loader2, Printer, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { PortalModal } from '@/components/ui/PortalModal'
 import { PdfBlobViewer } from '@/components/PdfBlobViewer'
@@ -14,6 +14,7 @@ import { closePdfViewer, subscribePdfViewer, type PdfViewerRequest } from './pdf
  */
 export function PdfViewerHost() {
   const [req, setReq] = useState<PdfViewerRequest | null>(null)
+  const [printing, setPrinting] = useState(false)
 
   useEffect(() => subscribePdfViewer(setReq), [])
 
@@ -29,6 +30,19 @@ export function PdfViewerHost() {
     }
   }
 
+  const handlePrint = async () => {
+    if (!req.onPrint || printing) return
+    setPrinting(true)
+    try {
+      const msg = await req.onPrint()
+      if (msg) toast.success(msg)
+    } catch (e) {
+      toast.error((e as Error)?.message ?? 'No se pudo imprimir el comprobante')
+    } finally {
+      setPrinting(false)
+    }
+  }
+
   return (
     <PortalModal open onClose={closePdfViewer} className="max-w-4xl">
       {/* h-[85vh] (no solo max-h): con max-h a secas el modal se encoge al tamaño natural de sus
@@ -38,6 +52,18 @@ export function PdfViewerHost() {
         <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
           <h3 className="truncate text-sm font-bold text-gray-800">{req.title}</h3>
           <div className="flex items-center gap-1">
+            {req.onPrint ? (
+              <button
+                type="button"
+                disabled={printing}
+                onClick={() => void handlePrint()}
+                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:opacity-60"
+                aria-label="Imprimir"
+              >
+                {printing ? <Loader2 size={15} className="animate-spin" /> : <Printer size={15} />}
+                <span>Imprimir</span>
+              </button>
+            ) : null}
             {req.fileName ? (
               <button
                 type="button"
@@ -63,7 +89,7 @@ export function PdfViewerHost() {
           <PdfBlobViewer
             url={req.url}
             title={req.title}
-            embedOptions={req.fit ? { fit: req.fit } : undefined}
+            embedOptions={{ fit: req.fit, toolbar: req.nativeToolbar }}
             // Este contenedor (min-h-0 flex-1) ya tiene toda la altura sobrante del modal
             // (hasta max-h-90vh) — sin esto, PdfBlobViewer usa su tope por defecto de 520px y un
             // A4 con fit:"page" (zoom=page-fit) termina encogido a ~40% para caber ahí, con medio

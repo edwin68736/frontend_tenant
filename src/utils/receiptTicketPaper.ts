@@ -1,4 +1,6 @@
-﻿/** Ancho de rollo térmico (config impresoras Windows / Android). */
+﻿import { loadStoredPrinterSettings } from '@/services/printers/storage'
+
+/** Ancho de rollo térmico (config impresoras Windows / Android). */
 export type TicketPaperWidthMm = 58 | 80
 
 /** Columnas ESC/POS fuente normal: 58 mm → 32, 80 mm → 48 (estándar industria). */
@@ -8,6 +10,19 @@ export function escposColumnsForPaper(mm: TicketPaperWidthMm): number {
 
 export function normalizeTicketPaperWidth(mm: unknown): TicketPaperWidthMm {
   return mm === 58 ? 58 : 80
+}
+
+/**
+ * Ancho de rollo configurado en Ajustes → Impresoras (documentos). Es el valor por defecto de
+ * todo ticket cuyo llamador no indica ancho: antes las listas (Ventas, Cotizaciones, Facturación)
+ * pedían el PDF sin ancho y salía siempre a 80 mm aunque la impresora fuera de 58 mm.
+ */
+export function configuredTicketPaperMm(): TicketPaperWidthMm {
+  try {
+    return normalizeTicketPaperWidth(loadStoredPrinterSettings().documentos.paperWidthMm)
+  } catch {
+    return 80
+  }
 }
 
 export function ticketPageWidthMm(mm: TicketPaperWidthMm): number {

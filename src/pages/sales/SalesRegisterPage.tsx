@@ -3327,7 +3327,6 @@ function SalesRegisterContent({
         defaultEmail={selectedContact?.email ?? printData?.client?.email ?? ''}
         saleNumber={lastSale?.number}
         total={lastSale?.total}
-        openInReceiptView
         documentKind={isQuotation ? 'quotation' : 'sale'}
       />
 

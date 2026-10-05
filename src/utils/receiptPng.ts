@@ -1,7 +1,8 @@
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import type { PrintData } from '@/types/printData'
-import { generateReceiptPdf } from '@/utils/receiptPdf'
+import { generateReceiptPdf, waitForBrowserPrintDialog, type ReceiptPdfOptions } from '@/utils/receiptPdf'
+import { configuredTicketPaperMm, normalizeTicketPaperWidth } from '@/utils/receiptTicketPaper'
 import { normalizePhoneForWhatsApp } from '@/utils/membershipReminders'
 import { shareBlobFile } from '@/utils/receiptShare'
 import { downloadBlob } from '@/utils/downloadBlob'
@@ -17,8 +18,9 @@ export async function generateReceiptPngBlob(
   data: PrintData,
   format: 'a4' | 'ticket' = 'a4',
   scale = 2.25,
+  options?: ReceiptPdfOptions,
 ): Promise<Blob> {
-  const doc = await generateReceiptPdf(data, format)
+  const doc = await generateReceiptPdf(data, format, options)
   const ab = doc.output('arraybuffer') as ArrayBuffer
   const pdfData = new Uint8Array(ab)
   const loadTask = pdfjsLib.getDocument({ data: pdfData.slice() })
@@ -38,6 +40,91 @@ export async function generateReceiptPngBlob(
   return await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('No se pudo generar PNG'))), 'image/png', 0.92)
   })
+}
+
+/**
+ * Imprime el ticket con una hoja del tamaño EXACTO del rollo (58 u 80 mm de ancho y el alto del
+ * contenido), en vez de dejar que el visor de PDF lo escale a la hoja que tenga la impresora
+ * (A4 por defecto, con el ticket diminuto arriba). El PDF se rasteriza a ~300 dpi y se imprime
+ * como imagen con `@page { size: <ancho>mm <alto>mm; margin: 0 }`, que Chromium (navegador,
+ * WebView2 de Tauri) respeta como tamaño de papel.
+ */
+export async function printTicketAsPage(data: PrintData, options?: ReceiptPdfOptions): Promise<void> {
+  const paperMm = normalizeTicketPaperWidth(options?.paperWidthMm ?? configuredTicketPaperMm())
+  const pageWidthPt = (paperMm / 25.4) * 72
+  const scale = ((paperMm / 25.4) * 300) / pageWidthPt // 300 dpi
+  const blob = await generateReceiptPngBlob(data, 'ticket', scale, { ...options, paperWidthMm: paperMm })
+  const imgUrl = URL.createObjectURL(blob)
+
+  try {
+    const img = new Image()
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve()
+      img.onerror = () => reject(new Error('No se pudo preparar el ticket para imprimir'))
+      img.src = imgUrl
+    })
+    // Un pelo menos de alto evita que el redondeo genere una segunda hoja casi en blanco.
+    const heightMm = Math.floor((img.naturalHeight / img.naturalWidth) * paperMm * 10) / 10
+
+    await new Promise<void>((resolve, reject) => {
+      const iframe = document.createElement('iframe')
+      iframe.setAttribute('aria-hidden', 'true')
+      iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;'
+      iframe.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><title>Ticket</title>
+<style>
+@page { size: ${paperMm}mm ${heightMm}mm; margin: 0; }
+html, body { margin: 0; padding: 0; width: ${paperMm}mm; background: #fff; overflow: hidden; }
+img { display: block; width: ${paperMm}mm; height: ${heightMm}mm; }
+</style></head><body><img src="${imgUrl}" alt=""></body></html>`
+
+      let settled = false
+      const cleanup = () => {
+        window.setTimeout(() => iframe.remove(), 2_000)
+      }
+      const finish = () => {
+        if (settled) return
+        settled = true
+        cleanup()
+        resolve()
+      }
+      const fail = (err: Error) => {
+        if (settled) return
+        settled = true
+        cleanup()
+        reject(err)
+      }
+
+      iframe.onload = () => {
+        void (async () => {
+          try {
+            const win = iframe.contentWindow
+            if (!win) {
+              fail(new Error('No se pudo abrir el visor de impresión'))
+              return
+            }
+            const image = win.document.querySelector('img')
+            if (image && !image.complete) {
+              await new Promise<void>((r) => {
+                image.onload = () => r()
+                image.onerror = () => r()
+              })
+            }
+            win.focus()
+            win.print()
+            await waitForBrowserPrintDialog(win)
+            finish()
+          } catch (e) {
+            fail(e instanceof Error ? e : new Error(String(e)))
+          }
+        })()
+      }
+      iframe.onerror = () => fail(new Error('No se pudo cargar el ticket para imprimir'))
+      document.body.appendChild(iframe)
+    })
+  } finally {
+    // La imagen ya está en el iframe; se libera tras un respiro (la impresión puede seguir leyéndola).
+    window.setTimeout(() => URL.revokeObjectURL(imgUrl), 5_000)
+  }
 }
 
 export type ShareReceiptWhatsAppOpts = {

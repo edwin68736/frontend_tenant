@@ -37,7 +37,7 @@ type Props = {
   title?: string
   className?: string
   /** Opciones del visor nativo del iframe (p. ej. fit: 'page' en A4). */
-  embedOptions?: { fit?: 'page' | 'width' }
+  embedOptions?: { fit?: 'page' | 'width'; toolbar?: boolean }
 }
 
 /**

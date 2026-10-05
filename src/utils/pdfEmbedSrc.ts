@@ -9,9 +9,9 @@
  * Se emiten los parámetros estándar (`view=Fit`/`FitH`) y los del visor pdf.js
  * (`zoom=page-fit`/`page-width`) para máxima compatibilidad entre motores.
  */
-export function pdfEmbedSrc(blobUrl: string, opts?: { fit?: 'page' | 'width' }): string {
+export function pdfEmbedSrc(blobUrl: string, opts?: { fit?: 'page' | 'width'; toolbar?: boolean }): string {
   const base = blobUrl.split('#')[0]
-  const parts = ['toolbar=1', 'navpanes=0', 'scrollbar=1']
+  const parts = [`toolbar=${opts?.toolbar === false ? 0 : 1}`, 'navpanes=0', 'scrollbar=1']
   if (opts?.fit === 'page') parts.push('view=Fit', 'zoom=page-fit')
   else if (opts?.fit === 'width') parts.push('view=FitH', 'zoom=page-width')
   else parts.push('zoom=100')

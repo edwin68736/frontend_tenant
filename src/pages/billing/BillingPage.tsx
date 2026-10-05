@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { Send, Eye, RefreshCw, X, FileText, FileCode, Archive, Download, FileSignature, FileBarChart, Ban, Search, Ticket, FileDown, ChevronDown, Truck, Receipt, MoreVertical, CalendarClock, Plus } from 'lucide-react'
 import { salesService, type Sale, type SaleDetail, type SaleItem } from '@/services/sales.service'
 import { PrintDocButton } from '@/components/print/PrintDocButton'
+import { configuredTicketPaperMm } from '@/utils/receiptTicketPaper'
 import { RowMenu } from '@/components/ui/RowMenu'
 import { billingService, type SunatSummary, type SunatVoided, type VoidedDetailInput, type InvoiceStatusResult } from '@/services/billing.service'
 import { companyService, type SeriesRow } from '@/services/company.service'
@@ -1563,7 +1564,7 @@ function BillingContent() {
                         disabled={viewingTicketPdfSaleId === detail.sale.id}
                         onClick={() => void openLocalPdfViewer(detail.sale.id, 'ticket')}
                         className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-orange-100 text-orange-900 hover:bg-orange-200 text-xs font-medium disabled:opacity-70 disabled:cursor-wait"
-                        title="Abrir PDF formato ticket (80 mm)"
+                        title={`Abrir PDF formato ticket (${configuredTicketPaperMm()} mm)`}
                       >
                         {viewingTicketPdfSaleId === detail.sale.id ? <RefreshCw size={14} className="animate-spin" /> : <Ticket size={14} />}
                         Ticket

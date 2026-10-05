@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import { Search, Eye, X, Plus, FileText, ExternalLink, RefreshCw, Download, Ticket, FileDown, ChevronDown, Ban } from 'lucide-react'
 import { salesService, type Sale, type SaleDetail } from '@/services/sales.service'
 import { PrintDocButton } from '@/components/print/PrintDocButton'
+import { configuredTicketPaperMm } from '@/utils/receiptTicketPaper'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { formatDisplayDatePeru, getTodayPeru } from '@/utils/datesPeru'
@@ -561,7 +562,7 @@ function SalesContent() {
                         disabled={pdfTicketPreviewBusyId === pdfId}
                         onClick={() => void openNotaPdfTicketPreview(pdfId)}
                         className="p-1.5 text-orange-700 hover:bg-orange-50 rounded-lg disabled:opacity-40"
-                        title="Ver PDF formato ticket (80 mm)"
+                        title={`Ver PDF formato ticket (${configuredTicketPaperMm()} mm)`}
                       >
                         {pdfTicketPreviewBusyId === pdfId ? <RefreshCw size={14} className="animate-spin" /> : <Ticket size={14} />}
                       </button>

@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import type { PrintData } from '@/types/printData'
 import { Modal } from '@/components/ui/Modal'
 import { PdfBlobViewer } from '@/components/PdfBlobViewer'
+import { configuredTicketPaperMm, normalizeTicketPaperWidth } from '@/utils/receiptTicketPaper'
 import { printDataToPdfBlob, type ReceiptPdfOptions } from '@/utils/receiptPdf'
 import { getConfiguredPrinter } from '@/services/printers.service'
 
@@ -58,8 +59,10 @@ export function SaleReceiptPreviewModal({
 
   const ticketPdfOptions = useCallback((): ReceiptPdfOptions => {
     const printerCfg = getConfiguredPrinter('documentos')
-    const mm = printerCfg?.paperWidthMm === 58 ? 58 : 80
-    return { paperWidthMm: mm, preview: true }
+    return {
+      paperWidthMm: normalizeTicketPaperWidth(printerCfg?.paperWidthMm ?? configuredTicketPaperMm()),
+      preview: true,
+    }
   }, [])
 
   const revokePdfUrl = useCallback(() => {
