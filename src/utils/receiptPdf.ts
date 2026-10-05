@@ -161,6 +161,8 @@ function renderFiscalFooter(
 
 export type ReceiptPdfOptions = {
   paperWidthMm?: 58 | 80
+  /** Ancho real de la página en mm (por defecto el del rollo). Permite maquetar a 48 mm nativos. */
+  layoutWidthMm?: number
   /** Marca de agua diagonal "Previsualizacion" (solo vista previa, no comprobante guardado). */
   preview?: boolean
 }
@@ -200,8 +202,13 @@ export async function generateReceiptPdf(
   const paperMm = normalizeTicketPaperWidth(options?.paperWidthMm ?? configuredTicketPaperMm())
   const nvLayout = getNotaVentaPrintLayout(data.sunat_code)
   const showPaymentCondition = !nvLayout || nvLayout.showPaymentCondition
-  const pageW = isTicket ? ticketPageWidthMm(paperMm) : A4_WIDTH
-  const margin = isTicket ? ticketMarginMm(paperMm) : MARGIN
+  const pageW = isTicket ? (options?.layoutWidthMm ?? ticketPageWidthMm(paperMm)) : A4_WIDTH
+  // Con maqueta propia (48 mm) el margen es mayor: la térmica recorta los bordes del área imprimible.
+  const margin = isTicket
+    ? options?.layoutWidthMm
+      ? Math.max(ticketMarginMm(paperMm), 1.5)
+      : ticketMarginMm(paperMm)
+    : MARGIN
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -423,7 +430,8 @@ export async function generateReceiptPdf(
       doc.setFontSize(ticketHeaderFontPt)
       doc.text('CANT', lay.xQty, y, { maxWidth: lay.wQty })
       doc.text('UNID', lay.xUnit, y, { maxWidth: lay.wUnit })
-      doc.text('DESC.', lay.xDesc, y, { maxWidth: lay.wDescFirst })
+      // En 48 mm la columna de descripción queda más angosta que su rótulo y lo pisaba con P.UNIT.
+      if (doc.getTextWidth('DESC.') <= lay.wDescFirst) doc.text('DESC.', lay.xDesc, y, { maxWidth: lay.wDescFirst })
       doc.text('P.UNIT', lay.xEndPUnit, y, { align: 'right', maxWidth: lay.wMoney })
       doc.text('TOTAL', lay.xEndTotal, y, { align: 'right', maxWidth: lay.wMoney })
       y += ticketLineH

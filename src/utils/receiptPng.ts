@@ -51,9 +51,14 @@ export async function generateReceiptPngBlob(
  *  - pageMm: ancho de la hoja (@page) · printMm: ancho que ocupa la imagen · dpi: resolución nativa.
  *  - binarize: blanco/negro puro (sin grises) para que la térmica no tramee el texto fino.
  */
-const TICKET_PRINT_SPEC: Record<number, { pageMm: number; printMm: number; dpi: number; binarize: boolean }> = {
+const TICKET_PRINT_SPEC: Record<
+  number,
+  { pageMm: number; printMm: number; dpi: number; binarize: boolean; layoutMm?: number }
+> = {
   80: { pageMm: 80, printMm: 72, dpi: 300, binarize: false },
-  58: { pageMm: 48, printMm: 48, dpi: 203, binarize: true },
+  // layoutMm: se maqueta directamente a 48 mm (fuentes a tamaño real) en vez de encoger una
+  // maqueta de 58 mm, que dejaba el texto a ~6 pt rasterizado a pocos puntos y se veía borroso.
+  58: { pageMm: 48, printMm: 48, dpi: 203, binarize: true, layoutMm: 48 },
 }
 
 /** Pasa a blanco y negro puro: los grises del antialiasing salen opacos/punteados en térmica. */
@@ -81,10 +86,10 @@ function binarizeCanvas(canvas: HTMLCanvasElement, threshold = 170) {
 export async function printTicketAsPage(data: PrintData, options?: ReceiptPdfOptions): Promise<void> {
   const paperMm = normalizeTicketPaperWidth(options?.paperWidthMm ?? configuredTicketPaperMm())
   const spec = TICKET_PRINT_SPEC[paperMm]
-  const pageWidthPt = (paperMm / 25.4) * 72
+  const pageWidthPt = ((spec.layoutMm ?? paperMm) / 25.4) * 72
   // El layout (paperMm) se encoge para caber en el ancho imprimible, a la resolución nativa.
   const scale = ((spec.printMm / 25.4) * spec.dpi) / pageWidthPt
-  const blob = await generateReceiptPngBlob(data, 'ticket', scale, { ...options, paperWidthMm: paperMm }, spec.binarize)
+  const blob = await generateReceiptPngBlob(data, 'ticket', scale, { ...options, paperWidthMm: paperMm, layoutWidthMm: spec.layoutMm }, spec.binarize)
   const imgUrl = URL.createObjectURL(blob)
 
   try {
@@ -106,7 +111,7 @@ export async function printTicketAsPage(data: PrintData, options?: ReceiptPdfOpt
 <style>
 @page { size: ${pageMm}mm ${heightMm}mm; margin: 0; }
 html, body { margin: 0; padding: 0; width: ${pageMm}mm; background: #fff; overflow: hidden; }
-img { display: block; width: ${printMm}mm; height: ${heightMm}mm; }
+img { display: block; image-rendering: pixelated; width: ${printMm}mm; height: ${heightMm}mm; }
 </style></head><body><img src="${imgUrl}" alt=""></body></html>`
 
       let settled = false
