@@ -237,11 +237,25 @@ export async function generateReceiptPdf(
     const ticketLineH = 4.5
     /** Helvetica 10pt + negro puro: mejor nitidez al imprimir ticket desde PDF. */
     const ticketDetailFontPt = FONT_SIZE_TICKET_BODY
+    /** Cabecera de la tabla: más chica que el detalle para que "CANT"/"UNID" no partan en dos líneas. */
+    const ticketHeaderFontPt = paperMm === 58 ? 7.5 : 8.5
+    // Columnas CANT/UNID dimensionadas por lo que miden realmente (cabecera en negrita y cantidad/
+    // unidad típicas), no por un ancho fijo: con 7 mm "CANT" se partía en "CA/NT".
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(ticketHeaderFontPt)
+    const wHdrQty = doc.getTextWidth('CANT')
+    const wHdrUnit = doc.getTextWidth('UNID')
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(ticketDetailFontPt)
+    const wBodyQty = doc.getTextWidth('0000')
+    const wBodyUnit = doc.getTextWidth('Unid')
     const lay = ticketColumnLayoutMm({
       pageW,
       margin,
       gapMm: paperMm === 58 ? 0.35 : 0.5,
       wMoneyMm: paperMm === 58 ? 14 : 15,
+      wQtyMm: Math.max(wHdrQty, wBodyQty) + 0.6,
+      wUnitMm: Math.max(wHdrUnit, wBodyUnit) + 0.6,
     })
 
     const setTicketDetailFont = (bold = false) => {
@@ -406,6 +420,7 @@ export async function generateReceiptPdf(
 
     const emitTicketHeaderRow = () => {
       setTicketDetailFont(true)
+      doc.setFontSize(ticketHeaderFontPt)
       doc.text('CANT', lay.xQty, y, { maxWidth: lay.wQty })
       doc.text('UNID', lay.xUnit, y, { maxWidth: lay.wUnit })
       doc.text('DESC.', lay.xDesc, y, { maxWidth: lay.wDescFirst })
@@ -450,10 +465,16 @@ export async function generateReceiptPdf(
       const desc = data.fiscal?.has_prepayment_emit ? `${baseDesc} *** Pago Anticipado ***` : baseDesc
       const pu = receiptItemDisplayUnitPrice(it, (n) => formatMoney(n, data.currency))
       const tot = receiptItemDisplayTotal(it, (n) => formatMoney(n, data.currency))
-      const descLines = doc.splitTextToSize(desc, lay.wDescFirst)
-      const firstDesc = descLines[0] ?? '—'
-
       setTicketDetailFont(false)
+      // Si la 1ª palabra no cabe en la columna angosta de la fila (58 mm), jsPDF la partiría a
+      // mitad de palabra ("A/ndroid"): se deja la fila sin descripción y el texto baja completo
+      // al ancho disponible de las líneas siguientes.
+      const firstWord = desc.trim().split(/s+/)[0] ?? ''
+      const firstWordFits = doc.getTextWidth(firstWord) <= lay.wDescFirst
+      const descLines: string[] = firstWordFits
+        ? doc.splitTextToSize(desc, lay.wDescFirst)
+        : ['', ...doc.splitTextToSize(desc, lay.wDescCont)]
+      const firstDesc = descLines[0] ?? '—'
       doc.text(String(it.quantity), lay.xQty, y, { maxWidth: lay.wQty })
       // splitTextToSize()[0] mide el ancho real con la fuente ya activa (setTicketDetailFont(false)
       // recién aplicado) y devuelve solo lo que cabe en lay.wUnit sin envolver — evita que jsPDF
