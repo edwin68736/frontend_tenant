@@ -37,6 +37,8 @@ export interface CompanyConfig {
    * la razón social se sigue mostrando igual.
    */
   show_business_name_on_sale_note?: boolean
+  /** Solo nota de venta (SUNAT 00): discriminar Op. gravadas / IGV en el impreso. Default true. */
+  show_igv_breakdown_on_sale_note?: boolean
   /** Tamaño del logo en TODOS los comprobantes, separado por formato: pequeno | mediano | grande. */
   logo_size_ticket?: string
   logo_size_a4?: string

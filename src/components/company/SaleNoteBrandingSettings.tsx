@@ -6,6 +6,7 @@ import { companyService } from '@/services/company.service'
 export function SaleNoteBrandingSettings() {
   const [tradeName, setTradeName] = useState('')
   const [showBusinessName, setShowBusinessName] = useState(true)
+  const [showIgvBreakdown, setShowIgvBreakdown] = useState(true)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
@@ -15,6 +16,7 @@ export function SaleNoteBrandingSettings() {
       .then((cfg) => {
         setTradeName(String(cfg.trade_name ?? '').trim())
         setShowBusinessName(cfg.show_business_name_on_sale_note !== false)
+        setShowIgvBreakdown(cfg.show_igv_breakdown_on_sale_note !== false)
       })
       .catch(() => toast.error('Error cargando configuración de notas de venta'))
       .finally(() => setLoading(false))
@@ -23,7 +25,10 @@ export function SaleNoteBrandingSettings() {
   const handleSave = async () => {
     setSaving(true)
     try {
-      await companyService.updateConfig({ show_business_name_on_sale_note: showBusinessName })
+      await companyService.updateConfig({
+        show_business_name_on_sale_note: showBusinessName,
+        show_igv_breakdown_on_sale_note: showIgvBreakdown,
+      })
       toast.success('Notas de venta actualizadas')
     } catch (e: unknown) {
       toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error al guardar')
@@ -67,6 +72,21 @@ export function SaleNoteBrandingSettings() {
           : tradeName
             ? `Se ocultará la razón social; se mostrará el nombre comercial ("${tradeName}") en su lugar.`
             : 'No tiene nombre comercial configurado (Empresa → Datos generales), así que la razón social se seguirá mostrando aunque esta opción esté desactivada.'}
+      </p>
+
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={showIgvBreakdown}
+          onChange={(e) => setShowIgvBreakdown(e.target.checked)}
+          className="rounded"
+        />
+        <span className="text-sm text-gray-700">Mostrar desglose del IGV en las notas de venta</span>
+      </label>
+      <p className="text-xs text-gray-500">
+        {showIgvBreakdown
+          ? 'Se muestran Op. gravadas, IGV y el total, como hoy.'
+          : 'Solo se mostrará el total a pagar (y el descuento, si lo hay). Aplica al ticket, al PDF A4, a la vista previa y a la impresión directa.'}
       </p>
 
       <div className="flex justify-end">

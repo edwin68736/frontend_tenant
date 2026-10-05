@@ -111,7 +111,12 @@ export function buildReceiptTotalLines(data: PrintData): ReceiptTotalLine[] {
   // Nuevo RUS: la boleta no discrimina valor de venta / IGV en el impreso
   // (Reglamento CP Art. 8, num. 3). Se omite el desglose y se muestra solo el
   // total; el XML enviado a SUNAT sí conserva el IGV.
-  const hideBreakdown = data.company?.show_igv_breakdown === false
+  const hideBreakdownByRegime = data.company?.show_igv_breakdown === false
+  // Solo nota de venta (SUNAT 00): ajuste propio en Ajustes → Comprobantes. Con el desglose apagado
+  // se muestra el total (y los descuentos, si los hay); boleta y factura no se ven afectadas.
+  const hideBreakdownBySaleNoteSetting =
+    String(data.sunat_code ?? '').trim() === '00' && data.company?.show_igv_breakdown_on_sale_note === false
+  const hideBreakdown = hideBreakdownByRegime || hideBreakdownBySaleNoteSetting
 
   if (!hideBreakdown) {
     if (hasDiscount) {
@@ -134,6 +139,19 @@ export function buildReceiptTotalLines(data: PrintData): ReceiptTotalLine[] {
     }
 
     if (tax > 0.000001) lines.push({ label: 'IGV:', amount: tax })
+  } else if (hideBreakdownBySaleNoteSetting && !hideBreakdownByRegime && hasDiscount) {
+    // Sin Subtotal / Op. gravadas / IGV, pero el descuento sigue visible: explica por qué el total
+    // no es la suma de los ítems.
+    if (lineDiscount > 0.000001) {
+      lines.push({ label: 'Desc. por línea:', amount: lineDiscount, negative: true })
+    }
+    if (globalDiscount > 0.000001) {
+      lines.push({ label: 'Desc. global:', amount: globalDiscount, negative: true })
+    }
+    if (lineDiscount <= 0 && globalDiscount <= 0) {
+      const legacy = receiptTotalDiscount(data)
+      if (legacy > 0) lines.push({ label: 'Descuento:', amount: legacy, negative: true })
+    }
   }
 
   const prepDed = data.fiscal?.prepayment_deduction_total ?? 0

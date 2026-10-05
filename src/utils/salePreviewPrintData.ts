@@ -483,6 +483,7 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
       // Nuevo RUS: no discriminar IGV en el impreso (solo el total). El XML sí lo lleva.
       show_igv_breakdown: String(companyConfig?.taxpayer_regime ?? '').toLowerCase() !== 'nrus',
       show_business_name_on_sale_note: companyConfig?.show_business_name_on_sale_note !== false,
+      show_igv_breakdown_on_sale_note: companyConfig?.show_igv_breakdown_on_sale_note !== false,
       logo_size_ticket: companyConfig?.logo_size_ticket,
       logo_size_a4: companyConfig?.logo_size_a4,
     },
