@@ -43,6 +43,10 @@ export interface QuotationItem {
   /** Descuento de la línea tal como se tecleó; vacío en cotizaciones anteriores a v151. */
   line_discount_mode?: 'percent' | 'amount' | ''
   line_discount_value?: number
+  /** Unidad de venta, combo y series elegidos al cotizar (se conservan hasta la venta). */
+  sale_unit_id?: number | null
+  combo_json?: string
+  serials_json?: string
   igv_affectation_type: string
   price_includes_igv: boolean
   subtotal: number
@@ -69,6 +73,9 @@ export interface QuotationItemInput {
   discount?: number
   line_discount_mode?: 'percent' | 'amount'
   line_discount_value?: number
+  sale_unit_id?: number
+  combo_json?: string
+  serials?: string[]
   igv_affectation_type: string
   price_includes_igv: boolean
   modifiers_json?: string

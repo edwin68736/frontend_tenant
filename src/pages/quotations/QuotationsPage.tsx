@@ -28,6 +28,7 @@ import { PrintDocButton } from '@/components/print/PrintDocButton'
 import { companyService, tenantCanEmitFactura } from '@/services/company.service'
 import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
 import { contactsService, type Contact } from '@/services/contacts.service'
+import { cashbankService, type PaymentMethodRecord } from '@/services/cashbank.service'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch } from '@/contexts/BranchContext'
 import { formatDisplayDatePeru, getTodayPeru } from '@/utils/datesPeru'
@@ -56,6 +57,18 @@ function statusLabel(status: string) {
   if (status === 'converted') return 'Convertida'
   if (status === 'draft') return 'Borrador'
   return status
+}
+
+/** Borrador cuya vigencia ya pasó (hora Perú). Se calcula al leer: no hay estado "vencida" en BD. */
+function isQuotationExpired(q: Pick<Quotation, 'status' | 'valid_until'>): boolean {
+  if (q.status !== 'draft' || !q.valid_until) return false
+  return String(q.valid_until).slice(0, 10) < getTodayPeru()
+}
+
+/** Método de efectivo por defecto: el que el servidor usa si no se manda ningún pago. */
+function defaultCashMethodCode(methods: PaymentMethodRecord[]): string {
+  const cash = methods.find((m) => m.destination_type === 'cash' && m.active) ?? methods.find((m) => m.code === 'cash')
+  return cash?.code ?? 'cash'
 }
 
 function rucDigits(docNumber: string) {
@@ -110,6 +123,8 @@ function QuotationsContent() {
   const [convertCustomers, setConvertCustomers] = useState<Contact[]>([])
   const [convertContactId, setConvertContactId] = useState<number | null>(null)
   const [convertAddClientOpen, setConvertAddClientOpen] = useState(false)
+  const [convertPaymentMethods, setConvertPaymentMethods] = useState<PaymentMethodRecord[]>([])
+  const [convertPaymentMethod, setConvertPaymentMethod] = useState('cash')
 
   const [pdfPreviewBusyId, setPdfPreviewBusyId] = useState<number | null>(null)
   const [pdfDownloadBusyId, setPdfDownloadBusyId] = useState<number | null>(null)
@@ -287,17 +302,25 @@ function QuotationsContent() {
     setConvertIssueDate(getTodayPeru())
     setConvertContactId(null)
     setConvertCustomers([])
+    setConvertPaymentMethods([])
+    setConvertPaymentMethod('cash')
     setConvertOpen(true)
     setConvertLoading(true)
     try {
       // contactsService.list con catch propio: un rol con acceso a cotizaciones (sales.view)
       // pero sin contacts.view no debe perder también las series/el detalle de la cotización
       // por un 403 ajeno — mismo patrón de bug que rompía Nota de venta (ver company/routes.go).
-      const [raw, detail, customerList] = await Promise.all([
+      const [raw, detail, customerList, methodList] = await Promise.all([
         companyService.listSeries({ branch_id: row.branch_id, category: 'venta' }),
         quotationsService.get(row.id),
         contactsService.list('', 'customer').catch(() => []),
+        cashbankService.listPaymentMethods().catch(() => [] as PaymentMethodRecord[]),
       ])
+      const methods = (Array.isArray(methodList) ? methodList : []).filter(
+        (m) => m.active && (m.kind === undefined || m.kind === 'payment_method'),
+      )
+      setConvertPaymentMethods(methods)
+      setConvertPaymentMethod(defaultCashMethodCode(methods))
       setConvertSeriesList((raw as SeriesRow[]) ?? [])
       const customers = Array.isArray(customerList) ? customerList : []
       setConvertCustomers(customers)
@@ -384,13 +407,22 @@ function QuotationsContent() {
       toast.error('Seleccione un cliente para la venta')
       return
     }
+    // Cotización vencida: se puede convertir (el precio pactado puede seguir vigente), pero no en silencio.
+    if (isQuotationExpired(convertRow)) {
+      const venceEl = formatDisplayDatePeru(String(convertRow.valid_until).slice(0, 10))
+      if (!window.confirm(`La cotización ${convertRow.number} venció el ${venceEl}. ¿Convertirla igualmente?`)) return
+    }
     setConvertSubmitting(true)
     try {
+      // Sin método elegido distinto del efectivo por defecto no se manda ningún pago: el servidor
+      // cobra el total REAL de la venta al contado en efectivo.
+      const useOtherMethod = convertPaymentMethod !== defaultCashMethodCode(convertPaymentMethods)
       const res = await quotationsService.convert(convertRow.id, {
         target: convertTarget,
         series_id: sid,
         issue_date: convertIssueDate.trim() || undefined,
         contact_id: convertContactId,
+        payments: useOtherMethod ? [{ method: convertPaymentMethod, amount: Number(convertRow.total) }] : undefined,
       })
       const sale = res.sale
       toast.success(
@@ -543,10 +575,12 @@ function QuotationsContent() {
                           className={`inline-flex px-2 py-0.5 rounded-lg text-xs font-medium ${
                             row.status === 'converted'
                               ? 'bg-emerald-50 text-emerald-700'
-                              : 'bg-gray-100 text-gray-700'
+                              : isQuotationExpired(row)
+                                ? 'bg-amber-50 text-amber-700'
+                                : 'bg-gray-100 text-gray-700'
                           }`}
                         >
-                          {statusLabel(row.status)}
+                          {isQuotationExpired(row) ? 'Vencida' : statusLabel(row.status)}
                         </span>
                       </td>
                       <td className="px-4 py-3">
@@ -798,6 +832,12 @@ function QuotationsContent() {
                   ))}
                 </select>
               </div>
+              {convertRow && isQuotationExpired(convertRow) && (
+                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                  Esta cotización venció el {formatDisplayDatePeru(String(convertRow.valid_until).slice(0, 10))}. Puede convertirla,
+                  pero verifique que el precio siga vigente.
+                </p>
+              )}
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Fecha emisión</label>
                 <input
@@ -807,6 +847,23 @@ function QuotationsContent() {
                   onChange={(e) => setConvertIssueDate(e.target.value)}
                 />
               </div>
+              {convertPaymentMethods.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Método de pago</label>
+                  <select
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                    value={convertPaymentMethod}
+                    onChange={(e) => setConvertPaymentMethod(e.target.value)}
+                  >
+                    {convertPaymentMethods.map((m) => (
+                      <option key={m.id} value={m.code}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">Se registra el pago por el total de la venta.</p>
+                </div>
+              )}
               <div>
                 <div className="flex items-center justify-between gap-2 mb-1">
                   <label className="block text-xs font-medium text-gray-600">

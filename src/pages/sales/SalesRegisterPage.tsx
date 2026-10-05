@@ -147,6 +147,17 @@ export interface SaleFormItem {
   item_note?: string
 }
 
+/** Series guardadas en la línea de la cotización (JSON de strings); vacío si no hay o es inválido. */
+function parseSerialsJson(raw?: string): string[] | undefined {
+  if (!raw) return undefined
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed) && parsed.every((x) => typeof x === 'string') ? (parsed as string[]) : undefined
+  } catch {
+    return undefined
+  }
+}
+
 const PER_PAGE = 10
 const IGV_AFFECTATION_OPTIONS = PRODUCT_IGV_AFFECTATION_OPTIONS
 /** Igual que la columna item_note del backend (varchar 255). */
@@ -723,6 +734,9 @@ function SalesRegisterContent({
               unit_price: it.unit_price,
               line_discount_mode: lineMode,
               line_discount_value: lineValue,
+              sale_unit_id: it.sale_unit_id ?? undefined,
+              combo_json: it.combo_json || undefined,
+              serials: parseSerialsJson(it.serials_json),
               igv_affectation_type: aff,
               price_includes_igv: includes,
               modifiers_json: it.modifiers_json || undefined,
@@ -1470,6 +1484,9 @@ function SalesRegisterContent({
             discount: saleCalc.lines[idx]?.storedDiscount ?? 0,
             line_discount_mode: (it.line_discount_value ?? 0) > 0 ? (it.line_discount_mode ?? 'amount') : undefined,
             line_discount_value: (it.line_discount_value ?? 0) > 0 ? it.line_discount_value : undefined,
+            // La unidad de venta viaja con la línea: sin ella la venta convertida descontaba el
+            // inventario como si se hubieran vendido unidades sueltas.
+            sale_unit_id: it.sale_unit_id,
             igv_affectation_type: it.igv_affectation_type,
             price_includes_igv: it.price_includes_igv,
             modifiers_json: it.modifiers_json ?? '',
