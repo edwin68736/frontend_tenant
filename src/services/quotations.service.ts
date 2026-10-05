@@ -19,6 +19,10 @@ export interface Quotation {
   exchange_rate?: number | null
   notes: string
   show_terms_conditions?: boolean
+  /** Descuento global tal como se tecleó (percent|amount + valor) y su monto en base imponible. */
+  global_discount_mode?: 'percent' | 'amount' | ''
+  global_discount_value?: number
+  global_discount_amount?: number
   status: 'draft' | 'converted' | string
   converted_sale_id?: number | null
   converted_at?: string | null
@@ -36,6 +40,9 @@ export interface QuotationItem {
   quantity: number
   unit_price: number
   discount: number
+  /** Descuento de la línea tal como se tecleó; vacío en cotizaciones anteriores a v151. */
+  line_discount_mode?: 'percent' | 'amount' | ''
+  line_discount_value?: number
   igv_affectation_type: string
   price_includes_igv: boolean
   subtotal: number
@@ -60,6 +67,8 @@ export interface QuotationItemInput {
   quantity: number
   unit_price: number
   discount?: number
+  line_discount_mode?: 'percent' | 'amount'
+  line_discount_value?: number
   igv_affectation_type: string
   price_includes_igv: boolean
   modifiers_json?: string
@@ -76,6 +85,8 @@ export interface CreateQuotationInput {
   exchange_rate?: number | null
   notes?: string
   show_terms_conditions?: boolean
+  global_discount_mode?: 'percent' | 'amount'
+  global_discount_value?: number
   items: QuotationItemInput[]
 }
 
@@ -117,7 +128,15 @@ export const quotationsService = {
 
   convert: (
     id: number,
-    body: { target: QuotationConvertTarget; series_id: number; issue_date?: string; contact_id?: number },
+    body: {
+      target: QuotationConvertTarget
+      series_id: number
+      issue_date?: string
+      contact_id?: number
+      /** Opcional; sin pagos se cobra al contado en efectivo por el total real de la venta. */
+      payments?: { method: string; amount: number; reference?: string }[]
+      payment_condition_code?: string
+    },
   ) =>
     api
       .post<{ sale: import('./sales.service').Sale; print_data?: import('@/types/printData').PrintData }>(

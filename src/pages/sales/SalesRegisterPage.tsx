@@ -569,7 +569,10 @@ function SalesRegisterContent({
           branch_id: activeBranchId,
           sunat_code: defaultCode,
           series_id: matchSeries?.id ?? null,
-          contact_id: defaultClient?.id ?? f.contact_id,
+          // El cliente por defecto solo se asigna si aún no hay uno: este efecto se vuelve a
+          // ejecutar (cambia hasModule/sucursal) y antes pisaba al cliente real de la cotización
+          // que se estaba editando con "Clientes Varios".
+          contact_id: f.contact_id ?? defaultClient?.id ?? null,
         }))
         if (Array.isArray(methods) && methods.length > 0) {
           const cashCode = resolveCashMethodCode(methods as PaymentMethodRecord[])
@@ -590,7 +593,11 @@ function SalesRegisterContent({
     setItems([])
     setDiscountValue(0)
     setDiscountMode('percent')
-    setForm((f) => ({ ...f, branch_id: activeBranchId }))
+    // Este callback corre también al MONTAR. El reinicio al cliente por defecto se hace aquí, al
+    // inicio (antes de que la precarga de una cotización fije su cliente), y la respuesta tardía
+    // de abajo solo lo completa si sigue vacío: antes pisaba al cliente real de la cotización en
+    // edición con "Clientes Varios" cuando su respuesta llegaba después de la precarga.
+    setForm((f) => ({ ...f, branch_id: activeBranchId, contact_id: null }))
     const seriesCategory = seriesCategoryForMode(mode)
     Promise.all([
       companyService.listSeries({ branch_id: activeBranchId, category: seriesCategory }),
@@ -637,7 +644,7 @@ function SalesRegisterContent({
             )
         setForm((f) => ({
           ...f,
-          contact_id: defaultClient?.id ?? f.contact_id,
+          contact_id: f.contact_id ?? defaultClient?.id ?? null,
           branch_id: activeBranchId,
           sunat_code: defaultCode,
           series_id: matchSeries?.id ?? null,
@@ -655,7 +662,10 @@ function SalesRegisterContent({
           toast.error('Esta cotización ya fue convertida')
           return
         }
-        const issueYmd = clampIssueDatePeru((q.issue_date ?? '').slice(0, 10) || getTodayPeru())
+        // Una cotización conserva su fecha de emisión tal cual: el rango "hoy − 3 días" es de las
+        // ventas (SUNAT), y aplicarlo aquí movía en silencio la fecha de cotizaciones antiguas.
+        const rawIssueYmd = (q.issue_date ?? '').slice(0, 10) || getTodayPeru()
+        const issueYmd = isQuotation ? rawIssueYmd : clampIssueDatePeru(rawIssueYmd)
         const validYmd = q.valid_until ? String(q.valid_until).slice(0, 10) : issueYmd
         setForm((f) => ({
           ...f,
@@ -676,20 +686,49 @@ function SalesRegisterContent({
             show_terms_conditions: Boolean(q.show_terms_conditions),
           }))
         }
+        // Descuento global: se rehidrata tal como se tecleó. Sin esto, abrir la cotización para
+        // editarla o convertirla mostraba el descuento en 0 y el total subía en silencio.
+        const gMode = q.global_discount_mode === 'percent' || q.global_discount_mode === 'amount' ? q.global_discount_mode : null
+        if (gMode && (q.global_discount_value ?? 0) > 0) {
+          setDiscountMode(gMode)
+          setDiscountValue(q.global_discount_value ?? 0)
+        } else {
+          setDiscountMode('percent')
+          setDiscountValue(0)
+        }
         setItems(
-          (detail.items ?? []).map((it) => ({
-            product_id: it.product_id ?? null,
-            presentation_id: it.presentation_id ?? undefined,
-            code: it.code || '',
-            description: it.description,
-            unit: it.unit || 'NIU',
-            quantity: it.quantity,
-            unit_price: it.unit_price,
-            igv_affectation_type: it.igv_affectation_type || '10',
-            price_includes_igv: it.price_includes_igv ?? true,
-            modifiers_json: it.modifiers_json || undefined,
-            item_note: it.item_note || undefined,
-          })),
+          (detail.items ?? []).map((it) => {
+            const aff = it.igv_affectation_type || '10'
+            const includes = it.price_includes_igv ?? true
+            let lineMode: 'percent' | 'amount' | undefined
+            let lineValue: number | undefined
+            if ((it.line_discount_mode === 'percent' || it.line_discount_mode === 'amount') && (it.line_discount_value ?? 0) > 0) {
+              lineMode = it.line_discount_mode
+              lineValue = it.line_discount_value
+            } else if ((it.discount ?? 0) > 0) {
+              // Cotización anterior a v151: solo existe el monto bruto (formato CalcItem). Se
+              // convierte a monto sobre la base imponible, que es lo que entiende el formulario.
+              const gravado = /^1[0-7]$/.test(aff)
+              const rate = gravado ? taxConfig.taxRate : 0
+              lineMode = 'amount'
+              lineValue = roundSunat(includes && rate > 0 ? it.discount / (1 + rate / 100) : it.discount)
+            }
+            return {
+              product_id: it.product_id ?? null,
+              presentation_id: it.presentation_id ?? undefined,
+              code: it.code || '',
+              description: it.description,
+              unit: it.unit || 'NIU',
+              quantity: it.quantity,
+              unit_price: it.unit_price,
+              line_discount_mode: lineMode,
+              line_discount_value: lineValue,
+              igv_affectation_type: aff,
+              price_includes_igv: includes,
+              modifiers_json: it.modifiers_json || undefined,
+              item_note: it.item_note || undefined,
+            }
+          }),
         )
         if (linkQuotationId) {
           toast.success(`Cotización ${q.number} cargada — puede modificar ítems antes de registrar la venta`)
@@ -1398,7 +1437,7 @@ function SalesRegisterContent({
       }
     }
 
-    if (!isIssueDateAllowed(form.issue_date)) {
+    if (!isQuotation && !isIssueDateAllowed(form.issue_date)) {
       toast.error('La fecha de emisión debe ser hoy o hasta 3 días anteriores (hora Perú).')
       return
     }
@@ -1416,6 +1455,10 @@ function SalesRegisterContent({
           exchange_rate: form.currency === 'USD' ? parsedExchangeRate ?? undefined : undefined,
           notes: form.notes || undefined,
           show_terms_conditions: fiscalForm.show_terms_conditions,
+          // El descuento viaja como se tecleó (modo + valor), línea y global: así el servidor
+          // calcula con el mismo motor que la venta y puede devolverlo al editar o convertir.
+          global_discount_mode: discountValue > 0 ? discountMode : undefined,
+          global_discount_value: discountValue > 0 ? discountValue : undefined,
           items: items.map((it, idx) => ({
             product_id: it.product_id ?? null,
             presentation_id: it.presentation_id ?? undefined,
@@ -1425,6 +1468,8 @@ function SalesRegisterContent({
             quantity: it.quantity,
             unit_price: it.unit_price,
             discount: saleCalc.lines[idx]?.storedDiscount ?? 0,
+            line_discount_mode: (it.line_discount_value ?? 0) > 0 ? (it.line_discount_mode ?? 'amount') : undefined,
+            line_discount_value: (it.line_discount_value ?? 0) > 0 ? it.line_discount_value : undefined,
             igv_affectation_type: it.igv_affectation_type,
             price_includes_igv: it.price_includes_igv,
             modifiers_json: it.modifiers_json ?? '',
