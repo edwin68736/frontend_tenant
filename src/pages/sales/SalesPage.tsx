@@ -29,6 +29,7 @@ import { formatPaymentMethodLabel } from '@/utils/paymentMethodLabel'
 import { formatSaleMoney } from '@/utils/formatMoney'
 import { enrichPrintDataWithSaleUnitNames, resolveSaleUnitNames, saleLineUnitLabel } from '@/utils/saleUnitNames'
 import { SearchableSelect } from '@/components/SearchableSelect'
+import { quickAddDefaultsFromQuery } from '@/utils/contactQuickAdd'
 import { contactsService, type Contact } from '@/services/contacts.service'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
 import { filterRucContacts, contactOptionLabel, rucContactLabel } from '@/utils/checkoutContacts'
@@ -113,6 +114,7 @@ function SalesContent() {
   const [emitNotaContactId, setEmitNotaContactId] = useState<number | null>(null)
   const [emitContacts, setEmitContacts] = useState<Contact[]>([])
   const [emitClientQuickAddOpen, setEmitClientQuickAddOpen] = useState(false)
+  const [emitClientQuery, setEmitClientQuery] = useState('')
   const [waBusyId, setWaBusyId] = useState<number | null>(null)
   const [waMenu, setWaMenu] = useState<{ saleId: number; top: number; left: number } | null>(null)
   const [pdfPreviewBusyId, setPdfPreviewBusyId] = useState<number | null>(null)
@@ -835,11 +837,19 @@ function SalesContent() {
                     }
                     searchable
                     className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2 min-h-[42px]"
+                    onCreateNew={(q) => {
+                      setEmitClientQuery(q)
+                      setEmitClientQuickAddOpen(true)
+                    }}
+                    createNewLabel={(q) => `Agregar cliente "${q}"`}
                   />
                 </div>
                 <button
                   type="button"
-                  onClick={() => setEmitClientQuickAddOpen(true)}
+                  onClick={() => {
+                    setEmitClientQuery('')
+                    setEmitClientQuickAddOpen(true)
+                  }}
                   className="shrink-0 rounded-xl border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 min-h-[42px]"
                 >
                   Nuevo
@@ -987,13 +997,17 @@ function SalesContent() {
 
       <QuickContactCreateModal
         open={emitClientQuickAddOpen}
-        onClose={() => setEmitClientQuickAddOpen(false)}
+        onClose={() => {
+          setEmitClientQuickAddOpen(false)
+          setEmitClientQuery('')
+        }}
         onCreated={(contact) => {
           setEmitContacts((prev) => [contact, ...prev])
           setEmitContactId(contact.id)
           setEmitClientQuickAddOpen(false)
+          setEmitClientQuery('')
         }}
-        defaultDocType={emitRequiresRuc ? '6' : '1'}
+        {...quickAddDefaultsFromQuery(emitClientQuery, emitRequiresRuc ? '6' : '1')}
         contactType="customer"
         stacked
       />

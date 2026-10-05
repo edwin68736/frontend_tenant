@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { UserPlus } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { SearchableSelect } from '@/components/SearchableSelect'
+import { quickAddDefaultsFromQuery } from '@/utils/contactQuickAdd'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
 import { companyService, tenantCanEmitFactura } from '@/services/company.service'
 import { contactsService, type Contact } from '@/services/contacts.service'
@@ -52,6 +53,7 @@ export default function ConvertOrderModal({
   const [contactId, setContactId] = useState<number | null>(null)
   const [customers, setCustomers] = useState<Contact[]>([])
   const [addClientOpen, setAddClientOpen] = useState(false)
+  const [addClientQuery, setAddClientQuery] = useState('')
 
   useEffect(() => {
     setLoading(true)
@@ -198,7 +200,10 @@ export default function ConvertOrderModal({
                   </label>
                   <button
                     type="button"
-                    onClick={() => setAddClientOpen(true)}
+                    onClick={() => {
+                      setAddClientQuery('')
+                      setAddClientOpen(true)
+                    }}
                     className="inline-flex items-center gap-1 text-xs font-medium text-[rgb(var(--p600))] hover:underline"
                   >
                     <UserPlus size={14} /> Nuevo cliente
@@ -213,6 +218,11 @@ export default function ConvertOrderModal({
                   searchable
                   searchPlaceholder="Buscar por nombre o RUC/DNI..."
                   allowClear
+                  onCreateNew={(q) => {
+                    setAddClientQuery(q)
+                    setAddClientOpen(true)
+                  }}
+                  createNewLabel={(q) => `Agregar cliente "${q}"`}
                 />
                 {target === '01' && customersWithRuc.length === 0 && (
                   <p className="text-xs text-amber-700 mt-1">No hay clientes con RUC válido. Registre uno con «Nuevo cliente».</p>
@@ -243,8 +253,11 @@ export default function ConvertOrderModal({
 
       <QuickContactCreateModal
         open={addClientOpen}
-        onClose={() => setAddClientOpen(false)}
-        defaultDocType={target === '01' ? '6' : '1'}
+        onClose={() => {
+          setAddClientOpen(false)
+          setAddClientQuery('')
+        }}
+        {...quickAddDefaultsFromQuery(addClientQuery, target === '01' ? '6' : '1')}
         stacked
         onCreated={(contact) => {
           setCustomers((prev) => [...prev.filter((c) => c.id !== contact.id), contact])

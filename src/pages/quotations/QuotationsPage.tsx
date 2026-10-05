@@ -23,6 +23,7 @@ import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
+import { quickAddDefaultsFromQuery } from '@/utils/contactQuickAdd'
 import { quotationsService, type Quotation, type QuotationConvertTarget } from '@/services/quotations.service'
 import { PrintDocButton } from '@/components/print/PrintDocButton'
 import { configuredTicketPaperMm } from '@/utils/receiptTicketPaper'
@@ -124,6 +125,8 @@ function QuotationsContent() {
   const [convertCustomers, setConvertCustomers] = useState<Contact[]>([])
   const [convertContactId, setConvertContactId] = useState<number | null>(null)
   const [convertAddClientOpen, setConvertAddClientOpen] = useState(false)
+  /** Texto buscado cuando se abre el alta desde "+ Agregar cliente" (precarga documento o nombre). */
+  const [convertAddClientQuery, setConvertAddClientQuery] = useState('')
   const [convertPaymentMethods, setConvertPaymentMethods] = useState<PaymentMethodRecord[]>([])
   const [convertPaymentMethod, setConvertPaymentMethod] = useState('cash')
 
@@ -875,7 +878,10 @@ function QuotationsContent() {
                   </label>
                   <button
                     type="button"
-                    onClick={() => setConvertAddClientOpen(true)}
+                    onClick={() => {
+                      setConvertAddClientQuery('')
+                      setConvertAddClientOpen(true)
+                    }}
                     className="inline-flex items-center gap-1 text-xs font-medium text-[rgb(var(--p600))] hover:underline"
                   >
                     <UserPlus size={14} /> Nuevo cliente
@@ -890,6 +896,11 @@ function QuotationsContent() {
                   searchable
                   searchPlaceholder="Buscar por nombre o RUC/DNI..."
                   allowClear
+                  onCreateNew={(q) => {
+                    setConvertAddClientQuery(q)
+                    setConvertAddClientOpen(true)
+                  }}
+                  createNewLabel={(q) => `Agregar cliente "${q}"`}
                 />
                 {convertTarget === '01' && convertCustomersWithRuc.length === 0 && (
                   <p className="text-xs text-amber-700 mt-1">
@@ -931,8 +942,11 @@ function QuotationsContent() {
 
       <QuickContactCreateModal
         open={convertAddClientOpen}
-        onClose={() => setConvertAddClientOpen(false)}
-        defaultDocType={convertAddClientDefaultDocType}
+        onClose={() => {
+          setConvertAddClientOpen(false)
+          setConvertAddClientQuery('')
+        }}
+        {...quickAddDefaultsFromQuery(convertAddClientQuery, convertAddClientDefaultDocType)}
         stacked
         onCreated={(contact) => {
           setConvertCustomers((prev) => [...prev.filter((c) => c.id !== contact.id), contact])
