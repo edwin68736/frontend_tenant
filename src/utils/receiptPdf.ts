@@ -710,13 +710,10 @@ export async function openReceiptPdfInNewTab(
     ...(format === 'ticket'
       ? {
           nativeToolbar: false,
+          // Directo a la ticketera (app o Servidor de impresión) y, si no hay, impresión del navegador.
           onPrint: async () => {
-            const { isNativePrintAvailable, printDocumentAuto } = await import('@/services/printers.service')
-            if (isNativePrintAvailable()) {
-              return (await printDocumentAuto(data)) || 'Comprobante enviado a la impresora'
-            }
-            await printReceiptPdf(data, 'ticket', options)
-            return undefined
+            const { printTicketPreferDirect } = await import('@/utils/receiptTicketPrint')
+            return printTicketPreferDirect(data, options)
           },
         }
       : {}),

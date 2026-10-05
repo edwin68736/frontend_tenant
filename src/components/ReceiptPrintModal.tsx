@@ -8,6 +8,7 @@ import { ReceiptEmailModal } from '@/components/ReceiptEmailModal'
 import { formatMoney } from '@/utils/format'
 import { resolvePrintChangeAmount, receiptDirectPaidAmount } from '@/utils/receiptTotals'
 import { downloadReceiptPdf, printDataToPdfBlob, printReceiptPdf, type ReceiptPdfOptions } from '@/utils/receiptPdf'
+import { printTicketPreferDirect } from '@/utils/receiptTicketPrint'
 import { shareReceiptPdf } from '@/utils/receiptShare'
 import {
   getConfiguredPrinter,
@@ -259,8 +260,8 @@ export function ReceiptPrintModal({
     }
     setBusy('print')
     try {
-      const msg = await printDocumentAuto(printData)
-      toast.success(msg || 'Comprobante enviado a la impresora')
+      const msg = await printTicketPreferDirect(printData, ticketPdfOptions())
+      if (msg) toast.success(msg)
     } catch (e) {
       console.error(e)
       toast.error('No se pudo imprimir')

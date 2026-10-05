@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Printer, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import type { PrintData } from '@/types/printData'
-import { isNativePrintAvailable, printDocumentAuto } from '@/services/printers.service'
+import { isNativePrintAvailable } from '@/services/printers.service'
+import { printTicketPreferDirect } from '@/utils/receiptTicketPrint'
 import { openReceiptPdfInNewTab } from '@/utils/receiptPdf'
 
 /**
@@ -43,8 +44,9 @@ export function PrintDocButton({
       }
       if (isNativePrintAvailable()) {
         // Android / Tauri → impresión directa a la ticketera (mismo flujo que al cobrar).
-        const msg = await printDocumentAuto(printData)
-        toast.success(msg || 'Comprobante enviado a la impresora')
+        // Directo; si el Servidor de impresión (navegador) no responde, cae a la impresión del navegador.
+        const msg = await printTicketPreferDirect(printData)
+        if (msg) toast.success(msg)
       } else {
         // Web → abrir/visualizar el PDF (la impresión directa solo existe en Android/Tauri).
         await openReceiptPdfInNewTab(printData, webFormat)
