@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Pencil, Trash2, ChevronDown } from 'lucide-react'
+import { Plus, Pencil, Trash2, ChevronDown, Wand2 } from 'lucide-react'
 import { usersService, type Role, type Permission } from '@/services/users.service'
 import { Modal } from '@/components/ui/Modal'
 import {
@@ -9,6 +9,12 @@ import {
   getPermissionModuleLabel,
   sortPermissionModules,
 } from '@/utils/permissionLabels'
+import {
+  ROLE_PRESETS,
+  presetPermissionIds,
+  togglePermissionWithDeps,
+  type RolePreset,
+} from '@/utils/rolePermissionPresets'
 
 const empty = () => ({ name: '', description: '', permission_ids: [] as number[] })
 
@@ -38,11 +44,18 @@ export default function RolesPage() {
     } catch { toast.error('Error cargando rol') }
   }
 
+  // Marcar un reporte marca también el permiso del módulo que le da los datos (y al revés).
   const togglePerm = (id: number) =>
-    setForm(f => ({
-      ...f,
-      permission_ids: f.permission_ids.includes(id) ? f.permission_ids.filter(p => p !== id) : [...f.permission_ids, id],
-    }))
+    setForm(f => ({ ...f, permission_ids: togglePermissionWithDeps(f.permission_ids, id, permissions) }))
+
+  /** Suma (sin quitar nada) los permisos sugeridos de un perfil, p. ej. Contador. */
+  const applyPreset = (preset: RolePreset) => {
+    const ids = presetPermissionIds(preset, permissions)
+    const merged = [...new Set([...form.permission_ids, ...ids])]
+    const added = merged.length - form.permission_ids.length
+    toast.success(added > 0 ? `Se agregaron ${added} permisos de ${preset.name}` : `Este rol ya tiene los permisos de ${preset.name}`)
+    setForm(f => ({ ...f, permission_ids: merged }))
+  }
 
   const handleSave = async () => {
     if (!form.name) { toast.error('Nombre requerido'); return }
@@ -112,6 +125,28 @@ export default function RolesPage() {
             <input className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
               value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
           </div>
+        </div>
+        <div className="rounded-xl border border-sky-100 bg-sky-50/60 p-3 space-y-2">
+          <p className="text-xs text-sky-900">
+            <strong>Perfiles sugeridos:</strong> agregan los permisos típicos de un puesto a los que ya marcaste (no quitan ninguno).
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {ROLE_PRESETS.map(preset => (
+              <button
+                key={preset.name}
+                type="button"
+                onClick={() => applyPreset(preset)}
+                title={preset.summary}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-white px-3 py-1.5 text-xs font-semibold text-sky-800 hover:bg-sky-50"
+              >
+                <Wand2 size={13} /> Agregar permisos de {preset.name}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-sky-800/80">
+            Los reportes necesitan además el permiso del módulo que les da los datos (p. ej. «Reporte de ventas» + «Ver ventas»);
+            al marcar un reporte se marca solo.
+          </p>
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-2">Permisos ({form.permission_ids.length} seleccionados)</label>

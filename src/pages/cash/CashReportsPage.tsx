@@ -118,7 +118,9 @@ function CashReportsContent() {
   useEffect(() => {
     Promise.all([
       companyService.listBranches().then((b: Branch[]) => b ?? []),
-      usersService.listUsers('').then((u: TenantUser[]) => u ?? []),
+      // Sin permiso users.view (p. ej. un contador) el listado responde 403: el filtro de usuario
+      // queda vacío, pero las sucursales y el resto de la pantalla deben cargar igual.
+      usersService.listUsers('').then((u: TenantUser[]) => u ?? []).catch((): TenantUser[] => []),
     ]).then(([b, u]) => {
       setBranches(b)
       setUsers(u)

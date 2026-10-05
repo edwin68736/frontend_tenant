@@ -107,7 +107,8 @@ export default function CashReportPage() {
 
   useEffect(() => {
     companyService.listBranches().then((b: Branch[]) => setBranches(b ?? []))
-    usersService.listUsers('').then((u: TenantUser[]) => setUsers(u ?? []))
+    // Sin users.view (p. ej. un contador) responde 403: el filtro de usuario queda vacío.
+    usersService.listUsers('').then((u: TenantUser[]) => setUsers(u ?? [])).catch(() => setUsers([]))
   }, [])
 
   const buildParams = (opts?: { page?: number; perPage?: number }): MovementsReportParams => {
