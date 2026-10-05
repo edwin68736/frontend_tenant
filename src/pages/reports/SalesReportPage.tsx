@@ -201,6 +201,17 @@ const PDF_COLS: (PdfExportColumn<ReportSaleRow> & { excelNumber?: boolean })[] =
   (c) => PDF_LAYOUT[String(c.key)],
 ).map((c) => ({ ...c, ...PDF_LAYOUT[String(c.key)] }))
 
+/**
+ * Filas que SUMAN en las filas TOTAL (PDF y Excel): solo las ventas no anuladas. Las notas de
+ * crédito/débito tampoco suman —no son ventas y su reversión ya está reflejada en que la venta
+ * anulada no cuenta—, que es la misma regla de las tarjetas de arriba (sum_active del backend:
+ * status != 'cancelled' AND doc_type != 'NOTA_CREDITO'); así los totales siempre cuadran con ellas.
+ */
+const countsInTotals = (r: ReportSaleRow): boolean => {
+  if (String(r.status || '').toLowerCase() === 'cancelled') return false
+  return r.doc_type !== 'NOTA_CREDITO' && r.doc_type !== 'NOTA_DEBITO'
+}
+
 const DOC_TYPE_LABELS: Record<string, string> = {
   notes: 'Notas de venta',
   facturas_boletas: 'Facturas + boletas',
@@ -363,11 +374,13 @@ export default function SalesReportPage() {
         return copy
       })
 
+      // Los totales suman SOLO las ventas no anuladas (ver countsInTotals), no lo que se ve en rojo.
+      const totalRows = withDoc.filter(countsInTotals)
       const sumOf = (key: string) =>
-        pdfRows.reduce((sum, row) => sum + (Number(row[key as keyof typeof row]) || 0), 0)
+        Math.round(totalRows.reduce((sum, row) => sum + (Number(row[key as keyof typeof row]) || 0), 0) * 100) / 100
       const footerRow = PDF_COLS.map((col, i) => {
         if (i === 0) return 'TOTAL'
-        if (col.key === 'contact_name') return `${pdfRows.length} documento${pdfRows.length === 1 ? '' : 's'}`
+        if (col.key === 'contact_name') return `No anuladas: ${totalRows.length} de ${withDoc.length}`
         return col.excelNumber ? sumOf(String(col.key)) : ''
       })
 
@@ -425,16 +438,15 @@ export default function SalesReportPage() {
     try {
       const { data: rows } = await salesService.list({ ...buildFilterParams(), export_all: '1' })
       const withDoc = withComputedFields(rows ?? [])
-      // Suma directa sobre las filas que quedaron en el archivo (respeta los filtros aplicados,
-      // incluidas o no las anuladas según "Estado venta") — no depende del resumen de tarjetas,
-      // así la fila de totales siempre cuadra con lo que el usuario ve en las filas de arriba.
-      // "Total factura" suma el valor tal cual del documento (incluye notas de crédito en
-      // positivo); "Efecto neto" es la que da el neto real, porque net_effect ya excluye las
-      // notas de crédito (su reversión ya está reflejada en que la venta anulada no cuenta).
+      // La fila TOTAL suma solo las ventas no anuladas (y sin notas de crédito/débito) del archivo:
+      // ver countsInTotals. Respeta los filtros aplicados y cuadra con las tarjetas de arriba.
+      const totalRows = withDoc.filter(countsInTotals)
       const footerRow = COLS.map((col, i) => {
         if (i === 0) return 'TOTAL'
+        if (col.key === 'contact_name') return `No anuladas: ${totalRows.length} de ${withDoc.length}`
         if (!col.excelNumber) return ''
-        return withDoc.reduce((sum, row) => sum + (Number(row[col.key as keyof typeof row]) || 0), 0)
+        const sum = totalRows.reduce((acc, row) => acc + (Number(row[col.key as keyof typeof row]) || 0), 0)
+        return Math.round(sum * 100) / 100
       })
       await exportTableToExcel<ReportSaleRow>(
         'Ventas',
