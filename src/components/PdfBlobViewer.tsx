@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { Download, FileText, Loader2, Share2 } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Download, FileText, Loader2, Share2, ZoomIn, ZoomOut } from 'lucide-react'
 import { toast } from 'sonner'
 import { isCapacitorAndroid } from '@/lib/platform/detect'
 import { pdfEmbedSrc } from '@/utils/pdfEmbedSrc'
@@ -14,6 +14,23 @@ const MAX_DISPLAY_WIDTH = 480
  * El A4 (595 pt) nunca llega a este límite, así que no cambia.
  */
 const MAX_ZOOM = 1.5
+/** Zoom con los dedos sobre el PDF rasterizado (1 = ancho de presentación). */
+const MIN_PINCH_ZOOM = 1
+const MAX_PINCH_ZOOM = 3
+const DOUBLE_TAP_ZOOM = 2
+
+/**
+ * Solo en desarrollo: permite probar en el navegador el visor de canvas que usa Android
+ * (localStorage.setItem('tukifac_force_pdf_canvas', '1')). Nunca aplica en producción.
+ */
+function devForcesCanvas(): boolean {
+  if (!import.meta.env.DEV) return false
+  try {
+    return localStorage.getItem('tukifac_force_pdf_canvas') === '1'
+  } catch {
+    return false
+  }
+}
 
 type Props = {
   url: string
@@ -29,7 +46,9 @@ type Props = {
  */
 export function PdfBlobViewer({ url, title = 'Comprobante PDF', className, embedOptions }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const useCanvas = isCapacitorAndroid()
+  const contentRef = useRef<HTMLDivElement>(null)
+  const zoomRef = useRef(1)
+  const useCanvas = isCapacitorAndroid() || devForcesCanvas()
   const [loading, setLoading] = useState(useCanvas)
   const [error, setError] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -65,9 +84,96 @@ export function PdfBlobViewer({ url, title = 'Comprobante PDF', className, embed
     }
   }
 
+  /**
+   * Escala el ancho de cada página (el bitmap ya está a resolución física) y mantiene bajo los
+   * dedos el punto que se estaba mirando.
+   */
+  const applyZoom = useCallback((next: number, anchorX?: number, anchorY?: number) => {
+    const container = containerRef.current
+    const content = contentRef.current
+    if (!container || !content) return
+    const z = Math.min(MAX_PINCH_ZOOM, Math.max(MIN_PINCH_ZOOM, next))
+    const prev = zoomRef.current
+    if (Math.abs(z - prev) < 0.001) return
+    const ax = anchorX ?? container.clientWidth / 2
+    const ay = anchorY ?? container.clientHeight / 2
+    const px = (container.scrollLeft + ax) / prev
+    const py = (container.scrollTop + ay) / prev
+    zoomRef.current = z
+    content.querySelectorAll('canvas').forEach((c) => {
+      const base = Number((c as HTMLCanvasElement).dataset.baseWidth) || 0
+      if (base) c.style.width = `${Math.floor(base * z)}px`
+    })
+    container.scrollLeft = px * z - ax
+    container.scrollTop = py * z - ay
+  }, [])
+
+  // Pellizcar para acercar y doble toque. El navegador solo se encarga del desplazamiento
+  // (touch-action: pan-x pan-y); el pellizco lo gestionamos aquí.
+  useEffect(() => {
+    if (!useCanvas || error) return
+    const container = containerRef.current
+    if (!container) return
+    const pointers = new Map<number, { x: number; y: number }>()
+    let startDist = 0
+    let startZoom = 1
+    let lastTap = 0
+
+    const dist = () => {
+      const [a, b] = [...pointers.values()]
+      return Math.hypot(a.x - b.x, a.y - b.y)
+    }
+    const onDown = (e: PointerEvent) => {
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      if (pointers.size === 2) {
+        startDist = dist()
+        startZoom = zoomRef.current
+      }
+    }
+    const onMove = (e: PointerEvent) => {
+      if (!pointers.has(e.pointerId)) return
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      if (pointers.size === 2 && startDist > 0) {
+        const [a, b] = [...pointers.values()]
+        const rect = container.getBoundingClientRect()
+        applyZoom(
+          startZoom * (dist() / startDist),
+          (a.x + b.x) / 2 - rect.left,
+          (a.y + b.y) / 2 - rect.top,
+        )
+      }
+    }
+    const onUp = (e: PointerEvent) => {
+      const wasSingle = pointers.size === 1
+      pointers.delete(e.pointerId)
+      if (pointers.size < 2) startDist = 0
+      if (wasSingle && e.pointerType === 'touch') {
+        const now = Date.now()
+        if (now - lastTap < 300) {
+          const rect = container.getBoundingClientRect()
+          applyZoom(zoomRef.current > 1.05 ? 1 : DOUBLE_TAP_ZOOM, e.clientX - rect.left, e.clientY - rect.top)
+          lastTap = 0
+        } else {
+          lastTap = now
+        }
+      }
+    }
+    container.addEventListener('pointerdown', onDown)
+    container.addEventListener('pointermove', onMove)
+    container.addEventListener('pointerup', onUp)
+    container.addEventListener('pointercancel', onUp)
+    return () => {
+      container.removeEventListener('pointerdown', onDown)
+      container.removeEventListener('pointermove', onMove)
+      container.removeEventListener('pointerup', onUp)
+      container.removeEventListener('pointercancel', onUp)
+    }
+  }, [useCanvas, error, applyZoom, url])
+
   useEffect(() => {
     if (!useCanvas || !url) return
 
+    zoomRef.current = 1
     let cancelled = false
     setLoading(true)
     setError(false)
@@ -82,9 +188,10 @@ export function PdfBlobViewer({ url, title = 'Comprobante PDF', className, embed
         const buffer = await response.arrayBuffer()
         const pdf = await pdfjs.getDocument({ data: new Uint8Array(buffer) }).promise
         const container = containerRef.current
-        if (!container || cancelled) return
+        const content = contentRef.current
+        if (!container || !content || cancelled) return
 
-        container.replaceChildren()
+        content.replaceChildren()
 
         // La pantalla del móvil tiene 2-3 píxeles físicos por píxel CSS. Antes el bitmap se
         // generaba a tamaño CSS y el navegador lo estiraba, de ahí que el ticket se viera
@@ -109,13 +216,14 @@ export function PdfBlobViewer({ url, title = 'Comprobante PDF', className, embed
           // Bitmap a resolución física; tamaño de presentación en CSS.
           canvas.width = Math.floor(viewport.width)
           canvas.height = Math.floor(viewport.height)
-          canvas.style.width = `${Math.floor(displayWidth)}px`
+          canvas.dataset.baseWidth = String(Math.floor(displayWidth))
+          canvas.style.width = `${Math.floor(displayWidth * zoomRef.current)}px`
           canvas.style.height = 'auto'
-          canvas.className = 'mx-auto mb-3 max-w-full bg-white shadow-sm rounded'
+          canvas.className = 'mb-3 shrink-0 bg-white shadow-sm rounded'
 
           await page.render({ canvasContext: ctx, viewport }).promise
           if (cancelled) return
-          container.appendChild(canvas)
+          content.appendChild(canvas)
         }
       } catch (e) {
         console.error('[PdfBlobViewer]', e)
@@ -181,8 +289,35 @@ export function PdfBlobViewer({ url, title = 'Comprobante PDF', className, embed
       )}
       <div
         ref={containerRef}
-        className={`overflow-y-auto ${className ?? 'max-h-[min(70vh,520px)] min-h-[320px]'}`}
-      />
+        // touch-action: el desplazamiento lo hace el navegador; el pellizco (zoom) lo gestionamos
+        // nosotros — ver el efecto de gestos arriba.
+        style={{ touchAction: 'pan-x pan-y' }}
+        className={`overflow-auto ${className ?? 'max-h-[min(70vh,520px)] min-h-[320px]'}`}
+      >
+        <div ref={contentRef} className="flex w-max min-w-full flex-col items-center" />
+      </div>
+      {!loading && (
+        <div className="absolute bottom-3 right-3 z-10 flex gap-1">
+          <button
+            type="button"
+            onClick={() => applyZoom(zoomRef.current - 0.5)}
+            aria-label="Alejar"
+            title="Alejar"
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-stone-200 bg-white/95 text-stone-700 shadow-md active:scale-95"
+          >
+            <ZoomOut className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => applyZoom(zoomRef.current + 0.5)}
+            aria-label="Acercar"
+            title="Acercar"
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-stone-200 bg-white/95 text-stone-700 shadow-md active:scale-95"
+          >
+            <ZoomIn className="h-4 w-4" />
+          </button>
+        </div>
+      )}
     </div>
   )
 }

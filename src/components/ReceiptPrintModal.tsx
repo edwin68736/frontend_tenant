@@ -1,15 +1,12 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Download, FileText, Loader2, Mail, MessageCircle, Printer, Receipt, X } from 'lucide-react'
+import { Download, FileText, Loader2, Mail, MessageCircle, Printer, Receipt, RefreshCw, X } from 'lucide-react'
 import { clsx } from 'clsx'
 import { toast } from 'sonner'
 import type { PrintData } from '@/types/printData'
 import { PortalModal } from '@/components/ui/PortalModal'
 import { ReceiptEmailModal } from '@/components/ReceiptEmailModal'
 import { formatMoney } from '@/utils/format'
-import { receiptItemDisplayDescription, receiptItemDisplayTotal } from '@/utils/receiptBonificacion'
 import { resolvePrintChangeAmount, receiptDirectPaidAmount } from '@/utils/receiptTotals'
-import { buildReceiptTotalLines } from '@/utils/receiptTotals'
-import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
 import { downloadReceiptPdf, printDataToPdfBlob, printReceiptPdf, type ReceiptPdfOptions } from '@/utils/receiptPdf'
 import { shareReceiptPdf } from '@/utils/receiptShare'
 import {
@@ -20,7 +17,6 @@ import {
 } from '@/services/printers.service'
 import { PdfBlobViewer } from '@/components/PdfBlobViewer'
 
-type PanelView = 'details' | 'receipt'
 type PdfFormat = 'ticket' | 'a4'
 
 /**
@@ -48,12 +44,6 @@ interface ReceiptPrintModalProps {
   defaultEmail?: string
   saleNumber?: string
   total?: number
-  /**
-   * Abrir el modal directamente en la vista del comprobante (ticket) en vez del resumen.
-   * En Windows/navegador muestra el PDF incrustado; en Android muestra una emulación HTML
-   * con estilo de papel (el WebView de Android no incrusta PDF).
-   */
-  openInReceiptView?: boolean
   /** Etiqueta del documento generado (venta vs cotización). */
   documentKind?: 'sale' | 'quotation'
   /** Si se pasan, el footer muestra "Ir a la lista" + "Nueva venta" en vez de solo "Cerrar". */
@@ -72,23 +62,26 @@ export function ReceiptPrintModal({
   defaultEmail = '',
   saleNumber,
   total,
-  openInReceiptView = false,
   documentKind = 'sale',
   onGoToList,
   onNewDocument,
   goToListLabel = 'Ir a la lista',
   newDocumentLabel = 'Nueva venta',
 }: ReceiptPrintModalProps) {
-  const [panelView, setPanelView] = useState<PanelView>('details')
   const [pdfFormat, setPdfFormat] = useState<PdfFormat>('ticket')
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [pdfLoading, setPdfLoading] = useState(false)
+  const [pdfError, setPdfError] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
   const [emailModalOpen, setEmailModalOpen] = useState(false)
-  const pdfUrlRef = useRef<string | null>(null)
-  const loadedFormatRef = useRef<PdfFormat | null>(null)
+  // Un PDF por formato, generado una sola vez por apertura del modal: al alternar Ticket/A4 no se
+  // vuelve a ejecutar jsPDF (lo caro en un teléfono). `pdfJobsRef` guarda las generaciones en curso
+  // para no duplicarlas; `epochRef` invalida las que terminan después de cerrar el modal.
+  const pdfCacheRef = useRef<Partial<Record<PdfFormat, string>>>({})
+  const pdfJobsRef = useRef<Partial<Record<PdfFormat, Promise<string>>>>({})
+  const epochRef = useRef(0)
+  const wantedFormatRef = useRef<PdfFormat>('ticket')
   const autoPrintedRef = useRef(false)
-  const autoShowReceiptRef = useRef(false)
 
   const printerCfg = getConfiguredPrinter('documentos')
   const hasDirectPrinter = isNativePrintAvailable() && Boolean(printerCfg)
@@ -133,84 +126,103 @@ export function ReceiptPrintModal({
       </div>
     ) : null
 
-  const revokePdfUrl = useCallback(() => {
-    if (pdfUrlRef.current) {
-      URL.revokeObjectURL(pdfUrlRef.current)
-      pdfUrlRef.current = null
+  const revokeAllPdfs = useCallback(() => {
+    epochRef.current += 1
+    for (const url of Object.values(pdfCacheRef.current)) {
+      if (url) URL.revokeObjectURL(url)
     }
+    pdfCacheRef.current = {}
+    pdfJobsRef.current = {}
     setPdfUrl(null)
-    loadedFormatRef.current = null
   }, [])
+
+  /** Genera (o reutiliza) el PDF de un formato. Resuelve con la URL del blob. */
+  const ensurePdf = useCallback(
+    (format: PdfFormat): Promise<string> => {
+      const cached = pdfCacheRef.current[format]
+      if (cached) return Promise.resolve(cached)
+      const running = pdfJobsRef.current[format]
+      if (running) return running
+      if (!printData) return Promise.reject(new Error('Sin datos del comprobante'))
+      const epoch = epochRef.current
+      const job = (async () => {
+        const pdfOpts = format === 'ticket' ? ticketPdfOptions() : undefined
+        const blob = await printDataToPdfBlob(printData, format, pdfOpts)
+        const url = URL.createObjectURL(blob)
+        if (epoch !== epochRef.current) {
+          // El modal se cerró (o cambió el documento) mientras se generaba: no se guarda.
+          URL.revokeObjectURL(url)
+          throw new Error('cancelado')
+        }
+        pdfCacheRef.current[format] = url
+        return url
+      })()
+      pdfJobsRef.current[format] = job
+      const clear = () => {
+        if (pdfJobsRef.current[format] === job) delete pdfJobsRef.current[format]
+      }
+      job.then(clear, clear)
+      return job
+    },
+    [printData, ticketPdfOptions],
+  )
 
   const loadPdf = useCallback(
     async (format: PdfFormat) => {
       if (!printData) return
-      if (loadedFormatRef.current === format && pdfUrlRef.current) {
-        setPdfFormat(format)
+      wantedFormatRef.current = format
+      setPdfFormat(format)
+      setPdfError(false)
+      const cached = pdfCacheRef.current[format]
+      if (cached) {
+        setPdfUrl(cached)
         return
       }
       setPdfLoading(true)
-      revokePdfUrl()
       try {
-        const pdfOpts = format === 'ticket' ? ticketPdfOptions() : undefined
-        const blob = await printDataToPdfBlob(printData, format, pdfOpts)
-        const url = URL.createObjectURL(blob)
-        pdfUrlRef.current = url
-        loadedFormatRef.current = format
-        setPdfUrl(url)
-        setPdfFormat(format)
+        const url = await ensurePdf(format)
+        // Si el usuario alternó de formato mientras se generaba, solo se pinta el último pedido.
+        if (wantedFormatRef.current === format) setPdfUrl(url)
+        // El otro formato se prepara en segundo plano (con un respiro para no competir con el
+        // primer pintado): alternar Ticket/A4 queda instantáneo en cuanto a generación.
+        const other: PdfFormat = format === 'ticket' ? 'a4' : 'ticket'
+        window.setTimeout(() => {
+          void ensurePdf(other).catch(() => undefined)
+        }, 1200)
       } catch (e) {
+        if ((e as Error)?.message === 'cancelado') return
         console.error(e)
-        toast.error('No se pudo generar el PDF')
-        setPanelView('details')
+        if (wantedFormatRef.current === format) setPdfError(true)
       } finally {
         setPdfLoading(false)
       }
     },
-    [printData, revokePdfUrl, ticketPdfOptions],
+    [printData, ensurePdf],
   )
-
-  const showReceipt = useCallback(async () => {
-    if (!printData) return
-    setPanelView('receipt')
-    await loadPdf('ticket')
-  }, [printData, loadPdf])
-
-  const showDetails = useCallback(() => {
-    setPanelView('details')
-  }, [])
 
   const switchPdfFormat = useCallback(
     (format: PdfFormat) => {
-      if (format === pdfFormat && pdfUrl) return
+      if (format === pdfFormat && pdfUrl && !pdfError) return
       void loadPdf(format)
     },
-    [loadPdf, pdfFormat, pdfUrl],
+    [loadPdf, pdfFormat, pdfUrl, pdfError],
   )
 
+  // El comprobante (PDF) se muestra siempre y directamente: ya no hay una vista de "detalles".
   useEffect(() => {
     if (!open) {
       autoPrintedRef.current = false
-      autoShowReceiptRef.current = false
-      revokePdfUrl()
-      setPanelView('details')
+      revokeAllPdfs()
       setPdfFormat('ticket')
+      setPdfError(false)
       setBusy(null)
       setEmailModalOpen(false)
       return
     }
-    revokePdfUrl()
+    revokeAllPdfs()
     setPdfFormat('ticket')
-    const shouldShowReceipt = openInReceiptView && Boolean(printData)
-    if (shouldShowReceipt) {
-      autoShowReceiptRef.current = true
-      setPanelView('receipt')
-      // Mismo PDF en todas las plataformas; PdfBlobViewer lo rasteriza en Android.
-      void loadPdf('ticket')
-    } else {
-      setPanelView('details')
-    }
-  }, [open, revokePdfUrl, openInReceiptView, printData, loadPdf])
+    if (printData) void loadPdf('ticket')
+  }, [open, revokeAllPdfs, printData, loadPdf])
 
   useEffect(() => {
     if (!open || !printData || autoPrintedRef.current) return
@@ -223,17 +235,17 @@ export function ReceiptPrintModal({
   }, [open, printData])
 
   const handleClose = () => {
-    revokePdfUrl()
+    revokeAllPdfs()
     onClose()
   }
 
   const handleGoToList = () => {
-    revokePdfUrl()
+    revokeAllPdfs()
     onGoToList?.()
   }
 
   const handleNewDocument = () => {
-    revokePdfUrl()
+    revokeAllPdfs()
     onNewDocument?.()
   }
 
@@ -302,9 +314,6 @@ export function ReceiptPrintModal({
 
   if (!open) return null
 
-  const client = printData?.client
-  const showReceiptPanel = panelView === 'receipt'
-
   return (
     <PortalModal
       open={open}
@@ -368,36 +377,6 @@ export function ReceiptPrintModal({
               <div className="rounded-xl border border-stone-200 bg-stone-50/90 p-2 md:p-3">
                 <h3 className="mb-2.5 hidden text-xs font-semibold text-stone-700 lg:block">Acciones</h3>
                 <div className="grid min-w-0 grid-cols-2 gap-2">
-                  {showReceiptPanel ? (
-                    <button
-                      type="button"
-                      disabled={!!busy}
-                      onClick={showDetails}
-                      title="Ver detalles"
-                      aria-label="Ver detalles"
-                      className={clsx(ACTION_ICON_BTN, 'bg-stone-600 hover:opacity-90')}
-                    >
-                      <ArrowLeft className={ACTION_ICON} strokeWidth={2.25} />
-                      <span className={ACTION_LABEL}>Detalles</span>
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={!!busy || !printData || pdfLoading}
-                      onClick={() => void showReceipt()}
-                      title="Ver comprobante"
-                      aria-label="Ver comprobante"
-                      className={clsx(ACTION_ICON_BTN, 'bg-blue-800')}
-                    >
-                      {pdfLoading ? (
-                        <Loader2 className={clsx(ACTION_ICON, 'animate-spin')} />
-                      ) : (
-                        <FileText className={ACTION_ICON} strokeWidth={2.25} />
-                      )}
-                      <span className={ACTION_LABEL}>Comprobante</span>
-                    </button>
-                  )}
-
                   {isNativeApp && (
                     <button
                       type="button"
@@ -405,7 +384,7 @@ export function ReceiptPrintModal({
                       onClick={() => void handleDirectPrint()}
                       title="Volver a imprimir"
                       aria-label="Volver a imprimir"
-                      className={clsx(ACTION_ICON_BTN, 'bg-stone-700')}
+                      className={clsx(ACTION_ICON_BTN, 'col-span-2 bg-stone-700')}
                     >
                       {busy === 'print' ? (
                         <Loader2 className={clsx(ACTION_ICON, 'animate-spin')} />
@@ -423,7 +402,7 @@ export function ReceiptPrintModal({
                       onClick={() => void handleBrowserPrint()}
                       title="Imprimir PDF (visor del navegador)"
                       aria-label="Imprimir PDF"
-                      className={clsx(ACTION_ICON_BTN, 'bg-slate-700 hover:bg-slate-800')}
+                      className={clsx(ACTION_ICON_BTN, 'col-span-2 bg-slate-700 hover:bg-slate-800')}
                     >
                       {busy === 'browser-print' ? (
                         <Loader2 className={clsx(ACTION_ICON, 'animate-spin')} />
@@ -497,47 +476,67 @@ export function ReceiptPrintModal({
               </div>
             </div>
 
-            {/* Panel derecho: detalle o PDF */}
+            {/* Panel derecho: el comprobante en PDF */}
             <div className="lg:col-span-3">
-              {showReceiptPanel ? (
+              {printData ? (
                 <div className="overflow-hidden rounded-xl border border-stone-200 bg-stone-50">
-                  <div className="border-b border-stone-200 bg-stone-50 px-3 py-2.5">
-                    <div className="mx-auto grid max-w-xs grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        disabled={pdfLoading}
-                        onClick={() => switchPdfFormat('ticket')}
-                        title="Vista ticket"
-                        aria-label="Vista ticket"
-                        aria-pressed={pdfFormat === 'ticket'}
-                        className={clsx(
-                          ACTION_ICON_BTN,
-                          'min-h-[2.75rem]',
-                          pdfFormat === 'ticket' ? 'bg-amber-600 ring-2 ring-amber-300 ring-offset-1' : 'bg-amber-500/90',
-                        )}
-                      >
-                        <Receipt className={ACTION_ICON} strokeWidth={2.25} />
-                        <span className={ACTION_LABEL}>Ticket</span>
-                      </button>
-                      <button
-                        type="button"
-                        disabled={pdfLoading}
-                        onClick={() => switchPdfFormat('a4')}
-                        title="Vista A4"
-                        aria-label="Vista A4"
-                        aria-pressed={pdfFormat === 'a4'}
-                        className={clsx(
-                          ACTION_ICON_BTN,
-                          'min-h-[2.75rem]',
-                          pdfFormat === 'a4' ? 'bg-[#E4002B] ring-2 ring-red-300 ring-offset-1' : 'bg-[#E4002B]/85',
-                        )}
-                      >
-                        <FileText className={ACTION_ICON} strokeWidth={2.25} />
-                        <span className={ACTION_LABEL}>A4</span>
-                      </button>
+                  {/* Selector Ticket / A4: control segmentado compacto (antes dos botones de 44 px). */}
+                  <div className="flex justify-center border-b border-stone-200 bg-stone-50 px-3 py-1.5">
+                    <div
+                      role="group"
+                      aria-label="Formato del comprobante"
+                      className="inline-flex rounded-lg border border-stone-200 bg-white p-0.5"
+                    >
+                      {(
+                        [
+                          { id: 'ticket', label: 'Ticket', icon: Receipt, active: 'bg-amber-600' },
+                          { id: 'a4', label: 'A4', icon: FileText, active: 'bg-[#E4002B]' },
+                        ] as const
+                      ).map(({ id, label, icon: Icon, active }) => (
+                        <button
+                          key={id}
+                          type="button"
+                          disabled={pdfLoading}
+                          onClick={() => switchPdfFormat(id)}
+                          title={`Vista ${label}`}
+                          aria-label={`Vista ${label}`}
+                          aria-pressed={pdfFormat === id}
+                          className={clsx(
+                            'inline-flex h-7 min-w-[4.25rem] items-center justify-center gap-1 rounded-md px-2.5 text-[11px] font-semibold uppercase tracking-wide transition-colors touch-manipulation',
+                            pdfFormat === id ? `${active} text-white shadow-sm` : 'text-stone-600 hover:bg-stone-100',
+                          )}
+                        >
+                          <Icon className="h-3.5 w-3.5 shrink-0" strokeWidth={2.25} />
+                          {label}
+                        </button>
+                      ))}
                     </div>
                   </div>
-                  {pdfLoading || !pdfUrl ? (
+                  {pdfError ? (
+                    <div className="flex min-h-[280px] flex-col items-center justify-center gap-4 p-6 text-center md:min-h-[360px]">
+                      <FileText className="h-10 w-10 text-stone-300" aria-hidden />
+                      <p className="text-sm text-stone-600">No se pudo generar el comprobante.</p>
+                      <div className="flex flex-wrap items-center justify-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void loadPdf(pdfFormat)}
+                          className="inline-flex items-center gap-2 rounded-xl bg-primary-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-700"
+                        >
+                          <RefreshCw size={16} aria-hidden />
+                          Reintentar
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!!busy}
+                          onClick={() => void handleDownloadPdf(pdfFormat)}
+                          className="inline-flex items-center gap-2 rounded-xl border border-stone-300 bg-white px-4 py-2.5 text-sm font-semibold text-stone-700 hover:bg-stone-50 disabled:opacity-60"
+                        >
+                          <Download size={16} aria-hidden />
+                          Descargar
+                        </button>
+                      </div>
+                    </div>
+                  ) : pdfLoading || !pdfUrl ? (
                     <div className="flex min-h-[280px] items-center justify-center md:min-h-[360px]">
                       <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
                     </div>
@@ -548,94 +547,6 @@ export function ReceiptPrintModal({
                       embedOptions={pdfFormat === 'a4' ? { fit: 'page' } : undefined}
                     />
                   )}
-                </div>
-              ) : printData ? (
-                <div className="rounded-xl border border-stone-200 bg-stone-50/80 p-3 md:p-4">
-                  {client && (
-                    <div className="mb-4 rounded-lg border border-stone-200 bg-white p-3">
-                      <h4 className="mb-2 text-xs font-semibold text-stone-700">Datos del cliente</h4>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <span className="text-stone-500">Nombre</span>
-                          <p className="font-medium text-stone-900">{client.business_name}</p>
-                        </div>
-                        <div>
-                          <span className="text-stone-500">Documento</span>
-                          <p className="font-medium text-stone-900">{client.doc_number}</p>
-                        </div>
-                        {client.address && (
-                          <div className="col-span-2">
-                            <span className="text-stone-500">Dirección</span>
-                            <p className="font-medium text-stone-900">{client.address}</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="overflow-hidden rounded-lg border border-stone-200 bg-white">
-                    <table className="w-full text-xs md:text-sm">
-                      <thead className="bg-blue-900 text-white">
-                        <tr>
-                          <th className="px-3 py-2 text-left font-semibold">Producto</th>
-                          <th className="w-14 px-2 py-2 text-center font-semibold">Cant.</th>
-                          <th className="w-20 px-2 py-2 text-right font-semibold">P. unit.</th>
-                          <th className="w-24 px-3 py-2 text-right font-semibold">Importe</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-stone-100">
-                        {printData.items.map((item, idx) => (
-                          <tr key={idx} className="hover:bg-stone-50/80">
-                            <td className="px-3 py-2 font-medium text-stone-800">
-                              {receiptItemDisplayDescription(item)}
-                            </td>
-                            <td className="px-2 py-2 text-center">
-                              <span className="inline-flex h-7 min-w-[1.75rem] items-center justify-center rounded-md bg-green-100 px-1.5 text-xs font-semibold text-green-800">
-                                {item.quantity}
-                              </span>
-                            </td>
-                            <td className="px-2 py-2 text-right text-stone-700">
-                              {formatMoney(item.unit_price ?? 0, printData.currency)}
-                            </td>
-                            <td className="px-3 py-2 text-right font-semibold text-stone-800">
-                              {receiptItemDisplayTotal(item, (n) => formatMoney(n, printData.currency))}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div className="mt-4 space-y-1 rounded-lg border border-stone-200 bg-white p-3 text-sm">
-                    {buildReceiptTotalLines(printData).map((row, i) => (
-                      <div
-                        key={i}
-                        className={`flex justify-between ${
-                          row.negative
-                            ? 'text-amber-800'
-                            : row.bold
-                              ? 'font-bold text-stone-900 border-t border-stone-200 pt-2'
-                              : 'text-stone-600'
-                        }`}
-                      >
-                        <span>{row.label.replace(/:$/, '')}</span>
-                        <span>
-                          {row.negative ? '− ' : ''}
-                          {formatMoney(Math.abs(row.amount), printData.currency)}
-                        </span>
-                      </div>
-                    ))}
-                    {printData.payments.length > 0 && (
-                      <div className="border-t border-dashed border-stone-200 pt-2 text-xs text-stone-600">
-                        {printData.payments.map((p, i) => (
-                          <div key={i} className="flex justify-between py-0.5">
-                            <span>{salePaymentMethodLabelEs(p.method)}</span>
-                            <span>{formatMoney(p.amount, printData.currency)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
                 </div>
               ) : (
                 <p className="text-sm text-stone-500">No hay datos del comprobante.</p>
