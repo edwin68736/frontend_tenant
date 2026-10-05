@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { Plus, Trash2, X, Package, UserPlus, ScanBarcode, Pencil, Loader2, Wallet, StickyNote, AlertTriangle } from 'lucide-react'
 import { clsx } from 'clsx'
 import { salesService, type CreateSaleInput } from '@/services/sales.service'
+import { checkoutErrorMessage } from '@/utils/checkoutError'
 import { contactsService, type Contact } from '@/services/contacts.service'
 import { productsService, type Product } from '@/services/products.service'
 import { companyService, tenantCanEmitFactura, type CompanyConfig } from '@/services/company.service'
@@ -1728,7 +1729,7 @@ function SalesRegisterContent({
       // La cámara del escáner quedaba abierta detrás del recibo tras generar la venta.
       barcodeScan.closeScanner()
     } catch (e: any) {
-      toast.error(e.response?.data?.error ?? 'Error al registrar venta')
+      toast.error(checkoutErrorMessage(e, 'Error al registrar venta'), { duration: 8000 })
     } finally {
       setSaving(false)
     }

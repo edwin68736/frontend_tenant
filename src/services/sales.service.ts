@@ -1,4 +1,5 @@
 import api from './api'
+import { idempotencyKeyFor, releaseIdempotencyKey } from '@/utils/idempotencyKey'
 import type { SaleBillingStatus } from '@/constants/billingStatus'
 import type { LinkedFiscalDocSummary } from '@/services/billing.service'
 
@@ -540,7 +541,10 @@ export const salesService = {
     api.post<{ success: boolean; message?: string }>(`/api/sales/${saleId}/void-rejected`, { reason }).then((r) => r.data),
 
   create: (data: CreateSaleInput): Promise<{ id: number; doc_type: string; series: string; number: string; total: number; billing_status: string; print_data?: import('@/types/printData').PrintData }> =>
-    api.post('/api/sales', data).then(r => {
+    // Clave por intento de cobro (ver utils/idempotencyKey.ts): si la respuesta se pierde y el
+    // cajero reintenta, el servidor devuelve la venta ya creada en vez de registrar otra.
+    api.post('/api/sales', { ...data, idempotency_key: idempotencyKeyFor('sales-create', data) }).then(r => {
+      releaseIdempotencyKey('sales-create')
       const d = r.data as {
         sale?: { id: number; series: string; number: string; total: number; doc_type: string; billing_status: string }
         print_data?: import('@/types/printData').PrintData

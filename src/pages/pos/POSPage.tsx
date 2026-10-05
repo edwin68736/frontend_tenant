@@ -12,6 +12,7 @@ import { clsx } from 'clsx'
 import { productsService, getProductImageUrl, type Product, type Category } from '@/services/products.service'
 import { contactsService, type Contact } from '@/services/contacts.service'
 import { salesService } from '@/services/sales.service'
+import { checkoutErrorMessage } from '@/utils/checkoutError'
 import { cashbankService, type CashSession, type PaymentMethodRecord, type BankAccount } from '@/services/cashbank.service'
 import { tenantCanEmitFactura, type SunatConfig } from '@/services/company.service'
 import { useAuth } from '@/contexts/AuthContext'
@@ -836,7 +837,7 @@ function POSContent() {
       // La cámara del escáner quedaba abierta detrás del recibo tras generar la venta.
       barcodeScan.closeScanner()
     } catch (e: unknown) {
-      toast.error((e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Error procesando venta')
+      toast.error(checkoutErrorMessage(e), { duration: 8000 })
     } finally { setProcessing(false) }
   }
 
