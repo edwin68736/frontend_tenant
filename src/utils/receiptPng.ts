@@ -19,6 +19,7 @@ export async function generateReceiptPngBlob(
   format: 'a4' | 'ticket' = 'a4',
   scale = 2.25,
   options?: ReceiptPdfOptions,
+  binarize = false,
 ): Promise<Blob> {
   const doc = await generateReceiptPdf(data, format, options)
   const ab = doc.output('arraybuffer') as ArrayBuffer
@@ -37,17 +38,38 @@ export async function generateReceiptPngBlob(
     viewport,
   })
   await renderTask.promise
+  if (binarize) binarizeCanvas(canvas)
   return await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('No se pudo generar PNG'))), 'image/png', 0.92)
   })
 }
 
 /**
- * Ancho realmente imprimible del rollo: las térmicas no imprimen el papel de borde a borde
- * (80 mm → ~72 mm, 58 mm → ~50 mm). Dibujar a 100% del papel hacía que la impresora recortara el
- * lado derecho (TOTAL, importes) y obligaba a bajar la escala a 90% a mano.
+ * Cómo se imprime cada rollo. Las térmicas no imprimen el papel de borde a borde (80 mm → ~72 mm
+ * imprimibles) y los drivers de 58 mm suelen declarar la hoja de 48 mm ("Printer 58 (48x210)"):
+ * si la página es de otro ancho el driver reescala la imagen y sale borrosa/opaca.
+ *  - pageMm: ancho de la hoja (@page) · printMm: ancho que ocupa la imagen · dpi: resolución nativa.
+ *  - binarize: blanco/negro puro (sin grises) para que la térmica no tramee el texto fino.
  */
-const PRINTABLE_MM: Record<number, number> = { 80: 72, 58: 50 }
+const TICKET_PRINT_SPEC: Record<number, { pageMm: number; printMm: number; dpi: number; binarize: boolean }> = {
+  80: { pageMm: 80, printMm: 72, dpi: 300, binarize: false },
+  58: { pageMm: 48, printMm: 48, dpi: 203, binarize: true },
+}
+
+/** Pasa a blanco y negro puro: los grises del antialiasing salen opacos/punteados en térmica. */
+function binarizeCanvas(canvas: HTMLCanvasElement, threshold = 170) {
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const d = img.data
+  for (let i = 0; i < d.length; i += 4) {
+    const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]
+    const v = lum < threshold ? 0 : 255
+    d[i] = d[i + 1] = d[i + 2] = v
+    d[i + 3] = 255
+  }
+  ctx.putImageData(img, 0, 0)
+}
 
 /**
  * Imprime el ticket con una hoja del tamaño EXACTO del rollo (58 u 80 mm de ancho y el alto del
@@ -58,9 +80,11 @@ const PRINTABLE_MM: Record<number, number> = { 80: 72, 58: 50 }
  */
 export async function printTicketAsPage(data: PrintData, options?: ReceiptPdfOptions): Promise<void> {
   const paperMm = normalizeTicketPaperWidth(options?.paperWidthMm ?? configuredTicketPaperMm())
+  const spec = TICKET_PRINT_SPEC[paperMm]
   const pageWidthPt = (paperMm / 25.4) * 72
-  const scale = ((paperMm / 25.4) * 300) / pageWidthPt // 300 dpi
-  const blob = await generateReceiptPngBlob(data, 'ticket', scale, { ...options, paperWidthMm: paperMm })
+  // El layout (paperMm) se encoge para caber en el ancho imprimible, a la resolución nativa.
+  const scale = ((spec.printMm / 25.4) * spec.dpi) / pageWidthPt
+  const blob = await generateReceiptPngBlob(data, 'ticket', scale, { ...options, paperWidthMm: paperMm }, spec.binarize)
   const imgUrl = URL.createObjectURL(blob)
 
   try {
@@ -71,7 +95,7 @@ export async function printTicketAsPage(data: PrintData, options?: ReceiptPdfOpt
       img.src = imgUrl
     })
     // Un pelo menos de alto evita que el redondeo genere una segunda hoja casi en blanco.
-    const printMm = PRINTABLE_MM[paperMm] ?? paperMm
+    const { printMm, pageMm } = spec
     const heightMm = Math.floor((img.naturalHeight / img.naturalWidth) * printMm * 10) / 10
 
     await new Promise<void>((resolve, reject) => {
@@ -80,8 +104,8 @@ export async function printTicketAsPage(data: PrintData, options?: ReceiptPdfOpt
       iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;'
       iframe.srcdoc = `<!doctype html><html><head><meta charset="utf-8"><title>Ticket</title>
 <style>
-@page { size: ${paperMm}mm ${heightMm}mm; margin: 0; }
-html, body { margin: 0; padding: 0; width: ${paperMm}mm; background: #fff; overflow: hidden; }
+@page { size: ${pageMm}mm ${heightMm}mm; margin: 0; }
+html, body { margin: 0; padding: 0; width: ${pageMm}mm; background: #fff; overflow: hidden; }
 img { display: block; width: ${printMm}mm; height: ${heightMm}mm; }
 </style></head><body><img src="${imgUrl}" alt=""></body></html>`
 
