@@ -477,7 +477,7 @@ export async function generateReceiptPdf(
       // Si la 1ª palabra no cabe en la columna angosta de la fila (58 mm), jsPDF la partiría a
       // mitad de palabra ("A/ndroid"): se deja la fila sin descripción y el texto baja completo
       // al ancho disponible de las líneas siguientes.
-      const firstWord = desc.trim().split(/s+/)[0] ?? ''
+      const firstWord = desc.trim().split(/\s+/)[0] ?? ''
       const firstWordFits = doc.getTextWidth(firstWord) <= lay.wDescFirst
       const descLines: string[] = firstWordFits
         ? doc.splitTextToSize(desc, lay.wDescFirst)
@@ -765,11 +765,18 @@ export async function printReceiptPdf(
   format: 'a4' | 'ticket' = 'a4',
   options?: ReceiptPdfOptions,
 ): Promise<void> {
-  // Ticket: hoja del tamaño exacto del rollo (58/80 mm) en vez de un PDF que el visor escala.
   if (format === 'ticket') {
-    const { printTicketAsPage } = await import('@/utils/receiptPng')
-    await printTicketAsPage(data, options)
-    return
+    const mm = normalizeTicketPaperWidth(options?.paperWidthMm ?? configuredTicketPaperMm())
+    if (mm === 80) {
+      // 80 mm: hoja del tamaño exacto del rollo en vez de un PDF que el visor escala.
+      const { printTicketAsPage } = await import('@/utils/receiptPng')
+      await printTicketAsPage(data, options)
+      return
+    }
+    // 58 mm: se imprime el PDF como VECTOR maquetado a 48 mm (la hoja del driver). Como imagen,
+    // Chromium la reescalaba a la resolución del driver y salía borrosa; el texto vectorial lo
+    // dibuja el driver a su resolución nativa.
+    options = { ...options, paperWidthMm: mm, layoutWidthMm: 48 }
   }
 
   const blob = await printDataToPdfBlob(data, format, options)
