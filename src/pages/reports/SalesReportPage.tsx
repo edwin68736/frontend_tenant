@@ -5,7 +5,7 @@ import { toast } from 'sonner'
 import { salesService, type Sale, type SaleListSummary } from '@/services/sales.service'
 import { companyService } from '@/services/company.service'
 import { cashbankService, type PaymentMethodRecord } from '@/services/cashbank.service'
-import { exportTableToPdf } from '@/utils/exportPdf'
+import { exportTableToPdf, type ExportColumn as PdfExportColumn } from '@/utils/exportPdf'
 import { exportTableToExcel, type ExportColumn as ExcelExportColumn } from '@/utils/exportExcel'
 import { formatDisplayDatePeru, getTodayPeru } from '@/utils/datesPeru'
 import {
@@ -176,6 +176,38 @@ const COLS: ExcelExportColumn<ReportSaleRow>[] = [
   },
 ]
 
+/**
+ * Columnas del PDF. Mismo orden que el Excel, pero solo las que caben legibles en una hoja A4
+ * apaisada (19 columnas a ~14 mm cada una salían recortadas). Quedan fuera del PDF —y siguen en el
+ * Excel— Tipo CP/Doc, Tipo operación, Registrado por y RR / Estado RR. `weight` es el ancho relativo.
+ */
+const PDF_LAYOUT: Record<string, { weight: number; align?: 'right' | 'center' }> = {
+  issue_date: { weight: 17 },
+  doc_type_effective: { weight: 26 },
+  serie_sin_ceros: { weight: 19 },
+  contact_doc_number: { weight: 20 },
+  contact_name: { weight: 39 },
+  subtotal: { weight: 16, align: 'right' },
+  tax_amount: { weight: 14, align: 'right' },
+  total: { weight: 17, align: 'right' },
+  net_effect: { weight: 17, align: 'right' },
+  detraccion_amount: { weight: 18, align: 'right' },
+  net_payable: { weight: 17, align: 'right' },
+  cpe_status: { weight: 15 },
+  payment_method: { weight: 19 },
+  status: { weight: 15 },
+}
+const PDF_COLS: (PdfExportColumn<ReportSaleRow> & { excelNumber?: boolean })[] = COLS.filter(
+  (c) => PDF_LAYOUT[String(c.key)],
+).map((c) => ({ ...c, ...PDF_LAYOUT[String(c.key)] }))
+
+const DOC_TYPE_LABELS: Record<string, string> = {
+  notes: 'Notas de venta',
+  facturas_boletas: 'Facturas + boletas',
+  factura: 'Solo facturas',
+  boleta: 'Solo boletas',
+}
+
 export default function SalesReportPage() {
   const [branches, setBranches] = useState<Branch[]>([])
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
@@ -315,7 +347,59 @@ export default function SalesReportPage() {
     try {
       const { data: rows } = await salesService.list({ ...buildFilterParams(), export_all: '1' })
       const withDoc = withComputedFields(rows ?? [])
-      exportTableToPdf<ReportSaleRow>('Reporte de ventas', COLS, withDoc, `reporte-ventas-${filters.from || 'todo'}-${filters.to || 'todo'}.pdf`)
+
+      // Mismo cálculo que la fila de totales del Excel: suma directa sobre las filas del archivo.
+      const sumOf = (key: string) =>
+        withDoc.reduce((sum, row) => sum + (Number(row[key as keyof typeof row]) || 0), 0)
+      const footerRow = PDF_COLS.map((col, i) => {
+        if (i === 0) return 'TOTAL'
+        if (col.key === 'contact_name') return `${withDoc.length} documento${withDoc.length === 1 ? '' : 's'}`
+        return col.excelNumber ? sumOf(String(col.key)) : ''
+      })
+
+      const money = (n: number) => `S/ ${n.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      const branchName = filters.branch_id ? branches.find((b) => b.id === Number(filters.branch_id))?.name : ''
+      const methodName = filters.payment_method
+        ? paymentMethods.find((pm) => pm.code === filters.payment_method)?.name || filters.payment_method
+        : ''
+      const subtitle = [
+        `Periodo: ${filters.from ? formatIssueDate(filters.from) : 'inicio'} al ${filters.to ? formatIssueDate(filters.to) : 'hoy'}`,
+        [
+          `Sucursal: ${branchName || 'Todas'}`,
+          filters.doc_type_group !== 'all' ? `Comprobante: ${DOC_TYPE_LABELS[filters.doc_type_group]}` : '',
+          methodName ? `Método de pago: ${methodName}` : '',
+          filters.payment_mode === 'mixed' ? 'Solo pago mixto' : filters.payment_mode === 'single' ? 'Solo un método' : '',
+          filters.sale_status === 'active' ? 'Solo no anuladas' : filters.sale_status === 'cancelled' ? 'Solo anuladas' : '',
+          searchCustomer.trim() ? `Búsqueda: "${searchCustomer.trim()}"` : '',
+        ]
+          .filter(Boolean)
+          .join('  ·  '),
+      ]
+
+      // Mismas cifras que las tarjetas de la pantalla (resumen del backend sobre todo el filtro).
+      const summaryBoxes = [
+        { label: 'Total no anuladas', value: money(stats.amountActive) },
+        { label: 'Neto cobrable', value: money(stats.sumNetPayable) },
+        { label: 'Detracción SPOT', value: money(stats.sumDetraccion) },
+        { label: 'Total anuladas', value: money(stats.amountCancelled) },
+        { label: 'Vuelto', value: money(stats.sumChangeAmount) },
+        { label: 'Total general (incl. anuladas)', value: money(stats.amountTotal) },
+        ...stats.methodCards.map((m) => ({ label: m.label, value: money(m.total) })),
+      ]
+
+      await exportTableToPdf<ReportSaleRow>(
+        'Reporte de ventas',
+        PDF_COLS,
+        withDoc,
+        `reporte-ventas-${filters.from || 'todo'}-${filters.to || 'todo'}.pdf`,
+        {
+          subtitle,
+          summary: summaryBoxes,
+          footerRow,
+          // Las anuladas se ven en gris: siguen en el listado pero no suman en los totales.
+          rowTextColor: (row) => (String(row.status || '').toLowerCase() === 'cancelled' ? [156, 163, 175] : undefined),
+        },
+      )
       toast.success('PDF descargado')
     } catch {
       toast.error('Error al exportar')

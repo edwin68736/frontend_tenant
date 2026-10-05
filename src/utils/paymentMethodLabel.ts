@@ -23,7 +23,13 @@ export function normalizePaymentMethodCode(code?: string): string {
 
 export function formatPaymentMethodLabel(code?: string): string {
   const normalized = normalizePaymentMethodCode(code)
-  return PAYMENT_METHOD_LABELS[normalized] || code || '—'
+  const known = PAYMENT_METHOD_LABELS[normalized]
+  if (known) return known
+  // Código sin etiqueta propia (p. ej. "sin_definir"): se muestra legible, no con su código interno.
+  const raw = String(code ?? '').trim()
+  if (!raw) return '—'
+  const pretty = raw.replace(/_/g, ' ').toLowerCase()
+  return pretty.charAt(0).toUpperCase() + pretty.slice(1)
 }
 
 export function isDetractionPaymentMethod(code?: string): boolean {
