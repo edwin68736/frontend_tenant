@@ -43,6 +43,13 @@ export async function generateReceiptPngBlob(
 }
 
 /**
+ * Ancho realmente imprimible del rollo: las térmicas no imprimen el papel de borde a borde
+ * (80 mm → ~72 mm, 58 mm → ~50 mm). Dibujar a 100% del papel hacía que la impresora recortara el
+ * lado derecho (TOTAL, importes) y obligaba a bajar la escala a 90% a mano.
+ */
+const PRINTABLE_MM: Record<number, number> = { 80: 72, 58: 50 }
+
+/**
  * Imprime el ticket con una hoja del tamaño EXACTO del rollo (58 u 80 mm de ancho y el alto del
  * contenido), en vez de dejar que el visor de PDF lo escale a la hoja que tenga la impresora
  * (A4 por defecto, con el ticket diminuto arriba). El PDF se rasteriza a ~300 dpi y se imprime
@@ -64,7 +71,8 @@ export async function printTicketAsPage(data: PrintData, options?: ReceiptPdfOpt
       img.src = imgUrl
     })
     // Un pelo menos de alto evita que el redondeo genere una segunda hoja casi en blanco.
-    const heightMm = Math.floor((img.naturalHeight / img.naturalWidth) * paperMm * 10) / 10
+    const printMm = PRINTABLE_MM[paperMm] ?? paperMm
+    const heightMm = Math.floor((img.naturalHeight / img.naturalWidth) * printMm * 10) / 10
 
     await new Promise<void>((resolve, reject) => {
       const iframe = document.createElement('iframe')
@@ -74,7 +82,7 @@ export async function printTicketAsPage(data: PrintData, options?: ReceiptPdfOpt
 <style>
 @page { size: ${paperMm}mm ${heightMm}mm; margin: 0; }
 html, body { margin: 0; padding: 0; width: ${paperMm}mm; background: #fff; overflow: hidden; }
-img { display: block; width: ${paperMm}mm; height: ${heightMm}mm; }
+img { display: block; width: ${printMm}mm; height: ${heightMm}mm; }
 </style></head><body><img src="${imgUrl}" alt=""></body></html>`
 
       let settled = false
