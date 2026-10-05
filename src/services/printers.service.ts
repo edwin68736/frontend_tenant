@@ -524,9 +524,15 @@ async function pushCompanyHeaderEscPos(
 ) {
   const tradeName = String(printData.company?.trade_name ?? '').trim()
   const businessName = String(printData.company?.business_name ?? '').trim() || 'Empresa'
+  // Solo nota de venta: si se ocultó la razón social en Ajustes → Comprobantes Y hay nombre comercial
+  // con el que reemplazarla, no se imprime debajo (igual que en los PDF ticket/A4). Esta ruta
+  // (impresión directa ESC/POS) antes ignoraba el ajuste y siempre la mostraba.
+  const hideBusinessNameOnSaleNote =
+    Boolean(nvLayout) && printData.company?.show_business_name_on_sale_note === false && Boolean(tradeName)
   const showBusinessName =
     Boolean(businessName) &&
-    businessName.localeCompare(tradeName, undefined, { sensitivity: 'accent' }) !== 0
+    businessName.localeCompare(tradeName, undefined, { sensitivity: 'accent' }) !== 0 &&
+    !hideBusinessNameOnSaleNote
 
   // Nombre principal "un poco más grande" (1.3×): tamaño intermedio imposible en
   // texto ESC/POS (solo 1×/2×), por eso se rasteriza. Si falla, cae a texto 1×.
