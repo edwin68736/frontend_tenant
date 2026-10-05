@@ -348,12 +348,26 @@ export default function SalesReportPage() {
       const { data: rows } = await salesService.list({ ...buildFilterParams(), export_all: '1' })
       const withDoc = withComputedFields(rows ?? [])
 
-      // Mismo cálculo que la fila de totales del Excel: suma directa sobre las filas del archivo.
+      // Anuladas: los montos salen en NEGATIVO (y la fila en rojo) para que se distingan de un
+      // vistazo y la fila TOTAL sea la suma real de lo que se ve en cada columna (emitido menos
+      // anulado). El Excel no cambia: ahí los montos van tal cual los declara el documento.
+      const isCancelled = (r: ReportSaleRow) => String(r.status || '').toLowerCase() === 'cancelled'
+      const NEGATE_KEYS = ['subtotal', 'tax_amount', 'total', 'net_payable'] as const
+      const pdfRows: ReportSaleRow[] = withDoc.map((r) => {
+        if (!isCancelled(r)) return r
+        const copy = { ...r } as ReportSaleRow
+        for (const k of NEGATE_KEYS) {
+          const n = Number(copy[k])
+          if (Number.isFinite(n) && n > 0) (copy as unknown as Record<string, number>)[k] = -n
+        }
+        return copy
+      })
+
       const sumOf = (key: string) =>
-        withDoc.reduce((sum, row) => sum + (Number(row[key as keyof typeof row]) || 0), 0)
+        pdfRows.reduce((sum, row) => sum + (Number(row[key as keyof typeof row]) || 0), 0)
       const footerRow = PDF_COLS.map((col, i) => {
         if (i === 0) return 'TOTAL'
-        if (col.key === 'contact_name') return `${withDoc.length} documento${withDoc.length === 1 ? '' : 's'}`
+        if (col.key === 'contact_name') return `${pdfRows.length} documento${pdfRows.length === 1 ? '' : 's'}`
         return col.excelNumber ? sumOf(String(col.key)) : ''
       })
 
@@ -390,14 +404,13 @@ export default function SalesReportPage() {
       await exportTableToPdf<ReportSaleRow>(
         'Reporte de ventas',
         PDF_COLS,
-        withDoc,
+        pdfRows,
         `reporte-ventas-${filters.from || 'todo'}-${filters.to || 'todo'}.pdf`,
         {
           subtitle,
           summary: summaryBoxes,
           footerRow,
-          // Las anuladas se ven en gris: siguen en el listado pero no suman en los totales.
-          rowTextColor: (row) => (String(row.status || '').toLowerCase() === 'cancelled' ? [156, 163, 175] : undefined),
+          rowTextColor: (row) => (isCancelled(row) ? [200, 30, 30] : undefined),
         },
       )
       toast.success('PDF descargado')
