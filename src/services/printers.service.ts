@@ -40,6 +40,7 @@ import {
   normalizeSlot,
 } from '@/services/printers/storage'
 import { sendEscPosPayload, isNativePrintAvailable } from '@/services/printers/transport'
+import { isPrintServerPaired, listPrintServerPrinters } from '@/services/printers/printServer'
 import { playSaleReceiptSound } from '@/utils/receiptSound'
 import type {
   PrinterConfig,
@@ -119,7 +120,10 @@ export function isWindowsDesktop(): boolean {
 }
 
 export async function listInstalledPrinters(): Promise<string[]> {
-  if (!isTauri()) return []
+  if (!isTauri()) {
+    // Navegador con Servidor de impresión: lista las impresoras de Windows de ESTE equipo.
+    return isPrintServerPaired() ? listPrintServerPrinters() : []
+  }
   const { invoke } = await import('@tauri-apps/api/core')
   const printers = await invoke<string[]>('list_printers')
   return Array.isArray(printers) ? printers : []

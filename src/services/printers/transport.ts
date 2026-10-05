@@ -2,6 +2,7 @@
 import { TukichefPrinter } from '@/plugins/tukichef-printer'
 import type { PrinterConfig, PrinterConnectionMode } from './types'
 import { clampPort, DEFAULT_TCP_PORT } from './storage'
+import { isPrintServerPaired, printViaPrintServer } from './printServer'
 
 function uint8ToBase64(bytes: Uint8Array): string {
   let binary = ''
@@ -71,7 +72,12 @@ export async function sendEscPosPayload(
 ): Promise<string> {
   if (cfg.connection === 'windows') {
     if (!isTauriDesktop()) {
-      throw new Error('Impresora Windows solo disponible en escritorio')
+      // Navegador: por el Servidor de impresión instalado en este equipo (si está vinculado).
+      if (isPrintServerPaired()) {
+        if (!cfg.printerName?.trim()) throw new Error('Selecciona una impresora Windows')
+        return printViaPrintServer('windows', cfg, data, docName)
+      }
+      throw new Error('Impresora Windows solo disponible en escritorio o con el Servidor de impresión')
     }
     if (!cfg.printerName?.trim()) {
       throw new Error('Selecciona una impresora Windows')
@@ -89,6 +95,9 @@ export async function sendEscPosPayload(
     if (isCapacitorAndroid()) {
       return printViaCapacitor(cfg, data)
     }
+    if (isPrintServerPaired()) {
+      return printViaPrintServer('network', cfg, data, docName)
+    }
     throw new Error('Impresión por red no disponible')
   }
 
@@ -103,7 +112,7 @@ export async function sendEscPosPayload(
 }
 
 export function isNativePrintAvailable(): boolean {
-  return isTauriDesktop() || isCapacitorAndroid()
+  return isTauriDesktop() || isCapacitorAndroid() || isPrintServerPaired()
 }
 
 export function connectionForTauriTest(mode: PrinterConnectionMode): 'windows' | 'network' {

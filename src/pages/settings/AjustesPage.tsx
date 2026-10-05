@@ -20,7 +20,7 @@ export default function AjustesPage() {
   const location = useLocation()
   const canCompany = canManageErpCompany(hasPermission)
   const canUsers = canManageErpUsers(hasPermission)
-  const canPrinters = canConfigureErpDevicePrinters()
+  const canPrinters = canConfigureErpDevicePrinters(hasPermission)
 
   const availableTabs = useMemo(
     () =>

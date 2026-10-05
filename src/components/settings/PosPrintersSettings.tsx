@@ -14,6 +14,7 @@ import {
 } from '@/services/printers.service'
 import { isCapacitorAndroid, isTauriDesktop } from '@/lib/platform/detect'
 import { PrinterKindCard } from './printers/PrinterKindCard'
+import { PrintServerCard, usePrintServerPaired } from './printers/PrintServerCard'
 import { NotaVentaPrintSettings } from './printers/NotaVentaPrintSettings'
 
 /** Configuración de impresora térmica para comprobantes POS (solo slot documentos). */
@@ -23,6 +24,8 @@ export function PosPrintersSettings() {
   const [settings, setSettings] = useState<StoredPrinterSettings>(() => loadStoredPrinterSettings())
   const [testing, setTesting] = useState(false)
 
+  const printServerPaired = usePrintServerPaired()
+  const browserOnly = !isTauriDesktop() && !isCapacitorAndroid()
   const caps = getPrinterPlatformCapabilities()
 
   const printerOptions = useMemo(() => {
@@ -39,7 +42,7 @@ export function PosPrintersSettings() {
   )
 
   const refreshPrinters = () => {
-    if (!isTauriDesktop()) return
+    if (!isTauriDesktop() && !printServerPaired) return
     setLoadingPrinters(true)
     listInstalledPrinters()
       .then((list) => setPrinters(list))
@@ -51,8 +54,9 @@ export function PosPrintersSettings() {
   }
 
   useEffect(() => {
-    if (isTauriDesktop()) refreshPrinters()
-  }, [])
+    if (isTauriDesktop() || printServerPaired) refreshPrinters()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [printServerPaired])
 
   useEffect(() => {
     saveStoredPrinterSettings(settings)
@@ -101,12 +105,19 @@ export function PosPrintersSettings() {
             <Smartphone size={14} /> Android
           </span>
         )}
+        {printServerPaired && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2.5 py-1">
+            <Monitor size={14} /> Servidor de impresión
+          </span>
+        )}
         {!isNativePrintAvailable() && (
           <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-900">
-            En navegador web solo PDF; use la app de escritorio o Android para impresión directa.
+            En navegador web solo PDF; conecta el Servidor de impresión, o usa la app de escritorio o Android, para impresión directa.
           </span>
         )}
       </div>
+
+      {browserOnly && <PrintServerCard />}
 
       {!isNativePrintAvailable() && (
         <p className="text-xs text-stone-500 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2">

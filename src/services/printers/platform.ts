@@ -1,10 +1,12 @@
 ﻿import { isCapacitorAndroid, isTauriDesktop } from '@/lib/platform/detect'
 import type { PrinterConnectionMode, PrinterPlatformCapabilities } from './types'
+import { isPrintServerPaired } from './printServer'
 
 export function getPrinterPlatformCapabilities(): PrinterPlatformCapabilities {
   return {
-    windowsUsb: isTauriDesktop(),
-    network: isTauriDesktop() || isCapacitorAndroid(),
+    // En navegador, el Servidor de impresión vinculado aporta Windows (spooler) y red.
+    windowsUsb: isTauriDesktop() || isPrintServerPaired(),
+    network: isTauriDesktop() || isCapacitorAndroid() || isPrintServerPaired(),
     bluetooth: isCapacitorAndroid(),
   }
 }

@@ -13,8 +13,13 @@ export function canManageErpCompany(hasPermission: (permission: string) => boole
   return hasPermission('company.view')
 }
 
-export function canConfigureErpDevicePrinters(): boolean {
-  return isNativePrintAvailable()
+/**
+ * Impresoras del equipo. En app nativa siempre; en navegador también (ancho de papel 58/80 mm y
+ * conexión con el Servidor de impresión), para quien opera ventas.
+ */
+export function canConfigureErpDevicePrinters(hasPermission?: (permission: string) => boolean): boolean {
+  if (isNativePrintAvailable()) return true
+  return Boolean(hasPermission && (hasPermission('sales.view') || hasPermission('sales.create') || hasPermission('sales.pos')))
 }
 
 export function canManageErpUsers(hasPermission: (permission: string) => boolean): boolean {
@@ -25,6 +30,6 @@ export function canAccessErpSettings(hasPermission: (permission: string) => bool
   return (
     canManageErpCompany(hasPermission) ||
     canManageErpUsers(hasPermission) ||
-    canConfigureErpDevicePrinters()
+    canConfigureErpDevicePrinters(hasPermission)
   )
 }
