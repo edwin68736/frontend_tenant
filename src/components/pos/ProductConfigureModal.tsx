@@ -466,6 +466,11 @@ export function ProductConfigureModal({ product, branchId, stacked, enableSaleUn
             </div>
           ) : (
             <>
+              {hasActiveSaleUnits && presentations.some((p) => p.name.trim()) && (
+                <p className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                  Este producto también tiene presentaciones, pero con unidades de venta activas no se pueden elegir al vender. Quita las unidades de venta o las presentaciones en la ficha del producto.
+                </p>
+              )}
               {hasActiveSaleUnits && (
                 <div className="rounded-xl border-2 border-[rgb(var(--p200))] bg-[rgb(var(--p50))]/50 p-3 space-y-3">
                   <div>

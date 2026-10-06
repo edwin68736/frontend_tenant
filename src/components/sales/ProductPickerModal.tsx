@@ -206,7 +206,14 @@ export function ProductPickerModal({
                   </td>
                   {/* whitespace-nowrap: sin esto "S/ 25.00" se partía en dos líneas. */}
                   <td className="px-2 md:px-4 py-2.5 text-gray-700 whitespace-nowrap">
-                    {fmtPrice(priceValue(p))}
+                    {variant === 'sale' && p.has_variants && p.min_presentation_price !== undefined && !(Number(p.sale_price) > 0) ? (
+                      <>
+                        <span className="block text-[10px] font-normal text-gray-400">Desde</span>
+                        {fmtPrice(Number(p.min_presentation_price))}
+                      </>
+                    ) : (
+                      fmtPrice(priceValue(p))
+                    )}
                   </td>
                   <td className="px-2 md:px-4 py-2.5 font-mono text-gray-600">{p.code || '-'}</td>
                   <td className="px-3 py-2">
