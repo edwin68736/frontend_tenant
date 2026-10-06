@@ -161,9 +161,11 @@ export default function ProductDetailModal({
                   ? formatSoles(resolved.price)
                   : needsOptions && options && options.presentations.length > 0 && !hasUnits
                     ? `Desde ${formatSoles(Math.min(...options.presentations.map((p) => p.sale_price)))}`
-                    : formatSoles(product.sale_price)}
+                    : product.has_variants && product.min_presentation_price !== undefined && !(Number(product.sale_price) > 0)
+                      ? `Desde ${formatSoles(product.min_presentation_price)}`
+                      : formatSoles(product.sale_price)}
               </span>
-              {product.unit && <span className="text-xs text-gray-400">por {product.unit.toLowerCase()}</span>}
+              {product.unit && !hasUnits && <span className="text-xs text-gray-400">por {product.unit.toLowerCase()}</span>}
             </div>
             {showStockQty && !needsOptions && (
               <p className="text-xs text-gray-400 -mt-3 mb-4">Stock disponible: {formatStockQty(stockQty)}</p>
