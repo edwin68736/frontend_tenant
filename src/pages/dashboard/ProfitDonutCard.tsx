@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts'
-import { AlertTriangle, X } from 'lucide-react'
+import { X } from 'lucide-react'
 import { dashboardService, type DashboardProfit } from '@/services/dashboard.service'
 import { productsService } from '@/services/products.service'
 
@@ -218,13 +218,6 @@ export default function ProfitDonutCard({ dateFrom, dateTo, branchId, userId }: 
           <dd className={`font-bold tabular-nums ${profit < 0 ? 'text-red-600' : 'text-slate-900'}`}>{fmtMoney(profit)}</dd>
         </div>
       </dl>
-
-      {data && data.lines_without_cost > 0 && (
-        <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
-          <AlertTriangle size={12} className="mt-0.5 shrink-0" />
-          {data.lines_without_cost} de {data.lines} línea(s) vendidas no tienen precio de compra registrado: la utilidad puede estar sobreestimada.
-        </p>
-      )}
     </div>
   )
 }
