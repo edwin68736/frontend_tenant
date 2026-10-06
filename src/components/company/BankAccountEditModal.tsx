@@ -25,6 +25,7 @@ export function BankAccountEditModal({ open, account, onClose, onSaved }: Props)
   const [accountNumber, setAccountNumber] = useState('')
   const [type, setType] = useState('bank')
   const [active, setActive] = useState(true)
+  const [cci, setCci] = useState('')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -32,6 +33,7 @@ export function BankAccountEditModal({ open, account, onClose, onSaved }: Props)
     setName(account.name ?? '')
     setBankName(account.bank_name ?? '')
     setAccountNumber(account.account_number ?? '')
+    setCci(account.cci ?? '')
     setType(account.type || 'bank')
     setActive(account.active !== false)
   }, [account])
@@ -48,6 +50,7 @@ export function BankAccountEditModal({ open, account, onClose, onSaved }: Props)
         name: name.trim(),
         bank_name: bankName.trim(),
         account_number: accountNumber.trim(),
+        cci: cci.trim(),
         type,
         active,
       })
@@ -57,6 +60,7 @@ export function BankAccountEditModal({ open, account, onClose, onSaved }: Props)
         name: name.trim(),
         bank_name: bankName.trim(),
         account_number: accountNumber.trim(),
+        cci: cci.trim(),
         type,
         active,
       })

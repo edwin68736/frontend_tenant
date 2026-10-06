@@ -23,7 +23,7 @@ import { fitReceiptLogoMm, resolveReceiptLogoForPdf } from '@/utils/receiptLogoP
 import { rasterPxForMm } from '@/utils/receiptPdfRaster'
 import { paymentWalletVisible, renderPaymentWalletBlock } from '@/utils/receiptPaymentWallet'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
-import { formatBankAccountLine, formatWalletAccountLine } from '@/utils/receiptBankAccounts'
+import { formatBankAccountLines, formatWalletAccountLine } from '@/utils/receiptBankAccounts'
 import {
   getNotaVentaPrintLayout,
   type NotaVentaPrintLayoutSettings,
@@ -742,7 +742,7 @@ function estimateA4PostTableBlockHeight(data: PrintData, showPaymentCondition: b
   }
 
   const bankLines =
-    (data.bank_accounts ?? []).length +
+    (data.bank_accounts ?? []).reduce((n, b) => n + formatBankAccountLines(b).length, 0) +
     (data.payment_wallet?.provider && data.payment_wallet?.phone ? 1 : 0)
   if (bankLines > 0) leftH += LINE_H + 1 + bankLines * LINE_H + 2
 
@@ -1185,8 +1185,7 @@ function drawBankAccounts(ctx: A4Ctx, data: PrintData, startY: number): number {
   const wallet = data.payment_wallet
   const lines: string[] = []
   for (const b of banks) {
-    const line = formatBankAccountLine(b)
-    if (line) lines.push(line)
+    lines.push(...formatBankAccountLines(b))
   }
   if (wallet?.provider && wallet.phone && !paymentWalletVisible(data, 'a4')) {
     const wLine = formatWalletAccountLine(wallet.provider, wallet.phone)

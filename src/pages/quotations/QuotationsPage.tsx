@@ -580,7 +580,14 @@ function QuotationsContent() {
                 : rows.map((row) => (
                     <tr key={row.id} className="border-b border-gray-50 hover:bg-gray-50/50">
                       <td className="px-4 py-3 text-gray-600">{formatDisplayDatePeru(row.issue_date)}</td>
-                      <td className="px-4 py-3 font-mono text-gray-800">{row.number}</td>
+                      <td className="px-4 py-3">
+                        <span className="font-mono text-gray-800">{row.number}</span>
+                        {row.notes?.trim() && (
+                          <span className="block max-w-[220px] truncate text-xs text-gray-400" title={row.notes}>
+                            {row.notes}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-gray-600">{row.contact_name ?? '—'}</td>
                       <td className="px-4 py-3 font-semibold">
                         {row.currency === 'USD' ? '$' : 'S/'} {Number(row.total).toFixed(2)}

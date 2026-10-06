@@ -7,7 +7,7 @@ import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { getTodayPeru } from '@/utils/datesPeru'
 
-const emptyAccount = () => ({ name: '', bank_name: '', account_number: '', currency: 'PEN', type: 'bank', initial_balance: 0, active: true })
+const emptyAccount = () => ({ name: '', bank_name: '', account_number: '', cci: '', currency: 'PEN', type: 'bank', initial_balance: 0, active: true })
 const emptyMov = () => ({ type: 'credit' as 'credit' | 'debit', description: '', reference: '', amount: 0, date: getTodayPeru() })
 const MOV_PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
 
@@ -117,6 +117,7 @@ function BankContent() {
         name: accountForm.name,
         bank_name: accountForm.bank_name,
         account_number: accountForm.account_number,
+        cci: accountForm.cci,
         type: accountForm.type,
         active: accountForm.active !== false,
       })
@@ -137,6 +138,7 @@ function BankContent() {
       name: acc.name,
       bank_name: acc.bank_name,
       account_number: acc.account_number || '',
+      cci: acc.cci || '',
       currency: acc.currency || 'PEN',
       type: acc.type || 'bank',
       initial_balance: acc.balance,
@@ -197,6 +199,7 @@ function BankContent() {
                 {acc.type === 'wallet' ? 'Billetera' : acc.type === 'cash' ? 'Caja' : acc.bank_name}
                 {acc.account_number ? ` · ${acc.account_number}` : ''}
               </p>
+              {acc.cci ? <p className="text-[11px] text-gray-400 truncate">CCI {acc.cci}</p> : null}
               <div className="flex items-end justify-between mt-1">
                 <p className="text-base font-bold text-[rgb(var(--p600))]">{acc.currency} {Number(acc.balance).toFixed(2)}</p>
                 <span className={`flex items-center gap-0.5 text-[10px] font-medium flex-shrink-0 transition-colors ${isSelected ? 'text-[rgb(var(--p600))]' : 'text-gray-300 group-hover:text-[rgb(var(--p500))]'}`}>
@@ -405,6 +408,18 @@ function BankContent() {
               value={accountForm.account_number}
               onChange={e => setAccountForm(f => ({ ...f, account_number: e.target.value }))}
             />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">CCI (Cuenta Interbancaria)</label>
+            <input
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              value={accountForm.cci}
+              inputMode="numeric"
+              maxLength={20}
+              onChange={e => setAccountForm(f => ({ ...f, cci: e.target.value.replace(/\D/g, '') }))}
+              placeholder="20 dígitos (opcional)"
+            />
+            <p className="text-[11px] text-gray-400 mt-0.5">Se imprime junto al N° de cuenta en comprobantes y cotizaciones.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>

@@ -153,6 +153,13 @@ function renderFiscalFooter(
   addSpace: (h?: number) => void,
 ) {
   const f = data.fiscal
+  // Notas/observaciones de la cotización: el A4 ya las imprime, el ticket no las mostraba.
+  const quotationNotes = data.sunat_code === 'QT' ? data.notes?.trim() : ''
+  if (quotationNotes) {
+    addSpace(2)
+    addWrapped('Observaciones:', FONT_SIZE_SM)
+    addWrapped(quotationNotes, FONT_SIZE_SM)
+  }
   if (!f?.show_terms_conditions || !f.terms_text?.trim()) return
   addSpace(2)
   addWrapped('Términos y condiciones:', FONT_SIZE_SM)

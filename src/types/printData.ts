@@ -192,6 +192,7 @@ export interface PrintBankAccount {
   name?: string
   bank_name: string
   account_number: string
+  cci?: string
   currency: string
 }
 

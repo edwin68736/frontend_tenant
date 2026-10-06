@@ -336,6 +336,9 @@ export function ReceiptWalletSettings() {
                             Cta: {acc.account_number} ({acc.currency || 'PEN'})
                           </span>
                         ) : null}
+                        {acc.cci ? (
+                          <span className="block text-xs text-gray-500 font-mono mt-0.5">CCI: {acc.cci}</span>
+                        ) : null}
                       </span>
                     </label>
                     <button

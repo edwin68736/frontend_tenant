@@ -26,6 +26,7 @@ type BankAccountLike = {
   name?: string
   bank_name?: string
   account_number?: string
+  cci?: string
   currency?: string
   active?: boolean
 }
@@ -43,13 +44,15 @@ export function buildPrintBankAccounts(
     const name = String(a.name ?? '').trim()
     let bankName = String(a.bank_name ?? '').trim()
     const accountNumber = String(a.account_number ?? '').trim()
+    const cci = String(a.cci ?? '').trim()
     // Cuentas seed suelen tener solo nombre (sin banco ni número).
-    if (!name && !bankName && !accountNumber) continue
+    if (!name && !bankName && !accountNumber && !cci) continue
     if (!bankName) bankName = name
     out.push({
       name: name || undefined,
       bank_name: bankName,
       account_number: accountNumber,
+      cci: cci || undefined,
       currency: String(a.currency ?? 'PEN').trim() || 'PEN',
     })
   }
@@ -98,6 +101,14 @@ export function formatBankAccountLine(b: PrintBankAccount): string | null {
   return num ? `${label}: ${num}` : label
 }
 
+/** Líneas de una cuenta para el PDF: la principal y, si tiene, otra con el CCI (la corta en 2 líneas). */
+export function formatBankAccountLines(b: PrintBankAccount): string[] {
+  const main = formatBankAccountLine(b)
+  if (!main) return []
+  const cci = String(b.cci ?? '').trim()
+  return cci ? [main, `CCI: ${cci}`] : [main]
+}
+
 export function formatWalletAccountLine(provider?: string, phone?: string): string | null {
   const p = String(provider ?? '')
     .trim()
@@ -120,8 +131,7 @@ export function bankAccountPrintLines(data: {
 }): string[] {
   const lines: string[] = []
   for (const b of data.bank_accounts ?? []) {
-    const line = formatBankAccountLine(b)
-    if (line) lines.push(line)
+    lines.push(...formatBankAccountLines(b))
   }
   return lines
 }

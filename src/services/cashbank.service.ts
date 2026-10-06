@@ -71,6 +71,8 @@ export interface BankAccount {
   name: string
   bank_name: string
   account_number: string
+  /** Código de Cuenta Interbancario (opcional). */
+  cci?: string
   currency: string
   balance: number
   type: string
@@ -372,10 +374,10 @@ export const cashbankService = {
   getBankAccount: (id: number): Promise<BankAccount> =>
     api.get(`/api/cashbank/bank-accounts/${id}`).then(r => r.data.data ?? r.data),
 
-  createBankAccount: (data: { name: string; bank_name: string; account_number: string; currency: string; type?: string; payment_method?: string; initial_balance: number }): Promise<BankAccount> =>
+  createBankAccount: (data: { name: string; bank_name: string; account_number: string; cci?: string; currency: string; type?: string; payment_method?: string; initial_balance: number }): Promise<BankAccount> =>
     api.post('/api/cashbank/bank-accounts', { ...data, type: data.type ?? 'bank', payment_method: data.payment_method ?? '' }).then(r => r.data.data ?? r.data),
 
-  updateBankAccount: (id: number, data: Partial<{ name: string; bank_name: string; account_number: string; type: string; payment_method: string; active: boolean }>): Promise<void> =>
+  updateBankAccount: (id: number, data: Partial<{ name: string; bank_name: string; account_number: string; cci: string; type: string; payment_method: string; active: boolean }>): Promise<void> =>
     api.put(`/api/cashbank/bank-accounts/${id}`, data).then(r => r.data),
 
   /** Movimientos paginados/filtrados de una cuenta bancaria (from/to YYYY-MM-DD, type credit|debit). */
