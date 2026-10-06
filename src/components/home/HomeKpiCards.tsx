@@ -70,12 +70,16 @@ function Sparkline({ values, label }: { values: number[]; label: string }) {
 }
 
 /** Chip de variación. Lleva icono y signo: nunca depende solo del color. */
-function DeltaChip({ pct }: { pct: number }) {
+function DeltaChip({ pct, title }: { pct: number; title?: string }) {
   const rounded = Math.round(pct)
   const Icon = rounded > 0 ? TrendingUp : rounded < 0 ? TrendingDown : Minus
   const sign = rounded > 0 ? '+' : ''
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-bold text-white backdrop-blur-sm">
+    <span
+      title={title}
+      aria-label={title ? `${pct >= 0 ? '+' : ''}${Math.round(pct)}% ${title}` : undefined}
+      className="inline-flex items-center gap-1 rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-bold text-white backdrop-blur-sm"
+    >
       <Icon className="h-3 w-3" aria-hidden />
       {sign}
       {rounded}%
@@ -95,6 +99,10 @@ export function HomeKpiCards() {
     purchases_month: number
   } | null>(null)
   const [monthlySales, setMonthlySales] = useState<MonthlySale[]>([])
+  // Mes en curso vs los MISMOS días del mes anterior (no contra el mes anterior completo).
+  const [prevSameDays, setPrevSameDays] = useState<number | null>(null)
+  const [compareLabel, setCompareLabel] = useState('mes anterior')
+  const [onlyMine, setOnlyMine] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -104,6 +112,9 @@ export function HomeKpiCards() {
         if (cancelled) return
         setTotals(stats.home ?? null)
         setMonthlySales(stats.monthly_sales ?? [])
+        setPrevSameDays(stats.home?.sales_prev_month_same_days ?? null)
+        if (stats.home?.month_compare_label) setCompareLabel(stats.home.month_compare_label)
+        setOnlyMine(!!stats.scope?.restricted && !stats.scope?.is_admin)
       })
       .catch(() => {
         // El home no debe romperse si el resumen falla: se quedan las tarjetas en cero.
@@ -119,12 +130,11 @@ export function HomeKpiCards() {
   const salesSeries = useMemo(() => monthlySales.slice(-6).map((m) => m.amount ?? 0), [monthlySales])
 
   const salesDeltaPct = useMemo(() => {
-    if (salesSeries.length < 2) return null
-    const current = salesSeries[salesSeries.length - 1]
-    const previous = salesSeries[salesSeries.length - 2]
-    if (!previous) return null
-    return ((current - previous) / previous) * 100
-  }, [salesSeries])
+    const current = totals?.sales_month ?? 0
+    // Base justa: mismos días del mes anterior. Si el servidor no la manda (versión vieja), no se inventa.
+    if (prevSameDays == null || !prevSameDays) return null
+    return ((current - prevSameDays) / prevSameDays) * 100
+  }, [totals, prevSameDays])
 
   const kpis: Kpi[] = [
     {
@@ -139,7 +149,7 @@ export function HomeKpiCards() {
       label: 'Ventas mes',
       icon: CalendarDays,
       value: totals?.sales_month ?? 0,
-      hint: 'vs. mes anterior',
+      hint: `vs. ${compareLabel}`,
       series: salesSeries,
       deltaPct: salesDeltaPct,
     },
@@ -188,9 +198,12 @@ export function HomeKpiCards() {
             {/* Fila de contexto con altura fija: sin ella las tarjetas quedan desparejas. */}
             <div className="flex min-h-[28px] items-end justify-between gap-2">
               {kpi.deltaPct != null ? (
-                <DeltaChip pct={kpi.deltaPct} />
+                <DeltaChip pct={kpi.deltaPct} title={kpi.hint} />
               ) : (
-                <p className={`truncate text-[11px] ${theme.label}`}>{kpi.hint}</p>
+                <p className={`truncate text-[11px] ${theme.label}`}>
+                  {kpi.hint}
+                  {onlyMine ? ' · solo lo tuyo' : ''}
+                </p>
               )}
               {hasChart ? (
                 <Sparkline values={kpi.series!} label={`Tendencia de ${kpi.label.toLowerCase()}`} />

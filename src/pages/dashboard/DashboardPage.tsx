@@ -338,6 +338,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [branches, setBranches] = useState<BranchOpt[]>([])
   const [branchId, setBranchId] = useState<number | ''>('')
+  // Solo el Administrador puede elegir usuario; el servidor ignora este valor para los demás roles.
+  const [userId, setUserId] = useState<number | ''>('')
   // Recharts no acepta clases responsive: la leyenda se reubica desde JS.
   const isNarrow = useNarrowViewport()
   const [preset, setPreset] = useState<string>('month')
@@ -355,6 +357,7 @@ export default function DashboardPage() {
         date_from: dateFrom,
         date_to: dateTo,
         branch_id: branchId ? Number(branchId) : undefined,
+        user_id: userId ? Number(userId) : undefined,
       })
       setAnalytics(data)
       setTopProducts(await attachTopProductLabels(data.top_products ?? []))
@@ -365,7 +368,7 @@ export default function DashboardPage() {
     } finally {
       setLoading(false)
     }
-  }, [dateFrom, dateTo, branchId])
+  }, [dateFrom, dateTo, branchId, userId])
 
   useEffect(() => {
     void load()
@@ -425,7 +428,8 @@ export default function DashboardPage() {
     return (analytics?.by_product_category ?? []).map((x, i) => ({
       name: x.name || '—',
       value: x.total,
-      fill: CHART_COLORS[i % CHART_COLORS.length],
+      // Las filas de ajuste (otras categorías, descuentos…) van en gris para no confundirlas con una categoría.
+      fill: x.adjustment ? '#94a3b8' : CHART_COLORS[i % CHART_COLORS.length],
     }))
   }, [analytics])
 
@@ -439,6 +443,7 @@ export default function DashboardPage() {
 
   const s = analytics?.summary
   const p = analytics?.period
+  const scope = analytics?.scope
 
   return (
     <div className="space-y-4 pb-10">
@@ -525,6 +530,24 @@ export default function DashboardPage() {
                   ))}
                 </select>
               </label>
+              {scope?.is_admin && (
+                <label className="col-span-2 flex min-w-0 flex-1 flex-col gap-1 text-[11px] font-medium text-gray-500 lg:col-span-1 lg:min-w-[10rem]">
+                  Usuario
+                  <select
+                    value={userId === '' ? '' : String(userId)}
+                    onChange={(e) => setUserId(e.target.value ? Number(e.target.value) : '')}
+                    aria-label="Filtrar por usuario"
+                    className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm"
+                  >
+                    <option value="">Todos los usuarios</option>
+                    {scope.users.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <div className="hidden min-w-0 flex-1 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600 lg:flex lg:min-w-[12rem] xl:max-w-[16rem]">
                 <CalendarRange size={14} className="shrink-0 text-gray-400" />
                 <span className="truncate">
@@ -540,6 +563,25 @@ export default function DashboardPage() {
             </div>
       </div>
 
+      {scope && !scope.is_admin && (
+        <p className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+          Estás viendo solo lo que corresponde a tu usuario (ventas, caja y comprobantes tuyos).
+        </p>
+      )}
+      {scope?.is_admin && scope.restricted && (
+        <p className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs text-indigo-800">
+          Filtrado por usuario: {scope.users.find((u) => u.id === scope.user_id)?.name ?? 'seleccionado'}. Las tarjetas de clientes nuevos y
+          el stock son de toda la empresa.
+        </p>
+      )}
+      {(s?.invalid_total_sales ?? 0) > 0 && (
+        <p className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          <AlertTriangle size={14} className="shrink-0" />
+          {s?.invalid_total_sales} venta(s) del período tienen total de S/ 0 o negativo: distorsionan los totales y el ticket promedio.
+          Revísalas en Ventas.
+        </p>
+      )}
+
       {/* KPI grid */}
       {/* En móvil: las dos tarjetas de ventas a ancho completo (cifras largas) y las dos
           pequeñas a 2 columnas. En xl todas vuelven a una fila de 4. */}
@@ -553,7 +595,7 @@ export default function DashboardPage() {
           tone="brand"
           trend={
             p && Math.abs(p.sales_change_pct) > 0.01
-              ? { pct: p.sales_change_pct, label: 'vs período anterior' }
+              ? { pct: p.sales_change_pct, label: p.compare_label ? `vs ${p.compare_label}` : 'vs período anterior' }
               : undefined
           }
           loading={loading}
@@ -567,7 +609,7 @@ export default function DashboardPage() {
           tone="emerald"
           trend={
             s && Math.abs(s.month_over_month_pct) > 0.01
-              ? { pct: s.month_over_month_pct, label: 'vs mes anterior' }
+              ? { pct: s.month_over_month_pct, label: scope?.month_compare ? `vs ${scope.month_compare}` : 'vs mes anterior' }
               : undefined
           }
           loading={loading}
@@ -627,7 +669,7 @@ export default function DashboardPage() {
           compact
           title="Pendientes SUNAT"
           value={String(s?.pending_sunat ?? 0)}
-          subtitle="Facturas / boletas por enviar"
+          subtitle={`Del período · ${s?.pending_sunat_all ?? 0} en total (todo el historial)`}
           icon={<Send size={20} />}
           tone="amber"
           loading={loading}
@@ -645,7 +687,11 @@ export default function DashboardPage() {
           compact
           title="Sesiones de caja abiertas"
           value={String(s?.open_cash_sessions ?? 0)}
-          subtitle="Estado actual"
+          subtitle={
+            (s?.stale_cash_sessions ?? 0) > 0
+              ? `${s?.stale_cash_sessions} abierta(s) hace más de 24 h`
+              : 'Estado actual'
+          }
           icon={<PiggyBank size={20} />}
           tone="indigo"
           loading={loading}
@@ -857,7 +903,7 @@ export default function DashboardPage() {
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-sm font-bold text-slate-800">Ventas por categoría de producto</h2>
-            <p className="text-xs text-slate-500">Suma de líneas de venta en el período</p>
+            <p className="text-xs text-slate-500">Líneas con producto; lo que falta hasta el total de ventas aparece como ajuste</p>
           </div>
           <Percent size={16} className="text-slate-400" />
         </div>
@@ -990,7 +1036,7 @@ export default function DashboardPage() {
               <li key={p.product_id} className="flex justify-between gap-2 rounded-xl bg-white/80 px-3 py-2 ring-1 ring-amber-100">
                 <span className="truncate font-medium text-slate-800">{p.product_name}</span>
                 <span className="shrink-0 font-semibold text-amber-700">
-                  {p.quantity} / min {p.min_stock}
+                  {p.status === 'out' || p.quantity <= 0 ? 'Agotado' : `${p.quantity} / mín. ${p.min_stock}`}
                 </span>
               </li>
             ))}
@@ -1059,7 +1105,7 @@ export default function DashboardPage() {
                     <td className="py-2 pr-3">
                       <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
                         <FileCheck size={12} />
-                        {billingLabel(r.billing_status)}
+                        {r.billing_status ? billingLabel(r.billing_status) : 'No aplica'}
                       </span>
                     </td>
                     <td className="py-2 text-right font-semibold">{fmtMoney(r.total)}</td>
@@ -1085,7 +1131,9 @@ export default function DashboardPage() {
             <p className="text-2xl font-bold text-emerald-950">
               {p ? `${p.sales_change_pct >= 0 ? '+' : ''}${p.sales_change_pct.toFixed(1)}%` : '—'}
             </p>
-            <p className="text-xs text-emerald-800/80">Variación de ventas en el rango seleccionado</p>
+            <p className="text-xs text-emerald-800/80">
+              {p?.compare_label ? `Contra ${p.compare_label}` : 'Variación de ventas en el rango seleccionado'}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-4 rounded-3xl border border-sky-100 bg-sky-50/50 p-5 shadow-sm">
@@ -1097,6 +1145,7 @@ export default function DashboardPage() {
             <p className="text-2xl font-bold text-sky-950">{fmtMoney(s?.sales_previous_total ?? 0)}</p>
             <p className="text-xs text-sky-800/80">
               {p ? `${formatDisplayDatePeru(p.previous_from)} — ${formatDisplayDatePeru(p.previous_to)}` : ''}
+              {p?.compare_mode === 'month_to_date' && p.compare_label ? ` · ${p.compare_label}` : ''}
             </p>
           </div>
         </div>
@@ -1107,7 +1156,9 @@ export default function DashboardPage() {
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-violet-800">Errores de envío SUNAT</p>
             <p className="text-2xl font-bold text-violet-950">{s?.error_sunat ?? 0}</p>
-            <p className="text-xs text-violet-800/80">Revisa facturación para reintentar</p>
+            <p className="text-xs text-violet-800/80">
+              {(s?.error_sunat_all ?? 0)} en total (todo el historial) · revisa facturación para reintentar
+            </p>
           </div>
         </div>
       </div>

@@ -6,7 +6,12 @@ export interface DashboardStats {
     sales_month: number
     purchases_today: number
     purchases_month: number
+    /** Ventas de los MISMOS días del mes anterior (comparación justa del mes en curso). */
+    sales_prev_month_same_days?: number
+    month_compare_label?: string
   }
+  /** Administrador: ve todo; otros roles: solo lo suyo. */
+  scope?: { is_admin: boolean; restricted: boolean }
   totals: {
     contacts: number
     products: number
@@ -26,6 +31,7 @@ export interface DashboardStats {
     product_name: string
     quantity: number
     min_stock: number
+    status?: 'out' | 'low'
   }>
   open_cash_sessions: number
   pending_billing: number
@@ -35,6 +41,8 @@ export interface DashboardAnalyticsParams {
   date_from: string
   date_to: string
   branch_id?: number
+  /** Solo lo respeta el servidor para el Administrador; el resto siempre ve solo lo suyo. */
+  user_id?: number
 }
 
 export interface DashboardAnalytics {
@@ -45,6 +53,19 @@ export interface DashboardAnalytics {
     previous_to: string
     duration_days: number
     sales_change_pct: number
+    /** Con qué se compara: 'month_to_date' (mismos días del mes anterior) o 'previous_period'. */
+    compare_mode?: string
+    compare_label?: string
+    compare_from?: string
+    compare_to?: string
+  }
+  /** Quién ve qué; el Administrador recibe la lista de usuarios para el selector. */
+  scope?: {
+    is_admin: boolean
+    restricted: boolean
+    user_id: number
+    month_compare?: string
+    users: Array<{ id: number; name: string }>
   }
   summary: {
     sales_total: number
@@ -67,6 +88,14 @@ export interface DashboardAnalytics {
     cash_expense: number
     cash_net: number
     open_cash_sessions: number
+    /** Cajas abiertas hace más de 24 h. */
+    stale_cash_sessions?: number
+    /** Pendientes/errores/rechazados HOY (sin límite de fecha), misma definición que la campanita. */
+    pending_sunat_all?: number
+    error_sunat_all?: number
+    rejected_sunat_all?: number
+    /** Ventas del período con total ≤ 0 (datos inconsistentes). */
+    invalid_total_sales?: number
     sum_detraccion?: number
     sum_net_payable?: number
     count_detraccion?: number
@@ -87,12 +116,15 @@ export interface DashboardAnalytics {
   by_doc_type: Array<{ key: string; total: number; count: number }>
   by_payment_method: Array<{ key: string; total: number; count: number }>
   by_sale_status: Array<{ key: string; count: number }>
-  by_product_category: Array<{ name: string; total: number }>
+  /** `adjustment`: fila que concilia el gráfico con el total de ventas. */
+  by_product_category: Array<{ name: string; total: number; adjustment?: boolean }>
   low_stock_products: Array<{
     product_id: number
     product_name: string
     quantity: number
     min_stock: number
+    /** out = agotado; low = por debajo del mínimo definido. */
+    status?: 'out' | 'low'
   }>
   expiring_products: Array<{
     product_id: number
@@ -107,6 +139,7 @@ export interface DashboardAnalytics {
     issue_date: string
     total: number
     status: string
+    /** Vacío cuando no aplica (notas de venta no se envían a SUNAT). */
     billing_status: string
     branch_name: string
     contact_name: string
@@ -181,6 +214,7 @@ export const dashboardService = {
       ...d,
       period: { ...emptyAnalytics().period, ...d.period },
       summary: { ...emptyAnalytics().summary, ...d.summary },
+      scope: d.scope,
       timeseries_daily: d.timeseries_daily ?? [],
       sales_by_branch: d.sales_by_branch ?? [],
       sales_by_seller: d.sales_by_seller ?? [],
