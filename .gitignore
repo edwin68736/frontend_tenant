@@ -11,3 +11,4 @@ android/build/
 android/local.properties
 # Iconos fuente Capacitor/Tauri (solo carpeta raíz; no ignorar src/assets/)
 /assets/
+scripts/perf/seed.json

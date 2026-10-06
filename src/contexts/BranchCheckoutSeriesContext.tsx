@@ -62,16 +62,23 @@ export function BranchCheckoutSeriesProvider({ children }: { children: ReactNode
 
       const task = (async () => {
         try {
+          // SUNAT y series son independientes entre sí: se piden a la vez (antes en cadena, +1 viaje).
+          // El filtrado de series sí necesita SUNAT, por eso se espera a ambos antes de filtrar.
           let sunat = sunatRef.current
-          if (!sunat) {
-            sunat = await companyService.getSunat().catch(() => null)
-            sunatRef.current = sunat
-            setSunatConfig(sunat)
-          }
-          const raw = await companyService.listSeries({
+          const sunatPromise = sunat
+            ? Promise.resolve(sunat)
+            : companyService.getSunat().catch(() => null)
+          const seriesPromise = companyService.listSeries({
             branch_id: branchId,
             category: 'venta',
           })
+          void seriesPromise.catch(() => {}) // evita 'unhandled rejection' si falla mientras se espera SUNAT
+          if (!sunat) {
+            sunat = await sunatPromise
+            sunatRef.current = sunat
+            setSunatConfig(sunat)
+          }
+          const raw = await seriesPromise
           const filtered = filterPosCheckoutSeries(
             (raw ?? []) as PosSeriesRow[],
             Boolean(sunat?.sunat_enabled),

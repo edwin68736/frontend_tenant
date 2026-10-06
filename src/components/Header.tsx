@@ -37,6 +37,7 @@ import HeaderQuickActions from '@/components/HeaderQuickActions'
 import { BranchSwitcherUserMenu } from '@/components/BranchSwitcher'
 import { AppVersionBadge } from '@/components/AppVersionBadge'
 import { canAccessErpSettings } from '@/utils/erpSettingsAccess'
+import { runWhenIdle } from '@/utils/runWhenIdle'
 
 interface Props {
   onMenuClick: () => void
@@ -65,23 +66,35 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
   const supportHref = hub ? buildSupportWhatsAppHref(hub.support, DEFAULT_SUPPORT_WHATSAPP_MESSAGE) : null
   const planNotifications = buildPlanNotifications(hub, limits)
 
+  // Los contadores de la campana no son necesarios para pintar la vista: se piden cuando el navegador
+  // está ocioso (≥1 s después de montar) para no competir con los datos de la primera pantalla.
   useEffect(() => {
-    if (hasModule('billing')) {
-      billingService.getNotificationCounts().then(setBillingCounts).catch(() => setBillingCounts(null))
-    } else {
+    if (!hasModule('billing')) {
       setBillingCounts(null)
+      return
     }
+    return runWhenIdle(
+      () => {
+        billingService.getNotificationCounts().then(setBillingCounts).catch(() => setBillingCounts(null))
+      },
+      { minDelayMs: 1000, maxWaitMs: 3000 },
+    )
   }, [hasModule])
 
   useEffect(() => {
-    if (hasModule('memberships')) {
-      membershipsService
-        .reminderCounts()
-        .then(setMembershipReminderCounts)
-        .catch(() => setMembershipReminderCounts(null))
-    } else {
+    if (!hasModule('memberships')) {
       setMembershipReminderCounts(null)
+      return
     }
+    return runWhenIdle(
+      () => {
+        membershipsService
+          .reminderCounts()
+          .then(setMembershipReminderCounts)
+          .catch(() => setMembershipReminderCounts(null))
+      },
+      { minDelayMs: 1000, maxWaitMs: 3000 },
+    )
   }, [hasModule])
 
   useEffect(() => {

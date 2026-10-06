@@ -18,6 +18,7 @@ import { tenantCanEmitFactura, type SunatConfig } from '@/services/company.servi
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch } from '@/contexts/BranchContext'
 import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
+import { runWhenIdle } from '@/utils/runWhenIdle'
 import RequireModule from '@/components/ui/RequireModule'
 import { ReceiptPrintModal } from '@/components/ui/ReceiptPrintModal'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
@@ -102,8 +103,14 @@ function POSContent() {
   const [session, setSession] = useState<CashSession | null>(null)
   /** Solo hasta terminar getOpenSession (no espera series/SUNAT/etc.). */
   const [cashSessionLoading, setCashSessionLoading] = useState(true)
-  /** Con caja abierta: hasta tener SUNAT + series + métodos de pago (no bloquea por categorías/contacto). */
-  const [posBootstrapLoading, setPosBootstrapLoading] = useState(true)
+  /**
+   * Datos que solo se usan AL COBRAR (métodos de pago, cuentas bancarias, clientes): se cargan después de
+   * mostrar la primera pantalla (ver docs/POS-PERFORMANCE-CONTRACT.md). checkoutDataReady = ya llegaron.
+   */
+  const [checkoutDataReady, setCheckoutDataReady] = useState(false)
+  /** El usuario pulsó cobrar antes de que los datos de cobro estuvieran listos: se abre al terminar. */
+  const [checkoutRequested, setCheckoutRequested] = useState(false)
+  const checkoutDataRef = useRef<{ branchId: number; promise: Promise<void> } | null>(null)
   const [sunat, setSunat] = useState<SunatConfig | null>(null)
   const [openingBalance, setOpeningBalance] = useState(0)
   const [openingSession, setOpeningSession] = useState(false)
@@ -167,50 +174,75 @@ function POSContent() {
   const mouseUpRef = useRef<(() => void) | null>(null)
   const DRAG_THRESHOLD = 5
 
+  // Primera pantalla = caja + productos + categorías, TODO en paralelo y una sola vez por sucursal.
+  // Lo que solo se usa al cobrar se carga después (ensureCheckoutData). Contrato en docs/POS-PERFORMANCE-CONTRACT.md.
   useEffect(() => {
+    let cancelled = false
     setCashSessionLoading(true)
-    setPosBootstrapLoading(true)
 
     cashbankService
       .getOpenSession(activeBranchId || undefined)
-      .then(sess => setSession(sess))
+      .then(sess => {
+        if (!cancelled) setSession(sess)
+      })
       .catch(() => {
+        if (cancelled) return
         setSession(null)
         toast.error('Error comprobando caja')
       })
-      .finally(() => setCashSessionLoading(false))
+      .finally(() => {
+        if (!cancelled) setCashSessionLoading(false)
+      })
 
-    if (!activeBranchId) {
-      setPosBootstrapLoading(false)
-      return
+    if (activeBranchId) {
+      productsService
+        .listCategories()
+        .then(cats => {
+          if (!cancelled) setCategories(Array.isArray(cats) ? cats : [])
+        })
+        .catch(() => {})
     }
+    return () => {
+      cancelled = true
+    }
+  }, [activeBranchId])
 
-    cashbankService
-      .listPaymentMethods()
-      .then((methods) => {
-        if (Array.isArray(methods) && methods.length > 0) setPaymentMethods(methods as PaymentMethodRecord[])
-      })
-      .catch(() => {})
+  // Datos de cobro (métodos de pago, cuentas, clientes): una vez por sucursal, idempotente.
+  const ensureCheckoutData = useCallback((): Promise<void> => {
+    if (!activeBranchId) return Promise.resolve()
+    const cur = checkoutDataRef.current
+    if (cur && cur.branchId === activeBranchId) return cur.promise
+    const promise = Promise.all([
+      cashbankService
+        .listPaymentMethods()
+        .then((methods) => {
+          if (Array.isArray(methods) && methods.length > 0) setPaymentMethods(methods as PaymentMethodRecord[])
+        })
+        .catch(() => {}),
+      cashbankService
+        .listBankAccounts(true)
+        .then((accounts) => setBankAccounts(Array.isArray(accounts) ? accounts : []))
+        .catch(() => setBankAccounts([])),
+      contactsService
+        .list('', 'customer')
+        .then((list) => {
+          setContacts(list ?? [])
+          const variosId = pickVariosContactId(list ?? [])
+          if (variosId) setContactId((prev) => prev ?? variosId)
+        })
+        .catch(() => setContacts([])),
+    ]).then(() => {
+      if (checkoutDataRef.current?.branchId === activeBranchId) setCheckoutDataReady(true)
+    })
+    checkoutDataRef.current = { branchId: activeBranchId, promise }
+    return promise
+  }, [activeBranchId])
 
-    cashbankService
-      .listBankAccounts(true)
-      .then((accounts) => setBankAccounts(Array.isArray(accounts) ? accounts : []))
-      .catch(() => setBankAccounts([]))
-      .finally(() => setPosBootstrapLoading(false))
-
-    productsService
-      .listCategories()
-      .then(cats => setCategories(Array.isArray(cats) ? cats : []))
-      .catch(() => {})
-
-    contactsService
-      .list('', 'customer')
-      .then((list) => {
-        setContacts(list ?? [])
-        const variosId = pickVariosContactId(list ?? [])
-        if (variosId) setContactId((prev) => prev ?? variosId)
-      })
-      .catch(() => setContacts([]))
+  // Al cambiar de sucursal los datos de cobro se descartan y se vuelven a cargar.
+  useEffect(() => {
+    checkoutDataRef.current = null
+    setCheckoutDataReady(false)
+    setCheckoutRequested(false)
   }, [activeBranchId])
 
   useEffect(() => {
@@ -229,19 +261,36 @@ function POSContent() {
     }
   }, [checkoutSeries, seriesMetaReady])
 
+  // Los productos se piden EN PARALELO con la comprobación de caja (antes esperaban a que llegara la sesión y,
+  // como la sesión se reemplazaba al cambiar la sucursal, se pedían 3 veces). Sin caja abierta el resultado
+  // simplemente no se muestra todavía. "cancelled" descarta respuestas viejas (búsqueda/categoría cambiaron).
   useEffect(() => {
-    if (!session) return
+    let cancelled = false
     setLoadingProducts(true)
     productsService
       .list(q, selectedCat ?? undefined, undefined, true, 1, POS_PRODUCTS_PER_PAGE, undefined, undefined, activeBranchId)
       .then(({ data, total }) => {
+        if (cancelled) return
         setProducts(data ?? [])
         setProductsTotal(total ?? 0)
         setProductPage(1)
       })
       .catch(() => {})
-      .finally(() => setLoadingProducts(false))
-  }, [q, selectedCat, session, activeBranchId])
+      .finally(() => {
+        if (!cancelled) setLoadingProducts(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [q, selectedCat, activeBranchId])
+
+  // Con la primera pantalla ya visible (caja abierta + primera página de productos) se cargan, en segundo plano,
+  // los datos que solo hacen falta al cobrar.
+  const firstScreenReady = Boolean(session) && !loadingProducts
+  useEffect(() => {
+    if (!firstScreenReady) return
+    return runWhenIdle(() => void ensureCheckoutData(), { minDelayMs: 50, maxWaitMs: 1500 })
+  }, [firstScreenReady, ensureCheckoutData])
 
   // ¿Quedan más productos por cargar? (paginación por scroll)
   const canLoadMoreProducts = products.length < productsTotal
@@ -629,9 +678,22 @@ function POSContent() {
     setContactId(pickVariosContactId(contacts))
   }, [checkoutSeries, contacts])
 
+  // Series/SUNAT (contexto) + datos de cobro (métodos, cuentas, clientes) deben estar listos para cobrar.
+  const checkoutReady = checkoutDataReady && seriesMetaReady
+
   const openCheckout = () => {
     if (branchSeriesMissing) return
     if (cart.length === 0) return
+    if (!checkoutReady) {
+      // Cobrar antes de que terminen de llegar los datos diferidos: se pide ya y se abre al terminar.
+      setCheckoutRequested(true)
+      void ensureCheckoutData()
+      return
+    }
+    openCheckoutNow()
+  }
+
+  const openCheckoutNow = () => {
     resetCheckoutToDefaultDocType()
     const cashCode = defaultOperationalPaymentCode(paymentMethods)
     setPayments([{ method: cashCode, amount: roundSunat(payableTotal), reference: '' }])
@@ -639,6 +701,14 @@ function POSContent() {
     // Al pasar a cobrar ya no se va a seguir escaneando: cerrar la cámara si estaba abierta.
     barcodeScan.closeScanner()
   }
+
+  useEffect(() => {
+    if (!checkoutRequested || !checkoutReady) return
+    setCheckoutRequested(false)
+    if (!branchSeriesMissing && cart.length > 0) openCheckoutNow()
+    // openCheckoutNow lee el estado actual: solo debe re-evaluarse cuando los datos pasan a estar listos.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkoutRequested, checkoutReady])
 
   useEffect(() => {
     if (!checkoutOpen || payments.length !== 1) return
@@ -850,8 +920,6 @@ function POSContent() {
   const branchSeriesMissing = Boolean(activeBranchId) && seriesMetaReady && !hasCheckoutSeries
   const posTablet = isTabletCapacitorDevice()
 
-  const posSeriesLoading = Boolean(session) && Boolean(activeBranchId) && !seriesMetaReady
-
   if (cashSessionLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-24 md:min-h-[50vh] gap-3" aria-busy="true" aria-live="polite">
@@ -876,15 +944,6 @@ function POSContent() {
             {openingSession ? 'Abriendo...' : 'Abrir caja'}
           </button>
         </div>
-      </div>
-    )
-  }
-
-  if (posBootstrapLoading || posSeriesLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-24 md:min-h-[50vh] gap-3" aria-busy="true" aria-live="polite">
-        <div className="w-9 h-9 border-2 border-gray-200 border-t-[rgb(var(--p600))] rounded-full animate-spin" />
-        <p className="text-sm text-gray-500">Preparando punto de venta…</p>
       </div>
     )
   }

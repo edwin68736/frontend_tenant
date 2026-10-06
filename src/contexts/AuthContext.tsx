@@ -55,17 +55,55 @@ function extractImpersonatedFromToken(token: string): boolean {
   return decoded?.impersonated === true
 }
 
+/**
+ * Sesión guardada en localStorage, lista desde el PRIMER render.
+ *
+ * Antes el estado arrancaba "no autenticado" y un efecto lo corregía después: durante ese primer
+ * render los providers hijos (BranchProvider, etc.) veían un usuario sin sesión, borraban la sucursal
+ * activa y esperaban a /api/session/context para recuperarla, con lo que todas las vistas dependientes
+ * de la sucursal (POS incluido) arrancaban sus peticiones ~1 s tarde.
+ *
+ * Es el mismo dato que ya leía el efecto (token + user del propio navegador), sin ninguna validación
+ * nueva: si el token venció, la primera petición devuelve 401 y el interceptor cierra la sesión igual
+ * que antes. Devuelve null cuando hay que resolverla en el efecto: acceso maestro en la URL
+ * (?master_sso=...), sesión corrupta o inexistente.
+ */
+function readStoredSession(): AuthState | null {
+  try {
+    if (readMasterSsoTokenFromUrl()) return null
+    const token = localStorage.getItem('token')
+    const userStr = localStorage.getItem('user')
+    if (!token || !userStr) return null
+    const user = JSON.parse(userStr) as AuthUser
+    return {
+      user,
+      token,
+      modules: extractModulesFromToken(token),
+      permissions: extractPermissionsFromToken(token),
+      tenantStatus: extractStatusFromToken(token),
+      isImpersonated: extractImpersonatedFromToken(token),
+      isAuthenticated: true,
+      isLoading: false,
+    }
+  } catch {
+    return null
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AuthState>({
-    user: null,
-    token: null,
-    modules: [],
-    permissions: [],
-    tenantStatus: '',
-    isImpersonated: false,
-    isAuthenticated: false,
-    isLoading: true,
-  })
+  const [state, setState] = useState<AuthState>(
+    () =>
+      readStoredSession() ?? {
+        user: null,
+        token: null,
+        modules: [],
+        permissions: [],
+        tenantStatus: '',
+        isImpersonated: false,
+        isAuthenticated: false,
+        isLoading: true,
+      },
+  )
 
   // Cierre de sesión automático por inactividad (3h) — ver hooks/useIdleLogout.ts.
   useIdleLogout(state.isAuthenticated)
@@ -104,7 +142,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const permissions = extractPermissionsFromToken(token)
         const tenantStatus = extractStatusFromToken(token)
         const isImpersonated = extractImpersonatedFromToken(token)
-        setState({ user, token, modules, permissions, tenantStatus, isImpersonated, isAuthenticated: true, isLoading: false })
+        // Ya se resolvió de forma síncrona al montar (readStoredSession): no se vuelve a crear el estado.
+        setState((s) =>
+          s.isAuthenticated && s.token === token
+            ? s
+            : { user, token, modules, permissions, tenantStatus, isImpersonated, isAuthenticated: true, isLoading: false },
+        )
       } catch {
         localStorage.clear()
         setState({ user: null, token: null, modules: [], permissions: [], tenantStatus: '', isImpersonated: false, isAuthenticated: false, isLoading: false })
