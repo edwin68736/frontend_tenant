@@ -837,10 +837,11 @@ export default function DashboardPage() {
             data: piePayment,
           },
         ].map((block, idx) => (
-          <div key={idx} className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+          <div key={idx} className="flex flex-col rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
             <h2 className="text-sm font-bold text-slate-800">{block.title}</h2>
             <p className="text-xs text-slate-500">{block.subtitle}</p>
-            <div className="mt-3 h-[220px]">
+            {/* En escritorio la dona ocupa todo el alto de la tarjeta (la de Utilidades es más alta). */}
+            <div className="mt-3 h-[220px] md:h-auto md:min-h-[220px] md:flex-1">
               {loading ? (
                 <div className="flex h-full items-center justify-center text-slate-400">Cargando…</div>
               ) : block.data.length === 0 ? (
@@ -848,13 +849,20 @@ export default function DashboardPage() {
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={block.data} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={65} paddingAngle={2}>
+                    <Pie data={block.data} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius="45%" outerRadius="72%" paddingAngle={2}>
                       {block.data.map((_, i) => (
                         <Cell key={i} fill={block.data[i].fill} stroke="#fff" strokeWidth={1} />
                       ))}
                     </Pie>
                     <Tooltip formatter={(v: number) => fmtMoney(v)} />
-                    <Legend wrapperStyle={{ fontSize: 10 }} />
+                    {/* Leyenda vertical a la derecha en escritorio: aprovecha el alto sobrante; en móvil
+                        queda abajo para no quitarle ancho a la dona. */}
+                    <Legend
+                      layout={isNarrow ? 'horizontal' : 'vertical'}
+                      align={isNarrow ? 'center' : 'right'}
+                      verticalAlign={isNarrow ? 'bottom' : 'middle'}
+                      wrapperStyle={{ fontSize: 11 }}
+                    />
                   </PieChart>
                 </ResponsiveContainer>
               )}
