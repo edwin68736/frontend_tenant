@@ -30,8 +30,8 @@ export default function StoreCartDrawer({
 
   const total = cartTotal(cart)
 
-  const handleQty = (productId: number, qty: number) => {
-    onCartChange(setCartQuantity(productId, qty))
+  const handleQty = (key: string, qty: number) => {
+    onCartChange(setCartQuantity(key, qty))
   }
 
   const handleCheckout = async () => {
@@ -54,9 +54,17 @@ export default function StoreCartDrawer({
       const orderNumber = await publicEcommerceService.createOrder({
         customer_name: customerName || undefined,
         customer_phone: customerPhone || undefined,
-        items: cart.map((l) => ({ product_id: l.product_id, name: l.name, quantity: l.quantity, unit_price: l.unit_price })),
+        items: cart.map((l) => ({
+          product_id: l.product_id,
+          name: l.name,
+          quantity: l.quantity,
+          unit_price: l.unit_price,
+          presentation_id: l.presentation_id,
+          sale_unit_id: l.sale_unit_id,
+          modifier_option_ids: l.modifier_option_ids,
+        })),
       })
-      const lines = cart.map((l) => `• ${l.name} x${l.quantity} — ${formatSoles(l.quantity * l.unit_price)}`).join('\n')
+      const lines = cart.map((l) => `• ${l.name}${l.detail ? ` (${l.detail})` : ''} x${l.quantity} — ${formatSoles(l.quantity * l.unit_price)}`).join('\n')
       const message =
         `Hola ${storeName}, quiero hacer este pedido (N° ${orderNumber}):\n\n${lines}\n\nTotal: ${formatSoles(total)}` +
         (customerName ? `\n\nMi nombre: ${customerName}` : '')
@@ -90,20 +98,21 @@ export default function StoreCartDrawer({
             <p className="text-center text-gray-400 py-10 text-sm">Tu carrito está vacío</p>
           ) : (
             cart.map((l) => (
-              <div key={l.product_id} className="flex items-center gap-3">
+              <div key={l.line_key} className="flex items-center gap-3">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-800 truncate">{l.name}</p>
+                  {l.detail && <p className="text-[11px] text-gray-500 truncate">{l.detail}</p>}
                   <p className="text-xs text-gray-500">{formatSoles(l.unit_price)} c/u</p>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <button type="button" onClick={() => handleQty(l.product_id, l.quantity - 1)} className="p-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50">
+                  <button type="button" onClick={() => handleQty(l.line_key, l.quantity - 1)} className="p-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50">
                     <Minus size={12} />
                   </button>
                   <span className="w-6 text-center text-sm">{l.quantity}</span>
-                  <button type="button" onClick={() => handleQty(l.product_id, l.quantity + 1)} className="p-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50">
+                  <button type="button" onClick={() => handleQty(l.line_key, l.quantity + 1)} className="p-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50">
                     <Plus size={12} />
                   </button>
-                  <button type="button" onClick={() => handleQty(l.product_id, 0)} className="p-1 rounded-lg text-red-400 hover:bg-red-50">
+                  <button type="button" onClick={() => handleQty(l.line_key, 0)} className="p-1 rounded-lg text-red-400 hover:bg-red-50">
                     <Trash2 size={13} />
                   </button>
                 </div>

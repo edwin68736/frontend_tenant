@@ -204,7 +204,7 @@ function PedidosWebContent() {
                             <ul className="text-xs text-gray-600 space-y-1">
                               {items.map((it, i) => (
                                 <li key={i} className="flex justify-between max-w-md">
-                                  <span>{it.name} × {it.quantity}</span>
+                                  <span>{it.name}{it.detail ? ` (${it.detail})` : ""} × {it.quantity}</span>
                                   <span className="font-mono">{formatMoney(it.quantity * it.unit_price)}</span>
                                 </li>
                               ))}

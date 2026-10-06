@@ -65,6 +65,11 @@ export interface EcommerceOrderItem {
   name: string
   quantity: number
   unit_price: number
+  /** Texto de extras elegidos (lo arma el servidor). */
+  detail?: string
+  presentation_id?: number
+  sale_unit_id?: number
+  modifier_option_ids?: number[]
 }
 
 export interface EcommerceOrder {
@@ -184,6 +189,20 @@ export interface PublicCategory {
   name: string
 }
 
+export interface PublicProductOptions {
+  base_price: number
+  presentations: { id: number; name: string; sale_price: number; stock?: number }[]
+  sale_units: { id: number; name: string; price: number; conversion_factor: number; allow_fraction: boolean }[]
+  base_unit_name?: string
+  modifier_groups: {
+    id: number
+    name: string
+    required: boolean
+    multi_select: boolean
+    options: { id: number; name: string; extra_price: number }[]
+  }[]
+}
+
 export const publicEcommerceService = {
   getSettings: () => api.get<PublicStoreSettings>('/api/public/ecommerce/settings').then(r => r.data),
 
@@ -197,6 +216,9 @@ export const publicEcommerceService = {
     api
       .get<{ data: ProductReportRow[]; total?: number }>('/api/public/ecommerce/products', { params })
       .then(r => ({ data: r.data.data ?? [], total: r.data.total ?? 0 })),
+
+  getProductOptions: (productId: number) =>
+    api.get<PublicProductOptions>(`/api/public/ecommerce/products/${productId}/options`).then(r => r.data),
 
   createOrder: (input: { customer_name?: string; customer_phone?: string; items: EcommerceOrderItem[] }) =>
     api

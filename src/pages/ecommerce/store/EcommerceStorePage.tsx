@@ -11,7 +11,7 @@ import { resolvePublicAssetUrl } from '@/config/apiBaseUrl'
 import { normalizePhoneForWhatsApp } from '@/utils/membershipReminders'
 import { readCart, addToCart, cartCount, type StoreCartLine } from './storeCart'
 import StoreCartDrawer from './StoreCartDrawer'
-import ProductDetailModal from './ProductDetailModal'
+import ProductDetailModal, { productNeedsOptions, type ChosenLine } from './ProductDetailModal'
 import PriceRangeSlider from './PriceRangeSlider'
 
 const PER_PAGE = 24
@@ -132,8 +132,25 @@ export default function EcommerceStorePage() {
       .finally(() => setLoadingMore(false))
   }
 
-  const handleAdd = (p: ProductReportRow, quantity = 1) => {
-    setCart(addToCart({ id: p.id, name: p.name, sale_price: p.sale_price, image_url: p.image_url ?? undefined }, quantity))
+  const handleAdd = (p: ProductReportRow, quantity = 1, chosen?: ChosenLine) => {
+    // Con opciones (presentación, unidad de venta, extras) se elige primero en el detalle.
+    if (!chosen && productNeedsOptions(p)) {
+      setDetailProduct(p)
+      return
+    }
+    setCart(
+      addToCart(
+        {
+          id: p.id,
+          name: p.name,
+          unit_price: chosen?.unit_price ?? p.sale_price,
+          detail: chosen?.detail,
+          image_url: p.image_url ?? undefined,
+        },
+        quantity,
+        chosen?.selection,
+      ),
+    )
     toast.success(`${p.name} agregado al carrito`)
     setDetailProduct(null)
   }
@@ -439,7 +456,16 @@ export default function EcommerceStorePage() {
                         <span className="text-[11px] text-gray-400 mt-0.5">Stock: {formatStockQty(stockQty)}</span>
                       )}
                       <div className="flex items-center justify-between mt-2">
-                        <span className="font-bold text-sm" style={{ color: 'rgb(var(--vs-primary))' }}>{formatSoles(p.sale_price)}</span>
+                        <span className="font-bold text-sm" style={{ color: 'rgb(var(--vs-primary))' }}>
+                          {p.has_variants && p.min_presentation_price !== undefined && !(Number(p.sale_price) > 0) ? (
+                            <>
+                              <span className="block text-[10px] font-normal text-gray-400">Desde</span>
+                              {formatSoles(p.min_presentation_price)}
+                            </>
+                          ) : (
+                            formatSoles(p.sale_price)
+                          )}
+                        </span>
                         <button
                           type="button"
                           disabled={outOfStock}
@@ -447,7 +473,7 @@ export default function EcommerceStorePage() {
                           className="text-white text-xs font-semibold px-3 py-1.5 rounded-full disabled:opacity-40"
                           style={{ background: 'rgb(var(--vs-primary))' }}
                         >
-                          Agregar
+                          {productNeedsOptions(p) ? 'Elegir' : 'Agregar'}
                         </button>
                       </div>
                     </div>
