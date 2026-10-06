@@ -73,8 +73,9 @@ export default function StoreCartDrawer({
       onCartChange([])
       onClose()
       toast.success('Pedido enviado. Continúa la conversación en WhatsApp.')
-    } catch {
-      toast.error('No se pudo registrar el pedido. Intenta nuevamente.')
+    } catch (e) {
+      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error
+      toast.error(msg || 'No se pudo registrar el pedido. Intenta nuevamente.')
     } finally {
       setSending(false)
     }
