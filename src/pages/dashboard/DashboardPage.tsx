@@ -31,7 +31,6 @@ import {
   XCircle,
   AlertCircle,
   RefreshCw,
-  CalendarRange,
   ArrowRight,
   PiggyBank,
   ShoppingCart,
@@ -548,18 +547,6 @@ export default function DashboardPage() {
                   </select>
                 </label>
               )}
-              <div className="hidden min-w-0 flex-1 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600 lg:flex lg:min-w-[12rem] xl:max-w-[16rem]">
-                <CalendarRange size={14} className="shrink-0 text-gray-400" />
-                <span className="truncate">
-                  {p?.date_from && p?.date_to ? (
-                    <>
-                      {formatDisplayDatePeru(p.date_from)} — {formatDisplayDatePeru(p.date_to)}
-                    </>
-                  ) : (
-                    '—'
-                  )}
-                </span>
-              </div>
             </div>
       </div>
 
