@@ -19,6 +19,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { Modal } from '@/components/ui/Modal'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { formatDisplayDatePeru } from '@/utils/datesPeru'
+import { formatPaymentMethodLabel } from '@/utils/paymentMethodLabel'
 import { resolveSaleUnitNames, saleLineUnitLabel } from '@/utils/saleUnitNames'
 
 export default function PurchasesPage() {
@@ -28,6 +29,9 @@ export default function PurchasesPage() {
     </RequireModule>
   )
 }
+
+/** Compra sin método de pago = a crédito (queda como cuenta por pagar). */
+const purchasePaymentLabel = (code?: string) => (code?.trim() ? formatPaymentMethodLabel(code) : 'Crédito')
 
 function PurchasesContent() {
   const { hasPermission } = useAuth()
@@ -159,7 +163,7 @@ function PurchasesContent() {
           <table className="w-full min-w-[640px] text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                {['Fecha', 'Comprobante', 'Proveedor', 'Total', 'CRE', 'Estado', 'Acciones'].map(h => (
+                {['Fecha', 'Comprobante', 'Proveedor', 'Total', 'Pago', 'CRE', 'Estado', 'Acciones'].map(h => (
                   <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">
                     {h}
                   </th>
@@ -180,6 +184,7 @@ function PurchasesContent() {
                   </td>
                   <td className="px-4 py-3 text-gray-700">{p.supplier_name ?? p.contact_name ?? 'Sin proveedor'}</td>
                   <td className="px-4 py-3 font-semibold text-gray-800">S/ {Number(p.total).toFixed(2)}</td>
+                  <td className="px-4 py-3 text-gray-600 text-xs">{purchasePaymentLabel(p.payment_method)}</td>
                   <td className="px-4 py-3">
                     {p.linked_retention ? (
                       <FiscalLinkedDocBadge
@@ -264,6 +269,10 @@ function PurchasesContent() {
                 <div>
                   <p className="text-xs text-gray-400">Proveedor</p>
                   <p>{detail.purchase.supplier_name ?? detail.purchase.contact_name ?? '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-400">Método de pago</p>
+                  <p>{purchasePaymentLabel(detail.purchase.payment_method)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-gray-400">Estado</p>

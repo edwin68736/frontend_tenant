@@ -15,6 +15,8 @@ export interface Purchase {
   total: number
   currency: string
   status: string
+  /** Código del método con el que se pagó al registrar; vacío = compra a crédito (cuenta por pagar). */
+  payment_method?: string
   branch_id?: number
   notes?: string
   created_at?: string
