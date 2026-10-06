@@ -46,6 +46,7 @@ import {
   subMonths,
 } from 'date-fns'
 import { dashboardService, type DashboardAnalytics } from '@/services/dashboard.service'
+import ProfitDonutCard from './ProfitDonutCard'
 import { companyService } from '@/services/company.service'
 import { useNarrowViewport } from '@/hooks/useMediaQuery'
 import { formatDisplayDatePeru, getTodayPeru } from '@/utils/datesPeru'
@@ -155,16 +156,6 @@ function billingLabel(k: string) {
     accepted: 'Aceptado SUNAT',
     rejected: 'Rechazado',
     error: 'Error envío',
-  }
-  return m[k] || k
-}
-
-function saleStatusLabel(k: string) {
-  const m: Record<string, string> = {
-    paid: 'Pagada',
-    draft: 'Borrador',
-    credit: 'Crédito',
-    cancelled: 'Anulada',
   }
   return m[k] || k
 }
@@ -429,14 +420,6 @@ export default function DashboardPage() {
       value: x.total,
       // Las filas de ajuste (otras categorías, descuentos…) van en gris para no confundirlas con una categoría.
       fill: x.adjustment ? '#94a3b8' : CHART_COLORS[i % CHART_COLORS.length],
-    }))
-  }, [analytics])
-
-  const pieSaleStatus = useMemo(() => {
-    return (analytics?.by_sale_status ?? []).map((x, i) => ({
-      name: saleStatusLabel(x.key),
-      value: x.count,
-      fill: CHART_COLORS[i % CHART_COLORS.length],
     }))
   }, [analytics])
 
@@ -853,11 +836,6 @@ export default function DashboardPage() {
             subtitle: 'Distribución del monto facturado',
             data: piePayment,
           },
-          {
-            title: 'Estado de venta',
-            subtitle: 'Documentos por estado operativo',
-            data: pieSaleStatus,
-          },
         ].map((block, idx) => (
           <div key={idx} className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
             <h2 className="text-sm font-bold text-slate-800">{block.title}</h2>
@@ -875,7 +853,7 @@ export default function DashboardPage() {
                         <Cell key={i} fill={block.data[i].fill} stroke="#fff" strokeWidth={1} />
                       ))}
                     </Pie>
-                    <Tooltip formatter={(v: number) => (idx === 2 ? v : fmtMoney(v))} />
+                    <Tooltip formatter={(v: number) => fmtMoney(v)} />
                     <Legend wrapperStyle={{ fontSize: 10 }} />
                   </PieChart>
                 </ResponsiveContainer>
@@ -883,6 +861,8 @@ export default function DashboardPage() {
             </div>
           </div>
         ))}
+        {/* Reemplaza al gráfico "Estado de venta". */}
+        <ProfitDonutCard dateFrom={dateFrom} dateTo={dateTo} branchId={branchId} userId={userId} />
       </div>
 
       {/* Categories donut full width */}

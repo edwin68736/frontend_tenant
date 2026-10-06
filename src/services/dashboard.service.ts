@@ -37,6 +37,25 @@ export interface DashboardStats {
   pending_billing: number
 }
 
+/** "Utilidades / Ganancias" del dashboard (ver ProfitDonutCard). */
+export interface DashboardProfit {
+  income: number
+  cost: number
+  expenses: number
+  expenses_included: boolean
+  /** Egreso que se resta del ingreso: costo + gastos (si se pidió considerarlos). */
+  expense: number
+  profit: number
+  lines: number
+  lines_without_cost: number
+  product_id?: number
+}
+
+export interface DashboardProfitParams extends DashboardAnalyticsParams {
+  product_id?: number
+  include_expenses?: boolean
+}
+
 export interface DashboardAnalyticsParams {
   date_from: string
   date_to: string
@@ -202,6 +221,11 @@ export const dashboardService = {
       purchases_today: 0,
       purchases_month: 0,
     }
+    return data
+  },
+
+  getProfit: async (params: DashboardProfitParams): Promise<DashboardProfit> => {
+    const { data } = await api.get<DashboardProfit>('/api/dashboard/profit', { params })
     return data
   },
 
