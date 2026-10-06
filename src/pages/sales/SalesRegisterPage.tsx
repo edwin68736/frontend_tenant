@@ -353,6 +353,8 @@ function SalesRegisterContent({
   const [sunatEnabled, setSunatEnabled] = useState(true)
   const [canFactura, setCanFactura] = useState(true)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
+  /** Cotización: métodos de pago de REFERENCIA (cómo piensa pagar el cliente). No registran cobro. */
+  const [refPayments, setRefPayments] = useState<{ method: string; amount: string; reference: string }[]>([])
   const [payments, setPayments] = useState<{ method: string; amount: string; reference: string }[]>([
     { method: 'cash', amount: '0.00', reference: '' },
   ])
@@ -443,7 +445,7 @@ function SalesRegisterContent({
     exchangeRate: tcAutoRate,
     isFallback: tcIsFallback,
     meta: tcMeta,
-  } = useExchangeRate(form.issue_date, { enabled: !isQuotation })
+  } = useExchangeRate(form.issue_date, { enabled: true })
 
   const isDetraccionTransporte = form.operation_type_code === SUNAT_TIPO_OPERACION_TRANSPORTE_CARGA
   // isDetraccion cubre ambas variantes (1001 general, 1004 transporte de carga): comparten toda
@@ -470,8 +472,19 @@ function SalesRegisterContent({
   const moneySym = saleCurrencySymbol(form.currency)
   const fmt = (n: number) => formatSaleMoney(n, form.currency)
 
+  // Cotización: el TC automático solo rellena un campo vacío o uno que aún tiene el TC anterior;
+  // si la cotización guardada (o el usuario) ya fijó un TC propio, no se pisa.
+  const prevAutoRateRef = useRef('')
   useEffect(() => {
-    if (!tcAutoRate || isQuotation) return
+    if (!tcAutoRate) return
+    if (isQuotation) {
+      const prevAuto = prevAutoRateRef.current
+      setForm((f) =>
+        !f.exchange_rate || f.exchange_rate === prevAuto ? { ...f, exchange_rate: tcAutoRate } : f,
+      )
+      prevAutoRateRef.current = tcAutoRate
+      return
+    }
     setForm((f) => (f.exchange_rate === tcAutoRate ? f : { ...f, exchange_rate: tcAutoRate }))
   }, [tcAutoRate, isQuotation])
 
@@ -696,6 +709,20 @@ function SalesRegisterContent({
             ...prev,
             show_terms_conditions: Boolean(q.show_terms_conditions),
           }))
+          try {
+            const refs = q.payment_methods_json ? JSON.parse(q.payment_methods_json) : []
+            setRefPayments(
+              Array.isArray(refs)
+                ? refs.map((r: { method?: string; amount?: number; reference?: string }) => ({
+                    method: String(r.method ?? ''),
+                    amount: Number(r.amount) > 0 ? String(r.amount) : '',
+                    reference: String(r.reference ?? ''),
+                  }))
+                : [],
+            )
+          } catch {
+            setRefPayments([])
+          }
         }
         // Descuento global: se rehidrata tal como se tecleó. Sin esto, abrir la cotización para
         // editarla o convertirla mostraba el descuento en 0 y el total subía en silencio.
@@ -1466,6 +1493,14 @@ function SalesRegisterContent({
           issue_date: form.issue_date,
           valid_until: form.due_date || undefined,
           currency: form.currency,
+          // Referencia de cómo piensa pagar el cliente: el servidor la guarda sin crear ningún cobro.
+          payment_methods: refPayments
+            .filter((p) => p.method)
+            .map((p) => ({
+              method: p.method,
+              amount: Number(p.amount) > 0 ? Number(p.amount) : 0,
+              reference: p.reference.trim() || undefined,
+            })),
           exchange_rate: form.currency === 'USD' ? parsedExchangeRate ?? undefined : undefined,
           notes: form.notes || undefined,
           show_terms_conditions: fiscalForm.show_terms_conditions,
@@ -2186,18 +2221,18 @@ function SalesRegisterContent({
         {/* Cliente (solo pantalla grande), moneda y tipo de cambio.
             En cotización esta grilla solo lleva el cliente, así que en móvil no se muestra. */}
         <div
-          className={`${isQuotation ? 'hidden lg:grid' : 'grid'} grid-cols-2 lg:grid-cols-12 gap-3`}
+          className="grid grid-cols-2 lg:grid-cols-12 gap-3"
         >
           <div
             className={`hidden lg:block ${
-              isQuotation ? 'lg:col-span-8' : isNotaVenta ? 'lg:col-span-5' : 'lg:col-span-7'
+              isQuotation ? 'lg:col-span-5' : isNotaVenta ? 'lg:col-span-5' : 'lg:col-span-7'
             }`}
           >
             {clientField}
           </div>
-          {!isQuotation && (
+          {(
             <>
-              <div className="lg:col-span-2">
+              <div className={isQuotation ? 'lg:col-span-3' : 'lg:col-span-2'}>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Moneda</label>
                 <select
                   className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
@@ -2209,7 +2244,7 @@ function SalesRegisterContent({
                   <option value="USD">Dólares (USD)</option>
                 </select>
               </div>
-              <div className={isNotaVenta ? 'lg:col-span-2' : 'lg:col-span-3'}>
+              <div className={isQuotation ? 'lg:col-span-4' : isNotaVenta ? 'lg:col-span-2' : 'lg:col-span-3'}>
                 <label
                   className="block text-xs font-medium text-gray-600 mb-1"
                   title="TC SUNAT venta del día de emisión (USD/PEN)"
@@ -2724,6 +2759,77 @@ function SalesRegisterContent({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mt-4">
+            {isQuotation && (
+              <div className="md:col-span-3 min-w-0 border border-gray-200 rounded-xl p-4 space-y-3 bg-white">
+                <div>
+                  <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    Método de pago (referencia)
+                  </p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    Cómo piensa pagar el cliente. Es solo una referencia: no registra ningún cobro ni afecta la
+                    caja ni los saldos.
+                  </p>
+                </div>
+                {refPayments.length === 0 && (
+                  <p className="text-xs text-gray-400">Sin método de pago indicado.</p>
+                )}
+                {refPayments.map((p, idx) => (
+                  <div key={idx} className="flex flex-wrap gap-2 items-center" data-testid="ref-payment-row">
+                    <PaymentMethodSelect
+                      methods={directPaymentMethods}
+                      value={p.method}
+                      onChange={(code) =>
+                        setRefPayments((prev) => prev.map((x, i) => (i === idx ? { ...x, method: code } : x)))
+                      }
+                      className="relative flex-1 min-w-[8rem]"
+                    />
+                    <input
+                      type="text"
+                      placeholder="Detalle (opc.)"
+                      title="Ej. cuenta, banco o nota sobre el pago"
+                      className="flex-1 min-w-[7rem] border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
+                      value={p.reference}
+                      onChange={(e) =>
+                        setRefPayments((prev) => prev.map((x, i) => (i === idx ? { ...x, reference: e.target.value } : x)))
+                      }
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      placeholder="Monto (opc.)"
+                      className="w-28 border border-gray-200 rounded-xl px-3 py-2 text-sm tabular-nums bg-white shrink-0"
+                      value={p.amount}
+                      onChange={(e) =>
+                        setRefPayments((prev) => prev.map((x, i) => (i === idx ? { ...x, amount: e.target.value } : x)))
+                      }
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setRefPayments((prev) => prev.filter((_, i) => i !== idx))}
+                      className="text-red-500 hover:text-red-700 p-1 shrink-0"
+                      aria-label="Quitar método de pago"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+                {refPayments.length < 6 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setRefPayments((prev) => [
+                        ...prev,
+                        { method: directPaymentMethods[0]?.code ?? 'cash', amount: '', reference: '' },
+                      ])
+                    }
+                    className="text-xs text-[rgb(var(--p600))] hover:underline"
+                  >
+                    + Agregar método de pago
+                  </button>
+                )}
+              </div>
+            )}
             {!isQuotation && (
               <div className="md:col-span-3 min-w-0 border border-gray-200 rounded-xl p-4 space-y-3 bg-white">
                 <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">

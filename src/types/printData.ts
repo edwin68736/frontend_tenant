@@ -24,6 +24,8 @@ export interface PrintData {
   line_discount_total?: number
   totals_by_affectation?: Record<string, PrintAffectTotal>
   payments: PrintPayment[]
+  /** Cotización: métodos de pago de referencia (cómo piensa pagar el cliente); no son pagos hechos. */
+  reference_payments?: PrintPayment[]
   /** Vuelto cuando el cliente pagó de más (p. ej. efectivo). */
   change_amount?: number
   seller_name?: string

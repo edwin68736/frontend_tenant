@@ -17,6 +17,8 @@ export interface Quotation {
   total: number
   currency: string
   exchange_rate?: number | null
+  /** Métodos de pago de REFERENCIA (JSON [{method, amount, reference}]): no son un cobro. */
+  payment_methods_json?: string
   notes: string
   show_terms_conditions?: boolean
   /** Descuento global tal como se tecleó (percent|amount + valor) y su monto en base imponible. */
@@ -90,6 +92,8 @@ export interface CreateQuotationInput {
   valid_until?: string
   currency?: string
   exchange_rate?: number | null
+  /** Cómo piensa pagar el cliente: solo referencia, no afecta caja ni saldos. */
+  payment_methods?: { method: string; amount?: number; reference?: string }[]
   notes?: string
   show_terms_conditions?: boolean
   global_discount_mode?: 'percent' | 'amount'

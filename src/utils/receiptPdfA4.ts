@@ -892,7 +892,48 @@ async function drawElectronicPaymentAndQrRow(
   return { leftY: boxStartY + boxH + 5, qrBottomY, qrPage }
 }
 
+/**
+ * Cotización: recuadro con el método de pago de REFERENCIA (cómo piensa pagar el cliente). No es
+ * un cobro; si no se indicó ninguno, no se dibuja nada.
+ */
+function drawQuotationPaymentRefBox(ctx: A4Ctx, data: PrintData, startY: number): number {
+  const refs = data.reference_payments ?? []
+  if (refs.length === 0) return startY
+  const { doc } = ctx
+  const padX = 3
+  const padY = 2.5
+  const sym = moneySymbol(data.currency)
+  type Line = { text: string; bold?: boolean }
+  const lines: Line[] = [{ text: 'MÉTODO DE PAGO (REFERENCIA):', bold: true }]
+  for (const p of refs) {
+    const detail = p.reference?.trim() ? ` (${p.reference.trim()})` : ''
+    lines.push({
+      text:
+        p.amount > 0.009
+          ? `${salePaymentMethodLabelEs(p.method)}: ${sym} ${formatPlainAmount(p.amount)}${detail}`
+          : `${salePaymentMethodLabelEs(p.method)}${detail}`,
+    })
+  }
+  let maxW = 0
+  for (const l of lines) {
+    setFont(doc, FONT, l.bold ? 'bold' : 'normal')
+    maxW = Math.max(maxW, doc.getTextWidth(l.text))
+  }
+  const boxW = maxW + padX * 2
+  const boxH = padY * 2 + lines.length * (LINE_H + 0.2) - 0.2
+  const boxY = startY - LINE_H + 1
+  drawDottedRect(doc, MARGIN, boxY, boxW, boxH)
+  let ly = boxY + padY + LINE_H - 0.3
+  for (const l of lines) {
+    setFont(doc, FONT, l.bold ? 'bold' : 'normal')
+    doc.text(l.text, MARGIN + padX, ly)
+    ly += LINE_H + 0.2
+  }
+  return boxY + boxH + 5
+}
+
 function drawPaymentMethodBox(ctx: A4Ctx, data: PrintData, startY: number): number {
+  if (String(data.sunat_code ?? '').trim() === 'QT') return drawQuotationPaymentRefBox(ctx, data, startY)
   const { doc } = ctx
   const padX = 3
   const padY = 2.5

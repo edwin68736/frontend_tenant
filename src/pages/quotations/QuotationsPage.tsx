@@ -324,7 +324,18 @@ function QuotationsContent() {
         (m) => m.active && (m.kind === undefined || m.kind === 'payment_method'),
       )
       setConvertPaymentMethods(methods)
-      setConvertPaymentMethod(defaultCashMethodCode(methods))
+      // Si la cotización indicó cómo iba a pagar el cliente, la conversión parte de ese método
+      // (sigue siendo editable); solo se usa si ese método existe y está activo.
+      let refMethod = ''
+      try {
+        const refs = detail.quotation.payment_methods_json ? JSON.parse(detail.quotation.payment_methods_json) : []
+        refMethod = Array.isArray(refs) ? String(refs[0]?.method ?? '') : ''
+      } catch {
+        refMethod = ''
+      }
+      setConvertPaymentMethod(
+        refMethod && methods.some((m) => m.code === refMethod) ? refMethod : defaultCashMethodCode(methods),
+      )
       setConvertSeriesList((raw as SeriesRow[]) ?? [])
       const customers = Array.isArray(customerList) ? customerList : []
       setConvertCustomers(customers)

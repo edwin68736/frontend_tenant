@@ -715,7 +715,8 @@ export async function buildSaleDocumentEscPos(
     showPaymentCondition &&
     (showQr ||
       Boolean(printData.payment_condition) ||
-      (printData.payments?.length ?? 0) > 0)
+      (printData.payments?.length ?? 0) > 0 ||
+      (printData.reference_payments?.length ?? 0) > 0)
 
   if (hasPayBlock) {
     out.push(...Array.from(textBytes('\n')))

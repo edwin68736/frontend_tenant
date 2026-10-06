@@ -18,6 +18,7 @@ import {
 } from '@/services/printers.service'
 import { PdfBlobViewer } from '@/components/PdfBlobViewer'
 import { configuredTicketPaperMm, normalizeTicketPaperWidth } from '@/utils/receiptTicketPaper'
+import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
 
 type PdfFormat = 'ticket' | 'a4'
 
@@ -352,7 +353,7 @@ export function ReceiptPrintModal({
                   se necesita para las acciones. El vuelto se conserva aparte. */}
               <div className="hidden rounded-xl border border-green-200/80 bg-green-50/60 p-3 md:p-4 lg:block">
                 <h3 className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-stone-700">
-                  <span className="text-green-600">●</span> Resumen de pago
+                  <span className="text-green-600">●</span> {documentKind === 'quotation' ? 'Resumen' : 'Resumen de pago'}
                 </h3>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between border-b border-stone-200/80 py-2">
@@ -361,12 +362,25 @@ export function ReceiptPrintModal({
                       {formatMoney(displayTotal, printData?.currency)}
                     </span>
                   </div>
-                  <div className="flex justify-between py-1 text-stone-600">
-                    <span>Pagado</span>
-                    <span className="font-semibold text-stone-800">
-                      {formatMoney(paidTotal, printData?.currency)}
-                    </span>
-                  </div>
+                  {documentKind === 'quotation' ? (
+                    // Una cotización no se cobra: en vez de "Pagado" se muestra, si lo hay, el método
+                    // de pago de referencia (cómo piensa pagar el cliente).
+                    (printData?.reference_payments?.length ?? 0) > 0 ? (
+                      <div className="flex justify-between gap-3 py-1 text-stone-600">
+                        <span className="shrink-0">Pago previsto</span>
+                        <span className="text-right font-semibold text-stone-800">
+                          {printData!.reference_payments!.map((r) => salePaymentMethodLabelEs(r.method)).join(', ')}
+                        </span>
+                      </div>
+                    ) : null
+                  ) : (
+                    <div className="flex justify-between py-1 text-stone-600">
+                      <span>Pagado</span>
+                      <span className="font-semibold text-stone-800">
+                        {formatMoney(paidTotal, printData?.currency)}
+                      </span>
+                    </div>
+                  )}
                   {changeRow}
                 </div>
               </div>

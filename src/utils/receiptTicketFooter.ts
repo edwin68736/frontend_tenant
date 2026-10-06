@@ -42,6 +42,25 @@ export function paymentConditionLeftLines(data: PrintData, opts?: PaymentConditi
   const cols = opts?.cols
   const lines: string[] = []
 
+  // Cotización: no hay condición de pago ni pagos hechos; solo el método de pago de REFERENCIA
+  // (cómo piensa pagar el cliente), si lo indicaron.
+  if (String(data.sunat_code ?? '').trim() === 'QT') {
+    const refs = data.reference_payments ?? []
+    if (refs.length === 0) return []
+    lines.push('Pago previsto (referencia):')
+    for (const p of refs) {
+      const label = salePaymentMethodLabelEs(p.method)
+      const detail = p.reference?.trim() ? ` (${p.reference.trim()})` : ''
+      if (p.amount > 0.009) {
+        const amt = moneyFmt(p.amount, data.currency)
+        lines.push(cols != null ? formatPaymentDetailLine(label, amt, detail, cols) : `${label}: ${amt}${detail}`)
+      } else {
+        lines.push(`${label}${detail}`)
+      }
+    }
+    return lines
+  }
+
   const cond = String(data.payment_condition ?? '').trim()
   const condValue = cond || (data.payments.length > 0 ? 'Contado' : '')
   if (condValue) {
