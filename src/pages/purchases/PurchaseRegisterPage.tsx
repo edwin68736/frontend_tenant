@@ -24,8 +24,7 @@ import { calcItem } from '@/utils/taxCalc'
 
 const DOC_TYPES = ['FACTURA', 'BOLETA', 'NOTA DE CRÉDITO', 'TICKET']
 
-const PRESENTATIONS_WARNING =
-  'Este producto posee presentaciones con precios independientes. Solo se actualizará el precio base del producto. Los precios de las presentaciones deberán modificarse desde el módulo Productos.'
+const PRESENTATIONS_PRICE_NOTE = 'Se actualizará el precio de venta de la presentación elegida.'
 
 /**
  * Extiende PurchaseItem con un campo SOLO DE UI (Fase 7H) — no forma parte del contrato con el
@@ -41,12 +40,23 @@ type PurchaseLineItem = PurchaseItem & {
 
 function buildPurchaseLine(
   p: Product,
-  opts?: { isNewlyCreated?: boolean; hasPresentations?: boolean; priceIncludesIgv?: boolean },
+  opts?: {
+    isNewlyCreated?: boolean
+    hasPresentations?: boolean
+    priceIncludesIgv?: boolean
+    presentations?: { id: number; name: string; sale_price: number }[]
+  },
 ): PurchaseLineItem {
+  const options = opts?.presentations ?? []
+  // Con una sola presentación se elige sola; con varias el usuario debe escoger.
+  const only = options.length === 1 ? options[0] : undefined
   return {
     product_id: p.id,
     code: p.code ?? '',
-    description: p.name,
+    description: only ? `${p.name} - ${only.name}` : p.name,
+    base_name: p.name,
+    presentation_options: options.length > 0 ? options : undefined,
+    presentation_id: only?.id,
     unit: p.unit ?? 'NIU',
     quantity: p.manage_series ? 0 : 1,
     unit_cost: p.purchase_price ?? 0,
@@ -55,11 +65,11 @@ function buildPurchaseLine(
     price_includes_igv: opts?.priceIncludesIgv ?? false,
     manage_series: p.manage_series ?? false,
     serials: [],
-    current_sale_price: p.sale_price ?? 0,
+    current_sale_price: only ? only.sale_price : (p.sale_price ?? 0),
     has_presentations: opts?.hasPresentations ?? false,
     is_newly_created: opts?.isNewlyCreated ?? false,
     update_sale_price: false,
-    new_sale_price: p.sale_price ?? 0,
+    new_sale_price: only ? only.sale_price : (p.sale_price ?? 0),
   }
 }
 
@@ -119,11 +129,15 @@ function PurchaseRegisterContent() {
 
   const addProductToItems = async (p: Product, opts?: { isNewlyCreated?: boolean }) => {
     let hasPresentations = false
+    let presentations: { id: number; name: string; sale_price: number }[] = []
     if (!opts?.isNewlyCreated) {
       // ProductPicker usa GET /api/products (ProductListItem), que no incluye presentaciones.
       try {
         const detail = await productsService.get(p.id)
-        hasPresentations = (detail.presentations?.length ?? 0) > 0
+        presentations = (detail.presentations ?? [])
+          .filter(pr => pr.id && pr.name.trim() && (pr as { active?: boolean }).active !== false)
+          .map(pr => ({ id: pr.id as number, name: pr.name.trim(), sale_price: Number(pr.sale_price) || 0 }))
+        hasPresentations = p.has_variants === true || presentations.length > 0
       } catch {
         // continuar sin advertencia de presentaciones
       }
@@ -131,10 +145,12 @@ function PurchaseRegisterContent() {
     const line = buildPurchaseLine(p, {
       isNewlyCreated: opts?.isNewlyCreated,
       hasPresentations,
+      presentations,
       priceIncludesIgv,
     })
     setItems(i => {
-      const existing = i.find(it => it.product_id === p.id)
+      // Un producto con presentaciones permite varias líneas (una por presentación): no se fusionan.
+      const existing = presentations.length > 0 ? undefined : i.find(it => it.product_id === p.id)
       if (existing) {
         if (p.manage_series) return i
         return i.map(it => (it.product_id === p.id ? { ...it, quantity: it.quantity + 1 } : it))
@@ -164,6 +180,24 @@ function PurchaseRegisterContent() {
 
   const updateItem = (idx: number, field: keyof PurchaseLineItem, val: unknown) =>
     setItems(prev => prev.map((it, i) => (i !== idx ? it : { ...it, [field]: val })))
+
+  /** Presentación elegida en una línea: ajusta descripción y precio de venta de referencia. */
+  const handlePresentationChange = (idx: number, presentationId: number | null) => {
+    setItems(prev =>
+      prev.map((it, i) => {
+        if (i !== idx) return it
+        const pres = it.presentation_options?.find(o => o.id === presentationId)
+        const base = it.base_name ?? it.description
+        return {
+          ...it,
+          presentation_id: pres?.id,
+          description: pres ? `${base} - ${pres.name}` : base,
+          current_sale_price: pres ? pres.sale_price : it.current_sale_price,
+          new_sale_price: pres ? pres.sale_price : it.new_sale_price,
+        }
+      }),
+    )
+  }
 
   /**
    * SaleUnit elegida/quitada para una línea (Fase 7H) — cambia sale_unit_id (contrato real) y
@@ -262,6 +296,12 @@ function PurchaseRegisterContent() {
       }
     }
     for (const it of items) {
+      if (it.presentation_options?.length && !it.presentation_id) {
+        toast.error(`"${it.base_name ?? it.description}": seleccione una presentación`)
+        return
+      }
+    }
+    for (const it of items) {
       if (it.update_sale_price && (it.new_sale_price == null || it.new_sale_price < 0)) {
         toast.error(`"${it.description}": ingrese un precio de venta válido`)
         return
@@ -276,6 +316,8 @@ function PurchaseRegisterContent() {
           has_presentations: _hp,
           is_newly_created: _nc,
           sale_unit_allow_fraction: _suaf,
+          presentation_options: _po,
+          base_name: _bn,
           update_sale_price,
           new_sale_price,
           ...rest
@@ -505,14 +547,32 @@ function PurchaseRegisterContent() {
                       {it.code && (
                         <span className="block text-xs text-gray-400 font-mono">{it.code}</span>
                       )}
-                      <div className="mt-1.5">
-                        <PurchaseSaleUnitSelector
-                          productId={it.product_id}
-                          manageSeries={it.manage_series}
-                          value={it.sale_unit_id ?? null}
-                          onChange={(saleUnitId, saleUnit) => handleSaleUnitChange(idx, saleUnitId, saleUnit)}
-                        />
-                      </div>
+                      {it.presentation_options?.length ? (
+                        <div className="mt-1.5">
+                          <label className="block text-xs text-gray-500 mb-0.5">Presentación *</label>
+                          <select
+                            className="w-full max-w-[220px] border border-gray-200 rounded-lg px-2 py-1 text-sm"
+                            value={it.presentation_id ?? ''}
+                            onChange={e => handlePresentationChange(idx, e.target.value ? Number(e.target.value) : null)}
+                          >
+                            <option value="">Seleccione…</option>
+                            {it.presentation_options.map(o => (
+                              <option key={o.id} value={o.id}>
+                                {o.name} (S/ {o.sale_price.toFixed(2)})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : (
+                        <div className="mt-1.5">
+                          <PurchaseSaleUnitSelector
+                            productId={it.product_id}
+                            manageSeries={it.manage_series}
+                            value={it.sale_unit_id ?? null}
+                            onChange={(saleUnitId, saleUnit) => handleSaleUnitChange(idx, saleUnitId, saleUnit)}
+                          />
+                        </div>
+                      )}
                       {!it.is_newly_created && (
                         <div className="mt-2 space-y-1.5">
                           <label className="flex items-center gap-1.5 cursor-pointer">
@@ -549,9 +609,9 @@ function PurchaseRegisterContent() {
                                   }
                                 />
                               </div>
-                              {it.has_presentations && (
-                                <p className="text-xs text-amber-700 leading-snug">{PRESENTATIONS_WARNING}</p>
-                              )}
+                              {it.presentation_options?.length ? (
+                                <p className="text-xs text-gray-500 leading-snug">{PRESENTATIONS_PRICE_NOTE}</p>
+                              ) : null}
                             </div>
                           )}
                         </div>

@@ -40,6 +40,12 @@ export interface PurchaseItem {
    * leer una compra ya creada; ya no es el caso.
    */
   sale_unit_id?: number
+  /** Presentación/variante comprada (obligatoria si el producto maneja stock por presentación). */
+  presentation_id?: number
+  /** Solo UI: presentaciones activas del producto para elegir en la línea. */
+  presentation_options?: { id: number; name: string; sale_price: number }[]
+  /** Solo UI: nombre del producto sin la presentación (la descripción lo lleva con "- Talla M"). */
+  base_name?: string
   /**
    * Cantidad COMERCIAL snapshot del movimiento de Kardex al momento de la compra (Fase 7H.1) —
    * en la práctica coincide con `quantity` de esta misma línea; se expone porque es el dato

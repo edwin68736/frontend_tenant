@@ -145,7 +145,7 @@ export function ProductPickerModal({
             <tbody>
               {products.map((p) => {
                 const configBadge = productConfigurationBadge(p)
-                const needsConfig = productNeedsSaleConfiguration(p)
+                const needsConfig = variant === 'sale' && productNeedsSaleConfiguration(p)
                 return (
                 <tr key={p.id} className={`border-b border-gray-50 transition-colors ${rowHighlightClass(p.id)}`}>
                   <td className="px-2 md:px-4 py-2.5">
