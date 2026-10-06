@@ -425,7 +425,10 @@ function drawCustomerBlock(
  * SalesRegisterPage.tsx) para no tocar el contrato de punto_origen/punto_destino que ya
  * consume el backend — por eso acá se muestran como "Punto de origen/destino" en una sola
  * línea en vez de "Ubigeo" + "Dirección" separados.
+ *
+ * DESACTIVADA: la llamada en renderA4 está comentada (esta sección no se muestra en el PDF).
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function drawTransportDetailBox(ctx: A4Ctx, data: PrintData, startY: number): number {
   const f = data.fiscal
   if (!f?.has_detraccion || !f.detraccion_punto_origen) return startY
@@ -1642,7 +1645,9 @@ export async function renderReceiptA4(doc: jsPDF, data: PrintData): Promise<void
 
   await drawHeader(ctx, data, nvLayout)
   drawCustomerBlock(ctx, data, nvLayout)
-  drawTransportDetailBox(ctx, data, ctx.y)
+  // Sección "DETALLE - SERVICIOS DE TRANSPORTE DE CARGA": desactivada a pedido (no es necesaria en
+  // el PDF). Se conserva drawTransportDetailBox() para reactivarla descomentando esta línea.
+  // drawTransportDetailBox(ctx, data, ctx.y)
   drawItemsTable(ctx, data)
 
   // Ver estimateA4PostTableBlockHeight: si el bloque de totales/QR/cuentas bancarias no
