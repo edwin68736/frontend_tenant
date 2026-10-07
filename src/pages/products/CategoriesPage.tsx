@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { FolderTree, Plus, Pencil, Trash2, Search } from 'lucide-react'
+import { FolderTree, Plus, Pencil, Trash2, Search, ImagePlus } from 'lucide-react'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   productsService,
+  getProductImageUrl,
   type Category,
   type CreateCategoryInput,
 } from '@/services/products.service'
@@ -58,6 +59,40 @@ function CategoriesContent() {
   const [saving, setSaving] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Category | null>(null)
   const [deleting, setDeleting] = useState(false)
+  // Imagen de la categoría: archivo elegido (se sube al guardar) y/o quitar la existente.
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [removeImage, setRemoveImage] = useState(false)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+
+  const resetImage = () => {
+    setImagePreview((prev) => {
+      if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev)
+      return null
+    })
+    setImageFile(null)
+    setRemoveImage(false)
+  }
+
+  const onPickImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      toast.error('Formato no permitido. Usa JPG, PNG o WebP')
+      return
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('La imagen no debe superar 10 MB')
+      return
+    }
+    setImagePreview((prev) => {
+      if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev)
+      return URL.createObjectURL(file)
+    })
+    setImageFile(file)
+    setRemoveImage(false)
+  }
 
   const load = useCallback(() => {
     setLoading(true)
@@ -83,12 +118,14 @@ function CategoriesContent() {
   }, [categories, q])
 
   const openCreate = () => {
+    resetImage()
     setEditing(null)
     setForm(emptyForm())
     setModalOpen(true)
   }
 
   const openEdit = (c: Category) => {
+    resetImage()
     setEditing(c)
     setForm(formFromCategory(c))
     setModalOpen(true)
@@ -99,6 +136,7 @@ function CategoriesContent() {
     setModalOpen(false)
     setEditing(null)
     setForm(emptyForm())
+    resetImage()
   }
 
   const handleSave = async () => {
@@ -126,17 +164,29 @@ function CategoriesContent() {
 
     setSaving(true)
     try {
+      let categoryId = editing?.id
       if (editing) {
         await productsService.updateCategory(editing.id, {
           name: payload.name,
           description: payload.description,
           sort_order: sort_order ?? editing.sort_order ?? 0,
         })
-        toast.success('Categoría actualizada')
       } else {
-        await productsService.createCategory(payload)
-        toast.success('Categoría creada')
+        const created = await productsService.createCategory(payload)
+        categoryId = (created as { id?: number } | undefined)?.id
       }
+      // La categoría ya quedó guardada: un fallo con la imagen no debe presentarse como fallo del guardado.
+      let imageError = ''
+      if (categoryId) {
+        try {
+          if (imageFile) await productsService.uploadCategoryImage(categoryId, imageFile)
+          else if (removeImage && editing?.image_url) await productsService.deleteCategoryImage(categoryId)
+        } catch (e: unknown) {
+          imageError = (e as { response?: { data?: { error?: string } } }).response?.data?.error ?? 'No se pudo guardar la imagen'
+        }
+      }
+      if (imageError) toast.error(`Categoría guardada, pero: ${imageError}`)
+      else toast.success(editing ? 'Categoría actualizada' : 'Categoría creada')
       closeModal()
       load()
     } catch (e: unknown) {
@@ -211,7 +261,7 @@ function CategoriesContent() {
           <table className="w-full min-w-[560px] text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                {['Orden', 'Nombre', 'Descripción', 'Productos', ''].map((h) => (
+                {['Orden', 'Imagen', 'Nombre', 'Descripción', 'Productos', ''].map((h) => (
                   <th
                     key={h || 'actions'}
                     className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase"
@@ -224,7 +274,7 @@ function CategoriesContent() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center text-gray-400 text-sm">
+                  <td colSpan={6} className="px-4 py-12 text-center text-gray-400 text-sm">
                     {loading
                       ? 'Cargando…'
                       : q.trim()
@@ -237,6 +287,15 @@ function CategoriesContent() {
                   <tr key={c.id} className="border-b border-gray-50 hover:bg-gray-50">
                     <td className="px-4 py-3 text-gray-500 tabular-nums w-20">
                       {c.sort_order ?? 0}
+                    </td>
+                    <td className="px-4 py-3 w-16">
+                      {c.image_url ? (
+                        <img src={getProductImageUrl(c.image_url)} alt="" className="w-9 h-9 rounded-full object-cover border border-gray-200" />
+                      ) : (
+                        <span className="flex w-9 h-9 items-center justify-center rounded-full bg-gray-100 text-gray-300">
+                          <ImagePlus size={15} />
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 font-medium text-gray-800">{c.name}</td>
                     <td className="px-4 py-3 text-gray-600 max-w-xs truncate">
@@ -315,6 +374,49 @@ function CategoriesContent() {
               value={form.description}
               onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
             />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Imagen (tienda virtual)</label>
+            <div className="flex items-center gap-3">
+              <input ref={imageInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={onPickImage} />
+              <button
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+                disabled={saving}
+                className="w-16 h-16 rounded-full overflow-hidden border border-gray-200 bg-gray-100 flex items-center justify-center text-[rgb(var(--p600))] hover:border-[rgb(var(--p300))] disabled:opacity-50"
+                aria-label="Subir imagen de la categoría"
+              >
+                {imagePreview || (!removeImage && editing?.image_url) ? (
+                  <img src={imagePreview ?? getProductImageUrl(editing?.image_url)} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <ImagePlus size={20} />
+                )}
+              </button>
+              <div className="min-w-0 space-y-1">
+                <button
+                  type="button"
+                  onClick={() => imageInputRef.current?.click()}
+                  disabled={saving}
+                  className="text-xs font-medium text-[rgb(var(--p700))] hover:underline disabled:opacity-50"
+                >
+                  {imagePreview || (!removeImage && editing?.image_url) ? 'Cambiar imagen' : 'Subir imagen'}
+                </button>
+                {(imagePreview || (!removeImage && editing?.image_url)) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetImage()
+                      if (editing?.image_url) setRemoveImage(true)
+                    }}
+                    disabled={saving}
+                    className="block text-xs text-red-600 hover:underline disabled:opacity-50"
+                  >
+                    Quitar imagen
+                  </button>
+                )}
+                <p className="text-[11px] text-gray-400">Se muestra en la tienda virtual. JPG, PNG o WebP · máx. 10 MB.</p>
+              </div>
+            </div>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Orden (opcional)</label>

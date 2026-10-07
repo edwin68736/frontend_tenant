@@ -111,6 +111,16 @@ export interface Category {
   parent_id?: number | null
   product_count?: number
   active?: boolean
+  /** Imagen de la categoría (se muestra en la tienda virtual). */
+  image_url?: string
+}
+
+/** Imagen adicional de la galería de un producto (la principal es Product.image_url). */
+export interface ProductGalleryImage {
+  id: number
+  product_id: number
+  url: string
+  sort_order: number
 }
 
 export interface CreateCategoryInput {
@@ -676,6 +686,41 @@ export const productsService = {
       })
       .then(r => r.data.image_url)
   },
+
+  /** Galería de imágenes adicionales del producto (Catálogo Digital). */
+  listGallery: (productId: number) =>
+    api.get<{ data: ProductGalleryImage[] }>(`/api/products/${productId}/gallery`).then((r) => r.data.data ?? []),
+
+  uploadGalleryImage: (productId: number, file: File) => {
+    const form = new FormData()
+    form.append('image', file)
+    return api
+      .post<{ data: ProductGalleryImage }>(`/api/products/${productId}/gallery`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then((r) => r.data.data)
+  },
+
+  deleteGalleryImage: (productId: number, imageId: number) =>
+    api.delete(`/api/products/${productId}/gallery/${imageId}`).then(() => undefined),
+
+  /** La imagen de la galería pasa a ser la principal (la anterior principal ocupa su lugar). Devuelve la nueva image_url. */
+  promoteGalleryImage: (productId: number, imageId: number) =>
+    api.post<{ image_url: string }>(`/api/products/${productId}/gallery/${imageId}/main`).then((r) => r.data.image_url),
+
+  /** Imagen de la categoría. */
+  uploadCategoryImage: (categoryId: number, file: File) => {
+    const form = new FormData()
+    form.append('image', file)
+    return api
+      .post<{ image_url: string }>(`/api/categories/${categoryId}/image`, form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then((r) => r.data.image_url)
+  },
+
+  deleteCategoryImage: (categoryId: number) =>
+    api.delete(`/api/categories/${categoryId}/image`).then(() => undefined),
 
   /** Activa/desactiva múltiples productos */
   bulkToggle: (productIds: number[]) =>

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { X, Minus, Plus, Package } from 'lucide-react'
+import { X, Minus, Plus } from 'lucide-react'
 import type { ProductReportRow } from '@/services/products.service'
-import { resolvePublicAssetUrl } from '@/config/apiBaseUrl'
 import { publicEcommerceService, type PublicProductOptions } from '@/services/ecommerce.service'
 import type { StoreLineSelection } from './storeCart'
+import ProductGallery from './ProductGallery'
 
 /** Producto que obliga a elegir algo antes de agregarlo al carrito. */
 export function productNeedsOptions(p: ProductReportRow): boolean {
@@ -133,20 +133,13 @@ export default function ProductDetailModal({
           <X size={18} />
         </button>
         <div className="grid grid-cols-1 sm:grid-cols-2">
-          <div className="aspect-square bg-gray-100 relative">
-            {product.image_url ? (
-              <img src={resolvePublicAssetUrl(product.image_url)} alt={product.name} className="w-full h-full object-cover" />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-gray-300">
-                <Package size={40} />
-              </div>
-            )}
+          <ProductGallery productId={product.id} mainImage={product.image_url} name={product.name}>
             {outOfStock && (
               <span className="absolute top-3 left-3 bg-gray-900/80 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
                 Agotado
               </span>
             )}
-          </div>
+          </ProductGallery>
           <div className="p-5 flex flex-col">
             {product.category_name && (
               <span className="text-[11px] uppercase tracking-wide font-semibold mb-1" style={{ color: 'rgb(var(--vs-primary))' }}>

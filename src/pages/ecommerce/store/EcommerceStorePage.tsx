@@ -339,14 +339,24 @@ export default function EcommerceStorePage() {
               {categories.map((c) => (
                 <button key={c.id} type="button" onClick={() => setCategoryId(c.id)} className="flex flex-col items-center gap-1.5 shrink-0">
                   <span
-                    className="w-14 h-14 rounded-full flex items-center justify-center font-bold text-base border"
+                    className="w-14 h-14 rounded-full flex items-center justify-center font-bold text-base border overflow-hidden"
                     style={
-                      categoryId === c.id
-                        ? { background: 'rgb(var(--vs-primary))', color: '#fff', borderColor: 'transparent', boxShadow: '0 0 0 3px rgb(var(--vs-primary) / 0.25)' }
-                        : { background: '#fff', color: 'rgb(var(--vs-secondary))', borderColor: '#e5e7eb' }
+                      c.image_url
+                        ? {
+                            borderColor: categoryId === c.id ? 'rgb(var(--vs-primary))' : '#e5e7eb',
+                            borderWidth: categoryId === c.id ? 2 : 1,
+                            boxShadow: categoryId === c.id ? '0 0 0 3px rgb(var(--vs-primary) / 0.25)' : undefined,
+                          }
+                        : categoryId === c.id
+                          ? { background: 'rgb(var(--vs-primary))', color: '#fff', borderColor: 'transparent', boxShadow: '0 0 0 3px rgb(var(--vs-primary) / 0.25)' }
+                          : { background: '#fff', color: 'rgb(var(--vs-secondary))', borderColor: '#e5e7eb' }
                     }
                   >
-                    {c.name.charAt(0).toUpperCase()}
+                    {c.image_url ? (
+                      <img src={resolvePublicAssetUrl(c.image_url)} alt="" loading="lazy" className="w-full h-full object-cover" />
+                    ) : (
+                      c.name.charAt(0).toUpperCase()
+                    )}
                   </span>
                   <span className="text-[11px] text-gray-600 font-medium max-w-[64px] truncate">{c.name}</span>
                 </button>
@@ -367,9 +377,12 @@ export default function EcommerceStorePage() {
                   key={c.id}
                   type="button"
                   onClick={() => setCategoryId(c.id)}
-                  className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium border ${categoryId === c.id ? 'text-white border-transparent' : 'bg-white text-gray-600 border-gray-200'}`}
+                  className={`shrink-0 ${c.image_url ? 'pl-1.5' : 'px-3.5'} pr-3.5 py-1.5 rounded-full text-xs font-medium border inline-flex items-center gap-1.5 ${categoryId === c.id ? 'text-white border-transparent' : 'bg-white text-gray-600 border-gray-200'}`}
                   style={categoryId === c.id ? { background: 'rgb(var(--vs-primary))' } : undefined}
                 >
+                  {c.image_url ? (
+                    <img src={resolvePublicAssetUrl(c.image_url)} alt="" loading="lazy" className="w-6 h-6 rounded-full object-cover" />
+                  ) : null}
                   {c.name}
                 </button>
               ))}

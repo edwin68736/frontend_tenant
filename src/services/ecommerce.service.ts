@@ -187,6 +187,8 @@ export interface PublicStoreSettings {
 export interface PublicCategory {
   id: number
   name: string
+  /** Imagen de la categoría; vacía = se muestra la inicial. */
+  image_url?: string
 }
 
 export interface PublicProductOptions {
@@ -216,6 +218,10 @@ export const publicEcommerceService = {
     api
       .get<{ data: ProductReportRow[]; total?: number }>('/api/public/ecommerce/products', { params })
       .then(r => ({ data: r.data.data ?? [], total: r.data.total ?? 0 })),
+
+  /** Imágenes del producto: la principal primero y luego la galería. */
+  getProductGallery: (productId: number) =>
+    api.get<{ images: string[] }>(`/api/public/ecommerce/products/${productId}/gallery`).then(r => r.data.images ?? []),
 
   getProductOptions: (productId: number) =>
     api.get<PublicProductOptions>(`/api/public/ecommerce/products/${productId}/options`).then(r => r.data),

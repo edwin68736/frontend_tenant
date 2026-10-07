@@ -31,6 +31,7 @@ import { BarcodeScannerModal } from '@/components/barcode/BarcodeScannerModal'
 import { useBranch } from '@/contexts/BranchContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { clsx } from 'clsx'
+import ProductGalleryEditor from '@/components/products/ProductGalleryEditor'
 import {
   formatExpiryDisplay,
   getProductExpiryStatus,
@@ -194,6 +195,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const [uploadingImage, setUploadingImage] = useState(false)
   const [pendingImageFile, setPendingImageFile] = useState<File | null>(null)
   const [pendingImagePreview, setPendingImagePreview] = useState<string | null>(null)
+  // Imágenes de la galería elegidas antes de que el producto exista: se suben al guardarlo.
+  const [pendingGallery, setPendingGallery] = useState<File[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const listImageInputRef = useRef<HTMLInputElement>(null)
   const listImageTargetIdRef = useRef<number | null>(null)
@@ -253,6 +256,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       return null
     })
     setPendingImageFile(null)
+    setPendingGallery([])
   }, [])
 
   const closeProductModal = () => {
@@ -656,6 +660,18 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           await productsService.uploadImage(product.id, pendingImageFile)
         } catch (err: any) {
           toast.error(err.response?.data?.error ?? 'Producto guardado, pero falló la imagen')
+          imageFailed = true
+        } finally {
+          setUploadingImage(false)
+        }
+      }
+      if (pendingGallery.length > 0) {
+        setUploadingImage(true)
+        try {
+          for (const f of pendingGallery) await productsService.uploadGalleryImage(product.id, f)
+          setPendingGallery([])
+        } catch (err: any) {
+          toast.error(err.response?.data?.error ?? 'Producto guardado, pero falló alguna imagen de la galería')
           imageFailed = true
         } finally {
           setUploadingImage(false)
@@ -1620,6 +1636,18 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               </div>
             </div>
           </div>
+        )}
+        {pageMode === 'product' && (
+          <ProductGalleryEditor
+            productId={editing?.id ?? null}
+            pending={pendingGallery}
+            onPendingChange={setPendingGallery}
+            onMainChanged={(url) => {
+              setF('image_url', url)
+              if (editing) setProducts((prev) => prev.map((p) => (p.id === editing.id ? { ...p, image_url: url } : p)))
+            }}
+            disabled={saving || uploadingImage}
+          />
         )}
         <div className={PRODUCT_FORM_GRID}>
           <div className="min-w-0 col-span-2 lg:col-span-1">
