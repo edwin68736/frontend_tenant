@@ -27,6 +27,8 @@ export interface TenantSubscriptionView {
   show_renewal_banner: boolean
   show_suspended_banner: boolean
   can_operate: boolean
+  /** Puede consultar Reportes (solo lectura) aunque la cuenta esté suspendida/vencida por falta de pago. */
+  can_view_reports?: boolean
   portal_url?: string
   next_billing_date?: string
   pending_amount: number

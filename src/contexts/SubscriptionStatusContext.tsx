@@ -7,6 +7,8 @@ type Ctx = {
   loading: boolean
   /** true solo con hub confirmado y can_operate=false (nunca por un hub aún no cargado). */
   blocked: boolean
+  /** Con la cuenta restringida por falta de pago, aún se puede consultar el módulo de Reportes. */
+  reportsOnly: boolean
   refresh: () => Promise<void>
   setHub: (hub: BillingHub | null) => void
 }
@@ -48,9 +50,10 @@ export function SubscriptionStatusProvider({ children }: { children: ReactNode }
   }, [refresh])
 
   const blocked = hub != null && hub.subscription.can_operate === false
+  const reportsOnly = blocked && hub?.subscription.can_view_reports === true
 
   return (
-    <SubscriptionStatusContext.Provider value={{ hub, loading, blocked, refresh, setHub }}>
+    <SubscriptionStatusContext.Provider value={{ hub, loading, blocked, reportsOnly, refresh, setHub }}>
       {children}
     </SubscriptionStatusContext.Provider>
   )

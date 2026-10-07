@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertTriangle, CreditCard, Headphones, Lock, Package } from 'lucide-react'
+import { AlertTriangle, BarChart3, CreditCard, Headphones, Lock, Package } from 'lucide-react'
 import { useSubscriptionStatus } from '@/contexts/SubscriptionStatusContext'
 import { planReminderTitle } from '@/pages/subscription/planNotifications'
 import { formatMoney } from '@/pages/subscription/subscriptionUx'
@@ -28,7 +28,7 @@ import { BARCODE_SCANNER_Z } from '@/utils/uiLayers'
  * contenido (no cubría sidebar/header) en vez de a toda la ventana.
  */
 export default function SubscriptionBlockedScreen() {
-  const { hub } = useSubscriptionStatus()
+  const { hub, reportsOnly } = useSubscriptionStatus()
   const navigate = useNavigate()
   const [pickerOpen, setPickerOpen] = useState(false)
   if (!hub || typeof document === 'undefined') return null
@@ -78,6 +78,17 @@ export default function SubscriptionBlockedScreen() {
         <p className="mt-4 text-xs text-gray-500">
           Tus datos están a salvo; el acceso se restablece apenas se regularice el pago.
         </p>
+
+        {reportsOnly ? (
+          <button
+            type="button"
+            onClick={() => navigate('/reports/sales')}
+            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+          >
+            <BarChart3 size={16} />
+            Ver mis reportes
+          </button>
+        ) : null}
 
         <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           {!canSubmitPayment && supportHref ? (

@@ -24,11 +24,13 @@ function MainLayoutInner() {
   const showBrandTopBar = !nativeCapacitor
   const mobileFlush = nativeCapacitor
 
-  const { blocked } = useSubscriptionStatus()
+  const { blocked, reportsOnly } = useSubscriptionStatus()
   const { pathname } = useLocation()
   // /subscription siempre debe verse: es la única salida que tiene el tenant para regularizar.
   const onSubscriptionPage = pathname.startsWith('/subscription')
-  const showBlockedScreen = blocked && !onSubscriptionPage
+  // Con la cuenta suspendida por falta de pago el módulo de Reportes sigue consultable (solo lectura).
+  const onReportsPage = pathname.startsWith('/reports')
+  const showBlockedScreen = blocked && !onSubscriptionPage && !(reportsOnly && onReportsPage)
 
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
