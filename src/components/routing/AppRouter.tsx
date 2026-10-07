@@ -3,6 +3,7 @@ import { BrowserRouter, HashRouter, Routes, Route, Navigate } from 'react-router
 import { useAuth } from '@/contexts/AuthContext'
 import { useTenantBinding } from '@/contexts/TenantBindingContext'
 import MainLayout from '@/layouts/MainLayout'
+import RumRouteTracker from '@/lib/rum/RumRouteTracker'
 import LoginPage from '@/pages/auth/LoginPage'
 import SsoPage from '@/pages/auth/SsoPage'
 import RucPage from '@/pages/auth/RucPage'
@@ -264,6 +265,7 @@ export default function AppRouter() {
   const Router = isNativeShell() ? HashRouter : BrowserRouter
   return (
     <Router>
+      <RumRouteTracker />
       <AppRoutes />
     </Router>
   )
