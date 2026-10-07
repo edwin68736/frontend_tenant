@@ -1101,6 +1101,12 @@ function SalesContent() {
                   <p>{formatDisplayDatePeru(detail.sale.issue_date)}</p>
                 </div>
               </div>
+              {detail.sale.notes?.trim() ? (
+                <div>
+                  <p className="text-xs text-gray-400">Notas</p>
+                  <p className="whitespace-pre-wrap break-words">{detail.sale.notes.trim()}</p>
+                </div>
+              ) : null}
               <div className="mt-2">
                 <p className="text-xs text-gray-400">Comprobante electrónico (SUNAT)</p>
                 {detail.sale.electronic_issue_sale_id ? (

@@ -153,12 +153,13 @@ function renderFiscalFooter(
   addSpace: (h?: number) => void,
 ) {
   const f = data.fiscal
-  // Notas/observaciones de la cotización: el A4 ya las imprime, el ticket no las mostraba.
-  const quotationNotes = data.sunat_code === 'QT' ? data.notes?.trim() : ''
-  if (quotationNotes) {
+  // Notas/observaciones (cotización, nota de venta, comprobantes con notas): el A4 ya las imprime, el
+  // ticket no las mostraba. Si coinciden con las observaciones fiscales no se repiten.
+  const docNotes = data.notes?.trim() ?? ''
+  if (docNotes && docNotes !== f?.fiscal_observations?.trim()) {
     addSpace(2)
     addWrapped('Observaciones:', FONT_SIZE_SM)
-    addWrapped(quotationNotes, FONT_SIZE_SM)
+    addWrapped(docNotes, FONT_SIZE_SM)
   }
   if (!f?.show_terms_conditions || !f.terms_text?.trim()) return
   addSpace(2)

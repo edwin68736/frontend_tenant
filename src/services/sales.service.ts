@@ -7,6 +7,8 @@ export type { SaleBillingStatus }
 
 export interface Sale {
   id: number
+  /** Notas que escribió el usuario al registrar la venta (en una anulada incluye el motivo). */
+  notes?: string
   doc_type: string
   series: string
   number: string
