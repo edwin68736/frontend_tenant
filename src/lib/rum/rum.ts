@@ -37,7 +37,9 @@ export function normalizeRoute(pathOrUrl: string): string {
   return (
     p
       .split('/')
-      .map((seg) => (/^\d+$/.test(seg) || /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(seg) || seg.length > 40 ? ':id' : seg))
+      // Todo segmento con dígitos (ids, números de comprobante como NV001-00000012, DNI/RUC, códigos) o muy largo
+      // se reemplaza por :id: la telemetría solo conserva la forma de la ruta, nunca identificadores.
+      .map((seg) => (/\d/.test(seg) && (seg.length >= 4 || /^\d+$/.test(seg)) ? ':id' : /^[0-9a-f]{8}-[0-9a-f]{4}-/i.test(seg) || seg.length > 40 ? ':id' : seg))
       .join('/')
       .slice(0, 80) || '/'
   )
