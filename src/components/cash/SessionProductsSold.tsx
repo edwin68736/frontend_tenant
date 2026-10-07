@@ -119,9 +119,9 @@ export function SessionProductsSold({ sessionId, formatMoney }: Props) {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 sticky top-0">
                   <tr>
-                    <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500">Código</th>
+                    <th className="hidden sm:table-cell text-left px-3 py-2 text-xs font-semibold text-gray-500">Código</th>
                     <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500">Producto</th>
-                    <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500">Unidad</th>
+                    <th className="hidden sm:table-cell text-left px-3 py-2 text-xs font-semibold text-gray-500">Unidad</th>
                     <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500">Cantidad</th>
                     <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500">Importe</th>
                   </tr>
@@ -130,9 +130,9 @@ export function SessionProductsSold({ sessionId, formatMoney }: Props) {
                   {filtered.length ? (
                     filtered.map((r) => (
                       <tr key={`${r.product_id ?? 'x'}-${r.code}-${r.description}-${r.unit}`} className="border-b border-gray-50">
-                        <td className="px-3 py-2 text-xs text-gray-500">{r.code || '—'}</td>
-                        <td className="px-3 py-2">{r.description}</td>
-                        <td className="px-3 py-2 text-xs text-gray-500">{r.unit || '—'}</td>
+                        <td className="hidden sm:table-cell px-3 py-2 text-xs text-gray-500">{r.code || '—'}</td>
+                        <td className="px-3 py-2">{r.description}<span className="sm:hidden text-xs text-gray-400"> · {r.unit || '—'}</span></td>
+                        <td className="hidden sm:table-cell px-3 py-2 text-xs text-gray-500">{r.unit || '—'}</td>
                         <td className="px-3 py-2 text-right tabular-nums font-medium">{fmtQty(r.quantity)}</td>
                         <td className="px-3 py-2 text-right tabular-nums">{formatMoney(r.total)}</td>
                       </tr>
@@ -148,9 +148,10 @@ export function SessionProductsSold({ sessionId, formatMoney }: Props) {
                 {filtered.length > 0 && (
                   <tfoot className="bg-gray-50 sticky bottom-0">
                     <tr>
-                      <td colSpan={3} className="px-3 py-2 text-xs font-semibold text-gray-600">
+                      <td colSpan={3} className="hidden sm:table-cell px-3 py-2 text-xs font-semibold text-gray-600">
                         {filtered.length} producto(s)
                       </td>
+                      <td className="sm:hidden px-3 py-2 text-xs font-semibold text-gray-600">{filtered.length} prod.</td>
                       <td className="px-3 py-2 text-right tabular-nums font-semibold">
                         {units.size <= 1 ? fmtQty(totalQty) : ''}
                       </td>
