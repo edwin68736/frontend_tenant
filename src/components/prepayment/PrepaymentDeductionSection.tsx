@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Loader2, Plus, Trash2 } from 'lucide-react'
 import type { PrepaymentModuleConfig } from '@/services/prepayment.service'
 import { prepaymentService } from '@/services/prepayment.service'
@@ -107,8 +107,10 @@ export function PrepaymentDeductionSection({
   }
 
   useEffect(() => {
-    if (!deduct) {
+    // Un anticipo solo se puede deducir en comprobantes del mismo cliente: sin cliente no se consulta.
+    if (!deduct || !contactId) {
       setVouchers([])
+      setVoucherError('')
       return
     }
     let cancelled = false
@@ -138,6 +140,14 @@ export function PrepaymentDeductionSection({
       cancelled = true
     }
   }, [deduct, contactId, affectationGroup, taxRate])
+
+  // Al cambiar el cliente, los anticipos ya elegidos (de otro cliente) dejan de ser válidos: se limpian.
+  const prevContactId = useRef(contactId)
+  useEffect(() => {
+    if (prevContactId.current === contactId) return
+    prevContactId.current = contactId
+    if (deduct && rows.some((r) => r.source_sale_id)) onRowsChange([newRow()])
+  }, [contactId, deduct, rows, onRowsChange])
 
   useEffect(() => {
     if (!deduct || rows.length === 0) return
@@ -234,7 +244,7 @@ export function PrepaymentDeductionSection({
 
           {!contactId && (
             <p className="text-xs text-amber-700">
-              Seleccione el mismo cliente del comprobante de anticipo antes de registrar la venta.
+              Seleccione primero el cliente del comprobante: solo se muestran los anticipos emitidos a ese cliente.
             </p>
           )}
 
@@ -247,18 +257,9 @@ export function PrepaymentDeductionSection({
 
           {voucherError && <p className="text-xs text-amber-700">{voucherError}</p>}
 
-          {contactId &&
-            visibleVouchers.some((v) => v.contact_id && v.contact_id !== contactId) &&
-            !loadingVouchers && (
-            <p className="text-xs text-amber-700 leading-relaxed">
-              Algunos anticipos son de otro cliente. Seleccione el mismo cliente de la venta (p. ej. TOTOCAYO) antes de
-              registrar.
-            </p>
-          )}
-
-          {!loadingVouchers && visibleVouchers.length === 0 && !voucherError && (
+          {!loadingVouchers && !!contactId && visibleVouchers.length === 0 && !voucherError && (
             <p className="text-xs text-gray-500 leading-relaxed">
-              No hay anticipos disponibles con afectación{' '}
+              No hay anticipos disponibles de este cliente con afectación{' '}
               <strong>{affectationGroups.find((g) => g.value === affectationGroup)?.label ?? affectationGroup}</strong>.
               El comprobante debe haberse emitido marcando «¿Es un pago anticipado?», estar aceptado por SUNAT y tener saldo
               pendiente.
