@@ -18,6 +18,7 @@ import { downloadCashSessionReportExcel } from '@/utils/cashReportExcel'
 import { categoryLabel } from '@/utils/cashMovementCategories'
 import { MethodBalanceGrid } from '@/components/cash/MethodBalanceGrid'
 import { MovementsList } from '@/components/cash/MovementsList'
+import { SessionProductsSold } from '@/components/cash/SessionProductsSold'
 import { ArqueoTable, sumArqueo, arqueoSumColorClass, parseArqueoJson } from '@/components/cash/ArqueoTable'
 
 function isEfectivo(m: string): boolean {
@@ -352,6 +353,8 @@ function CashSessionDetailContent() {
           ))}
         </div>
       </div>
+
+      <SessionProductsSold sessionId={session.id} formatMoney={formatMoney} />
 
       {/* Detalle ingresos */}
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden border border-gray-100">

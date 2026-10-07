@@ -165,6 +165,16 @@ export interface SessionBalanceSummary {
   cash_expected: number
 }
 
+/** Producto vendido en una sesión de caja (todos los métodos de pago), agrupado por producto y unidad. */
+export interface SessionProductSoldRow {
+  product_id: number | null
+  code: string
+  description: string
+  unit: string
+  quantity: number
+  total: number
+}
+
 export interface CashSessionReport {
   session: CashSessionReportSession
   income_detail: IncomeDetailRow[]
@@ -335,6 +345,9 @@ export const cashbankService = {
 
   getSessionReport: (sessionId: number): Promise<CashSessionReport> =>
     api.get(`/api/cashbank/sessions/${sessionId}/report`).then(r => r.data.data ?? r.data),
+
+  getSessionProductsReport: (sessionId: number): Promise<SessionProductSoldRow[]> =>
+    api.get(`/api/cashbank/sessions/${sessionId}/report/products`).then(r => r.data.data ?? []),
 
   listMovementsReport: async (params?: MovementsReportParams): Promise<MovementsReportResult> => {
     const r = await api.get('/api/cashbank/reports/movements', { params: params ?? {} })
