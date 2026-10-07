@@ -247,12 +247,14 @@ const CYCLE_MONTHS: Record<string, number> = {
 export function contractedPeriodLabel(sub: {
   billing_cycle: string
   contracted_months?: number
+  bonus_months?: number
 }): string {
   const cycle = billingCycleLabel(sub.billing_cycle)
   const months = sub.contracted_months ?? 0
+  const gift = (sub.bonus_months ?? 0) > 0 ? ` + ${sub.bonus_months} gratis` : ''
   if (sub.billing_cycle === 'lifetime' || months <= 0) return cycle
-  if (CYCLE_MONTHS[sub.billing_cycle] === months) return cycle
-  return months === 1 ? '1 mes' : `${months} meses`
+  if (CYCLE_MONTHS[sub.billing_cycle] === months) return cycle + gift
+  return (months === 1 ? '1 mes' : `${months} meses`) + gift
 }
 
 export function formatBillingPeriod(periodEnd: string) {
