@@ -68,11 +68,45 @@ export default defineConfig(({ mode }) => {
       target: ['es2019', 'safari13', 'ios13', 'chrome87', 'firefox78', 'edge88'],
       rollupOptions: {
         output: {
+          // Chunks por paquete. Antes solo se separaban recharts/jspdf/pdfjs por coincidencia de texto en la ruta, y
+          // Rollup dejaba DENTRO de vendor-charts a react y react-dom (los usa recharts, el primero que los pidió)
+          // y dentro de vendor-jspdf a utilidades compartidas: la entrada tenía que importar esos archivos para
+          // arrancar y bajaba ~290 KB de gráficos y PDF hasta en el login. Con react en su propio chunk, los
+          // chunks pesados solo contienen paquetes exclusivos y se cargan cuando una vista los usa.
           manualChunks(id) {
+            // Helper de Vite para import() dinámicos (__vitePreload): lo usa la entrada; si Rollup lo deja dentro de
+            // vendor-jspdf, la entrada tiene que bajar jsPDF (~130 KB br) para poder arrancar.
+            if (id.includes('vite/preload-helper') || id.includes('vite/modulepreload-polyfill')) return 'vendor-common'
             if (!id.includes('node_modules')) return
-            if (id.includes('recharts')) return 'vendor-charts'
-            if (id.includes('pdfjs')) return 'vendor-pdf'
-            if (id.includes('jspdf')) return 'vendor-jspdf'
+            const m = id.match(/node_modules[\\/]((?:@[^\\/]+[\\/])?[^\\/]+)/)
+            const pkg = m ? m[1] : ''
+            if (
+              ['react', 'react-dom', 'scheduler', 'react-router', 'react-router-dom', '@remix-run/router', 'react-is'].includes(pkg)
+            ) {
+              return 'vendor-react'
+            }
+            // Exclusivos de recharts (ninguna otra parte de la app los importa).
+            if (
+              pkg === 'recharts' ||
+              pkg === 'recharts-scale' ||
+              pkg === 'react-smooth' ||
+              pkg === 'decimal.js-light' ||
+              pkg === 'fast-equals' ||
+              pkg === 'eventemitter3' ||
+              pkg === 'internmap' ||
+              pkg === 'victory-vendor' ||
+              pkg === 'lodash' ||
+              pkg === 'prop-types' ||
+              pkg.startsWith('d3-')
+            ) {
+              return 'vendor-charts'
+            }
+            // Pequeñas y compartidas entre la app y los chunks pesados: en un chunk neutro, para que no arrastren
+            // a recharts/jsPDF al arranque.
+            if (['clsx', 'tiny-invariant', 'fflate', '@babel/runtime'].includes(pkg)) return 'vendor-common'
+            if (pkg === 'pdfjs-dist') return 'vendor-pdf'
+            // Exclusivos de jsPDF. fflate y @babel/runtime también los usan otras dependencias: se dejan fuera.
+            if (['jspdf', 'pako', 'fast-png', 'iobuffer', 'canvg', 'html2canvas', 'dompurify'].includes(pkg)) return 'vendor-jspdf'
           },
         },
       },

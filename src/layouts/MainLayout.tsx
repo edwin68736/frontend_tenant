@@ -1,4 +1,4 @@
-import { PdfViewerHost } from '@/components/pdf/PdfViewerHost'
+import { PdfViewerHostLazy } from '@/components/pdf/PdfViewerHostLazy'
 import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
@@ -162,7 +162,7 @@ function MainLayoutInner() {
               >
                 {showBlockedScreen ? <SubscriptionBlockedScreen /> : <Outlet />}
                 {/* Visor de PDF: montado una vez, se abre desde cualquier página. */}
-                <PdfViewerHost />
+                <PdfViewerHostLazy />
               </main>
             </div>
           </div>
