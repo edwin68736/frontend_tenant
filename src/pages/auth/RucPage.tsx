@@ -7,6 +7,7 @@ import { getCentralApiOrigin } from '@/config/apiBaseUrl'
 import { useTenantBinding } from '@/contexts/TenantBindingContext'
 import { isDevelopmentMode } from '@/lib/runtime/environment'
 import { DevServerSettings } from '@/components/settings/DevServerSettings'
+import logoUrl from '@/assets/logo.webp'
 
 /**
  * Windows / Android: vinculación RUC → slug + URL del tenant (persistida en disco).
@@ -60,7 +61,7 @@ export default function RucPage() {
     <div className="ruc-bind-screen bg-gradient-to-br from-green-900 via-green-800 to-emerald-900">
       <div className="ruc-bind-card rounded-2xl bg-white/95 p-6 shadow-xl backdrop-blur sm:p-8">
         <div className="mb-3 flex justify-center">
-          <img src="/logo.png" alt="Tukifac" className="ruc-bind-logo h-16 w-auto object-contain" />
+          <img src={logoUrl} alt="Tukifac" className="ruc-bind-logo h-16 w-auto object-contain" />
         </div>
         <p className="mb-1 text-center text-sm text-gray-600">Panel ERP Tukifac</p>
         <p className="ruc-bind-lead mb-6 text-center text-xs leading-relaxed text-gray-500">

@@ -10,6 +10,7 @@ import { useState } from 'react'
 import { isNativeShell } from '@/lib/platform/detect'
 import { replaceRoute } from '@/lib/platform/shellNavigation'
 import { getTenantSlug } from '@/config/apiBaseUrl'
+import logoUrl from '@/assets/logo.webp'
 
 function isSlugFromSubdomain(): boolean {
   if (typeof window === 'undefined') return false
@@ -95,7 +96,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen min-h-screen-safe items-center justify-center bg-gray-100 px-4 pt-safe pb-safe">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <img src="/logo.png" alt="Tukifac" className="mx-auto mb-3 h-auto w-20" />
+          <img src={logoUrl} alt="Tukifac" className="mx-auto mb-3 h-auto w-20" />
           <h1 className="text-2xl font-bold text-gray-800">Tukifac</h1>
           <p className="mt-1 text-sm text-gray-500">Inicia sesión en tu empresa</p>
           {isNativeShell() && boundTenant?.name && (

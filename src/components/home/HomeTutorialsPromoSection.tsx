@@ -123,7 +123,7 @@ function PromoCarouselTrack({
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
     >
-      {slides.map((slide) => (
+      {slides.map((slide, idx) => (
         <div
           key={slide.id}
           className="min-w-full h-full relative flex items-center justify-center bg-slate-900 overflow-hidden"
@@ -134,10 +134,19 @@ function PromoCarouselTrack({
               className="w-full h-full object-cover opacity-60 blur-xl scale-110"
               alt=""
               aria-hidden
+              loading="lazy"
+              decoding="async"
             />
             <div className="absolute inset-0 bg-black/20" />
           </div>
-          <img src={slide.image} alt={slide.alt} className="relative z-10 w-full h-full object-cover" />
+          {/* Solo la primera diapositiva se pide de inmediato; las demás están fuera de pantalla. */}
+          <img
+            src={slide.image}
+            alt={slide.alt}
+            className="relative z-10 w-full h-full object-cover"
+            loading={idx === 0 ? 'eager' : 'lazy'}
+            decoding="async"
+          />
         </div>
       ))}
     </div>
