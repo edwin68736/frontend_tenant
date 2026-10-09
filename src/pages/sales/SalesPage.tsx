@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import axios from 'axios'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -125,29 +126,52 @@ function SalesContent() {
   const [pdfTicketPreviewBusyId, setPdfTicketPreviewBusyId] = useState<number | null>(null)
   const [pdfTicketDownloadBusyId, setPdfTicketDownloadBusyId] = useState<number | null>(null)
 
+  // El buscador espera 400 ms de calma antes de consultar (antes cada tecla lanzaba una petición
+  // pesada al backend) y cada carga cancela la anterior si sigue en vuelo.
+  const [debouncedQ, setDebouncedQ] = useState('')
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedQ(q), 400)
+    return () => window.clearTimeout(t)
+  }, [q])
+  const listAbortRef = useRef<AbortController | null>(null)
+
   const load = () => {
+    listAbortRef.current?.abort()
+    const ctrl = new AbortController()
+    listAbortRef.current = ctrl
     setLoading(true)
     return salesService
-      .list({
-        q: q.trim() || undefined,
-        from: dateRange.from || undefined,
-        to: dateRange.to || undefined,
-        sunat_code: '00',
-        sale_status: onlyCancelled ? 'cancelled' : undefined,
-        page,
-        per_page: perPage,
-      })
+      .list(
+        {
+          q: debouncedQ.trim() || undefined,
+          from: dateRange.from || undefined,
+          to: dateRange.to || undefined,
+          sunat_code: '00',
+          sale_status: onlyCancelled ? 'cancelled' : undefined,
+          page,
+          per_page: perPage,
+          // Esta pantalla solo muestra filas: no pide los totales del filtro completo.
+          summary: '0',
+        },
+        { signal: ctrl.signal },
+      )
       .then(({ data, total: t }) => {
         setSales(data ?? [])
         setTotal(t ?? 0)
       })
-      .catch(() => toast.error('Error'))
-      .finally(() => setLoading(false))
+      .catch((e) => {
+        if (axios.isCancel(e)) return
+        toast.error('Error')
+      })
+      .finally(() => {
+        if (listAbortRef.current === ctrl) setLoading(false)
+      })
   }
 
   useEffect(() => {
     void load()
-  }, [q, dateRange.from, dateRange.to, onlyCancelled, page, perPage])
+    return () => listAbortRef.current?.abort()
+  }, [debouncedQ, dateRange.from, dateRange.to, onlyCancelled, page, perPage])
 
   useEffect(() => {
     if (!waMenu) return

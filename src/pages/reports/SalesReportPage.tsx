@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import axios from 'axios'
 import { Search } from 'lucide-react'
 import { FileDown, FileSpreadsheet } from 'lucide-react'
 import { toast } from 'sonner'
@@ -242,7 +243,7 @@ export default function SalesReportPage() {
   })
 
   /** Solo filtros de búsqueda (sin paginación). */
-  const buildFilterParams = (): Parameters<typeof salesService.list>[0] => {
+  const buildFilterParams = (customer: string = searchCustomer): Parameters<typeof salesService.list>[0] => {
     const params: Parameters<typeof salesService.list>[0] = {}
     if (filters.from) params.from = filters.from
     if (filters.to) params.to = filters.to
@@ -256,14 +257,14 @@ export default function SalesReportPage() {
     if (filters.doc_type_group === 'boleta') params.sunat_code = '03'
     if (filters.payment_method) params.payment_method = filters.payment_method
     if (filters.payment_mode !== 'all') params.payment_mode = filters.payment_mode
-    if (searchCustomer.trim()) params.q = searchCustomer.trim()
+    if (customer.trim()) params.q = customer.trim()
     if (filters.sale_status === 'active') params.sale_status = 'active'
     if (filters.sale_status === 'cancelled') params.sale_status = 'cancelled'
     return params
   }
 
-  const buildListParams = (pageNum: number, pageSize: number): Parameters<typeof salesService.list>[0] => ({
-    ...buildFilterParams(),
+  const buildListParams = (pageNum: number, pageSize: number, customer: string = searchCustomer): Parameters<typeof salesService.list>[0] => ({
+    ...buildFilterParams(customer),
     per_page: pageSize,
     page: pageNum,
   })
@@ -290,20 +291,36 @@ export default function SalesReportPage() {
       }
     })
 
+  // Cada carga cancela la anterior si sigue en vuelo: este reporte calcula totales sobre todo el
+  // filtro y es el más pesado del backend, no debe acumularse una petición por cada cambio.
+  const listAbortRef = useRef<AbortController | null>(null)
+
   const load = async () => {
+    listAbortRef.current?.abort()
+    const ctrl = new AbortController()
+    listAbortRef.current = ctrl
     setLoading(true)
     try {
-      const { data: list, total: t, summary: sum } = await salesService.list(buildListParams(page, perPage))
+      const { data: list, total: t, summary: sum } = await salesService.list(buildListParams(page, perPage, debouncedCustomer), { signal: ctrl.signal })
       const withDoc = withComputedFields(list ?? [])
       setData(withDoc)
       setTotal(t ?? 0)
       setSummary(sum ?? null)
-    } catch {
-      toast.error('Error al cargar ventas')
+    } catch (e) {
+      if (axios.isCancel(e)) return
+      const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error
+      toast.error(msg || 'Error al cargar ventas')
     } finally {
-      setLoading(false)
+      if (listAbortRef.current === ctrl) setLoading(false)
     }
   }
+
+  // Debounce del buscador de cliente (antes cada tecla lanzaba el reporte completo).
+  const [debouncedCustomer, setDebouncedCustomer] = useState('')
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedCustomer(searchCustomer), 400)
+    return () => window.clearTimeout(t)
+  }, [searchCustomer])
 
   useEffect(() => {
     companyService
@@ -321,7 +338,8 @@ export default function SalesReportPage() {
 
   useEffect(() => {
     void load()
-  }, [filters.from, filters.to, filters.branch_id, filters.doc_type_group, filters.payment_method, filters.payment_mode, filters.sale_status, searchCustomer, page, perPage])
+    return () => listAbortRef.current?.abort()
+  }, [filters.from, filters.to, filters.branch_id, filters.doc_type_group, filters.payment_method, filters.payment_mode, filters.sale_status, debouncedCustomer, page, perPage])
 
   const stats = useMemo(() => {
     const s = summary

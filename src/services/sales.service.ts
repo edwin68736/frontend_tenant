@@ -452,9 +452,11 @@ export const salesService = {
     sale_status?: string
     /** '1' = devolver todas las filas que cumplan filtros (sin paginar); usar en exportaciones */
     export_all?: string
-  }) => {
+    /** '0' = no calcular los totales (summary vacío): para pantallas que solo muestran filas. */
+    summary?: '0'
+  }, options?: { signal?: AbortSignal }) => {
     const p = params ?? {}
-    return api.get<{ data: Sale[]; total?: number; summary?: SaleListSummary }>('/api/sales', { params: p }).then(r => {
+    return api.get<{ data: Sale[]; total?: number; summary?: SaleListSummary }>('/api/sales', { params: p, signal: options?.signal }).then(r => {
       const data = r.data.data ?? []
       const total = r.data.total ?? 0
       const raw = r.data.summary
