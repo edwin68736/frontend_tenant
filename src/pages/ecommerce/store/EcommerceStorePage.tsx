@@ -1,5 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ShoppingCart, Package, ChevronLeft, ChevronRight, Search, LayoutGrid, MessageCircle, SlidersHorizontal } from 'lucide-react'
+import {
+  ShoppingBag,
+  Package,
+  ChevronLeft,
+  ChevronRight,
+  Search,
+  MessageCircle,
+  SlidersHorizontal,
+  ArrowRight,
+  Check,
+  Plus,
+  Minus,
+  Tag,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import {
   publicEcommerceService,
@@ -9,24 +22,14 @@ import {
 import type { ProductReportRow } from '@/services/products.service'
 import { resolvePublicAssetUrl } from '@/config/apiBaseUrl'
 import { normalizePhoneForWhatsApp } from '@/utils/membershipReminders'
-import { readCart, addToCart, cartCount, type StoreCartLine } from './storeCart'
+import { readCart, addToCart, setCartQuantity, lineKey, cartCount, cartTotal, type StoreCartLine } from './storeCart'
 import StoreCartDrawer from './StoreCartDrawer'
 import ProductDetailModal, { productNeedsOptions, type ChosenLine } from './ProductDetailModal'
 import PriceRangeSlider from './PriceRangeSlider'
+import { buildStoreTheme, loadStoreFonts } from './storeTheme'
+import './store.css'
 
 const PER_PAGE = 24
-
-/** "#16a34a" → "22 163 74" (formato que usan las variables --p600 del resto de la app). */
-function hexToRgbTriplet(hex: string): string {
-  const clean = hex.replace('#', '')
-  const full = clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean
-  const num = parseInt(full, 16)
-  if (Number.isNaN(num)) return '22 163 74'
-  const r = (num >> 16) & 255
-  const g = (num >> 8) & 255
-  const b = num & 255
-  return `${r} ${g} ${b}`
-}
 
 function formatSoles(n: number): string {
   return `S/ ${Number(n).toFixed(2)}`
@@ -36,6 +39,9 @@ function formatSoles(n: number): string {
 function formatStockQty(n: number): string {
   return Number.isInteger(n) ? String(n) : Number(n.toFixed(2)).toString()
 }
+
+/** Pocas unidades: avisa desde 5 hacia abajo. */
+const LOW_STOCK = 5
 
 export default function EcommerceStorePage() {
   const [settings, setSettings] = useState<PublicStoreSettings | null>(null)
@@ -72,6 +78,13 @@ export default function EcommerceStorePage() {
     publicEcommerceService.listCategories().then(setCategories).catch(() => {})
     publicEcommerceService.getPriceBounds().then(setPriceBounds).catch(() => {})
   }, [])
+
+  const theme = useMemo(() => buildStoreTheme(settings), [settings])
+
+  // Las tipografías de la plantilla se descargan de verdad (antes solo estaba Inter y el resto caía a la del sistema).
+  useEffect(() => {
+    loadStoreFonts(theme.fontQuery)
+  }, [theme.fontQuery])
 
   // Pestaña del navegador con la marca del tenant en vez de "Tukifac" — solo mientras se navega
   // esta tienda pública; se restaura al salir. El preview de bots (WhatsApp/Facebook) usa un
@@ -155,22 +168,15 @@ export default function EcommerceStorePage() {
     setDetailProduct(null)
   }
 
-  const themeVars = useMemo(() => {
-    if (!settings) return {}
-    return {
-      '--vs-primary': hexToRgbTriplet(settings.primary_color || '#16a34a'),
-      '--vs-secondary': hexToRgbTriplet(settings.secondary_color || '#0f172a'),
-      fontFamily: settings.font_family || 'Inter',
-    } as React.CSSProperties
-  }, [settings])
-
-  const cardRadius = settings?.card_style === 'square' ? '6px' : settings?.card_style === 'minimal' ? '10px' : '16px'
-  const cardShadow = settings?.card_style === 'minimal' ? 'none' : '0 2px 10px rgba(0,0,0,0.06)'
-  const categoryStyle = settings?.category_style === 'pills' ? 'pills' : 'circles'
-
   const activeCategoryName = categoryId ? categories.find((c) => c.id === categoryId)?.name : null
   const waContact = settings?.whatsapp_number ? normalizePhoneForWhatsApp(settings.whatsapp_number) : ''
   const priceFilterActive = Boolean(minPrice || maxPrice)
+  const showStockOn = settings?.show_stock !== false
+  const categoryStyle = settings?.category_style === 'pills' ? 'pills' : 'tiles'
+  const itemCount = cartCount(cart)
+  const cartSum = cartTotal(cart)
+  const storeName = settings?.store_name || 'Tienda'
+  const logoSrc = settings?.logo_url ? resolvePublicAssetUrl(settings.logo_url) : ''
 
   if (notAvailable) {
     return (
@@ -184,222 +190,210 @@ export default function EcommerceStorePage() {
     )
   }
 
+  const current = activeSliders.length > 0 ? activeSliders[slide % activeSliders.length] : null
+  const currentHasText = Boolean(current && (current.title || current.subtitle || current.button_text))
+  const staticImage = settings?.background_image_url ? resolvePublicAssetUrl(settings.background_image_url) : ''
+
+  /** Control de compra de una tarjeta: agregar, elegir opciones, agotado o cantidad si ya está en el carrito. */
+  const renderBuy = (p: ProductReportRow, outOfStock: boolean, stockQty: number, capped: boolean) => {
+    if (outOfStock) return <button type="button" className="vs-add off" disabled>Agotado</button>
+    if (productNeedsOptions(p)) {
+      return (
+        <button type="button" className="vs-add opt" onClick={(e) => { e.stopPropagation(); setDetailProduct(p) }}>
+          Elegir
+        </button>
+      )
+    }
+    const key = lineKey(p.id)
+    const line = cart.find((l) => l.line_key === key)
+    if (line) {
+      const atMax = capped && line.quantity >= stockQty
+      return (
+        <div className="vs-step" onClick={(e) => e.stopPropagation()}>
+          <button type="button" aria-label="Quitar uno" onClick={() => setCart(setCartQuantity(key, line.quantity - 1))}>
+            <Minus size={16} />
+          </button>
+          <span aria-live="polite">{line.quantity}</span>
+          <button type="button" aria-label="Agregar uno" disabled={atMax} onClick={() => setCart(setCartQuantity(key, line.quantity + 1))}>
+            <Plus size={16} />
+          </button>
+        </div>
+      )
+    }
+    return (
+      <button type="button" className="vs-add sq" aria-label={`Agregar ${p.name} al carrito`} onClick={(e) => { e.stopPropagation(); handleAdd(p) }}>
+        <Plus size={20} strokeWidth={2.6} />
+      </button>
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50" style={themeVars}>
-      {/* Header */}
-      <header className="bg-white border-b border-gray-100 sticky top-0 z-40">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex flex-wrap items-center gap-3">
-          {settings?.logo_url ? (
-            <img src={resolvePublicAssetUrl(settings.logo_url)} alt="" className="w-10 h-10 rounded-xl object-cover shrink-0" />
-          ) : (
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'rgb(var(--vs-primary))' }}>
-              <ShoppingCart size={18} className="text-white" />
-            </div>
-          )}
-          <div className="min-w-0 shrink-0">
-            <p className="font-bold text-gray-800 truncate max-w-[140px] sm:max-w-none">{settings?.store_name || 'Tienda'}</p>
-            {settings?.tagline && <p className="text-xs text-gray-500 truncate max-w-[140px] sm:max-w-none">{settings.tagline}</p>}
-          </div>
+    <div className="vs-shop" style={theme.vars}>
+      {waContact && (
+        <div className="vs-ann">
+          Pide por WhatsApp y coordinamos la entrega · <b>respuesta directa</b>
+        </div>
+      )}
 
-          <div className="order-3 sm:order-none basis-full sm:basis-auto sm:flex-1 sm:max-w-md">
-            <div className="relative">
-              <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                type="search"
-                placeholder="Buscar producto..."
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                className="w-full border border-gray-200 rounded-full pl-9 pr-4 py-2 text-sm bg-gray-50 focus:bg-white"
-              />
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setCartOpen(true)}
-            className="relative p-2.5 rounded-xl text-white shrink-0 ml-auto"
-            style={{ background: 'rgb(var(--vs-primary))' }}
-          >
-            <ShoppingCart size={18} />
-            {cartCount(cart) > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[1.1rem] h-[1.1rem] px-1 flex items-center justify-center rounded-full bg-red-600 text-white text-[10px] font-bold">
-                {cartCount(cart)}
-              </span>
+      {/* Cabecera */}
+      <header className="vs-hdr">
+        <div className="vs-wrap vs-hdr-in">
+          <div className="vs-logo">
+            {logoSrc ? (
+              <img src={logoSrc} alt="" className="vs-logo-mark" />
+            ) : (
+              <span className="vs-logo-mark" aria-hidden>{storeName.charAt(0).toUpperCase()}</span>
             )}
+            <div>
+              <b>{storeName}</b>
+              {settings?.tagline && <small>{settings.tagline}</small>}
+            </div>
+          </div>
+
+          <label className="vs-search">
+            <Search size={19} aria-hidden />
+            <input type="search" placeholder="Buscar producto..." value={q} onChange={(e) => setQ(e.target.value)} aria-label="Buscar producto" />
+          </label>
+
+          <button type="button" className="vs-cartbtn" onClick={() => setCartOpen(true)} aria-label={`Abrir carrito, ${itemCount} productos`}>
+            <ShoppingBag size={22} aria-hidden />
+            <span className="lbl">
+              <small>Mi carrito</small>
+              <strong>{formatSoles(cartSum)}</strong>
+            </span>
+            {itemCount > 0 && <span className="vs-badge-n">{itemCount}</span>}
           </button>
         </div>
       </header>
 
-      {/* Hero: carrusel contenido con texto + botón, o fondo estático si no hay sliders */}
-      {activeSliders.length > 0 ? (
-        <section className="max-w-6xl mx-auto px-4 mt-4">
-          <div className="relative h-44 sm:h-64 lg:h-72 rounded-2xl overflow-hidden">
-            {activeSliders.map((s, i) => (
-              <div
-                key={s.id}
-                className={`absolute inset-0 transition-opacity duration-700 ${i === slide ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-              >
-                <img src={resolvePublicAssetUrl(s.image_url)} alt="" className="w-full h-full object-cover" />
-                <div
-                  className="absolute inset-0"
-                  style={{ background: 'linear-gradient(90deg, rgb(var(--vs-secondary) / 0.85) 0%, rgb(var(--vs-secondary) / 0.3) 55%, transparent 100%)' }}
-                />
-                {(s.title || s.subtitle || s.button_text) && (
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full px-5 sm:px-8">
-                      <div className="max-w-xs sm:max-w-sm text-white">
-                        {s.title && <h2 className="text-lg sm:text-2xl lg:text-3xl font-extrabold leading-tight mb-1.5">{s.title}</h2>}
-                        {s.subtitle && <p className="text-xs sm:text-sm text-white/90 mb-3 line-clamp-2">{s.subtitle}</p>}
-                        {s.button_text && (
-                          <a
-                            href={s.link_url || '#productos'}
-                            className="inline-block px-4 py-2 rounded-full font-semibold text-xs sm:text-sm shadow-lg"
-                            style={{ background: 'rgb(var(--vs-primary))', color: '#fff' }}
-                          >
-                            {s.button_text}
-                          </a>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
+      <main className="vs-wrap">
+        {/* Hero: carrusel con texto + botón, o panel de marca si no hay sliders */}
+        {current && !currentHasText ? (
+          <section className="vs-hero solo" aria-label="Destacado">
+            <div className="vs-hero-art">
+              <img key={current.id} className="vs-fade" src={resolvePublicAssetUrl(current.image_url)} alt="" />
+            </div>
             {activeSliders.length > 1 && (
               <>
-                <button
-                  type="button"
-                  onClick={() => setSlide((s) => (s - 1 + activeSliders.length) % activeSliders.length)}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-white/85 hover:bg-white rounded-full p-1.5 shadow"
-                >
-                  <ChevronLeft size={16} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSlide((s) => (s + 1) % activeSliders.length)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-white/85 hover:bg-white rounded-full p-1.5 shadow"
-                >
-                  <ChevronRight size={16} />
-                </button>
-                <div className="absolute bottom-2.5 left-1/2 -translate-x-1/2 flex gap-1.5">
-                  {activeSliders.map((_, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => setSlide(i)}
-                      className={`h-1.5 rounded-full transition-all ${i === slide ? 'w-5 bg-white' : 'w-1.5 bg-white/50'}`}
-                    />
+                <div className="vs-dots">
+                  {activeSliders.map((s, i) => (
+                    <button key={s.id} type="button" aria-label={`Ir al banner ${i + 1}`} className={i === slide % activeSliders.length ? 'on' : ''} onClick={() => setSlide(i)} />
                   ))}
                 </div>
               </>
             )}
+          </section>
+        ) : (
+          <section className="vs-hero" aria-label="Destacado">
+            <div className="vs-hero-t">
+              <span className="vs-eyebrow">
+                <Tag size={14} aria-hidden /> {current ? 'Destacado' : 'Catálogo digital'}
+              </span>
+              <h1 key={current?.id ?? 'static'} className="vs-fade">
+                {current?.title || storeName}
+              </h1>
+              {(current?.subtitle || (!current && settings?.tagline)) && (
+                <p className="vs-fade">{current?.subtitle || settings?.tagline}</p>
+              )}
+              {(current ? current.button_text : 'Ver productos') && (
+                <a className="vs-btn" href={current?.link_url || '#productos'}>
+                  {current ? current.button_text : 'Ver productos'} <ArrowRight size={19} aria-hidden />
+                </a>
+              )}
+              {activeSliders.length > 1 && (
+                <div className="vs-dots">
+                  {activeSliders.map((s, i) => (
+                    <button key={s.id} type="button" aria-label={`Ir al banner ${i + 1}`} className={i === slide % activeSliders.length ? 'on' : ''} onClick={() => setSlide(i)} />
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className={`vs-hero-art ${current?.image_url || staticImage ? "img" : ""}`} aria-hidden={!current}>
+              {current?.image_url ? (
+                <img key={current.id} className="vs-fade" src={resolvePublicAssetUrl(current.image_url)} alt="" />
+              ) : staticImage ? (
+                <img src={staticImage} alt="" />
+              ) : (
+                <>
+                  <div className="vs-blob" style={{ width: 320, height: 320, right: -70, top: -70, background: 'radial-gradient(circle at 30% 30%, color-mix(in srgb, var(--vs-g) 55%, #fff), var(--vs-g) 62%)' }} />
+                  <div className="vs-blob" style={{ width: 130, height: 130, left: 36, bottom: 24, border: '2px solid rgb(255 255 255 / .35)', background: 'rgb(255 255 255 / .1)' }} />
+                </>
+              )}
+            </div>
+            {activeSliders.length > 1 && (
+              <div className="vs-arrows">
+                <button type="button" aria-label="Anterior" onClick={() => setSlide((s) => (s - 1 + activeSliders.length) % activeSliders.length)}>
+                  <ChevronLeft size={20} />
+                </button>
+                <button type="button" aria-label="Siguiente" onClick={() => setSlide((s) => (s + 1) % activeSliders.length)}>
+                  <ChevronRight size={20} />
+                </button>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Cómo comprar */}
+        <section className="vs-perks" aria-label="Cómo comprar">
+          <div className="vs-perk">
+            <span className="ic"><MessageCircle size={22} aria-hidden /></span>
+            <div><b>Pedido por WhatsApp</b><span>Se arma solo, tú solo envías</span></div>
+          </div>
+          <div className="vs-perk g">
+            <span className="ic"><Check size={22} aria-hidden /></span>
+            <div><b>{showStockOn ? 'Stock al día' : 'Catálogo al día'}</b><span>{showStockOn ? 'Ves lo que realmente hay' : 'Precios y productos actualizados'}</span></div>
+          </div>
+          <div className="vs-perk">
+            <span className="ic"><ShoppingBag size={22} aria-hidden /></span>
+            <div><b>Sin registros</b><span>Eliges, pides y listo</span></div>
           </div>
         </section>
-      ) : settings?.background_image_url ? (
-        <section className="max-w-6xl mx-auto px-4 mt-4">
-          <div className="relative h-40 sm:h-56 rounded-2xl overflow-hidden">
-            <img src={resolvePublicAssetUrl(settings.background_image_url)} alt="" className="w-full h-full object-cover" />
-            <div
-              className="absolute inset-0"
-              style={{ background: 'linear-gradient(90deg, rgb(var(--vs-secondary) / 0.85) 0%, rgb(var(--vs-secondary) / 0.3) 60%, transparent 100%)' }}
-            />
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full px-5 sm:px-8">
-                <div className="max-w-xs sm:max-w-sm text-white">
-                  <h2 className="text-lg sm:text-2xl font-extrabold mb-1.5">{settings.store_name}</h2>
-                  {settings.tagline && <p className="text-xs sm:text-sm text-white/90 mb-3">{settings.tagline}</p>}
-                  <a
-                    href="#productos"
-                    className="inline-block px-4 py-2 rounded-full font-semibold text-xs sm:text-sm shadow-lg text-white"
-                    style={{ background: 'rgb(var(--vs-primary))' }}
-                  >
-                    Ver productos
-                  </a>
-                </div>
+
+        {/* Categorías */}
+        {categories.length > 0 && (
+          <>
+            <div className="vs-sech">
+              <div>
+                <h2>Explora por categoría</h2>
+                <small>Toca una para filtrar el catálogo</small>
               </div>
             </div>
-          </div>
-        </section>
-      ) : null}
-
-      {/* Categorías: circulares o botones de texto, según diseño elegido por el tenant */}
-      {categories.length > 0 && (
-        <div className="max-w-6xl mx-auto px-4 mt-5">
-          {categoryStyle === 'circles' ? (
-            <div className="flex gap-4 overflow-x-auto pb-1">
-              <button type="button" onClick={() => setCategoryId(null)} className="flex flex-col items-center gap-1.5 shrink-0">
-                <span
-                  className="w-14 h-14 rounded-full flex items-center justify-center text-white"
-                  style={{ background: 'rgb(var(--vs-primary))', boxShadow: categoryId === null ? '0 0 0 3px rgb(var(--vs-primary) / 0.25)' : undefined }}
-                >
-                  <LayoutGrid size={20} />
-                </span>
-                <span className="text-[11px] text-gray-600 font-medium">Todas</span>
-              </button>
-              {categories.map((c) => (
-                <button key={c.id} type="button" onClick={() => setCategoryId(c.id)} className="flex flex-col items-center gap-1.5 shrink-0">
-                  <span
-                    className="w-14 h-14 rounded-full flex items-center justify-center font-bold text-base border overflow-hidden"
-                    style={
-                      c.image_url
-                        ? {
-                            borderColor: categoryId === c.id ? 'rgb(var(--vs-primary))' : '#e5e7eb',
-                            borderWidth: categoryId === c.id ? 2 : 1,
-                            boxShadow: categoryId === c.id ? '0 0 0 3px rgb(var(--vs-primary) / 0.25)' : undefined,
-                          }
-                        : categoryId === c.id
-                          ? { background: 'rgb(var(--vs-primary))', color: '#fff', borderColor: 'transparent', boxShadow: '0 0 0 3px rgb(var(--vs-primary) / 0.25)' }
-                          : { background: '#fff', color: 'rgb(var(--vs-secondary))', borderColor: '#e5e7eb' }
-                    }
-                  >
-                    {c.image_url ? (
-                      <img src={resolvePublicAssetUrl(c.image_url)} alt="" loading="lazy" className="w-full h-full object-cover" />
-                    ) : (
-                      c.name.charAt(0).toUpperCase()
-                    )}
-                  </span>
-                  <span className="text-[11px] text-gray-600 font-medium max-w-[64px] truncate">{c.name}</span>
+            {categoryStyle === 'tiles' ? (
+              <nav className="vs-cats vs-scroll" aria-label="Categorías">
+                <button type="button" className={`vs-cat ${categoryId === null ? 'on' : ''}`} onClick={() => setCategoryId(null)}>
+                  <span className="c"><Package size={24} aria-hidden /></span>
+                  <span className="n">Todas</span>
                 </button>
-              ))}
-            </div>
-          ) : (
-            <div className="flex gap-2 overflow-x-auto pb-1">
-              <button
-                type="button"
-                onClick={() => setCategoryId(null)}
-                className={`shrink-0 px-3.5 py-1.5 rounded-full text-xs font-medium border ${categoryId === null ? 'text-white border-transparent' : 'bg-white text-gray-600 border-gray-200'}`}
-                style={categoryId === null ? { background: 'rgb(var(--vs-primary))' } : undefined}
-              >
-                Todas
-              </button>
-              {categories.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setCategoryId(c.id)}
-                  className={`shrink-0 ${c.image_url ? 'pl-1.5' : 'px-3.5'} pr-3.5 py-1.5 rounded-full text-xs font-medium border inline-flex items-center gap-1.5 ${categoryId === c.id ? 'text-white border-transparent' : 'bg-white text-gray-600 border-gray-200'}`}
-                  style={categoryId === c.id ? { background: 'rgb(var(--vs-primary))' } : undefined}
-                >
-                  {c.image_url ? (
-                    <img src={resolvePublicAssetUrl(c.image_url)} alt="" loading="lazy" className="w-6 h-6 rounded-full object-cover" />
-                  ) : null}
-                  {c.name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+                {categories.map((c) => (
+                  <button key={c.id} type="button" className={`vs-cat ${categoryId === c.id ? 'on' : ''}`} onClick={() => setCategoryId(c.id)}>
+                    <span className="c">
+                      {c.image_url ? <img src={resolvePublicAssetUrl(c.image_url)} alt="" loading="lazy" /> : c.name.charAt(0).toUpperCase()}
+                    </span>
+                    <span className="n">{c.name}</span>
+                  </button>
+                ))}
+              </nav>
+            ) : (
+              <nav className="vs-pills vs-scroll" aria-label="Categorías">
+                <button type="button" className={`vs-pill ${categoryId === null ? 'on' : ''}`} onClick={() => setCategoryId(null)}>Todas</button>
+                {categories.map((c) => (
+                  <button key={c.id} type="button" className={`vs-pill ${categoryId === c.id ? 'on' : ''}`} onClick={() => setCategoryId(c.id)}>
+                    {c.image_url && <img src={resolvePublicAssetUrl(c.image_url)} alt="" loading="lazy" />}
+                    {c.name}
+                  </button>
+                ))}
+              </nav>
+            )}
+          </>
+        )}
 
-      {/* Grid de productos */}
-      <main id="productos" className="max-w-6xl mx-auto px-4 py-6 scroll-mt-20">
-        <div className="flex items-end justify-between mb-4 gap-3">
+        {/* Productos */}
+        <div className="vs-sech" id="productos" style={{ scrollMarginTop: 120 }}>
           <div>
-            <h3 className="text-lg font-bold text-gray-800">{activeCategoryName || 'Todos los productos'}</h3>
-            <div className="w-10 h-1 rounded-full mt-1.5" style={{ background: 'rgb(var(--vs-primary))' }} />
+            <h2>{activeCategoryName || 'Todos los productos'}</h2>
+            {total > 0 && <small>{total} producto{total === 1 ? '' : 's'}</small>}
           </div>
-          <div className="flex items-center gap-2 flex-wrap justify-end">
-            {total > 0 && <span className="text-xs text-gray-400 hidden sm:inline">{total} producto{total === 1 ? '' : 's'}</span>}
+          <div className="vs-bar">
             {showPriceFilter && priceBounds && priceBounds.max > priceBounds.min && (
               <PriceRangeSlider
                 bounds={priceBounds}
@@ -410,152 +404,162 @@ export default function EcommerceStorePage() {
             <button
               type="button"
               onClick={() => setShowPriceFilter((v) => !v)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border shrink-0 ${priceFilterActive ? 'text-white border-transparent' : 'bg-white text-gray-600 border-gray-200'}`}
-              style={priceFilterActive ? { background: 'rgb(var(--vs-primary))' } : undefined}
+              className={`vs-pill ${priceFilterActive || showPriceFilter ? 'on' : ''}`}
+              aria-pressed={showPriceFilter}
             >
-              <SlidersHorizontal size={13} /> Precio
+              <SlidersHorizontal size={15} aria-hidden /> Precio
             </button>
           </div>
         </div>
 
         {loading ? (
-          <div className="flex justify-center py-16">
-            <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+          <div className="vs-empty">
+            <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin mx-auto" />
           </div>
         ) : products.length === 0 ? (
-          <div className="text-center py-16 text-gray-400">
-            <Package size={32} className="mx-auto mb-3 text-gray-300" />
+          <div className="vs-empty">
+            <Package size={34} className="mx-auto mb-3" style={{ opacity: 0.4 }} />
             No hay productos disponibles.
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div className="vs-grid">
               {products.map((p) => {
                 // Con show_stock=false el backend ya no manda stock_total real; además de eso, acá
                 // se apaga del todo la condición para no mostrar "Agotado" ni bloquear "Agregar".
-                const showStockOn = settings?.show_stock !== false
-                const outOfStock = showStockOn && Boolean(p.manage_stock) && Number(p.stock_total ?? 0) <= 0
+                const managed = showStockOn && Boolean(p.manage_stock)
                 const stockQty = Number(p.stock_total ?? 0)
-                const showStockQty = showStockOn && Boolean(p.manage_stock) && stockQty > 0
+                const outOfStock = managed && stockQty <= 0
+                const low = managed && stockQty > 0 && stockQty <= LOW_STOCK
                 return (
-                  <div
+                  <article
                     key={p.id}
+                    className="vs-card"
                     onClick={() => setDetailProduct(p)}
-                    className="bg-white overflow-hidden flex flex-col cursor-pointer transition-transform hover:-translate-y-0.5"
-                    style={{ borderRadius: cardRadius, boxShadow: cardShadow }}
                   >
-                    <div className="aspect-square bg-gray-100 relative">
+                    <div className="vs-ph">
                       {p.image_url ? (
-                        <img src={resolvePublicAssetUrl(p.image_url)} alt={p.name} className="w-full h-full object-cover" loading="lazy" />
+                        <img src={resolvePublicAssetUrl(p.image_url)} alt={p.name} loading="lazy" />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-gray-300">
-                          <Package size={28} />
-                        </div>
+                        <Package size={40} aria-hidden />
                       )}
-                      {outOfStock && (
-                        <span className="absolute top-2 left-2 bg-gray-900/80 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full">
-                          Agotado
-                        </span>
-                      )}
+                      {outOfStock && <span className="vs-tag">Agotado</span>}
                     </div>
-                    <div className="p-3 flex flex-col flex-1">
-                      {p.category_name && (
-                        <span className="text-[10px] uppercase tracking-wide font-semibold mb-0.5" style={{ color: 'rgb(var(--vs-primary))' }}>
-                          {p.category_name}
+                    <div className="bd">
+                      {p.category_name && <span className="cn">{p.category_name}</span>}
+                      <h3 className="nm">{p.name}</h3>
+                      {managed && !outOfStock ? (
+                        <span className={`vs-stock ${low ? 'low' : ''}`}>
+                          {low ? `Quedan ${formatStockQty(stockQty)}` : 'En stock'}
                         </span>
+                      ) : (
+                        <span className="vs-stock" style={{ visibility: 'hidden' }} aria-hidden>.</span>
                       )}
-                      <p className="text-sm font-medium text-gray-800 line-clamp-2 flex-1">{p.name}</p>
-                      {showStockQty && (
-                        <span className="text-[11px] text-gray-400 mt-0.5">Stock: {formatStockQty(stockQty)}</span>
-                      )}
-                      <div className="flex items-center justify-between mt-2">
-                        <span className="font-bold text-sm" style={{ color: 'rgb(var(--vs-primary))' }}>
+                      <div className="vs-prr">
+                        <span className="vs-price">
                           {p.has_variants && p.min_presentation_price !== undefined && !(Number(p.sale_price) > 0) ? (
                             <>
-                              <span className="block text-[10px] font-normal text-gray-400">Desde</span>
+                              <small>Desde</small>
                               {formatSoles(p.min_presentation_price)}
                             </>
                           ) : (
                             formatSoles(p.sale_price)
                           )}
                         </span>
-                        <button
-                          type="button"
-                          disabled={outOfStock}
-                          onClick={(e) => { e.stopPropagation(); handleAdd(p) }}
-                          className="text-white text-xs font-semibold px-3 py-1.5 rounded-full disabled:opacity-40"
-                          style={{ background: 'rgb(var(--vs-primary))' }}
-                        >
-                          {productNeedsOptions(p) ? 'Elegir' : 'Agregar'}
-                        </button>
+                        {renderBuy(p, outOfStock, stockQty, managed)}
                       </div>
                     </div>
-                  </div>
+                  </article>
                 )
               })}
             </div>
             {canLoadMore && (
-              <div className="flex justify-center mt-6">
-                <button
-                  type="button"
-                  onClick={loadMore}
-                  disabled={loadingMore}
-                  className="px-5 py-2 rounded-xl border border-gray-200 bg-white text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                >
+              <div className="vs-more">
+                <span>Mostrando {products.length} de {total}</span>
+                <div className="vs-prog"><i style={{ width: `${Math.min(100, (products.length / Math.max(total, 1)) * 100)}%` }} /></div>
+                <button type="button" className="vs-btn line" onClick={loadMore} disabled={loadingMore} style={{ alignSelf: 'center', marginTop: 6 }}>
                   {loadingMore ? 'Cargando...' : 'Ver más productos'}
                 </button>
               </div>
             )}
           </>
         )}
+
+        {waContact && (
+          <section className="vs-cta">
+            <div>
+              <h2>¿No encuentras lo que buscas?</h2>
+              <p>Escríbenos y te ayudamos a elegir, con stock y precio al momento.</p>
+            </div>
+            <a
+              className="vs-btn dark"
+              href={`https://wa.me/${waContact}?text=${encodeURIComponent(`Hola ${storeName}, quisiera hacer una consulta.`)}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <MessageCircle size={20} aria-hidden /> Escribir por WhatsApp
+            </a>
+          </section>
+        )}
       </main>
 
-      {/* Footer de marca */}
-      <footer className="mt-4 text-white" style={{ background: 'rgb(var(--vs-secondary))' }}>
-        <div className="max-w-6xl mx-auto px-4 py-8 grid grid-cols-1 sm:grid-cols-3 gap-6">
-          <div>
-            <div className="flex items-center gap-2.5 mb-2">
-              {settings?.logo_url && (
-                <img src={resolvePublicAssetUrl(settings.logo_url)} alt="" className="w-9 h-9 rounded-lg object-cover" />
-              )}
-              <p className="font-bold text-lg">{settings?.store_name || 'Tienda'}</p>
-            </div>
-            {settings?.description && <p className="text-sm text-white/70">{settings.description}</p>}
-          </div>
-          {categories.length > 0 && (
+      {/* Pie */}
+      <footer className="vs-foot">
+        <div className="vs-wrap">
+          <div className="vs-foot-cols">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-white/50 mb-2">Categorías</p>
-              <ul className="space-y-1 text-sm text-white/80">
-                {categories.slice(0, 6).map((c) => (
-                  <li key={c.id}>
-                    <button type="button" onClick={() => setCategoryId(c.id)} className="hover:text-white">
-                      {c.name}
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <div className="vs-logo">
+                {logoSrc ? <img src={logoSrc} alt="" className="vs-logo-mark" /> : <span className="vs-logo-mark" aria-hidden>{storeName.charAt(0).toUpperCase()}</span>}
+                <h3>{storeName}</h3>
+              </div>
+              {settings?.description && <p>{settings.description}</p>}
             </div>
-          )}
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-white/50 mb-2">Contáctanos</p>
-            {waContact ? (
-              <a
-                href={`https://wa.me/${waContact}?text=${encodeURIComponent(`Hola ${settings?.store_name || ''}, quisiera hacer una consulta.`)}`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-2 text-sm text-white/90 hover:text-white"
-              >
-                <MessageCircle size={16} /> WhatsApp
-              </a>
-            ) : (
-              <p className="text-sm text-white/50">Sin contacto configurado</p>
+            {categories.length > 0 && (
+              <div>
+                <p className="k">Categorías</p>
+                <ul>
+                  {categories.slice(0, 6).map((c) => (
+                    <li key={c.id}>
+                      <button type="button" onClick={() => { setCategoryId(c.id); document.getElementById('productos')?.scrollIntoView({ behavior: 'smooth' }) }}>
+                        {c.name}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
+            <div>
+              <p className="k">Contáctanos</p>
+              {waContact ? (
+                <a
+                  href={`https://wa.me/${waContact}?text=${encodeURIComponent(`Hola ${storeName}, quisiera hacer una consulta.`)}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="vs-wa"
+                >
+                  <MessageCircle size={18} aria-hidden /> WhatsApp
+                </a>
+              ) : (
+                <p style={{ margin: 0 }}>Sin contacto configurado</p>
+              )}
+            </div>
           </div>
-        </div>
-        <div className="border-t border-white/10 py-4 text-center text-[11px] text-white/40">
-          © {new Date().getFullYear()} {settings?.store_name || 'Tienda'} · Catálogo Digital
+          <div className="copy">© {new Date().getFullYear()} {storeName} · Catálogo Digital</div>
         </div>
       </footer>
+
+      {itemCount > 0 && !cartOpen && !detailProduct && (
+        <>
+          <div className="vs-pad" />
+          <button type="button" className="vs-mbar" onClick={() => setCartOpen(true)}>
+            <span>
+              <small>{itemCount} producto{itemCount === 1 ? '' : 's'}</small>
+              <b>{formatSoles(cartSum)}</b>
+            </span>
+            <span className="go">Ver carrito <ArrowRight size={18} aria-hidden /></span>
+          </button>
+        </>
+      )}
 
       {detailProduct && (
         <ProductDetailModal

@@ -35,21 +35,22 @@ export default function PriceRangeSlider({
   const pctHigh = ((high - floor) / (ceil - floor)) * 100
 
   return (
-    <div className="inline-flex items-center gap-2.5 bg-white border border-gray-200 rounded-full pl-3 pr-3.5 py-1.5">
-      <span className="text-[11px] font-semibold text-gray-500 whitespace-nowrap">
-        {formatSoles(low)}–{formatSoles(high)}
+    <div className="vs-range">
+      <span>
+        {formatSoles(low)} – {formatSoles(high)}
       </span>
-      <div className="relative h-4 w-28 shrink-0">
-        <div className="absolute top-1/2 -translate-y-1/2 w-full h-[3px] rounded-full bg-gray-200" />
+      <div className="relative h-5 w-32 sm:w-40 shrink-0">
+        <div className="absolute top-1/2 -translate-y-1/2 w-full h-[6px] rounded-full" style={{ background: 'var(--vs-line)' }} />
         <div
-          className="absolute top-1/2 -translate-y-1/2 h-[3px] rounded-full"
-          style={{ left: `${pctLow}%`, right: `${100 - pctHigh}%`, background: 'rgb(var(--vs-primary))' }}
+          className="absolute top-1/2 -translate-y-1/2 h-[6px] rounded-full"
+          style={{ left: `${pctLow}%`, right: `${100 - pctHigh}%`, background: 'var(--vs-g)' }}
         />
         <input
           type="range"
           min={floor}
           max={ceil}
           value={low}
+          aria-label="Precio mínimo"
           onChange={(e) => {
             const next = Math.min(Number(e.target.value), high - 1)
             setLow(next)
@@ -62,6 +63,7 @@ export default function PriceRangeSlider({
           min={floor}
           max={ceil}
           value={high}
+          aria-label="Precio máximo"
           onChange={(e) => {
             const next = Math.max(Number(e.target.value), low + 1)
             setHigh(next)
@@ -74,12 +76,12 @@ export default function PriceRangeSlider({
         .vs-range-thumb::-webkit-slider-thumb {
           pointer-events: auto;
           appearance: none;
-          width: 12px;
-          height: 12px;
+          width: 20px;
+          height: 20px;
           border-radius: 9999px;
-          background: rgb(var(--vs-primary));
-          border: 2px solid #fff;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+          background: #fff;
+          border: 4px solid var(--vs-g-d);
+          box-shadow: 0 1px 4px rgba(0,0,0,0.3);
           cursor: pointer;
         }
         .vs-range-thumb::-moz-range-thumb {
@@ -87,9 +89,9 @@ export default function PriceRangeSlider({
           width: 12px;
           height: 12px;
           border-radius: 9999px;
-          background: rgb(var(--vs-primary));
-          border: 2px solid #fff;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+          background: #fff;
+          border: 4px solid var(--vs-g-d);
+          box-shadow: 0 1px 4px rgba(0,0,0,0.3);
           cursor: pointer;
         }
         .vs-range-thumb::-webkit-slider-runnable-track { background: transparent; }

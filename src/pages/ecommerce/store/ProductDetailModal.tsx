@@ -121,84 +121,114 @@ export default function ProductDetailModal({
   const outOfStock = showStock && Boolean(product.manage_stock) && stockQty <= 0
   const showStockQty = showStock && Boolean(product.manage_stock) && stockQty > 0
 
+  const unitPrice: number | null =
+    needsOptions && resolved && !resolved.missing
+      ? resolved.price
+      : product.has_variants && product.min_presentation_price !== undefined && !(Number(product.sale_price) > 0)
+        ? null
+        : Number(product.sale_price)
+  const priceLabel =
+    needsOptions && resolved && !resolved.missing
+      ? formatSoles(resolved.price)
+      : needsOptions && options && options.presentations.length > 0 && !hasUnits
+        ? `Desde ${formatSoles(Math.min(...options.presentations.map((p) => p.sale_price)))}`
+        : product.has_variants && product.min_presentation_price !== undefined && !(Number(product.sale_price) > 0)
+          ? `Desde ${formatSoles(product.min_presentation_price)}`
+          : formatSoles(product.sale_price)
+  const lowStock = showStockQty && stockQty <= 5
+
+  // Escape cierra; el fondo no se desplaza mientras el detalle está abierto.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevOverflow
+    }
+  }, [onClose])
+
+  const ctaLabel = outOfStock
+    ? 'Agotado'
+    : needsOptions && resolved?.missing
+      ? resolved.missing
+      : unitPrice !== null
+        ? `Agregar · ${formatSoles(unitPrice * qty)}`
+        : 'Agregar al carrito'
+
   return (
-    <div className="fixed inset-0 z-[300] flex items-end sm:items-center justify-center">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative w-full sm:max-w-2xl bg-white rounded-t-2xl sm:rounded-2xl max-h-[92vh] overflow-y-auto">
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute top-3 right-3 z-10 p-1.5 rounded-full bg-white/90 text-gray-500 hover:text-gray-700 shadow"
-        >
-          <X size={18} />
+    <div className="vs-ov" role="dialog" aria-modal="true" aria-label={product.name}>
+      <div className="bg" onClick={onClose} />
+      <div className="vs-dlg">
+        <button type="button" onClick={onClose} className="vs-x" aria-label="Cerrar">
+          <X size={20} />
         </button>
-        <div className="grid grid-cols-1 sm:grid-cols-2">
+
+        <div className="vs-dg-img">
           <ProductGallery productId={product.id} mainImage={product.image_url} name={product.name}>
-            {outOfStock && (
-              <span className="absolute top-3 left-3 bg-gray-900/80 text-white text-xs font-semibold px-2.5 py-1 rounded-full">
-                Agotado
-              </span>
-            )}
+            {outOfStock && <span className="vs-tag" style={{ top: 14, left: 14 }}>Agotado</span>}
           </ProductGallery>
-          <div className="p-5 flex flex-col">
-            {product.category_name && (
-              <span className="text-[11px] uppercase tracking-wide font-semibold mb-1" style={{ color: 'rgb(var(--vs-primary))' }}>
-                {product.category_name}
-              </span>
-            )}
-            <h2 className="text-lg font-bold text-gray-800 mb-2">{product.name}</h2>
-            {product.description && <p className="text-sm text-gray-500 mb-4 whitespace-pre-line flex-1">{product.description}</p>}
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-2xl font-extrabold" style={{ color: 'rgb(var(--vs-primary))' }}>
-                {needsOptions && resolved && !resolved.missing
-                  ? formatSoles(resolved.price)
-                  : needsOptions && options && options.presentations.length > 0 && !hasUnits
-                    ? `Desde ${formatSoles(Math.min(...options.presentations.map((p) => p.sale_price)))}`
-                    : product.has_variants && product.min_presentation_price !== undefined && !(Number(product.sale_price) > 0)
-                      ? `Desde ${formatSoles(product.min_presentation_price)}`
-                      : formatSoles(product.sale_price)}
-              </span>
-              {product.unit && !hasUnits && <span className="text-xs text-gray-400">por {product.unit.toLowerCase()}</span>}
+        </div>
+
+        <div className="vs-dg-col">
+          <div className="vs-dg-body">
+            <div>
+              {product.category_name && (
+                <span style={{ font: '700 11.5px var(--vs-fb)', letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--vs-blue)' }}>
+                  {product.category_name}
+                </span>
+              )}
+              <h2 style={{ fontSize: 'clamp(22px, 4vw, 30px)', lineHeight: 1.1, fontWeight: 800, marginTop: 4, paddingRight: 36 }}>{product.name}</h2>
             </div>
-            {showStockQty && !needsOptions && (
-              <p className="text-xs text-gray-400 -mt-3 mb-4">Stock disponible: {formatStockQty(stockQty)}</p>
-            )}
-            {needsOptions && !options && !optionsError && <p className="text-xs text-gray-400 mb-4">Cargando opciones…</p>}
+
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+              <span className="vs-fd" style={{ fontSize: 'clamp(28px, 5vw, 40px)', fontWeight: 800, lineHeight: 1, letterSpacing: '-.03em' }}>
+                {priceLabel}
+              </span>
+              {product.unit && !hasUnits && (
+                <span style={{ color: 'var(--vs-muted)', fontSize: 14, paddingBottom: 3 }}>por {product.unit.toLowerCase()}</span>
+              )}
+              {showStockQty && !needsOptions && (
+                <span className={`vs-stock ${lowStock ? 'low' : ''}`} style={{ marginLeft: 'auto', paddingBottom: 3 }}>
+                  {lowStock ? `Quedan ${formatStockQty(stockQty)}` : `Stock: ${formatStockQty(stockQty)}`}
+                </span>
+              )}
+            </div>
+
+            {product.description && <p style={{ color: 'var(--vs-muted)', margin: 0, whiteSpace: 'pre-line' }}>{product.description}</p>}
+
+            {needsOptions && !options && !optionsError && <p style={{ color: 'var(--vs-muted)', fontSize: 14, margin: 0 }}>Cargando opciones…</p>}
             {needsOptions && optionsError && (
-              <p className="text-xs text-red-500 mb-4">No se pudieron cargar las opciones. Cierra e intenta de nuevo.</p>
+              <p style={{ color: '#c0392b', fontSize: 14, margin: 0 }}>No se pudieron cargar las opciones. Cierra e intenta de nuevo.</p>
             )}
+
             {options && hasUnits && (
-              <div className="mb-4">
-                <p className="text-xs font-semibold text-gray-600 mb-1.5">Unidad de venta</p>
-                <div className="flex flex-wrap gap-2">
+              <div>
+                <div className="vs-lbl">Unidad de venta <em>Obligatorio</em></div>
+                <div className="vs-chips">
                   {options.base_unit_name && (
-                    <button
-                      type="button"
-                      onClick={() => setUnitKey('base')}
-                      className={`px-3 py-1.5 rounded-full border text-xs ${unitKey === 'base' ? 'text-white border-transparent' : 'border-gray-200 text-gray-700'}`}
-                      style={unitKey === 'base' ? { background: 'rgb(var(--vs-primary))' } : undefined}
-                    >
-                      {options.base_unit_name} · {formatSoles(options.base_price)}
+                    <button type="button" onClick={() => setUnitKey('base')} className={`vs-opt ${unitKey === 'base' ? 'on' : ''}`} aria-pressed={unitKey === 'base'}>
+                      {options.base_unit_name}
+                      <small>{formatSoles(options.base_price)}</small>
                     </button>
                   )}
                   {options.sale_units.map((u) => (
-                    <button
-                      key={u.id}
-                      type="button"
-                      onClick={() => setUnitKey(u.id)}
-                      className={`px-3 py-1.5 rounded-full border text-xs ${unitKey === u.id ? 'text-white border-transparent' : 'border-gray-200 text-gray-700'}`}
-                      style={unitKey === u.id ? { background: 'rgb(var(--vs-primary))' } : undefined}
-                    >
-                      {u.name} · {formatSoles(u.price)}
+                    <button key={u.id} type="button" onClick={() => setUnitKey(u.id)} className={`vs-opt ${unitKey === u.id ? 'on' : ''}`} aria-pressed={unitKey === u.id}>
+                      {u.name}
+                      <small>{formatSoles(u.price)}</small>
                     </button>
                   ))}
                 </div>
               </div>
             )}
+
             {options && !hasUnits && options.presentations.length > 0 && (
-              <div className="mb-4">
-                <p className="text-xs font-semibold text-gray-600 mb-1.5">Presentación</p>
-                <div className="flex flex-wrap gap-2">
+              <div>
+                <div className="vs-lbl">Presentación <em>Obligatorio</em></div>
+                <div className="vs-chips">
                   {options.presentations.map((p) => {
                     const soldOut = showStock && p.stock !== undefined && p.stock <= 0
                     return (
@@ -207,61 +237,53 @@ export default function ProductDetailModal({
                         type="button"
                         disabled={soldOut}
                         onClick={() => setPresentationId(p.id)}
-                        className={`px-3 py-1.5 rounded-full border text-xs disabled:opacity-40 disabled:line-through ${presentationId === p.id ? 'text-white border-transparent' : 'border-gray-200 text-gray-700'}`}
-                        style={presentationId === p.id ? { background: 'rgb(var(--vs-primary))' } : undefined}
+                        className={`vs-opt ${presentationId === p.id ? 'on' : ''}`}
+                        aria-pressed={presentationId === p.id}
                       >
-                        {p.name} · {formatSoles(p.sale_price)}
+                        {p.name}
+                        <small>{soldOut ? 'Agotado' : formatSoles(p.sale_price)}</small>
                       </button>
                     )
                   })}
                 </div>
                 {showStock && presStock !== undefined && presStock > 0 && (
-                  <p className="text-[11px] text-gray-400 mt-1.5">Stock disponible: {formatStockQty(presStock)}</p>
+                  <p style={{ fontSize: 12.5, color: 'var(--vs-muted)', margin: '8px 0 0' }}>Stock disponible: {formatStockQty(presStock)}</p>
                 )}
               </div>
             )}
+
             {options && !hasUnits &&
               options.modifier_groups.map((g) => (
-                <div key={g.id} className="mb-4">
-                  <p className="text-xs font-semibold text-gray-600 mb-1.5">
-                    {g.name}
-                    <span className="font-normal text-gray-400">{g.required ? ' · obligatorio' : ' · opcional'}</span>
-                  </p>
-                  <div className="flex flex-wrap gap-2">
+                <div key={g.id}>
+                  <div className="vs-lbl">
+                    {g.name} <em className={g.required ? '' : 'o'}>{g.required ? 'Obligatorio' : 'Opcional'}</em>
+                  </div>
+                  <div className="vs-chips">
                     {g.options.map((o) => {
                       const on = (picked[g.id] ?? []).includes(o.id)
                       return (
-                        <button
-                          key={o.id}
-                          type="button"
-                          onClick={() => toggleOption(g.id, o.id, g.multi_select)}
-                          className={`px-3 py-1.5 rounded-full border text-xs ${on ? 'text-white border-transparent' : 'border-gray-200 text-gray-700'}`}
-                          style={on ? { background: 'rgb(var(--vs-primary))' } : undefined}
-                        >
+                        <button key={o.id} type="button" onClick={() => toggleOption(g.id, o.id, g.multi_select)} className={`vs-opt ${on ? 'on' : ''}`} aria-pressed={on}>
                           {o.name}
-                          {o.extra_price > 0 ? ` (+${formatSoles(o.extra_price)})` : ''}
+                          {o.extra_price > 0 && <small>+ {formatSoles(o.extra_price)}</small>}
                         </button>
                       )
                     })}
                   </div>
                 </div>
               ))}
+          </div>
+
+          <div className="vs-dg-foot">
             {!outOfStock && (
-              <div className="flex items-center gap-3 mb-4">
-                <span className="text-xs text-gray-500">Cantidad</span>
-                <div className="flex items-center gap-2 border border-gray-200 rounded-full px-1 py-1">
-                  <button type="button" onClick={() => setQty((q) => Math.max(1, q - 1))} className="p-1.5 rounded-full hover:bg-gray-100">
-                    <Minus size={13} />
-                  </button>
-                  <span className="w-6 text-center text-sm font-medium">{qty}</span>
-                  <button type="button" onClick={() => setQty((q) => q + 1)} className="p-1.5 rounded-full hover:bg-gray-100">
-                    <Plus size={13} />
-                  </button>
-                </div>
+              <div className="vs-qty">
+                <button type="button" onClick={() => setQty((q) => Math.max(1, q - 1))} aria-label="Menos"><Minus size={17} /></button>
+                <span aria-live="polite">{qty}</span>
+                <button type="button" onClick={() => setQty((q) => q + 1)} aria-label="Más"><Plus size={17} /></button>
               </div>
             )}
             <button
               type="button"
+              className="vs-btn"
               disabled={outOfStock || (needsOptions && (!resolved || Boolean(resolved.missing)))}
               onClick={() =>
                 onAdd(
@@ -272,10 +294,8 @@ export default function ProductDetailModal({
                     : undefined,
                 )
               }
-              className="w-full py-3 rounded-xl text-white font-semibold text-sm disabled:opacity-40"
-              style={{ background: 'rgb(var(--vs-primary))' }}
             >
-              {outOfStock ? 'Agotado' : needsOptions && resolved?.missing ? resolved.missing : 'Agregar al carrito'}
+              {ctaLabel}
             </button>
           </div>
         </div>

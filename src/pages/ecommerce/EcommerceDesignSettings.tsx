@@ -2,6 +2,16 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Check } from 'lucide-react'
 import { ecommerceService } from '@/services/ecommerce.service'
+import {
+  buildStoreTheme,
+  loadStoreFonts,
+  effectivePrimary,
+  effectiveSecondary,
+  effectiveFont,
+  STORE_DEFAULT_PRIMARY,
+  STORE_DEFAULT_SECONDARY,
+  STORE_DEFAULT_FONT,
+} from '@/pages/ecommerce/store/storeTheme'
 
 const TEMPLATES_RUBRO = [
   { key: 'ferreteria', label: 'Ferretería', primary: '#f5c518', secondary: '#1a1a1a', font: 'Montserrat', card: 'square' },
@@ -10,7 +20,7 @@ const TEMPLATES_RUBRO = [
 ] as const
 
 const TEMPLATES_GENERALES = [
-  { key: 'moderno', label: 'Moderno', primary: '#16a34a', secondary: '#0f172a', font: 'Inter', card: 'rounded' },
+  { key: 'moderno', label: 'Moderno (verde + azul)', primary: '#19d07a', secondary: '#0a1a4f', font: 'Sora', card: 'rounded' },
   { key: 'minimalista', label: 'Minimalista', primary: '#111827', secondary: '#6b7280', font: 'Inter', card: 'square' },
   { key: 'vibrante', label: 'Vibrante', primary: '#ea580c', secondary: '#7c3aed', font: 'Poppins', card: 'rounded' },
   { key: 'elegante', label: 'Elegante', primary: '#0f172a', secondary: '#b45309', font: 'Playfair Display', card: 'minimal' },
@@ -18,7 +28,7 @@ const TEMPLATES_GENERALES = [
 
 const TEMPLATES = [...TEMPLATES_RUBRO, ...TEMPLATES_GENERALES]
 
-const FONTS = ['Inter', 'Poppins', 'Roboto', 'Montserrat', 'Lora', 'Playfair Display']
+const FONTS = ['Sora', 'Inter', 'Poppins', 'Roboto', 'Montserrat', 'Lora', 'Playfair Display']
 const CARD_STYLES: { key: string; label: string }[] = [
   { key: 'rounded', label: 'Bordes redondeados + sombra' },
   { key: 'square', label: 'Bordes rectos' },
@@ -33,9 +43,9 @@ export default function EcommerceDesignSettings() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [templateKey, setTemplateKey] = useState('moderno')
-  const [primaryColor, setPrimaryColor] = useState('#16a34a')
-  const [secondaryColor, setSecondaryColor] = useState('#0f172a')
-  const [fontFamily, setFontFamily] = useState('Inter')
+  const [primaryColor, setPrimaryColor] = useState(STORE_DEFAULT_PRIMARY)
+  const [secondaryColor, setSecondaryColor] = useState(STORE_DEFAULT_SECONDARY)
+  const [fontFamily, setFontFamily] = useState(STORE_DEFAULT_FONT)
   const [cardStyle, setCardStyle] = useState('rounded')
   const [categoryStyle, setCategoryStyle] = useState('circles')
 
@@ -44,9 +54,10 @@ export default function EcommerceDesignSettings() {
       .getSettings()
       .then(({ data }) => {
         setTemplateKey(data.template_key || 'moderno')
-        setPrimaryColor(data.primary_color || '#16a34a')
-        setSecondaryColor(data.secondary_color || '#0f172a')
-        setFontFamily(data.font_family || 'Inter')
+        // Los valores del diseño anterior (verde #16a34a, Inter) cuentan como "sin elegir": la tienda ya los muestra con los nuevos.
+        setPrimaryColor(effectivePrimary(data.primary_color))
+        setSecondaryColor(effectiveSecondary(data.secondary_color))
+        setFontFamily(effectiveFont(data.font_family))
         setCardStyle(data.card_style || 'rounded')
         setCategoryStyle(data.category_style || 'circles')
       })
@@ -91,6 +102,8 @@ export default function EcommerceDesignSettings() {
 
   const cardRadius = cardStyle === 'square' ? '4px' : cardStyle === 'minimal' ? '10px' : '18px'
   const cardShadow = cardStyle === 'minimal' ? 'none' : '0 4px 14px rgba(0,0,0,0.08)'
+  const preview = buildStoreTheme({ primary_color: primaryColor, secondary_color: secondaryColor, font_family: fontFamily, card_style: cardStyle })
+  loadStoreFonts(preview.fontQuery)
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -178,15 +191,15 @@ export default function EcommerceDesignSettings() {
         <div className="bg-gray-100 rounded-2xl p-6 flex flex-col items-center">
           <div
             className="w-full max-w-[220px] overflow-hidden bg-white"
-            style={{ borderRadius: cardRadius, boxShadow: cardShadow, fontFamily }}
+            style={{ ...preview.vars, borderRadius: cardRadius, boxShadow: cardShadow, fontFamily: 'var(--vs-fb)' }}
           >
-            <div className="h-28" style={{ background: `linear-gradient(135deg, ${primaryColor}, ${secondaryColor})` }} />
+            <div className="h-28" style={{ background: 'var(--vs-hero)' }} />
             <div className="p-3 space-y-1.5">
-              <p className="text-sm font-semibold" style={{ color: secondaryColor }}>Producto de ejemplo</p>
-              <p className="text-xs" style={{ fontFamily }}>Descripción corta del producto</p>
+              <p className="text-sm font-semibold" style={{ color: 'var(--vs-ink)', fontFamily: 'var(--vs-fh)' }}>Producto de ejemplo</p>
+              <p className="text-xs" style={{ color: 'var(--vs-muted)' }}>Descripción corta del producto</p>
               <div className="flex items-center justify-between pt-1">
-                <span className="font-bold text-sm" style={{ color: primaryColor }}>S/ 49.90</span>
-                <span className="text-white text-xs font-semibold px-3 py-1.5" style={{ background: primaryColor, borderRadius: cardStyle === 'square' ? '4px' : '999px' }}>
+                <span className="font-bold text-sm" style={{ color: 'var(--vs-ink)', fontFamily: 'var(--vs-fh)' }}>S/ 49.90</span>
+                <span className="text-xs font-semibold px-3 py-1.5" style={{ background: 'var(--vs-g)', color: 'var(--vs-g-ink)', borderRadius: cardStyle === 'square' ? '4px' : '999px' }}>
                   Agregar
                 </span>
               </div>

@@ -1,9 +1,10 @@
-import { useState } from 'react'
-import { X, Minus, Plus, Trash2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { X, Minus, Plus, Trash2, MessageCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { type StoreCartLine, setCartQuantity, cartTotal, clearCart } from './storeCart'
 import { normalizePhoneForWhatsApp } from '@/utils/membershipReminders'
 import { publicEcommerceService } from '@/services/ecommerce.service'
+import { resolvePublicAssetUrl } from '@/config/apiBaseUrl'
 
 function formatSoles(n: number): string {
   return `S/ ${n.toFixed(2)}`
@@ -81,77 +82,105 @@ export default function StoreCartDrawer({
     }
   }
 
+  // Escape cierra; el fondo no se desplaza mientras el carrito está abierto.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', onKey)
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevOverflow
+    }
+  }, [open, onClose])
+
   if (!open) return null
 
+  const units = cart.reduce((sum, l) => sum + l.quantity, 0)
+
   return (
-    <div className="fixed inset-0 z-[300] flex justify-end">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-sm bg-white h-full flex flex-col shadow-2xl">
-        <div className="flex items-center justify-between p-4 border-b border-gray-100">
-          <h3 className="font-semibold text-gray-800">Tu carrito</h3>
-          <button type="button" onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-600 rounded-lg">
+    <div className="vs-dr" role="dialog" aria-modal="true" aria-label="Tu carrito">
+      <div className="bg" onClick={onClose} />
+      <div className="vs-dr-p">
+        <div className="vs-dr-h">
+          <div>
+            <h2>Tu carrito</h2>
+            <small>{units} producto{units === 1 ? '' : 's'}</small>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Cerrar carrito" style={{ width: 42, height: 42, borderRadius: '50%', border: 0, background: 'var(--vs-ground)', display: 'grid', placeItems: 'center' }}>
             <X size={20} />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="vs-lines">
           {cart.length === 0 ? (
-            <p className="text-center text-gray-400 py-10 text-sm">Tu carrito está vacío</p>
+            <p className="vs-empty" style={{ margin: 0 }}>Tu carrito está vacío</p>
           ) : (
             cart.map((l) => (
-              <div key={l.line_key} className="flex items-center gap-3">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-800 truncate">{l.name}</p>
-                  {l.detail && <p className="text-[11px] text-gray-500 truncate">{l.detail}</p>}
-                  <p className="text-xs text-gray-500">{formatSoles(l.unit_price)} c/u</p>
+              <div key={l.line_key} className="vs-ln">
+                <div className="th">
+                  {l.image_url ? <img src={resolvePublicAssetUrl(l.image_url)} alt="" loading="lazy" /> : l.name.charAt(0).toUpperCase()}
                 </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button type="button" onClick={() => handleQty(l.line_key, l.quantity - 1)} className="p-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50">
-                    <Minus size={12} />
-                  </button>
-                  <span className="w-6 text-center text-sm">{l.quantity}</span>
-                  <button type="button" onClick={() => handleQty(l.line_key, l.quantity + 1)} className="p-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50">
-                    <Plus size={12} />
-                  </button>
-                  <button type="button" onClick={() => handleQty(l.line_key, 0)} className="p-1 rounded-lg text-red-400 hover:bg-red-50">
-                    <Trash2 size={13} />
-                  </button>
+                <div className="i">
+                  <b>{l.name}</b>
+                  {l.detail && <small>{l.detail}</small>}
+                  <small>{formatSoles(l.unit_price)} c/u</small>
+                  <div className="p">{formatSoles(l.unit_price * l.quantity)}</div>
                 </div>
+                <div className="vs-step">
+                  <button type="button" aria-label="Quitar uno" onClick={() => handleQty(l.line_key, l.quantity - 1)}><Minus size={15} /></button>
+                  <span aria-live="polite">{l.quantity}</span>
+                  <button type="button" aria-label="Agregar uno" onClick={() => handleQty(l.line_key, l.quantity + 1)}><Plus size={15} /></button>
+                </div>
+                <button type="button" className="del" aria-label={`Quitar ${l.name}`} onClick={() => handleQty(l.line_key, 0)}>
+                  <Trash2 size={17} />
+                </button>
               </div>
             ))
           )}
         </div>
 
         {cart.length > 0 && (
-          <div className="border-t border-gray-100 p-4 space-y-3">
-            <input
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-              placeholder="Tu nombre *"
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              required
-            />
-            <input
-              type="tel"
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-              placeholder="Tu celular (WhatsApp) *"
-              value={customerPhone}
-              onChange={(e) => setCustomerPhone(e.target.value)}
-              required
-            />
-            <div className="flex justify-between font-bold text-gray-800">
-              <span>Total</span>
-              <span>{formatSoles(total)}</span>
+          <div className="vs-order">
+            <label className="vs-fld">
+              <small>Tu nombre *</small>
+              <input
+                placeholder="Ej. Rosa Quispe"
+                autoComplete="name"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                required
+              />
+            </label>
+            <label className="vs-fld">
+              <small>Tu celular (WhatsApp) *</small>
+              <input
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="Ej. 987 654 321"
+                value={customerPhone}
+                onChange={(e) => setCustomerPhone(e.target.value)}
+                required
+              />
+            </label>
+            <div className="vs-tot">
+              <span style={{ fontWeight: 600, color: 'var(--vs-muted)' }}>Total</span>
+              <b>{formatSoles(total)}</b>
             </div>
             <button
               type="button"
+              className="vs-wabtn"
               onClick={() => void handleCheckout()}
               disabled={sending || !customerName.trim() || !customerPhone.trim()}
-              className="w-full py-3 rounded-xl text-white font-semibold text-sm disabled:opacity-50"
-              style={{ background: 'rgb(var(--vs-primary))' }}
             >
+              <MessageCircle size={22} aria-hidden />
               {sending ? 'Enviando...' : 'Pedir por WhatsApp'}
             </button>
+            <p className="vs-note" style={{ margin: 0 }}>Registramos tu pedido y seguimos la conversación por WhatsApp.</p>
           </div>
         )}
       </div>
