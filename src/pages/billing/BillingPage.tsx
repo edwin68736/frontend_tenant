@@ -112,7 +112,9 @@ function BillingContent() {
   // La corrección fiscal solo se ofrece en sesiones de soporte. El backend
   // vuelve a exigirlo: ocultar el botón no es la barrera, solo evita mostrar
   // una acción que el tenant no puede ejecutar.
-  const { isImpersonated, hasPermission } = useAuth()
+  const { isImpersonated, hasPermission, hasModule } = useAuth()
+  const canGuia = hasModule('despatch')
+  const canAdvancedDocs = hasModule('advanced_docs')
   // POST /billing/void-with-credit-note y /billing/debit-notes ahora exigen billing.credit_note/
   // billing.debit_note respectivamente (antes bastaba billing.send, el mismo permiso con el que
   // se abre esta pantalla) — sin esto, un rol sin esos permisos veía el botón y solo se enteraba
@@ -1323,7 +1325,7 @@ function BillingContent() {
                           onClick: () => openDebitNoteModal(s),
                         },
                         {
-                          hidden: !(viewMode === 'invoices' && bs === 'accepted' && !isSaleCancelled(s)),
+                          hidden: !(canGuia && viewMode === 'invoices' && bs === 'accepted' && !isSaleCancelled(s)),
                           icon: <Truck size={14} className="text-emerald-600" />,
                           label: 'Guía de remisión',
                           disabled: guiaLoadingSaleId === s.id,
@@ -1517,7 +1519,7 @@ function BillingContent() {
                     <Ban size={14} /> Anular venta rechazada
                   </button>
                 )}
-                {viewMode === 'invoices' && normalizeBillingStatus(detail.sale.billing_status) === 'accepted' && !isSaleCancelled(detail.sale) && !detail.linked_perception && (
+                {canAdvancedDocs && viewMode === 'invoices' && normalizeBillingStatus(detail.sale.billing_status) === 'accepted' && !isSaleCancelled(detail.sale) && !detail.linked_perception && (
                   <button
                     type="button"
                     onClick={() => openCpeFromSaleDetail(detail)}
@@ -1526,7 +1528,7 @@ function BillingContent() {
                     <Receipt size={14} /> Emitir comprobante de percepción
                   </button>
                 )}
-                {viewMode === 'invoices' && normalizeBillingStatus(detail.sale.billing_status) === 'accepted' && !isSaleCancelled(detail.sale) && (
+                {canGuia && viewMode === 'invoices' && normalizeBillingStatus(detail.sale.billing_status) === 'accepted' && !isSaleCancelled(detail.sale) && (
                   <button
                     type="button"
                     onClick={() => {
@@ -1958,7 +1960,7 @@ function BillingContent() {
         </button>
       </Modal>
 
-      <DespatchFormModal
+      {canGuia && <DespatchFormModal
         open={guiaModalOpen}
         onClose={() => { setGuiaModalOpen(false); setGuiaPrefill(null) }}
         onCreated={() => toast.success('Guía encolada. Consulte en Documentos → G.R. Remitente.')}
@@ -1971,7 +1973,7 @@ function BillingContent() {
         // guía transportista (31) es para cuando la empresa transporta mercadería ajena, un
         // flujo sin relación con "emití esta factura/boleta".
         guiaSunatCode="09"
-      />
+      />}
 
       <FiscalRetentionPerceptionModal
         mode="perception"

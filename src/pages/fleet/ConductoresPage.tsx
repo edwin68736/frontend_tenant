@@ -15,7 +15,7 @@ const MODAL_CLASS =
 
 export default function ConductoresPage() {
   return (
-    <RequireModule moduleKey="billing">
+    <RequireModule moduleKey="despatch">
       <ConductoresContent />
     </RequireModule>
   )

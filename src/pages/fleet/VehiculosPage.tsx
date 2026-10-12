@@ -13,7 +13,7 @@ const MODAL_CLASS =
 
 export default function VehiculosPage() {
   return (
-    <RequireModule moduleKey="billing">
+    <RequireModule moduleKey="despatch">
       <VehiculosContent />
     </RequireModule>
   )

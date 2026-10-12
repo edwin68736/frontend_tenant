@@ -32,7 +32,7 @@ type DocSubMode = 'retentions' | 'perceptions' | 'reversions'
 
 export default function SunatDocsPage() {
   return (
-    <RequireModule moduleKey="billing">
+    <RequireModule moduleKey="advanced_docs">
       <SunatDocsContent />
     </RequireModule>
   )

@@ -26,6 +26,8 @@ type SimpleItem = {
   module?: string | null
   permission?: string | null
   exact?: boolean
+  /** Si el plan no incluye el módulo, el ítem NO se muestra (en vez de salir con candado). */
+  hideIfLocked?: boolean
 }
 
 type NavGroup = {
@@ -278,11 +280,11 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Guías de remisión',
     icon: <Send size={16} />,
     children: [
-      { id: 'doc-guias-remitente', to: '/billing/docs/despatches/remitente', label: 'G.R. Remitente', icon: <Send size={14} />, module: 'billing', permission: 'billing.despatch' },
-      { id: 'doc-guias-transportista', to: '/billing/docs/despatches/transportista', label: 'G.R. Transportista', icon: <Truck size={14} />, module: 'billing', permission: 'billing.despatch' },
-      { id: 'doc-transportistas', to: '/fleet/carriers', label: 'Transportistas', icon: <Truck size={14} />, module: 'billing', permission: 'fleet.view' },
-      { id: 'doc-conductores', to: '/fleet/drivers', label: 'Conductores', icon: <UserCircle size={14} />, module: 'billing', permission: 'fleet.view' },
-      { id: 'doc-vehiculos', to: '/fleet/vehicles', label: 'Vehículos', icon: <Car size={14} />, module: 'billing', permission: 'fleet.view' },
+      { id: 'doc-guias-remitente', to: '/billing/docs/despatches/remitente', label: 'G.R. Remitente', icon: <Send size={14} />, module: 'despatch', hideIfLocked: true, permission: 'billing.despatch' },
+      { id: 'doc-guias-transportista', to: '/billing/docs/despatches/transportista', label: 'G.R. Transportista', icon: <Truck size={14} />, module: 'despatch', hideIfLocked: true, permission: 'billing.despatch' },
+      { id: 'doc-transportistas', to: '/fleet/carriers', label: 'Transportistas', icon: <Truck size={14} />, module: 'despatch', hideIfLocked: true, permission: 'fleet.view' },
+      { id: 'doc-conductores', to: '/fleet/drivers', label: 'Conductores', icon: <UserCircle size={14} />, module: 'despatch', hideIfLocked: true, permission: 'fleet.view' },
+      { id: 'doc-vehiculos', to: '/fleet/vehicles', label: 'Vehículos', icon: <Car size={14} />, module: 'despatch', hideIfLocked: true, permission: 'fleet.view' },
     ],
   },
   {
@@ -290,9 +292,9 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Documentos avanzados',
     icon: <Layers size={16} />,
     children: [
-      { id: 'doc-retenciones', to: '/billing/docs/retentions', label: 'Retenciones', icon: <Receipt size={14} />, module: 'billing', permission: 'billing.advanced_docs' },
-      { id: 'doc-percepciones', to: '/billing/docs/perceptions', label: 'Percepciones', icon: <Receipt size={14} />, module: 'billing', permission: 'billing.advanced_docs' },
-      { id: 'doc-reversiones', to: '/billing/docs/reversions', label: 'Reversiones', icon: <FileCode size={14} />, module: 'billing', permission: 'billing.advanced_docs' },
+      { id: 'doc-retenciones', to: '/billing/docs/retentions', label: 'Retenciones', icon: <Receipt size={14} />, module: 'advanced_docs', hideIfLocked: true, permission: 'billing.advanced_docs' },
+      { id: 'doc-percepciones', to: '/billing/docs/perceptions', label: 'Percepciones', icon: <Receipt size={14} />, module: 'advanced_docs', hideIfLocked: true, permission: 'billing.advanced_docs' },
+      { id: 'doc-reversiones', to: '/billing/docs/reversions', label: 'Reversiones', icon: <FileCode size={14} />, module: 'advanced_docs', hideIfLocked: true, permission: 'billing.advanced_docs' },
     ],
   },
   {
@@ -393,6 +395,7 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
     const hasPermAccess = item.permission == null || hasPermission(item.permission)
     if (!hasPermAccess) return null
     const locked = item.module != null && !modules.includes(item.module)
+    if (locked && item.hideIfLocked) return null
     return { ...item, locked }
   }
 

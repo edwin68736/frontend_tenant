@@ -16,7 +16,7 @@ function guiaSunatCodeFromParam(guiaTipo: string | undefined): GuiaSunatCode {
 
 export default function GuiaListPage() {
   return (
-    <RequireModule moduleKey="billing">
+    <RequireModule moduleKey="despatch">
       <GuiaListContent />
     </RequireModule>
   )

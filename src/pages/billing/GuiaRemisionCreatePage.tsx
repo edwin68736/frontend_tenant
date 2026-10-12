@@ -74,7 +74,7 @@ function GuiaRemisionCreateContent() {
 
 export default function GuiaRemisionCreatePage() {
   return (
-    <RequireModule moduleKey="billing">
+    <RequireModule moduleKey="despatch">
       <GuiaRemisionCreateContent />
     </RequireModule>
   )
