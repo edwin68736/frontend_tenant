@@ -182,7 +182,7 @@ export function SaleAdditionalInfoDrawer({
 
       {/* Pestaña + panel se deslizan juntos: cerrado solo asoma la pestaña; abierto la pestaña queda a la izquierda del panel */}
       <div
-        className={`fixed inset-y-0 right-0 ${FISCAL_DRAWER_TAB_Z} flex max-w-full transition-transform duration-300 ease-out ${
+        className={`pointer-events-none fixed inset-y-0 right-0 ${FISCAL_DRAWER_TAB_Z} flex max-w-full transition-transform duration-300 ease-out ${
           open ? 'translate-x-0' : 'translate-x-[calc(100%-2.5rem)]'
         }`}
       >
@@ -190,7 +190,7 @@ export function SaleAdditionalInfoDrawer({
           type="button"
           disabled={disabled}
           onClick={() => onOpenChange(!open)}
-          className="relative z-10 flex shrink-0 flex-col items-center justify-center self-center min-h-[10rem] max-h-[min(70vh,15rem)] rounded-l-xl bg-green-500 text-white shadow-[-4px_0_12px_rgba(0,0,0,0.12)] hover:bg-green-700 disabled:opacity-50 transition-colors my-auto"
+          className="pointer-events-auto relative z-10 flex shrink-0 flex-col items-center justify-center self-center min-h-[10rem] max-h-[min(70vh,15rem)] rounded-l-xl bg-green-500 text-white shadow-[-4px_0_12px_rgba(0,0,0,0.12)] hover:bg-green-700 disabled:opacity-50 transition-colors my-auto"
           style={{ width: TAB_WIDTH }}
           aria-expanded={open}
           aria-controls="sale-additional-info-drawer"
