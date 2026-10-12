@@ -1,6 +1,7 @@
 import { Download, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
+import { PdfBlobViewer } from '@/components/PdfBlobViewer'
 import { downloadBlob } from '@/utils/downloadBlob'
 
 export interface DocumentViewerModalProps {
@@ -20,7 +21,7 @@ export interface DocumentViewerModalProps {
 }
 
 /**
- * Modal reutilizable para visualizar documentos (PDF, etc.) en un iframe.
+ * Modal reutilizable para visualizar documentos PDF (visor según plataforma, ver PdfBlobViewer).
  * Pensado para facturas, boletas, notas de crédito/débito, guías de remisión, etc.
  * El padre debe revocar la object URL en onClose cuando corresponda.
  */
@@ -70,11 +71,8 @@ export function DocumentViewerModal({
       </div>
       {src ? (
         <div className="rounded-xl border border-gray-200 overflow-hidden bg-gray-100 -m-1">
-          <iframe
-            src={src}
-            title={title}
-            className="w-full h-[75vh] min-h-[320px] border-0"
-          />
+          {/* PdfBlobViewer: iframe nativo en navegador/Tauri y pdf.js en canvas en Android, cuyo WebView no pinta PDF en un iframe. */}
+          <PdfBlobViewer url={src} title={title} className="w-full h-[75vh] min-h-[320px] border-0 bg-white" />
         </div>
       ) : (
         <div className="py-12 text-center text-gray-400 text-sm">Cargando documento…</div>
