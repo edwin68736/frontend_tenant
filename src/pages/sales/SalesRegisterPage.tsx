@@ -306,6 +306,26 @@ function SalesRegisterContent({
   // solo lectura — protección de UI, el backend igual re-valida contra el catálogo por su cuenta.
   const canEditPrice = hasPermission('sales.override_price')
   const { activeBranchId, activeBranch } = useBranch()
+  // Dirección de la sucursal activa para la previsualización del comprobante (BranchBrief no la trae).
+  const [activeBranchAddress, setActiveBranchAddress] = useState('')
+  useEffect(() => {
+    if (!activeBranchId) {
+      setActiveBranchAddress('')
+      return
+    }
+    let cancelled = false
+    companyService
+      .listBranches()
+      .then((rows) => {
+        if (!cancelled) setActiveBranchAddress(rows.find((b) => b.id === activeBranchId)?.address?.trim() ?? '')
+      })
+      .catch(() => {
+        if (!cancelled) setActiveBranchAddress('')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activeBranchId])
   const [series, setSeries] = useState<SeriesRow[]>([])
   const [customers, setCustomers] = useState<Contact[]>([])
   const [taxRate, setTaxRate] = useState(18)
@@ -1353,6 +1373,7 @@ function SalesRegisterContent({
     selectedContact: selectedContact ?? null,
     companyConfig,
     branchName: activeBranch?.name ?? 'Principal',
+    branchAddress: activeBranchAddress,
     payments,
     fiscalForm,
     isNotaVenta,

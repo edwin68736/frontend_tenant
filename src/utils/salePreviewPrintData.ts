@@ -472,7 +472,8 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
       ruc: companyConfig?.ruc ?? '',
       business_name: companyConfig?.business_name ?? '',
       trade_name: companyTradeName || undefined,
-      address: companyAddress || branchAddr || undefined,
+      // Sucursal primero (como el logo); la dirección de la empresa es el respaldo.
+      address: branchAddr || companyAddress || undefined,
       phone: companyPhone || undefined,
       email: companyEmail || undefined,
       website: companyConfig?.website?.trim() || undefined,
