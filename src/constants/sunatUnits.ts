@@ -49,11 +49,17 @@ export const PRODUCT_UNIT_FORM_OPTIONS: { code: string; displayName: string }[] 
 
 const PRODUCT_UNIT_FORM_CODE_SET = new Set(PRODUCT_UNIT_FORM_OPTIONS.map((o) => o.code))
 
-/** Códigos SUNAT 03 válidos para normalización (unidades del sistema + destinos de alias legacy). */
+/**
+ * Catálogo SUNAT 03 completo — espejo de catalog03UnitCodes en backend_principal/pkg/sunat/units.go.
+ * Las unidades personalizadas (UnitsPage) admiten cualquier código del catálogo; validar contra
+ * una lista más corta degradaba códigos válidos (DR, PR, ONZ…) a NIU.
+ */
 const VALID_SUNAT_UNIT_CODES = new Set([
-  ...SUNAT_UNITS.map((u) => u.code),
-  // Solo alias legacy → código catalogo 03 (no están en el select)
-  'MLT', 'BE', 'CA', 'GLI', 'LBR', 'CMT',
+  'BJ', 'BLL', '4A', 'BG', 'BO', 'BX', 'CT', 'CMK', 'CMQ', 'CMT', 'CEN', 'CY', 'CJ', 'DZN', 'DZP',
+  'BE', 'GLI', 'GRM', 'GRO', 'HLT', 'LEF', 'SET', 'KGM', 'KTM', 'KWH', 'KT', 'CA', 'LBR', 'LTR',
+  'MWH', 'MTR', 'MTK', 'MTQ', 'MGM', 'MLT', 'MMT', 'MMK', 'MMQ', 'MLL', 'MU', 'ONZ', 'PF', 'PK',
+  'PR', 'FOT', 'FTK', 'FTQ', 'C62', 'PG', 'ST', 'INH', 'RM', 'DR', 'STN', 'LTN', 'TNE', 'TU',
+  'NIU', 'ZZ', 'GLL', 'YRD', 'YDK',
 ])
 
 /** Alias comercial / códigos legacy incorrectos → código SUNAT 03. */
@@ -102,6 +108,44 @@ const UNIT_ALIASES: Record<string, string> = {
   UNITS: 'NIU',
   U: 'NIU',
   UN: 'NIU',
+  // Espejo de unitAliases en backend_principal/pkg/sunat/units.go (mismo resultado en ambos lados).
+  UNID: 'NIU',
+  SERVICIO: 'ZZ',
+  SERVICIOS: 'ZZ',
+  SERVICE: 'ZZ',
+  SRV: 'ZZ',
+  SERV: 'ZZ',
+  LITRE: 'LTR',
+  LITRES: 'LTR',
+  KILOGRAMO: 'KGM',
+  KILOGRAMOS: 'KGM',
+  GRS: 'GRM',
+  MILILITRO: 'MLT',
+  MILILITROS: 'MLT',
+  TON: 'TNE',
+  TNL: 'TNE',
+  TONELADA: 'TNE',
+  TONELADAS: 'TNE',
+  LB: 'LBR',
+  LIBRA: 'LBR',
+  LIBRAS: 'LBR',
+  CM: 'CMT',
+  CENTIMETRO: 'CMT',
+  CENTIMETROS: 'CMT',
+  M2: 'MTK',
+  M3: 'MTQ',
+  BOLSAS: 'BG',
+  BOT: 'BO',
+  BOTELLA: 'BO',
+  BOTELLAS: 'BO',
+  PAQUETES: 'PK',
+  DOCENA: 'DZN',
+  DOCENAS: 'DZN',
+  JUEGO: 'SET',
+  JUEGOS: 'SET',
+  BULTOS: 'BE',
+  FARD: 'BE',
+  FARDO: 'BE',
   LAT: 'CA',
   LATA: 'CA',
   LATAS: 'CA',
@@ -202,7 +246,7 @@ export function isSunatUnitCode(code: string): boolean {
  */
 export function sunatUnitCode(unit: string): string {
   const u = resolveUnitCode(unit)
-  return u || 'NIU'
+  return VALID_SUNAT_UNIT_CODES.has(u) ? u : 'NIU'
 }
 
 /** Código catálogo SUNAT 03 para comprobantes (NIU bienes, ZZ servicios). */
