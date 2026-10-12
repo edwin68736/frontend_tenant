@@ -196,6 +196,15 @@ export function isSunatUnitCode(code: string): boolean {
   return SUNAT_UNITS.some((u) => u.code === c)
 }
 
+/**
+ * Código SUNAT 03 de una unidad ya guardada (alias legacy → código; ZZ se respeta). Para mostrar
+ * el código en comprobantes impresos; vacío → NIU, igual que el backend (sunat.NormalizeUnit).
+ */
+export function sunatUnitCode(unit: string): string {
+  const u = resolveUnitCode(unit)
+  return u || 'NIU'
+}
+
 /** Código catálogo SUNAT 03 para comprobantes (NIU bienes, ZZ servicios). */
 export function normalizeSunatUnit(unit: string, type?: 'product' | 'service' | string): string {
   const t = type === 'service' ? 'service' : 'product'
