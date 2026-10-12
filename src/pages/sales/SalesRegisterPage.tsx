@@ -931,7 +931,9 @@ function SalesRegisterContent({
       toast.error('El precio unitario debe ser mayor a S/ 0')
       return
     }
-    const unit = normalizeSunatUnit(draft.unit, 'product')
+    // Sin catálogo no hay tipo de producto: la unidad elegida manda (ZZ = servicio). Pasar siempre
+    // 'product' degradaba ZZ→NIU y el comprobante salía como unidades.
+    const unit = normalizeSunatUnit(draft.unit, draft.unit.trim().toUpperCase() === 'ZZ' ? 'service' : 'product')
     setItems(prev => [
       ...prev,
       {

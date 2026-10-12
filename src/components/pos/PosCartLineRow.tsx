@@ -196,7 +196,9 @@ export function PosCartLineRow({
   const manual = isManualCartLine(line)
   const catalog = isCatalogCartLine(line)
   // Unidad efectiva de la línea: los manuales del POS no llevan unidad → discreta (enteros).
-  const lineUnit = catalog ? normalizeSunatUnit(line.product.unit ?? '', line.product.type ?? 'product') : 'NIU'
+  const lineUnit = catalog
+    ? normalizeSunatUnit(line.product.unit ?? '', line.product.type ?? 'product')
+    : normalizeSunatUnit(line.unit, line.unit?.trim().toUpperCase() === 'ZZ' ? 'service' : 'product')
   // SaleUnit (Fase 7E): si la línea tiene una unidad de venta, allow_fraction decide si la
   // cantidad COMERCIAL admite decimales — ya NO la unidad base del producto. Sin SaleUnit,
   // comportamiento idéntico al de siempre (unitAllowsDecimals sobre la unidad del producto).
