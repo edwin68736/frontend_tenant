@@ -63,6 +63,8 @@ const COMPACT_PRINT_UNIT_LABELS: Record<string, string> = {
  * (`unit`, lo que viaja a SUNAT) nunca se modifica; esto es solo la columna visual del comprobante.
  */
 export function receiptItemDisplayUnit(it: PrintItem): string {
+  // Servicio: se imprime el código SUNAT (ZZ), no el nombre visible "Servicio" (se cortaba en "Serv").
+  if ((it.unit ?? '').trim().toUpperCase() === 'ZZ') return 'ZZ'
   const label = (it.unit_display || it.unit || '').trim()
   return COMPACT_PRINT_UNIT_LABELS[label] ?? label
 }
