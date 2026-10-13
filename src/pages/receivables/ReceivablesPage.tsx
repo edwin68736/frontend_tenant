@@ -209,7 +209,9 @@ function ReceivablesContent() {
                           <span className="text-gray-400">{row.bn_confirmation_status}</span>
                         </span>
                       ) : row.has_detraccion ? (
-                        <span className="text-green-600">{row.bn_confirmation_status || '—'}</span>
+                        <span className={row.bn_confirmation_status === 'self_pending' ? 'text-amber-700' : 'text-green-600'}>
+                          {row.bn_confirmation_status === 'self_pending' ? 'Autodetracción' : row.bn_confirmation_status || '—'}
+                        </span>
                       ) : (
                         '—'
                       )}

@@ -225,6 +225,12 @@ export interface CreateSaleInput {
     payment_method_code?: string
     /** N° de constancia de pago (opcional, 1001 y 1004) — solo referencia impresa, no viaja a SUNAT. */
     pay_constancy_number?: string
+    /**
+     * Autodetracción: el cliente paga el TOTAL al proveedor y este deposita la detracción en su propia cuenta BN.
+     * Solo cambia el cobro interno (cuotas y saldo por el total, sin pago "Detracción BN"); el XML, el PDF fiscal y
+     * el facturador reciben la detracción y las cuotas netas de siempre.
+     */
+    self_detraction?: boolean
     /** Exclusivos de 1004 (transporte de carga) — ver internal/detraccion/service.go. */
     valor_referencial_pen?: number
     mtc_registro?: string

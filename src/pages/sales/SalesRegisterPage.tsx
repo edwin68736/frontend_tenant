@@ -427,6 +427,8 @@ function SalesRegisterContent({
   // database.TenantSaleDetraccion.PayConstancyNumber. Campo que tenía el sistema anterior y
   // Tukifac no, agregado a pedido del usuario (14-sep-2026).
   const [detraccionPayConstancyNumber, setDetraccionPayConstancyNumber] = useState('')
+  // Autodetracción: el cliente paga el total (neto + detracción) y yo deposito la detracción en el BN.
+  const [selfDetraction, setSelfDetraction] = useState(false)
   // Campos exclusivos de 1004 (transporte de carga) — se envían al comprobante como
   // AdditionalItemProperty (catálogo 55 SUNAT), captura manual (ver internal/detraccion/service.go).
   // Registro MTC y configuración vehicular quedan OPCIONALES: el sistema anterior nunca los pidió
@@ -546,6 +548,8 @@ function SalesRegisterContent({
       setEmitPrepayment(false)
       setDeductPrepayment(false)
       setPrepaymentDeductionRows([])
+    } else {
+      setSelfDetraction(false)
     }
   }, [isDetraccion])
 
@@ -1218,9 +1222,13 @@ function SalesRegisterContent({
 
   const directPaymentMethods = useMemo(() => filterOperationalPaymentMethods(paymentMethods), [paymentMethods])
 
+  // Autodetracción: se cobra el TOTAL (neto + detracción); sin ella, solo el neto (la detracción la deposita el cliente en el BN).
+  const detractionCollectible =
+    selfDetraction && detractionPreview.applicable ? totalGlobal : detractionPreview.netPayable
+
   const directPayableTarget =
     isDetraccion && detractionPreview.applicable
-      ? detractionPreview.netPayable
+      ? detractionCollectible
       : !isNotaVenta && fiscalForm.has_igv_retention && retentionPreview.applicable
         ? retentionPreview.netCollectible
         : isPrepaymentDeduct
@@ -1615,7 +1623,7 @@ function SalesRegisterContent({
     const totalPaid = validPayments.reduce((s, p) => s + Number(p.amount), 0)
     const requiredDirect =
       isDetraccion && detractionPreview.applicable
-        ? detractionPreview.netPayable
+        ? detractionCollectible
         : !isNotaVenta && fiscalForm.has_igv_retention && retentionPreview.applicable
           ? retentionPreview.netCollectible
           : isPrepaymentDeduct
@@ -1790,6 +1798,7 @@ function SalesRegisterContent({
           ? {
               good_code: detraccionGoodCode,
               pay_constancy_number: detraccionPayConstancyNumber.trim() || undefined,
+              ...(selfDetraction ? { self_detraction: true } : {}),
               ...(isDetraccionTransporte
                 ? {
                     valor_referencial_pen: transporteValorReferencial,
@@ -2507,6 +2516,22 @@ function SalesRegisterContent({
                 </span>
               </div>
             )}
+            {detractionPreview.applicable && (
+              <label className="flex items-start gap-2 text-sm text-amber-950 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 rounded border-amber-300"
+                  checked={selfDetraction}
+                  onChange={(e) => setSelfDetraction(e.target.checked)}
+                />
+                <span>
+                  <strong>Autodetracción</strong>: el cliente me paga el total y yo deposito la detracción en mi cuenta BN.
+                  <span className="block text-xs text-amber-800/80">
+                    Las cuotas y el cobro suman {fmt(totalGlobal)} (neto + detracción). El comprobante a SUNAT no cambia.
+                  </span>
+                </span>
+              </label>
+            )}
           </div>
         )}
 
@@ -2962,7 +2987,7 @@ function SalesRegisterContent({
                     </p>
                   )}
                 </div>
-                {isDetraccion && detractionPreview.applicable && (
+                {isDetraccion && detractionPreview.applicable && !selfDetraction && (
                   <div className="flex flex-wrap gap-2 items-center rounded-xl bg-amber-50 border border-amber-100 px-3 py-2">
                     <span className="flex-1 min-w-[7rem] text-sm text-amber-900 font-medium">
                       {DETRACCION_PAYMENT_METHOD_NAME}
@@ -3189,8 +3214,8 @@ function SalesRegisterContent({
                       <span className="tabular-nums">{fmt(detractionPreview.detractionAmount)}</span>
                     </div>
                     <div className="flex justify-between font-semibold text-emerald-800 text-sm border-b border-emerald-100 pb-2 mb-1">
-                      <span>Neto cobrable (pagos directos)</span>
-                      <span className="tabular-nums">{fmt(detractionPreview.netPayable)}</span>
+                      <span>{selfDetraction ? 'Total a cobrar al cliente (autodetracción)' : 'Neto cobrable (pagos directos)'}</span>
+                      <span className="tabular-nums">{fmt(detractionCollectible)}</span>
                     </div>
                   </>
                 )}

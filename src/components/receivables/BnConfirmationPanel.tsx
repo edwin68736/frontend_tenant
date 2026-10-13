@@ -22,6 +22,17 @@ export function BnConfirmationPanel({ saleId, detraccion, onUpdated }: Props) {
     return null
   }
   const status = detraccion.bn_confirmation_status || 'pending'
+  if (status === 'self_pending') {
+    return (
+      <div className="rounded-lg border border-amber-100 bg-amber-50/60 p-3 text-sm">
+        <p className="text-xs font-semibold text-amber-900 uppercase mb-1">Autodetracción</p>
+        <p className="text-amber-950">
+          El cliente paga el total al proveedor; la detracción (S/ {detraccion.detraction_amount_pen.toFixed(2)}) la
+          deposita el proveedor en su propia cuenta BN. No hay acreditación del cliente que confirmar.
+        </p>
+      </div>
+    )
+  }
   if (status !== 'pending') {
     return (
       <div className="rounded-lg border border-gray-100 bg-gray-50 p-3 text-sm">
