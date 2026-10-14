@@ -195,7 +195,7 @@ export function buildPreviewQrData(params: {
 // el punto único de impresión. Si se hiciera en ambos sitios saldría duplicada en el preview.
 function itemDescriptionForPrint(it: SalePreviewFormItem): string {
   const base = it.description.trim()
-  const mods = formatModifierLines(parseStoredModifiers(it.modifiers_json))
+  const mods = formatModifierLines(parseStoredModifiers(it.modifiers_json), { skipVariantsIn: base })
   if (!mods.length) return base || '—'
   return `${base}\n${mods.join('\n')}`
 }

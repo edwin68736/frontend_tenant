@@ -31,7 +31,12 @@ import {
   createCatalogCartLine,
   type CatalogCartLine,
 } from '@/utils/posCart'
-import { formatModifierLines, parseStoredModifiers, presentationIdFromSelection } from '@/utils/productModifiers'
+import {
+  descriptionWithPresentation,
+  formatModifierLines,
+  parseStoredModifiers,
+  presentationIdFromSelection,
+} from '@/utils/productModifiers'
 import {
   SaleAdditionalInfoDrawer,
   emptySaleFiscalForm,
@@ -238,7 +243,10 @@ function catalogLineToSaleItem(line: CatalogCartLine): SaleFormItem {
     sale_unit_allow_fraction: line.sale_unit?.allow_fraction,
     line_key: line.configureKey,
     code: p.code ?? '',
-    description: p.name,
+    // Con presentación, "Producto - Presentación" (igual que el POS): la descripción es lo que
+    // llega al XML y al A4/ticket, que no leen modifiers_json. Antes solo el nombre: la
+    // previsualización mostraba la presentación pero el comprobante emitido no.
+    description: descriptionWithPresentation(p.name, line.modifiers),
     unit: normalizeSunatUnit(p.unit ?? '', p.type ?? 'product'),
     quantity: line.quantity,
     unit_price: line.unit_price,
@@ -2640,7 +2648,7 @@ function SalesRegisterContent({
                 {items.map((it, idx) => {
                   const { total } = getItemTotals(it, idx)
                   const modifierLines = it.modifiers_json
-                    ? formatModifierLines(parseStoredModifiers(it.modifiers_json))
+                    ? formatModifierLines(parseStoredModifiers(it.modifiers_json), { skipVariantsIn: it.description })
                     : []
                   const missingPrice = !(Number(it.unit_price) > 0)
                   // Solo restringe líneas de catálogo — una línea manual (sin product_id) nunca

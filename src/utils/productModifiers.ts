@@ -246,11 +246,37 @@ export function modifiersToJson(modifiers: CartModifierEntry[]): string {
   return JSON.stringify(payload)
 }
 
-export function formatModifierLines(modifiers: StoredModifierEntry[] | CartModifierEntry[]): string[] {
+/**
+ * Descripción de la línea con la presentación elegida: "Pantalla - pantalla grande". Es lo que
+ * se guarda en el ítem de venta, así llega igual al XML de SUNAT, al A4 y al ticket (que no leen
+ * modifiers_json). Si el nombre ya la contiene, no se repite — mismo criterio que
+ * nameWithPresentation del backend (restaurant_modifiers.go).
+ */
+export function descriptionWithPresentation(
+  name: string,
+  modifiers: StoredModifierEntry[] | CartModifierEntry[],
+): string {
+  const base = name.trim()
+  const variant = modifiers.find((m) => m.type === 'variant')
+  const pres = String(variant?.option_name ?? (variant as StoredModifierEntry | undefined)?.name ?? '').trim()
+  if (!pres || base.toLowerCase().includes(pres.toLowerCase())) return base
+  return `${base} - ${pres}`
+}
+
+/**
+ * `skipVariantsIn`: descripción de la línea; si ya incluye la presentación (ver
+ * descriptionWithPresentation), esa línea se omite para no mostrarla dos veces.
+ */
+export function formatModifierLines(
+  modifiers: StoredModifierEntry[] | CartModifierEntry[],
+  opts?: { skipVariantsIn?: string },
+): string[] {
   const lines: string[] = []
+  const skipIn = opts?.skipVariantsIn?.toLowerCase()
   for (const m of modifiers) {
     const label = String(m.option_name ?? (m as StoredModifierEntry).name ?? '').trim()
     if (!label) continue
+    if (m.type === 'variant' && skipIn && skipIn.includes(label.toLowerCase())) continue
     if (m.type === 'variant') {
       const price = Number(m.extra_price) || 0
       lines.push(price > 0 ? `${label} (S/ ${formatAmountDisplay(price)})` : label)

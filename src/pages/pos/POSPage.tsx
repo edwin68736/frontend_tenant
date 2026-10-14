@@ -74,7 +74,7 @@ import { useFlyToCart } from '@/hooks/useFlyToCart'
 import { useBarcodeProductScanner } from '@/hooks/useBarcodeProductScanner'
 import { BarcodeScannerModal } from '@/components/barcode/BarcodeScannerModal'
 import { playCartAddSound, playCartRemoveSound } from '@/utils/cartSounds'
-import { productConfigurationBadge, productNeedsSaleConfiguration, presentationIdFromSelection } from '@/utils/productModifiers'
+import { descriptionWithPresentation, productConfigurationBadge, productNeedsSaleConfiguration, presentationIdFromSelection } from '@/utils/productModifiers'
 
 /** doc_type legacy → código SUNAT cuando sunat_code no viene en la serie */
 function docTypeToSunatCode(docType: string): string {
@@ -864,11 +864,7 @@ function POSContent() {
             code: i.product.code,
             // Con presentación elegida el nombre la incluye: si no, el ticket/comprobante muestra
             // dos líneas "Pantalla" que solo se distinguen por el precio.
-            description: (() => {
-              const variant = i.modifiers.find((m) => m.type === 'variant')
-              const name = variant?.option_name?.trim()
-              return name ? `${i.product.name} - ${name}` : i.product.name
-            })(),
+            description: descriptionWithPresentation(i.product.name, i.modifiers),
             // Siempre la unidad base del catálogo, aunque la línea use sale_unit_id: el campo
             // `unit` persistido se resuelve 100% server-side (ignora este string) y usa el código
             // propio de la SaleUnit cuando corresponde — ver resolveSaleItemUnitCode en
