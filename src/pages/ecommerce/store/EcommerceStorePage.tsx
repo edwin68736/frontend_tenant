@@ -471,7 +471,6 @@ export default function EcommerceStorePage() {
                       {outOfStock && <span className="vs-tag">Agotado</span>}
                     </div>
                     <div className="bd">
-                      {p.category_name && <span className="cn">{p.category_name}</span>}
                       <h3 className="nm">{p.name}</h3>
                       {managed && !outOfStock ? (
                         <span className={`vs-stock ${low ? 'low' : ''}`}>
