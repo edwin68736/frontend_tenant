@@ -34,7 +34,9 @@
 .vs-logo > div { min-width: 0; }
 .vs-search { grid-area: search; display: flex; align-items: center; gap: 10px; height: 48px; border-radius: 16px; background: var(--vs-ground); border: 2px solid transparent; padding-inline: 14px; color: var(--vs-muted); }
 /* Sin borde ni cambio de fondo al enfocar: el borde azul de 2px se veía tosco (pedido 14-oct-2026). */
-.vs-search:focus-within { background: var(--vs-ground); border-color: transparent; }
+/* Buscador: foco suave en el borde en vez del contorno azul de 3px global (.vs-shop :focus-visible). */
+.vs-search:focus-within { background: var(--vs-ground); border-color: color-mix(in srgb, var(--vs-blue) 22%, transparent); }
+.vs-shop .vs-search input:focus-visible { outline: 0; }
 .vs-search input { flex: 1; min-width: 0; border: 0; background: transparent; outline: 0; font: inherit; color: var(--vs-ink); font-size: 16px; padding: 0; box-shadow: none; }
 .vs-search input::placeholder { color: var(--vs-muted); }
 .vs-cartbtn { grid-area: cart; position: relative; display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 12px; border-radius: 15px; background: var(--vs-g); color: var(--vs-g-ink); font-weight: 700; border: 0; }
