@@ -4,6 +4,7 @@ import type { PrintData, PrintFiscalContext, PrintItem, PrintPayment } from '@/t
 import { buildPrintBankAccounts } from '@/utils/receiptBankAccounts'
 import type { DetraccionPreviewResult } from '@/utils/fiscalDetraction'
 import { DETRACCION_PAYMENT_METHOD_CODE } from '@/utils/fiscalDetraction'
+import { SUNAT_MEDIO_PAGO } from '@/constants/sunat'
 import type { RetentionPreview } from '@/utils/fiscalRetention'
 import type { SaleFiscalFormState } from '@/components/sales/SaleAdditionalInfoDrawer'
 import { formatModifierLines, parseStoredModifiers } from '@/utils/productModifiers'
@@ -222,6 +223,7 @@ function buildFiscalBlock(input: BuildSalePreviewPrintDataInput): PrintFiscalCon
     detractionBnAccount,
     detraccionPayConstancyNumber,
     isDetraccionTransporte,
+    companyConfig,
     transporte,
     retentionPreview,
   } = input
@@ -247,7 +249,12 @@ function buildFiscalBlock(input: BuildSalePreviewPrintDataInput): PrintFiscalCon
     fiscal.detraccion_rate_percent = detractionPreview.ratePercent
     fiscal.detraccion_amount = detractionPreview.detractionAmount
     fiscal.detraccion_bank_account = detractionBnAccount
-    fiscal.detraccion_payment_method_code = DETRACCION_PAYMENT_METHOD_CODE
+    // Medio de pago de la detracción (catálogo 59): el mismo que usa la venta real (config de la
+    // empresa o 001). Antes se ponía el código interno del pago ("detraccion_bn") y el PDF lo
+    // mostraba tal cual como "MEDIO DE PAGO".
+    const detPayCode = companyConfig?.detraction_default_payment_method?.trim() || '001'
+    fiscal.detraccion_payment_method_code = detPayCode
+    fiscal.detraccion_payment_method_label = SUNAT_MEDIO_PAGO[detPayCode]
     fiscal.detraccion_net_payable = detractionPreview.netPayable
     if (detraccionPayConstancyNumber?.trim()) {
       fiscal.detraccion_pay_constancy_number = detraccionPayConstancyNumber.trim()

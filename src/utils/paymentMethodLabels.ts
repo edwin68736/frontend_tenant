@@ -9,6 +9,8 @@ const PAYMENT_METHOD_ES: Record<string, string> = {
   debito: 'Tarjeta débito',
   credito: 'Crédito',
   credit: 'Crédito',
+  // Porción de la detracción depositada al Banco de la Nación (ver fiscalDetraction.ts).
+  detraccion_bn: 'Detracción BN',
 }
 
 export function salePaymentMethodLabelEs(code: string | undefined | null): string {
