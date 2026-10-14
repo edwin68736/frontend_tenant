@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { ArrowDown, ArrowUp, Plus, Save, Trash2, Upload } from 'lucide-react'
-import { ecommerceService, type EcommerceSlider, type EcommerceSettings } from '@/services/ecommerce.service'
+import { ecommerceService, type EcommerceSlider, type EcommerceSettings, type HeroStyle } from '@/services/ecommerce.service'
 import { resolvePublicAssetUrl } from '@/config/apiBaseUrl'
 
 function validateImage(file: File): string | null {
@@ -10,7 +10,12 @@ function validateImage(file: File): string | null {
   return null
 }
 
-type SliderDraft = { title: string; subtitle: string; button_text: string; link_url: string }
+const HERO_STYLES: { value: HeroStyle; label: string; hint: string }[] = [
+  { value: 'split', label: 'Con texto', hint: 'Título y botón a la izquierda, imagen a la derecha' },
+  { value: 'image', label: 'Solo imagen', hint: 'La imagen completa a todo el ancho, sin textos ni botón' },
+]
+
+type SliderDraft ={ title: string; subtitle: string; button_text: string; link_url: string }
 
 function draftFrom(s: EcommerceSlider): SliderDraft {
   return { title: s.title || '', subtitle: s.subtitle || '', button_text: s.button_text || '', link_url: s.link_url || '' }
@@ -56,6 +61,19 @@ export default function EcommerceBannersSettings() {
       toast.error('Error al guardar el banner')
     } finally {
       setSavingId(null)
+    }
+  }
+
+  const changeHeroStyle = async (hero_style: HeroStyle) => {
+    if (!settings || settings.hero_style === hero_style) return
+    const prev = settings
+    setSettings({ ...settings, hero_style })
+    try {
+      await ecommerceService.updateSettings({ hero_style })
+      toast.success('Estilo del banner actualizado')
+    } catch {
+      setSettings(prev)
+      toast.error('Error al guardar el estilo del banner')
     }
   }
 
@@ -132,6 +150,44 @@ export default function EcommerceBannersSettings() {
 
   return (
     <div className="space-y-6 max-w-2xl">
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-2">Estilo del banner principal</label>
+        <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Estilo del banner principal">
+          {HERO_STYLES.map(opt => {
+            const on = (settings?.hero_style ?? 'split') === opt.value
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                onClick={() => void changeHeroStyle(opt.value)}
+                className={`text-left rounded-xl border p-3 transition ${on ? 'border-[rgb(var(--p600))] ring-2 ring-[rgb(var(--p600))]/20' : 'border-gray-200 hover:bg-gray-50'}`}
+              >
+                <div className="h-12 rounded-lg overflow-hidden flex mb-2 bg-gray-100">
+                  {opt.value === 'split' ? (
+                    <>
+                      <div className="w-1/2 bg-slate-700 flex flex-col justify-center gap-1 px-2">
+                        <span className="h-1.5 w-8 rounded bg-white/80" />
+                        <span className="h-2 w-6 rounded bg-emerald-400" />
+                      </div>
+                      <div className="w-1/2 bg-sky-200" />
+                    </>
+                  ) : (
+                    <div className="w-full bg-sky-200" />
+                  )}
+                </div>
+                <b className="block text-sm text-gray-800">{opt.label}</b>
+                <span className="block text-xs text-gray-500">{opt.hint}</span>
+              </button>
+            )
+          })}
+        </div>
+        {settings?.hero_style === 'image' && !settings.background_image_url && sliders.every(s => !s.active) && (
+          <p className="mt-2 text-xs text-amber-600">Sube un fondo o una imagen al carrusel; sin imágenes la tienda sigue mostrando el banner con texto.</p>
+        )}
+      </div>
+
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-2">Fondo de la tienda</label>
         <div className="flex items-center gap-3">

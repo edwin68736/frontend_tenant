@@ -193,6 +193,13 @@ export default function EcommerceStorePage() {
   const current = activeSliders.length > 0 ? activeSliders[slide % activeSliders.length] : null
   const currentHasText = Boolean(current && (current.title || current.subtitle || current.button_text))
   const staticImage = settings?.background_image_url ? resolvePublicAssetUrl(settings.background_image_url) : ''
+  // "Solo imagen": el tenant lo elige para toda la tienda, o se da solo en un banner sin textos.
+  // Sin imágenes no hay qué mostrar y se cae al hero con texto.
+  const heroImageOnly = (settings?.hero_style === 'image' && (activeSliders.length > 0 || Boolean(staticImage))) || Boolean(current && !currentHasText)
+  const soloSlides = activeSliders.length > 0
+    ? activeSliders.map((s) => ({ key: s.id, src: resolvePublicAssetUrl(s.image_url), link: s.link_url }))
+    : [{ key: 0, src: staticImage, link: '' }]
+  const slideIdx = activeSliders.length > 0 ? slide % activeSliders.length : 0
 
   /** Control de compra de una tarjeta: agregar, elegir opciones, agotado o cantidad si ya está en el carrito. */
   const renderBuy = (p: ProductReportRow, outOfStock: boolean, stockQty: number, capped: boolean) => {
@@ -268,17 +275,35 @@ export default function EcommerceStorePage() {
 
       <main className="vs-wrap">
         {/* Hero: carrusel con texto + botón, o panel de marca si no hay sliders */}
-        {current && !currentHasText ? (
+        {heroImageOnly ? (
           <section className="vs-hero solo" aria-label="Destacado">
-            <div className="vs-hero-art">
-              <img key={current.id} className="vs-fade" src={resolvePublicAssetUrl(current.image_url)} alt="" />
+            <div className="vs-solo-stack">
+              {soloSlides.map((s, i) =>
+                s.link ? (
+                  <a key={s.key} href={s.link} className={`vs-solo-slide ${i === slideIdx ? 'on' : ''}`} aria-hidden={i !== slideIdx} tabIndex={i === slideIdx ? 0 : -1}>
+                    <img src={s.src} alt="" />
+                  </a>
+                ) : (
+                  <div key={s.key} className={`vs-solo-slide ${i === slideIdx ? 'on' : ''}`} aria-hidden={i !== slideIdx}>
+                    <img src={s.src} alt="" />
+                  </div>
+                ),
+              )}
             </div>
             {activeSliders.length > 1 && (
               <>
                 <div className="vs-dots">
                   {activeSliders.map((s, i) => (
-                    <button key={s.id} type="button" aria-label={`Ir al banner ${i + 1}`} className={i === slide % activeSliders.length ? 'on' : ''} onClick={() => setSlide(i)} />
+                    <button key={s.id} type="button" aria-label={`Ir al banner ${i + 1}`} className={i === slideIdx ? 'on' : ''} onClick={() => setSlide(i)} />
                   ))}
+                </div>
+                <div className="vs-arrows">
+                  <button type="button" aria-label="Anterior" onClick={() => setSlide((s) => (s - 1 + activeSliders.length) % activeSliders.length)}>
+                    <ChevronLeft size={20} />
+                  </button>
+                  <button type="button" aria-label="Siguiente" onClick={() => setSlide((s) => (s + 1) % activeSliders.length)}>
+                    <ChevronRight size={20} />
+                  </button>
                 </div>
               </>
             )}

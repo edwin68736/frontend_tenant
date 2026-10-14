@@ -86,9 +86,14 @@
   .vs-arrows { display: flex; }
   .vs-hero p { font-size: 17px; }
 }
-.vs-hero.solo { grid-template-columns: 1fr; }
-.vs-hero.solo .vs-hero-art { min-height: 0; aspect-ratio: 16 / 7; }
-@media (max-width: 819px) { .vs-hero.solo .vs-hero-art { aspect-ratio: 16 / 9; } }
+/* Solo imagen: la imagen completa con su proporción original, sin recorte, degradado ni textos.
+   Todas las diapositivas se apilan en la misma celda: el alto lo fija la más alta y no salta al rotar. */
+.vs-hero.solo { display: block; min-height: 0; }
+.vs-solo-stack { display: grid; }
+.vs-solo-stack > .vs-solo-slide { grid-area: 1 / 1; display: block; opacity: 0; visibility: hidden; transition: opacity 0.6s ease, visibility 0.6s; }
+.vs-solo-stack > .vs-solo-slide.on { opacity: 1; visibility: visible; }
+.vs-solo-slide img { display: block; width: 100%; height: 100%; max-height: 80vh; object-fit: contain; }
+@media (prefers-reduced-motion: reduce) { .vs-solo-stack > .vs-solo-slide { transition: none; } }
 
 /* beneficios */
 .vs-perks { display: none; gap: 16px; margin-top: 18px; grid-template-columns: repeat(3, 1fr); }
@@ -271,5 +276,4 @@
 .vs-wabtn { height: 56px; border-radius: 18px; border: 0; background: #25d366; color: #04230f; display: flex; align-items: center; justify-content: center; gap: 10px; font: 800 16px var(--vs-fb); box-shadow: 0 10px 24px rgb(37 211 102 / 0.32); }
 .vs-wabtn:disabled { opacity: 0.45; box-shadow: none; }
 .vs-note { font-size: 12.5px; color: var(--vs-muted); text-align: center; }
-.vs-hero.solo .vs-hero-art.img::after { display: none; }
 @media (min-width: 768px) { .vs-gal-main { aspect-ratio: 1 / 0.9; max-height: none; } }

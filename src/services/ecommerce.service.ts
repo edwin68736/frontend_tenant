@@ -19,7 +19,11 @@ export interface EcommerceSettings {
   category_style: string
   /** Si es false, la tienda pública no muestra disponibilidad/"Agotado" ni recibe el stock real. */
   show_stock: boolean
+  /** 'split' = texto + botón junto a la imagen; 'image' = solo la imagen completa a todo el ancho. */
+  hero_style: HeroStyle
 }
+
+export type HeroStyle = 'split' | 'image'
 
 export interface EcommerceSettingsResponse {
   data: EcommerceSettings
@@ -40,6 +44,7 @@ export interface UpdateEcommerceSettingsInput {
   card_style?: string
   category_style?: string
   show_stock?: boolean
+  hero_style?: HeroStyle
 }
 
 export interface EcommerceSlider {
@@ -181,6 +186,7 @@ export interface PublicStoreSettings {
   category_style: string
   /** Si es false, no mostrar disponibilidad/"Agotado" — tratar todos los productos como disponibles. */
   show_stock: boolean
+  hero_style?: HeroStyle
   sliders: EcommerceSlider[]
 }
 
