@@ -71,6 +71,10 @@ const FONT_FAMILY = 'times'
  * Dibuja una línea de la cabecera de empresa. Si `justify` es true, reparte el
  * espacio sobrante entre las palabras para alinear a ambos márgenes (justificado).
  * Solo debe justificarse cada línea salvo la última de un párrafo.
+ *
+ * Si justificar obligaría a abrir huecos grandes (línea con pocas palabras, ej. una razón
+ * social "INVERSIONES J & L" que parte en dos líneas), se deja alineada a la izquierda: con
+ * huecos de varios espacios las palabras se ven sueltas en vez de formar una frase.
  */
 function drawCompanyInfoLine(
   doc: jsPDF,
@@ -87,7 +91,8 @@ function drawCompanyInfoLine(
   }
   const wordsW = words.reduce((sum, w) => sum + doc.getTextWidth(w), 0)
   const gap = (width - wordsW) / (words.length - 1)
-  if (!(gap > 0)) {
+  const maxGap = doc.getTextWidth(' ') * 2.5
+  if (!(gap > 0) || gap > maxGap) {
     doc.text(line, x, y, { maxWidth: width })
     return
   }
@@ -251,16 +256,17 @@ async function drawHeader(
   let cy = top + 3
   {
     const nameLines: string[] = doc.splitTextToSize(companyName, infoW)
-    nameLines.forEach((line, i) => {
-      drawCompanyInfoLine(doc, line, infoX, cy, infoW, i < nameLines.length - 1)
+    nameLines.forEach(line => {
+      // El nombre es un título: nunca justificado (separaba las palabras de la razón social).
+      drawCompanyInfoLine(doc, line, infoX, cy, infoW, false)
       cy += LINE_H + 0.2
     })
   }
   if (showBusinessNameSecondary) {
     setFont(doc, FONT_SM, 'normal')
     const secLines: string[] = doc.splitTextToSize(businessName.toUpperCase(), infoW)
-    secLines.forEach((line, i) => {
-      drawCompanyInfoLine(doc, line, infoX, cy, infoW, i < secLines.length - 1)
+    secLines.forEach(line => {
+      drawCompanyInfoLine(doc, line, infoX, cy, infoW, false)
       cy += LINE_H - 0.2
     })
   }
