@@ -347,13 +347,19 @@ export interface TransferListItem {
   notes: string
   created_at: string
   confirmed_at: string | null
+  created_by_name?: string
+  confirmed_by_name?: string
   lines: {
     product_id: number
     product_name: string
     presentation_id?: number
     presentation_name?: string
+    product_code?: string
+    /** Unidad legible del producto (nombre del catálogo de unidades o código SUNAT). */
+    unit?: string
     quantity: number
     with_serials: boolean
+    serials?: string[]
   }[]
 }
 

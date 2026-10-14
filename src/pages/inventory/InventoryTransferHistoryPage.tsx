@@ -1,10 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { RotateCcw, Plus } from 'lucide-react'
+import { RotateCcw, Plus, Eye, Download, Ticket, RefreshCw } from 'lucide-react'
 import RequireModule from '@/components/ui/RequireModule'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { inventoryService, type TransferListItem } from '@/services/inventory.service'
+import {
+  downloadInventoryTransferPdf,
+  openInventoryTransferPdfViewer,
+  transferCode,
+  type TransferPdfFormat,
+} from '@/utils/inventoryTransferPdf'
 
 export default function InventoryTransferHistoryPage() {
   return (
@@ -24,6 +30,21 @@ function InventoryTransferHistoryContent() {
   const [confirmDialogTransferId, setConfirmDialogTransferId] = useState<number | null>(null)
   /** ID de transferencia para el diálogo de cancelar; null = cerrado */
   const [cancelDialogTransferId, setCancelDialogTransferId] = useState<number | null>(null)
+
+  /** Botón de comprobante en curso (`id:formato:modo`) para mostrar el spinner solo en ese. */
+  const [pdfBusyKey, setPdfBusyKey] = useState<string | null>(null)
+
+  const handlePdf = async (t: TransferListItem, format: TransferPdfFormat, mode: 'view' | 'download') => {
+    setPdfBusyKey(`${t.id}:${format}:${mode}`)
+    try {
+      if (mode === 'view') await openInventoryTransferPdfViewer(t, format)
+      else await downloadInventoryTransferPdf(t, format)
+    } catch (e: any) {
+      toast.error(e?.message ?? 'No se pudo generar el comprobante')
+    } finally {
+      setPdfBusyKey(null)
+    }
+  }
 
   const loadTransfers = useCallback(() => {
     inventoryService
@@ -112,17 +133,23 @@ function InventoryTransferHistoryContent() {
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-gray-100">
+                <th className="text-left py-2 px-2">N°</th>
                 <th className="text-left py-2 px-2">Fecha</th>
                 <th className="text-left py-2 px-2">Origen → Destino</th>
                 <th className="text-left py-2 px-2">Productos</th>
                 <th className="text-center py-2 px-2 w-28">Estado</th>
+                <th className="text-center py-2 px-2 w-28">Comprobante</th>
                 <th className="text-right py-2 px-2 w-40">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {filteredTransfers.map(t => (
                 <tr key={t.id} className="border-b border-gray-50">
-                  <td className="py-2 px-2 text-gray-600">{new Date(t.created_at).toLocaleString()}</td>
+                  <td className="py-2 px-2 font-mono text-gray-700 whitespace-nowrap">{transferCode(t.id)}</td>
+                  <td className="py-2 px-2 text-gray-600">
+                    {new Date(t.created_at).toLocaleString()}
+                    {t.created_by_name && <div className="text-[11px] text-gray-400">{t.created_by_name}</div>}
+                  </td>
                   <td className="py-2 px-2">
                     <span className="font-medium">{t.from_branch_name}</span>
                     <span className="text-gray-400 mx-1">→</span>
@@ -139,6 +166,30 @@ function InventoryTransferHistoryContent() {
                     {t.status === 'pending' && <span className="text-amber-600 text-xs font-medium">Enviado</span>}
                     {t.status === 'confirmed' && <span className="text-green-600 text-xs font-medium">Confirmado</span>}
                     {t.status === 'cancelled' && <span className="text-gray-500 text-xs">Cancelado</span>}
+                  </td>
+                  <td className="py-2 px-2">
+                    <span className="flex gap-0.5 justify-center">
+                      {([
+                        { format: 'a4', mode: 'view', title: 'Ver comprobante A4', icon: <Eye size={14} />, cls: 'text-red-600 hover:bg-red-50' },
+                        { format: 'a4', mode: 'download', title: 'Descargar comprobante A4', icon: <Download size={14} />, cls: 'text-red-600 hover:bg-red-50' },
+                        { format: 'ticket', mode: 'view', title: 'Ver comprobante ticket', icon: <Ticket size={14} />, cls: 'text-orange-700 hover:bg-orange-50' },
+                      ] as const).map(b => {
+                        const key = `${t.id}:${b.format}:${b.mode}`
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            title={b.title}
+                            aria-label={b.title}
+                            disabled={pdfBusyKey !== null}
+                            onClick={() => void handlePdf(t, b.format, b.mode)}
+                            className={`p-1.5 rounded-lg disabled:opacity-40 ${b.cls}`}
+                          >
+                            {pdfBusyKey === key ? <RefreshCw size={14} className="animate-spin" /> : b.icon}
+                          </button>
+                        )
+                      })}
+                    </span>
                   </td>
                   <td className="py-2 px-2 text-right">
                     {t.status === 'pending' && (
@@ -166,7 +217,7 @@ function InventoryTransferHistoryContent() {
               ))}
               {filteredTransfers.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-6 text-center text-gray-400 text-xs">
+                  <td colSpan={7}className="py-6 text-center text-gray-400 text-xs">
                     {transfers.length === 0 ? 'Sin transferencias' : 'Sin transferencias con este estado'}
                   </td>
                 </tr>
