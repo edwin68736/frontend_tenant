@@ -226,7 +226,6 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   // panelAttributes) — se embebe directo el editor completo (SaleUnitsModal/ProductAttributesModal
   // con `embedded`), que gestiona su propio fetch/guardado.
   const [activeTab, setActiveTab] = useState<AdvancedTab>('general')
-  const [panelDetail, setPanelDetail] = useState<{ data: Product; modifier_group_ids: number[]; presentations?: ProductPresentation[] } | null>(null)
   const [panelSerials, setPanelSerials] = useState<{ serial: string; branch_id: number; status: string }[]>([])
   const [branches, setBranches] = useState<{ id: number; name: string }[]>([])
   const [stockRows, setStockRows] = useState<StockByBranch[]>([])
@@ -267,7 +266,6 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     setPresentations([])
     setShowPresentationsModal(false)
     setActiveTab('general')
-    setPanelDetail(null)
     setPanelSerials([])
     setStockRows([])
     codeBarcodeScan.deactivateScanner()
@@ -451,7 +449,6 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     // cargan en paralelo acá para que Presentaciones/Stock ya estén listos si el usuario cambia
     // de pestaña — Unidades de venta/Atributos se cargan solas al montar su propio editor
     // embebido (SaleUnitsModal/ProductAttributesModal con `embedded`).
-    setPanelDetail(null)
     setPanelSerials([])
     setStockRows([])
     setPanelLoading(true)
@@ -462,7 +459,6 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         p.manage_stock ? inventoryService.getStock(p.id) : Promise.resolve([]),
         p.manage_series ? productsService.getSerials(p.id) : Promise.resolve([]),
       ])
-      setPanelDetail(detail)
       setForm(f => ({
         ...f,
         modifier_group_ids: detail.modifier_group_ids ?? [],
@@ -790,7 +786,6 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         productsService.get(result.product.id),
         companyService.listBranches(),
       ])
-      setPanelDetail(detail)
       // Las presentaciones del alta ya tienen id: sin esto, el siguiente Guardar las mandaba sin id
       // (el backend las empareja por nombre, pero el gestor no podía mostrar su stock).
       setPresentations(detail.presentations ?? [])
@@ -1888,6 +1883,18 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               emptyWhenZero
               clearOnFocus
             />
+            {/* Las presentaciones ya no se ven en General (viven en su pestaña): sin esta nota no
+                se entiende por qué el precio base puede quedar vacío. */}
+            {form.has_variants && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('modificadores')}
+                className="mt-1 text-left text-[11px] text-[rgb(var(--p700))] hover:underline"
+              >
+                Tiene {presentations.filter(p => p.name.trim()).length} presentación(es) con precio propio — ver
+                pestaña Presentaciones
+              </button>
+            )}
           </div>
           {pageMode === 'product' && (
             <div className="min-w-0">
@@ -2055,30 +2062,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 <input type="checkbox" checked={form.manage_series ?? false} onChange={e => setF('manage_series', e.target.checked)} className="rounded" />
                 <span className="text-sm text-gray-700">Maneja series/lotes</span>
               </label>
-              {renderPresentationsSection('Tiene presentaciones (tamaño, empaque, etc.)')}
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={form.has_modifiers ?? false} onChange={e => setF('has_modifiers', e.target.checked)} className="rounded" />
-                <span className="text-sm text-gray-700">Tiene extras / adicionales</span>
-              </label>
-              {form.has_modifiers && modifierGroups.length > 0 && (
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-1">Grupos de extras</label>
-                  <div className="flex flex-wrap gap-2">
-                    {modifierGroups.map(g => (
-                      <label key={g.id} className="inline-flex items-center gap-1.5 px-2 py-1 border border-gray-200 rounded-lg text-xs cursor-pointer hover:bg-gray-50">
-                        <input type="checkbox" checked={(form.modifier_group_ids ?? []).includes(g.id)} onChange={e => {
-                          const ids = form.modifier_group_ids ?? []
-                          setF('modifier_group_ids', e.target.checked ? [...ids, g.id] : ids.filter(id => id !== g.id))
-                        }} className="rounded" />
-                        <span>{g.name}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {form.has_modifiers && modifierGroups.length === 0 && (
-                <p className="text-xs text-amber-600">Crea grupos en &quot;Grupos de extras&quot; arriba y asígnalos aquí.</p>
-              )}
+              {/* Presentaciones y extras ya no se editan aquí: viven solo en su pestaña (antes el
+                  mismo control estaba en los dos lugares). */}
             </div>
           )}
         </div>
@@ -2096,11 +2081,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 placeholder="Detalle del servicio"
               />
             </div>
-            {/* Un servicio puede tener presentaciones igual que un producto (ej. "Corte
-                simple" / "Corte + barba", "Consulta 30min" / "Consulta 1h") — el checkbox de
-                stock inicial del modal se oculta solo (showInitialStock depende de
-                form.manage_stock, que un servicio nunca tiene en true). */}
-            {renderPresentationsSection('Tiene presentaciones (ej. duración, nivel, tipo)')}
+            {/* Las presentaciones del servicio (ej. "Corte simple" / "Corte + barba") se editan
+                en su pestaña "Presentaciones", igual que en productos. */}
           </div>
         )}
         </>}
@@ -2108,59 +2090,53 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         {activeTab === 'modificadores' && (
           panelLoading ? (
             <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" /></div>
-          ) : !editing ? (
-            // Alta: el mismo control de presentaciones (estado `presentations`), que se registra
-            // junto con el producto al presionar Guardar.
-            <div className="text-sm space-y-4">
+          ) : (
+            // ÚNICO lugar donde se editan presentaciones y extras (antes también estaban en
+            // General → Más opciones, con el mismo estado, y aquí los extras eran una lista de solo
+            // lectura). Todo es estado del formulario: sirve igual al crear y al editar, y se
+            // guarda con el Guardar de abajo.
+            <div className="text-sm space-y-5">
               <div className="space-y-2">
                 <p className="font-medium text-gray-700">Presentaciones</p>
                 {renderPresentationsSection(pageMode === 'service'
                   ? 'Tiene presentaciones (ej. duración, nivel, tipo)'
                   : 'Tiene presentaciones (tamaño, empaque, etc.)')}
               </div>
-              {pageMode === 'service' ? null : (
-                <p className="text-gray-500">
-                  {form.has_modifiers
-                    ? 'Los grupos de extras se eligen en General → Más opciones.'
-                    : 'Este producto no usa extras.'}
-                </p>
-              )}
-            </div>
-          ) : panelDetail && (
-            <div className="text-sm space-y-4">
-              {/* Antes era una lista de solo lectura (sin forma de quitar nada) y la edición real
-                  estaba escondida en General → Más opciones: al editar un producto, en la pestaña
-                  que se llama "Presentaciones" no había cómo eliminarlas. Ahora es el mismo control
-                  editable de General (mismo estado `presentations`), y esta pestaña también muestra
-                  Guardar. */}
-              <div className="space-y-2">
-                <p className="font-medium text-gray-700">Presentaciones</p>
-                {renderPresentationsSection(pageMode === 'service'
-                  ? 'Tiene presentaciones (ej. duración, nivel, tipo)'
-                  : 'Tiene presentaciones (tamaño, empaque, etc.)')}
-              </div>
-              {pageMode === 'service' ? null : panelDetail.data.has_modifiers ? (
-                <div className="space-y-3">
-                  <p className="text-gray-500">Grupos asignados y opciones:</p>
-                  {(panelDetail.modifier_group_ids ?? []).length === 0 ? (
-                    <p className="text-gray-400">Ninguno. Edita el producto para asignar grupos.</p>
-                  ) : (
-                    <ul className="space-y-2">
-                      {(panelDetail.modifier_group_ids ?? []).map(gid => {
-                        const g = modifierGroups.find(m => m.id === gid)
-                        if (!g) return <li key={gid}>ID {gid}</li>
-                        return (
-                          <li key={gid} className="border border-gray-100 rounded-lg p-2">
-                            <p className="font-medium text-gray-800">{g.name}</p>
-                            <p className="text-xs text-gray-500">Opciones: {(g.options ?? []).map(o => o.name + (o.extra_price ? ` (+S/ ${Number(o.extra_price).toFixed(2)})` : '')).join(', ') || '—'}</p>
-                          </li>
-                        )
-                      })}
-                    </ul>
+              {pageMode === 'product' && (
+                <div className="space-y-2">
+                  <p className="font-medium text-gray-700">Extras / adicionales</p>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={form.has_modifiers ?? false} onChange={e => setF('has_modifiers', e.target.checked)} className="rounded" />
+                    <span className="text-sm text-gray-700">Tiene extras / adicionales</span>
+                  </label>
+                  {form.has_modifiers && modifierGroups.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-gray-600">Grupos de extras</p>
+                      {modifierGroups.map(g => (
+                        <label key={g.id} className="flex items-start gap-2 border border-gray-100 rounded-lg p-2 cursor-pointer hover:bg-gray-50">
+                          <input
+                            type="checkbox"
+                            checked={(form.modifier_group_ids ?? []).includes(g.id)}
+                            onChange={e => {
+                              const ids = form.modifier_group_ids ?? []
+                              setF('modifier_group_ids', e.target.checked ? [...ids, g.id] : ids.filter(id => id !== g.id))
+                            }}
+                            className="rounded mt-0.5"
+                          />
+                          <span className="min-w-0">
+                            <span className="block font-medium text-gray-800">{g.name}</span>
+                            <span className="block text-xs text-gray-500">
+                              Opciones: {(g.options ?? []).map(o => o.name + (o.extra_price ? ` (+S/ ${Number(o.extra_price).toFixed(2)})` : '')).join(', ') || '—'}
+                            </span>
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  {form.has_modifiers && modifierGroups.length === 0 && (
+                    <p className="text-xs text-amber-600">Crea grupos con el botón &quot;Grupos de extras&quot; de la lista de productos y asígnalos aquí.</p>
                   )}
                 </div>
-              ) : (
-                <p className="text-gray-500">Este producto no usa extras.</p>
               )}
             </div>
           )
