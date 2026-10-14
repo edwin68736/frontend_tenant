@@ -216,6 +216,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const [presentations, setPresentations] = useState<ProductPresentation[]>([])
   const [showPresentationsModal, setShowPresentationsModal] = useState(false)
   const [branchPricesOpen, setBranchPricesOpen] = useState(false)
+  /** Alta en curso + clic en "Precio por sucursal": confirmar antes de registrar el producto. */
+  const [confirmRegisterForBranchPrices, setConfirmRegisterForBranchPrices] = useState(false)
 
   // Panel avanzado — unificado con el modal de alta/edición (una sola pantalla con pestañas, en
   // vez de "Editar" + "Administrar" abriendo dos modales separados que a su vez abrían otros
@@ -767,10 +769,12 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   }
 
   /** Si el producto ya existe (`editing`), no hace nada. Si es un alta en curso, lo guarda de
-   * inmediato con los datos ya cargados en "General" — igual que el sistema anterior, donde
-   * unidades de venta/precios por sucursal/atributos se configuran en el mismo alta sin un paso
-   * explícito de "guardar y reabrir". Se dispara al intentar abrir una pestaña que requiere un
-   * producto ya persistido (Unidades de venta, Atributos). */
+   * inmediato con los datos ya cargados en "General", para poder configurar lo que necesita un
+   * producto ya persistido (unidades de venta, atributos, precios por sucursal: endpoints REST
+   * propios por productId). Solo se llama por una acción EXPLÍCITA del usuario ("Registrar
+   * producto y continuar" en esas pestañas, o confirmar el aviso de precios por sucursal): antes
+   * se disparaba solo con cambiar de pestaña — incluida Presentaciones, que no lo necesita — y el
+   * producto quedaba registrado a mitad de llenar el formulario sin que el usuario lo pidiera. */
   const ensureProductCreated = async (): Promise<boolean> => {
     if (editing) return true
     const payload = buildPayload()
@@ -796,15 +800,18 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     } finally {
       setPanelLoading(false)
     }
-    toast.success('Producto creado — ya puedes agregar unidades de venta, atributos, etc.')
+    toast.success(pageMode === 'service' ? 'Servicio registrado' : 'Producto registrado')
     load()
     return true
   }
 
-  /** Precio por sucursal de un producto "normal": mismo patrón que las pestañas Unidades/Atributos
-   * (ensureProductCreated) — si es un alta en curso, guarda primero con lo cargado en General. */
+  /** Precio por sucursal: necesita el producto ya registrado. En un alta se pide confirmación
+   * antes de registrarlo (ver ensureProductCreated), nunca se registra en silencio. */
   const openBranchPrices = async () => {
-    if (!(await ensureProductCreated())) return
+    if (!editing) {
+      setConfirmRegisterForBranchPrices(true)
+      return
+    }
     setBranchPricesOpen(true)
   }
 
@@ -1629,12 +1636,12 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               : 'Nuevo producto'}
         </h3>
 
-        {/* Pestañas: visibles también al crear — como en el sistema anterior, las unidades de
-            venta/precios por sucursal/atributos se configuran en la misma alta. Si el producto
-            todavía no existe, abrir una pestaña distinta de "General" lo guarda primero con los
-            datos ya cargados (ver ensureProductCreated). */}
+        {/* Pestañas: visibles también al crear. Cambiar de pestaña NUNCA registra el producto: se
+            registra con Guardar. Unidades de venta y Atributos necesitan el producto ya registrado
+            y, en un alta, muestran un botón explícito para hacerlo (ver ensureProductCreated).
+            Stock no aplica hasta que el producto exista. */}
         <div className="flex gap-1 border-b border-gray-100 pb-2 overflow-x-auto -mt-1">
-          {(pageMode === 'service'
+          {(pageMode === 'service' || !editing
             ? (['general', 'modificadores', 'unidades', 'atributos'] as const)
             : (['general', 'modificadores', 'unidades', 'atributos', 'stock'] as const)
           ).map((tab) => (
@@ -1642,10 +1649,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               key={tab}
               type="button"
               disabled={saving}
-              onClick={async () => {
-                if (tab !== 'general' && !(await ensureProductCreated())) return
-                setActiveTab(tab)
-              }}
+              onClick={() => setActiveTab(tab)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap disabled:opacity-50 ${
                 activeTab === tab ? 'bg-[rgb(var(--p100))] text-[rgb(var(--p700))]' : 'text-gray-600 hover:bg-gray-100'
               }`}
@@ -2104,6 +2108,24 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         {activeTab === 'modificadores' && (
           panelLoading ? (
             <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" /></div>
+          ) : !editing ? (
+            // Alta: el mismo control de presentaciones (estado `presentations`), que se registra
+            // junto con el producto al presionar Guardar.
+            <div className="text-sm space-y-4">
+              <div className="space-y-2">
+                <p className="font-medium text-gray-700">Presentaciones</p>
+                {renderPresentationsSection(pageMode === 'service'
+                  ? 'Tiene presentaciones (ej. duración, nivel, tipo)'
+                  : 'Tiene presentaciones (tamaño, empaque, etc.)')}
+              </div>
+              {pageMode === 'service' ? null : (
+                <p className="text-gray-500">
+                  {form.has_modifiers
+                    ? 'Los grupos de extras se eligen en General → Más opciones.'
+                    : 'Este producto no usa extras.'}
+                </p>
+              )}
+            </div>
           ) : panelDetail && (
             <div className="text-sm space-y-4">
               {/* Antes era una lista de solo lectura (sin forma de quitar nada) y la edición real
@@ -2142,6 +2164,24 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               )}
             </div>
           )
+        )}
+
+        {(activeTab === 'unidades' || activeTab === 'atributos') && !editing && (
+          <div className="rounded-xl border border-[rgb(var(--p200))] bg-[rgb(var(--p50))]/40 p-4 text-sm space-y-3">
+            <p className="text-gray-700">
+              {activeTab === 'unidades' ? 'Las unidades de venta' : 'Los atributos'} se configuran sobre un{' '}
+              {pageMode === 'service' ? 'servicio' : 'producto'} ya registrado. Completa los datos de General y
+              regístralo para continuar aquí, o usa Guardar desde General y configúralo después al editar.
+            </p>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void ensureProductCreated()}
+              className="px-4 py-2 rounded-xl bg-[rgb(var(--p600))] text-white text-sm font-medium disabled:opacity-50"
+            >
+              {saving ? 'Registrando...' : `Registrar ${pageMode === 'service' ? 'servicio' : 'producto'} y continuar`}
+            </button>
+          </div>
         )}
 
         {activeTab === 'unidades' && editing && (
@@ -2226,7 +2266,9 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         )}
 
         </div>
-        {activeTab === 'general' || activeTab === 'modificadores' ? (
+        {/* En un alta, todas las pestañas muestran Guardar: un "Cerrar" a secas descartaría lo
+            ya llenado en General. */}
+        {activeTab === 'general' || activeTab === 'modificadores' || !editing ? (
         <div className="modal-footer-safe shrink-0 border-t border-gray-100 px-4 sm:px-6 md:px-7 pt-3 bg-white flex flex-row gap-2">
           <button type="button" onClick={closeProductModal} disabled={saving || uploadingImage} className="touch-target sm:min-h-0 flex-1 py-2.5 sm:py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 font-medium disabled:opacity-50">Cancelar</button>
           <button type="button" onClick={handleSave} disabled={saving || uploadingImage} className="touch-target sm:min-h-0 flex-1 py-2.5 sm:py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50">
@@ -2542,6 +2584,22 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           </div>
         </Modal>
       )}
+
+      <ConfirmDialog
+        open={confirmRegisterForBranchPrices}
+        onClose={() => {
+          if (!saving) setConfirmRegisterForBranchPrices(false)
+        }}
+        onConfirm={async () => {
+          const ok = await ensureProductCreated()
+          setConfirmRegisterForBranchPrices(false)
+          if (ok) setBranchPricesOpen(true)
+        }}
+        title="Registrar el producto"
+        message="Los precios por sucursal se configuran sobre un producto ya registrado. ¿Registrarlo ahora con los datos cargados? Podrás seguir editándolo."
+        confirmLabel="Registrar y continuar"
+        loading={saving}
+      />
 
       <ConfirmDialog
         open={!!deleteTarget}
