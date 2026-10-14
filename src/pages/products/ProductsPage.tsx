@@ -168,6 +168,12 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [bulkActionInProgress, setBulkActionInProgress] = useState(false)
   const [bulkToggleOpen, setBulkToggleOpen] = useState(false)
+  /** Acción masiva "Asignar a sucursal…" (tenant_product_branches). */
+  const [bulkBranchesOpen, setBulkBranchesOpen] = useState(false)
+  const [bulkBranchIds, setBulkBranchIds] = useState<number[]>([])
+  const [bulkBranchMode, setBulkBranchMode] = useState<'set' | 'add' | 'all'>('set')
+  /** Listado: false = solo productos de la sucursal activa (por defecto); true = todo el catálogo. */
+  const [showAllBranches, setShowAllBranches] = useState(false)
   const [bulkRestaurantConfirm, setBulkRestaurantConfirm] = useState<boolean | null>(null)
   const [bulkDigitalConfirm, setBulkDigitalConfirm] = useState<boolean | null>(null)
   const [bulkStockConfirm, setBulkStockConfirm] = useState<boolean | null>(null)
@@ -187,6 +193,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const [showMoreOptions, setShowMoreOptions] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
   const [form, setForm] = useState<CreateProductInput>(() => emptyForm(pageMode, units))
+  /** "Disponible en": false = todas las sucursales; true = solo las de form.branch_ids. */
+  const [branchRestrict, setBranchRestrict] = useState(false)
   const [saving, setSaving] = useState(false)
   const [newCatName, setNewCatName] = useState('')
   const [addingCat, setAddingCat] = useState(false)
@@ -287,7 +295,9 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     // vinculado (alta en esa sucursal, o recibido por una transferencia); sin esto, el mismo
     // producto aparecía en todas las sucursales aunque nunca se le haya asignado stock ahí.
     // Los servicios/productos sin control de stock (manage_stock=false) siguen viéndose en todas.
-    const stockBranchId = pageMode === 'product' && activeBranchId > 0 ? activeBranchId : undefined
+    // Productos y servicios con sucursales asignadas ("Disponible en") también se filtran aquí; con
+    // "Ver todas las sucursales" se lista el catálogo completo.
+    const stockBranchId = activeBranchId > 0 && !showAllBranches ? activeBranchId : undefined
     return productsService
       // Los combos se administran en /products/combos: aquí solo el catálogo suelto.
       .list(listSearchQuery, catFilter, undefined, !onlyInactive, page, perPage, undefined, pageMode, stockBranchId, true, brandFilter, onlyInactive)
@@ -336,7 +346,13 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   useEffect(() => {
     void load()
     setSelectedIds(new Set())
-  }, [listSearchQuery, catFilter, brandFilter, onlyInactive, page, perPage, pageMode, activeBranchId])
+  }, [listSearchQuery, catFilter, brandFilter, onlyInactive, page, perPage, pageMode, activeBranchId, showAllBranches])
+
+  // Todas las sucursales del tenant (no solo las del usuario): las usan "Disponible en" del
+  // formulario —también al crear— y la acción masiva "Asignar a sucursal…".
+  useEffect(() => {
+    companyService.listBranches().then((b) => setBranches(b ?? [])).catch(() => {})
+  }, [])
 
   // Nota: se removió el refetch automático al volver a la pestaña (visibilitychange).
   // Provocaba recargas y 3-4 peticiones al backend cada vez que se cambiaba de pestaña.
@@ -350,7 +366,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const handleExport = async () => {
     setExporting(true)
     try {
-      const stockBranchId = pageMode === 'product' && activeBranchId > 0 ? activeBranchId : undefined
+      const stockBranchId = activeBranchId > 0 && !showAllBranches ? activeBranchId : undefined
       const all: Product[] = []
       let p = 1
       const per = 100
@@ -403,7 +419,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const openNew = () => {
     clearPendingImage()
     setEditing(null)
-    setForm({ ...emptyForm(pageMode, units), code: generateRandomProductCode() })
+    setForm({ ...emptyForm(pageMode, units), code: generateRandomProductCode(), branch_ids: [] })
+    setBranchRestrict(false)
     setPresentations([])
     setShowMoreOptions(false)
     setActiveTab('general')
@@ -440,7 +457,10 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       has_modifiers: p.has_modifiers ?? false,
       modifier_group_ids: [],
       active: p.active,
+      // undefined hasta que llegue el detalle: si se guarda antes, el backend no toca las sucursales.
+      branch_ids: undefined,
     })
+    setBranchRestrict(false)
     setShow(true)
     setShowMoreOptions(false)
     setPresentations([])
@@ -463,7 +483,9 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         ...f,
         modifier_group_ids: detail.modifier_group_ids ?? [],
         preparation_area: detail.data.preparation_area ?? '',
+        branch_ids: detail.branch_ids ?? [],
       }))
+      setBranchRestrict((detail.branch_ids ?? []).length > 0)
       setPresentations(detail.presentations ?? [])
       setBranches(b ?? [])
       setStockRows(Array.isArray(stock) ? stock : [])
@@ -498,6 +520,63 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
 
   /** Checkbox + resumen + botón "Gestionar presentaciones". Se usa en General (producto y
    *  servicio) y en la pestaña Presentaciones — siempre sobre el mismo estado `presentations`. */
+  /** Sección "Disponible en" (tenant_product_branches): en qué sucursales se vende el producto,
+   * controle stock o no. Solo se muestra con más de una sucursal. */
+  const renderBranchAvailability = () => {
+    if (branches.length <= 1 || form.branch_ids === undefined) return null
+    const selected = form.branch_ids
+    const label = pageMode === 'service' ? 'servicio' : 'producto'
+    return (
+      <div className="border border-gray-100 rounded-xl p-3 space-y-2">
+        <p className="text-xs font-medium text-gray-600">Disponible en</p>
+        <div className="flex flex-wrap gap-x-4 gap-y-1">
+          <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+            <input type="radio" checked={!branchRestrict} onChange={() => setBranchRestrict(false)} />
+            Todas las sucursales
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+            <input
+              type="radio"
+              checked={branchRestrict}
+              onChange={() => {
+                setBranchRestrict(true)
+                // Al restringir por primera vez, propone la sucursal activa.
+                if (selected.length === 0 && activeBranchId > 0) setF('branch_ids', [activeBranchId])
+              }}
+            />
+            Solo en algunas sucursales
+          </label>
+        </div>
+        {branchRestrict && (
+          <>
+            <div className="flex flex-wrap gap-2">
+              {branches.map((b) => (
+                <label
+                  key={b.id}
+                  className="inline-flex items-center gap-1.5 px-2 py-1 border border-gray-200 rounded-lg text-xs cursor-pointer hover:bg-gray-50"
+                >
+                  <input
+                    type="checkbox"
+                    className="rounded"
+                    checked={selected.includes(b.id)}
+                    onChange={(e) =>
+                      setF('branch_ids', e.target.checked ? [...selected, b.id] : selected.filter((id) => id !== b.id))
+                    }
+                  />
+                  <span>{b.name}</span>
+                </label>
+              ))}
+            </div>
+            <p className="text-[11px] text-gray-500">
+              El {label} solo aparece y se vende en las sucursales marcadas. Si entra stock en otra (compra o
+              transferencia), se agrega a esa sucursal automáticamente.
+            </p>
+          </>
+        )}
+      </div>
+    )
+  }
+
   const renderPresentationsSection = (label: string) => {
     const named = presentations.filter(p => p.name.trim())
     return (
@@ -632,6 +711,14 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       form.code = suggested
     }
     const payload: CreateProductInput = { ...form, type: pageMode === 'service' ? 'service' : 'product' }
+    // "Disponible en": [] = todas. undefined (edición con el detalle aún sin cargar) = no tocar.
+    if (form.branch_ids !== undefined) {
+      if (branchRestrict && form.branch_ids.length === 0) {
+        toast.error('Elige al menos una sucursal en «Disponible en», o marca «Todas las sucursales»')
+        return null
+      }
+      payload.branch_ids = branchRestrict ? form.branch_ids : []
+    }
     if (pageMode === 'service' || payload.type === 'service') {
       payload.type = 'service'
       payload.unit = 'ZZ'
@@ -896,6 +983,27 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       toast.success(`${result.deleted.length} eliminado(s), ${result.blocked.length} bloqueado(s)`)
     } else if (result.blocked.length > 0) {
       toast.error('Ningún producto pudo eliminarse')
+    }
+  }
+
+  const handleBulkBranches = async () => {
+    if (bulkBranchMode !== 'all' && bulkBranchIds.length === 0) {
+      toast.error('Elige al menos una sucursal')
+      return
+    }
+    setBulkActionInProgress(true)
+    try {
+      const mode = bulkBranchMode === 'add' ? 'add' : 'set'
+      const ids = bulkBranchMode === 'all' ? [] : bulkBranchIds
+      const result = await productsService.bulkBranches([...selectedIds], ids, mode)
+      toast.success(`Sucursales actualizadas en ${result.updated} producto(s)`)
+      setSelectedIds(new Set())
+      setBulkBranchesOpen(false)
+      load()
+    } catch (e: any) {
+      toast.error(e?.response?.data?.error ?? 'Error al asignar sucursales')
+    } finally {
+      setBulkActionInProgress(false)
     }
   }
 
@@ -1177,6 +1285,12 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           <input type="checkbox" checked={onlyInactive} onChange={e => setOnlyInactive(e.target.checked)} className="rounded" />
           Solo inactivos
         </label>
+        {branches.length > 1 && (
+          <label className="flex items-center gap-2 cursor-pointer px-3 py-2 text-sm text-gray-700" title="Por defecto se listan solo los de la sucursal activa">
+            <input type="checkbox" checked={showAllBranches} onChange={e => setShowAllBranches(e.target.checked)} className="rounded" />
+            Ver todas las sucursales
+          </label>
+        )}
         <div className="flex items-center gap-2">
           <span className="text-sm text-gray-600 whitespace-nowrap">Mostrar</span>
           <select
@@ -1277,6 +1391,12 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
             <input type="checkbox" checked={onlyInactive} onChange={e => setOnlyInactive(e.target.checked)} className="rounded" />
             Solo inactivos
           </label>
+          {branches.length > 1 && (
+            <label className="flex items-center gap-2 cursor-pointer px-3 py-2 text-sm text-gray-700" title="Por defecto se listan solo los de la sucursal activa">
+              <input type="checkbox" checked={showAllBranches} onChange={e => setShowAllBranches(e.target.checked)} className="rounded" />
+              Ver todas las sucursales
+            </label>
+          )}
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-600 whitespace-nowrap">Mostrar</span>
             <select
@@ -1342,6 +1462,21 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               <Eye size={14} />
               Mostrar en catálogo
             </button>
+            {branches.length > 1 && (
+              <button
+                type="button"
+                disabled={bulkActionInProgress}
+                onClick={() => {
+                  setBulkBranchIds(activeBranchId > 0 ? [activeBranchId] : [])
+                  setBulkBranchMode('set')
+                  setBulkBranchesOpen(true)
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-teal-600 text-white hover:bg-teal-700 disabled:opacity-50"
+              >
+                <Store size={14} />
+                Asignar a sucursal…
+              </button>
+            )}
             {pageMode === 'product' && (
               <button
                 type="button"
@@ -2045,6 +2180,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           </div>
         )}
 
+        {renderBranchAvailability()}
+
         {/* Más opciones (colapsable) — solo catálogo de productos */}
         {pageMode === 'product' && (
         <div className="border border-gray-100 rounded-xl overflow-hidden">
@@ -2394,6 +2531,68 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           onDone={handleBulkDeleteDone}
         />
       )}
+
+      <Modal
+        open={bulkBranchesOpen}
+        onClose={() => { if (!bulkActionInProgress) setBulkBranchesOpen(false) }}
+        contentClassName="max-w-md"
+      >
+        <div className="p-6 space-y-4">
+          <h2 className="text-lg font-semibold text-gray-900">Asignar a sucursal</h2>
+          <p className="text-sm text-gray-600">
+            ¿Dónde se venden los {selectedCount} {pageMode === 'service' ? 'servicio(s)' : 'producto(s)'} seleccionado(s)?
+          </p>
+          <div className="space-y-1.5 text-sm text-gray-700">
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input type="radio" className="mt-0.5" checked={bulkBranchMode === 'set'} onChange={() => setBulkBranchMode('set')} />
+              <span>Solo en las sucursales marcadas <span className="text-gray-400">(reemplaza lo que tenían)</span></span>
+            </label>
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input type="radio" className="mt-0.5" checked={bulkBranchMode === 'add'} onChange={() => setBulkBranchMode('add')} />
+              <span>Agregar las sucursales marcadas <span className="text-gray-400">(conserva las que ya tenían)</span></span>
+            </label>
+            <label className="flex items-start gap-2 cursor-pointer">
+              <input type="radio" className="mt-0.5" checked={bulkBranchMode === 'all'} onChange={() => setBulkBranchMode('all')} />
+              <span>En todas las sucursales</span>
+            </label>
+          </div>
+          {bulkBranchMode !== 'all' && (
+            <div className="flex flex-wrap gap-2">
+              {branches.map((b) => (
+                <label key={b.id} className="inline-flex items-center gap-1.5 px-2 py-1 border border-gray-200 rounded-lg text-xs cursor-pointer hover:bg-gray-50">
+                  <input
+                    type="checkbox"
+                    className="rounded"
+                    checked={bulkBranchIds.includes(b.id)}
+                    onChange={(e) =>
+                      setBulkBranchIds((prev) => (e.target.checked ? [...prev, b.id] : prev.filter((id) => id !== b.id)))
+                    }
+                  />
+                  <span>{b.name}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-3">
+            <button
+              type="button"
+              disabled={bulkActionInProgress}
+              onClick={() => setBulkBranchesOpen(false)}
+              className="flex-1 px-4 py-2 border border-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              disabled={bulkActionInProgress}
+              onClick={() => void handleBulkBranches()}
+              className="flex-1 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white font-medium rounded-lg disabled:opacity-50"
+            >
+              {bulkActionInProgress ? 'Guardando...' : 'Aplicar'}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         open={bulkToggleOpen}

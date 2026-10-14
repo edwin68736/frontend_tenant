@@ -50,6 +50,7 @@ export const CATALOG_IMPORT_COLUMNS = [
   'area_preparacion',
   'tipo',
   'fecha_vencimiento',
+  'sucursales',
 ] as const
 
 const HEADER_ALIASES: Record<string, (typeof CATALOG_IMPORT_COLUMNS)[number]> = {
@@ -120,6 +121,10 @@ const HEADER_ALIASES: Record<string, (typeof CATALOG_IMPORT_COLUMNS)[number]> = 
   expiry_date: 'fecha_vencimiento',
   expiry: 'fecha_vencimiento',
   expiration_date: 'fecha_vencimiento',
+  sucursales: 'sucursales',
+  sucursal: 'sucursales',
+  branches: 'sucursales',
+  disponible_en: 'sucursales',
 }
 
 function normalizeOptionalPreparationArea(value: unknown): string {
@@ -188,6 +193,8 @@ export const CATALOG_PRODUCT_IMPORT_SCHEMA: SchemaDefinition = {
   categoria: { column: 'categoria', type: 'string', max: 120 },
   /** Opcional: si viene, busca la marca por nombre (sin distinguir mayúsculas) y la crea si no existe. */
   marca: { column: 'marca', type: 'string', max: 120 },
+  /** Opcional: sucursales donde se vende (nombres separados por coma; «todas» = todas). Vacío = no cambiar. */
+  sucursales: { column: 'sucursales', type: 'string', max: 500 },
   /** SUNAT: 10 gravado, 20 exonerado, 30 inafecto, 40 exportación. Vacío = 10. */
   afectacion_igv: {
     column: 'afectacion_igv',
@@ -255,6 +262,8 @@ export type ParsedCatalogImportRow = {
   unidad: string
   categoria: string
   marca: string
+  /** Nombres de sucursales separados por coma, o «todas». Vacío = no cambiar. */
+  sucursales: string
   afectacion_igv: string
   precio_incluye_igv: boolean
   control_stock: boolean
@@ -380,6 +389,7 @@ export async function downloadCatalogProductTemplate(): Promise<void> {
     '',
     'product',
     '2026-12-31',
+    '', // sucursales: vacío = todas (o p. ej. «Principal, Norte»)
   ]
   const bytes = await writeXlsx({
     sheets: [{ name: 'Productos', rows: [headerRow, exampleRow] }],
@@ -437,6 +447,7 @@ export async function exportCatalogProductsToExcel(
     r.preparation_area ?? '',
     r.type === 'service' ? 'service' : 'product',
     r.expiry_date ?? '',
+    '', // sucursales: vacío = al reimportar no cambia la asignación
   ])
   const bytes = await writeXlsx({
     sheets: [{ name: 'Productos', rows: [headerRow, ...dataRows] }],
@@ -621,6 +632,7 @@ export async function validateCatalogProductExcel(file: File): Promise<ImportVal
       unidad: normalizeSunatUnit(String(row.unidad ?? ''), tipo),
       categoria: String(row.categoria ?? '').trim(),
       marca: String(row.marca ?? '').trim(),
+      sucursales: String(row.sucursales ?? '').trim(),
       afectacion_igv: afectacionIgv,
       precio_incluye_igv: parseExcelBoolean(row.precio_incluye_igv),
       control_stock: controlStock,
@@ -648,6 +660,7 @@ function rowToBulkPayload(row: ParsedCatalogImportRow, hasExpiryColumn: boolean)
     unit: row.unidad,
     category_name: row.categoria || undefined,
     brand_name: row.marca || undefined,
+    ...(row.sucursales ? { branch_names: row.sucursales } : {}),
     igv_affectation_type: row.afectacion_igv,
     price_includes_igv: row.precio_incluye_igv,
     manage_stock: row.control_stock,

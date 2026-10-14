@@ -229,6 +229,8 @@ export interface CreateProductInput {
   brand_id?: number | null
   modifier_group_ids?: number[]
   presentations?: ProductPresentation[]
+  /** Sucursales donde se vende. [] = todas. En edición, omitir = no cambiar. */
+  branch_ids?: number[]
   /** Solo para edición: enviar para no cambiar el estado activo por defecto */
   active?: boolean
 }
@@ -253,6 +255,8 @@ export interface ProductDetailResponse {
   presentations?: ProductPresentation[]
   /** Presente cuando el producto es un combo. */
   combo_groups?: ComboGroup[]
+  /** Sucursales donde se vende; [] = todas. */
+  branch_ids?: number[]
 }
 
 /**
@@ -345,6 +349,8 @@ export interface BulkImportItemPayload {
   category_name?: string
   /** Opcional: si viene, busca la marca por nombre (sin distinguir mayúsculas) y la crea si no existe. */
   brand_name?: string
+  /** Opcional: sucursales donde se vende (nombres separados por coma, o «todas»). Omitir = no cambiar. */
+  branch_names?: string
   igv_affectation_type?: string
   price_includes_igv?: boolean
   manage_stock?: boolean
@@ -520,6 +526,7 @@ export const productsService = {
       modifier_group_ids: r.data.modifier_group_ids ?? [],
       presentations: r.data.presentations ?? [],
       combo_groups: r.data.combo_groups ?? [],
+      branch_ids: r.data.branch_ids ?? [],
     })),
 
   bulkImportCatalog: (items: BulkImportItemPayload[], branchId?: number) =>
@@ -721,6 +728,16 @@ export const productsService = {
 
   deleteCategoryImage: (categoryId: number) =>
     api.delete(`/api/categories/${categoryId}/image`).then(() => undefined),
+
+  /** Asigna sucursales a varios productos. set: reemplaza ([] = todas); add: agrega a las que tenían. */
+  bulkBranches: (productIds: number[], branchIds: number[], mode: 'set' | 'add') =>
+    api
+      .patch<{ success: boolean; updated: number }>('/api/products/bulk-branches', {
+        product_ids: productIds,
+        branch_ids: branchIds,
+        mode,
+      })
+      .then(r => r.data),
 
   /** Activa/desactiva múltiples productos */
   bulkToggle: (productIds: number[]) =>
