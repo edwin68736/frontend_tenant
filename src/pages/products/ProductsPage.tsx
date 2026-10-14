@@ -479,6 +479,76 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
 
   const setF = (k: keyof CreateProductInput, v: any) => setForm(f => ({ ...f, [k]: v }))
 
+  /** Stock actual por presentación (todas las sucursales), para avisar en el gestor que una
+   *  presentación con stock no se puede quitar (el backend lo rechaza al guardar). */
+  const stockByPresentation = useMemo(() => {
+    const out: Record<number, number> = {}
+    for (const s of stockRows) {
+      if (!s.presentation_id) continue
+      out[s.presentation_id] = (out[s.presentation_id] ?? 0) + Number(s.quantity || 0)
+    }
+    return out
+  }, [stockRows])
+
+  /** Quitar todas las filas en el gestor equivale a dejar de usar presentaciones: antes quedaba
+   *  has_variants=true con la lista vacía y Guardar fallaba con «Agrega al menos una presentación»,
+   *  así que la única forma de borrar la última era desmarcar el checkbox (poco evidente). */
+  const handlePresentationsSaved = (rows: ProductPresentation[]) => {
+    setPresentations(rows)
+    if (rows.length === 0) setF('has_variants', false)
+  }
+
+  /** Checkbox + resumen + botón "Gestionar presentaciones". Se usa en General (producto y
+   *  servicio) y en la pestaña Presentaciones — siempre sobre el mismo estado `presentations`. */
+  const renderPresentationsSection = (label: string) => {
+    const named = presentations.filter(p => p.name.trim())
+    return (
+      <>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={form.has_variants ?? false}
+            onChange={e => {
+              const checked = e.target.checked
+              setF('has_variants', checked)
+              if (!checked) setPresentations([])
+            }}
+            className="rounded"
+          />
+          <span className="text-sm text-gray-700">{label}</span>
+        </label>
+        {form.has_variants && (
+          <div className="rounded-xl border border-[rgb(var(--p200))] bg-[rgb(var(--p50))]/40 px-3 py-2.5 space-y-2">
+            {named.length > 0 ? (
+              <ul className="space-y-1">
+                {named.map((pres, i) => (
+                  <li key={pres.id ?? `new-${i}`} className="text-gray-600 text-xs border border-gray-100 bg-white rounded-lg px-2 py-1.5 flex justify-between gap-2">
+                    <span className="truncate">{pres.name} — S/ {Number(pres.sale_price).toFixed(2)}</span>
+                    {pres.id && (stockByPresentation[pres.id] ?? 0) > 0 && (
+                      <span className="text-amber-700 shrink-0">Stock: {stockByPresentation[pres.id]}</span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-gray-600">Aún no hay presentaciones. Configúralas antes de guardar.</p>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowPresentationsModal(true)}
+              className="w-full sm:w-auto px-4 py-2 rounded-xl text-sm font-medium border border-[rgb(var(--p300))] text-[rgb(var(--p700))] hover:bg-[rgb(var(--p100))]"
+            >
+              Gestionar presentaciones
+            </button>
+            {editing && (
+              <p className="text-[11px] text-gray-500">Los cambios (agregar, editar o quitar) se aplican al presionar Guardar.</p>
+            )}
+          </div>
+        )}
+      </>
+    )
+  }
+
   const handleAddCategory = async () => {
     if (!newCatName.trim()) return
     try {
@@ -717,6 +787,9 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         companyService.listBranches(),
       ])
       setPanelDetail(detail)
+      // Las presentaciones del alta ya tienen id: sin esto, el siguiente Guardar las mandaba sin id
+      // (el backend las empareja por nombre, pero el gestor no podía mostrar su stock).
+      setPresentations(detail.presentations ?? [])
       setBranches(b ?? [])
     } catch {
       // Igual que openEdit: si el GET falla, seguimos con lo que ya tenemos.
@@ -1978,35 +2051,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 <input type="checkbox" checked={form.manage_series ?? false} onChange={e => setF('manage_series', e.target.checked)} className="rounded" />
                 <span className="text-sm text-gray-700">Maneja series/lotes</span>
               </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={form.has_variants ?? false}
-                  onChange={e => {
-                    const checked = e.target.checked
-                    setF('has_variants', checked)
-                    if (!checked) setPresentations([])
-                  }}
-                  className="rounded"
-                />
-                <span className="text-sm text-gray-700">Tiene presentaciones (tamaño, empaque, etc.)</span>
-              </label>
-              {form.has_variants && (
-                <div className="rounded-xl border border-[rgb(var(--p200))] bg-[rgb(var(--p50))]/40 px-3 py-2.5 space-y-2">
-                  <p className="text-xs text-gray-600">
-                    {presentations.filter(p => p.name.trim()).length > 0
-                      ? `${presentations.filter(p => p.name.trim()).length} presentación(es) configurada(s).`
-                      : 'Aún no hay presentaciones. Configúralas antes de guardar.'}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setShowPresentationsModal(true)}
-                    className="w-full sm:w-auto px-4 py-2 rounded-xl text-sm font-medium border border-[rgb(var(--p300))] text-[rgb(var(--p700))] hover:bg-[rgb(var(--p100))]"
-                  >
-                    Gestionar presentaciones
-                  </button>
-                </div>
-              )}
+              {renderPresentationsSection('Tiene presentaciones (tamaño, empaque, etc.)')}
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={form.has_modifiers ?? false} onChange={e => setF('has_modifiers', e.target.checked)} className="rounded" />
                 <span className="text-sm text-gray-700">Tiene extras / adicionales</span>
@@ -2051,35 +2096,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 simple" / "Corte + barba", "Consulta 30min" / "Consulta 1h") — el checkbox de
                 stock inicial del modal se oculta solo (showInitialStock depende de
                 form.manage_stock, que un servicio nunca tiene en true). */}
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={form.has_variants ?? false}
-                onChange={e => {
-                  const checked = e.target.checked
-                  setF('has_variants', checked)
-                  if (!checked) setPresentations([])
-                }}
-                className="rounded"
-              />
-              <span className="text-sm text-gray-700">Tiene presentaciones (ej. duración, nivel, tipo)</span>
-            </label>
-            {form.has_variants && (
-              <div className="rounded-xl border border-[rgb(var(--p200))] bg-[rgb(var(--p50))]/40 px-3 py-2.5 space-y-2">
-                <p className="text-xs text-gray-600">
-                  {presentations.filter(p => p.name.trim()).length > 0
-                    ? `${presentations.filter(p => p.name.trim()).length} presentación(es) configurada(s).`
-                    : 'Aún no hay presentaciones. Configúralas antes de guardar.'}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setShowPresentationsModal(true)}
-                  className="w-full sm:w-auto px-4 py-2 rounded-xl text-sm font-medium border border-[rgb(var(--p300))] text-[rgb(var(--p700))] hover:bg-[rgb(var(--p100))]"
-                >
-                  Gestionar presentaciones
-                </button>
-              </div>
-            )}
+            {renderPresentationsSection('Tiene presentaciones (ej. duración, nivel, tipo)')}
           </div>
         )}
         </>}
@@ -2089,19 +2106,18 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
             <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" /></div>
           ) : panelDetail && (
             <div className="text-sm space-y-4">
-              {panelDetail.data.has_variants && (panelDetail.presentations ?? []).length > 0 && (
-                <div>
-                  <p className="font-medium text-gray-700 mb-1">Presentaciones</p>
-                  <ul className="space-y-1">
-                    {(panelDetail.presentations ?? []).map((pres, i) => (
-                      <li key={pres.id ?? i} className="text-gray-600 text-xs border border-gray-100 rounded-lg px-2 py-1.5">
-                        {pres.name} — S/ {Number(pres.sale_price).toFixed(2)}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {panelDetail.data.has_modifiers ? (
+              {/* Antes era una lista de solo lectura (sin forma de quitar nada) y la edición real
+                  estaba escondida en General → Más opciones: al editar un producto, en la pestaña
+                  que se llama "Presentaciones" no había cómo eliminarlas. Ahora es el mismo control
+                  editable de General (mismo estado `presentations`), y esta pestaña también muestra
+                  Guardar. */}
+              <div className="space-y-2">
+                <p className="font-medium text-gray-700">Presentaciones</p>
+                {renderPresentationsSection(pageMode === 'service'
+                  ? 'Tiene presentaciones (ej. duración, nivel, tipo)'
+                  : 'Tiene presentaciones (tamaño, empaque, etc.)')}
+              </div>
+              {pageMode === 'service' ? null : panelDetail.data.has_modifiers ? (
                 <div className="space-y-3">
                   <p className="text-gray-500">Grupos asignados y opciones:</p>
                   {(panelDetail.modifier_group_ids ?? []).length === 0 ? (
@@ -2121,13 +2137,9 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                     </ul>
                   )}
                 </div>
-              ) : !panelDetail.data.has_variants ? (
-                <p className="text-gray-500">
-                  {panelDetail.data.type === 'service'
-                    ? 'Este servicio no usa presentaciones.'
-                    : 'Este producto no usa presentaciones ni extras.'}
-                </p>
-              ) : null}
+              ) : (
+                <p className="text-gray-500">Este producto no usa extras.</p>
+              )}
             </div>
           )
         )}
@@ -2214,7 +2226,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         )}
 
         </div>
-        {activeTab === 'general' ? (
+        {activeTab === 'general' || activeTab === 'modificadores' ? (
         <div className="modal-footer-safe shrink-0 border-t border-gray-100 px-4 sm:px-6 md:px-7 pt-3 bg-white flex flex-row gap-2">
           <button type="button" onClick={closeProductModal} disabled={saving || uploadingImage} className="touch-target sm:min-h-0 flex-1 py-2.5 sm:py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 font-medium disabled:opacity-50">Cancelar</button>
           <button type="button" onClick={handleSave} disabled={saving || uploadingImage} className="touch-target sm:min-h-0 flex-1 py-2.5 sm:py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50">
@@ -2233,8 +2245,9 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         productName={form.name || editing?.name}
         presentations={presentations}
         onClose={() => setShowPresentationsModal(false)}
-        onSave={setPresentations}
+        onSave={handlePresentationsSaved}
         showInitialStock={Boolean(form.manage_stock)}
+        stockByPresentation={stockByPresentation}
       />
 
       {/* Modal Grupos de extras */}

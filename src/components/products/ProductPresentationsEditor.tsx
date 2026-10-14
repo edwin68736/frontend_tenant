@@ -1,4 +1,5 @@
 import { Plus, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 import type { ProductPresentation } from '@/services/products.service'
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 
@@ -10,14 +11,19 @@ type Props = {
    *  crear el producto como al agregar una presentación nueva en una edición posterior; las filas
    *  existentes ya tienen su stock y se corrigen con "Ajustar stock". */
   showInitialStock?: boolean
+  /** Stock actual (todas las sucursales) por id de presentación. Una presentación con stock no se
+   *  puede quitar — el backend lo rechaza al guardar (syncPresentations) porque ese stock quedaría
+   *  invisible sin ningún movimiento que lo explique —, así que se avisa acá, en el momento. */
+  stockByPresentation?: Record<number, number>
 }
 
 function emptyRow(): ProductPresentation {
   return { name: '', sale_price: 0 }
 }
 
-export function ProductPresentationsEditor({ presentations, onChange, embedded, showInitialStock }: Props) {
+export function ProductPresentationsEditor({ presentations, onChange, embedded, showInitialStock, stockByPresentation }: Props) {
   const rows = presentations.length > 0 ? presentations : [emptyRow()]
+  const stockOf = (row: ProductPresentation) => (row.id ? stockByPresentation?.[row.id] ?? 0 : 0)
 
   const setRow = (index: number, patch: Partial<ProductPresentation>) => {
     onChange(rows.map((r, i) => (i === index ? { ...r, ...patch } : r)))
@@ -26,6 +32,13 @@ export function ProductPresentationsEditor({ presentations, onChange, embedded, 
   const addRow = () => onChange([...rows, emptyRow()])
 
   const removeRow = (index: number) => {
+    const stock = stockOf(rows[index])
+    if (stock > 0) {
+      toast.error(
+        `No se puede quitar «${rows[index].name}»: todavía tiene ${stock} en stock. Ajuste su stock a 0 (Inventario → Ajustar stock) o transfiéralo, y luego quítela.`,
+      )
+      return
+    }
     if (rows.length <= 1) {
       onChange([emptyRow()])
       return
@@ -75,6 +88,9 @@ export function ProductPresentationsEditor({ presentations, onChange, embedded, 
                 placeholder="Ej. 500 ml, Caja x12"
                 className="w-full min-h-[44px] border border-gray-200 rounded-xl px-3 py-2 text-sm"
               />
+              {stockOf(row) > 0 && (
+                <p className="text-[10px] text-amber-700 mt-0.5">Stock: {stockOf(row)} — no se puede quitar mientras tenga stock</p>
+              )}
             </div>
             <div className="w-full sm:w-28 shrink-0">
               <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Precio S/</label>
