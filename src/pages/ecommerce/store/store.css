@@ -21,6 +21,7 @@
 @media (min-width: 768px) { .vs-wrap { padding-inline: 24px; } }
 .vs-scroll { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .vs-scroll::-webkit-scrollbar { display: none; }
+@media (hover: hover) { .vs-scroll { cursor: grab; } }
 
 /* aviso + cabecera */
 .vs-ann { background: var(--vs-ink); color: #fff; font-size: 12.5px; font-weight: 500; text-align: center; padding: 8px 16px; }
