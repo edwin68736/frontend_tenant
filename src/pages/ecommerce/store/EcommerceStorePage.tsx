@@ -26,6 +26,7 @@ import { readCart, addToCart, setCartQuantity, lineKey, cartCount, cartTotal, ty
 import StoreCartDrawer from './StoreCartDrawer'
 import ProductDetailModal, { productNeedsOptions, type ChosenLine } from './ProductDetailModal'
 import PriceRangeSlider from './PriceRangeSlider'
+import { useDragScroll } from './useDragScroll'
 import { buildStoreTheme, loadStoreFonts } from './storeTheme'
 import './store.css'
 
@@ -44,6 +45,7 @@ function formatStockQty(n: number): string {
 const LOW_STOCK = 5
 
 export default function EcommerceStorePage() {
+  const catsDragRef = useDragScroll<HTMLElement>()
   const [settings, setSettings] = useState<PublicStoreSettings | null>(null)
   const [categories, setCategories] = useState<PublicCategory[]>([])
   const [products, setProducts] = useState<ProductReportRow[]>([])
@@ -384,7 +386,7 @@ export default function EcommerceStorePage() {
               </div>
             </div>
             {categoryStyle === 'tiles' ? (
-              <nav className="vs-cats vs-scroll" aria-label="Categorías">
+              <nav ref={catsDragRef} className="vs-cats vs-scroll" aria-label="Categorías">
                 <button type="button" className={`vs-cat ${categoryId === null ? 'on' : ''}`} onClick={() => setCategoryId(null)}>
                   <span className="c"><Package size={24} aria-hidden /></span>
                   <span className="n">Todas</span>
@@ -399,7 +401,7 @@ export default function EcommerceStorePage() {
                 ))}
               </nav>
             ) : (
-              <nav className="vs-pills vs-scroll" aria-label="Categorías">
+              <nav ref={catsDragRef} className="vs-pills vs-scroll" aria-label="Categorías">
                 <button type="button" className={`vs-pill ${categoryId === null ? 'on' : ''}`} onClick={() => setCategoryId(null)}>Todas</button>
                 {categories.map((c) => (
                   <button key={c.id} type="button" className={`vs-pill ${categoryId === c.id ? 'on' : ''}`} onClick={() => setCategoryId(c.id)}>
