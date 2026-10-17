@@ -239,8 +239,16 @@ export interface CreateSaleInput {
     punto_destino?: string
     carga_efectiva_tm?: number
     carga_util_tm?: number
-    /** Obligatorio en 1004. Solo referencia impresa, no viaja a SUNAT. */
+    /** Obligatorio en 1004; viaja a SUNAT como cac:Despatch/cbc:Instructions. */
     trip_detail?: string
+    /** Obligatorios en 1004 (SUNAT 3116-3119): ubigeo (6 dígitos) y dirección detallada. */
+    origin_ubigeo?: string
+    origin_address?: string
+    destination_ubigeo?: string
+    destination_address?: string
+    /** Obligatorios en 1004 (SUNAT 3125-3126), en soles. valor_referencial_pen es el del servicio (3124). */
+    valor_ref_carga_efectiva_pen?: number
+    valor_ref_carga_util_pen?: number
   }
   prepayment?: {
     emit?: boolean

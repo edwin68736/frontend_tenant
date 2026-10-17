@@ -461,6 +461,8 @@ function SalesRegisterContent({
     destino_direccion: '',
     carga_efectiva_tm: '',
     carga_util_tm: '',
+    valor_ref_carga_efectiva_pen: '',
+    valor_ref_carga_util_pen: '',
     trip_detail: '',
   })
   const [emitPrepayment, setEmitPrepayment] = useState(false)
@@ -1697,20 +1699,23 @@ function SalesRegisterContent({
         return
       }
       if (isDetraccionTransporte) {
-        // Solo origen y destino son obligatorios (ver
-        // internal/detraccion/service.go:validateTransporteFields): lo mínimo para identificar el
-        // servicio. Registro MTC, config. vehicular, carga efectiva, carga útil, detalle del
-        // viaje y valor referencial quedan opcionales — ninguno es obligatorio en el esquema UBL
-        // 2.1 de SUNAT, y el valor referencial exige una tabla oficial del MTC que este sistema no
-        // tiene integrada; sin él, calculator.go ya aplica la detracción sobre el importe de la
-        // venta, tal como permite la propia norma cuando no hay valor referencial determinable.
-        const missing =
-          !transporteForm.origen_ubigeo ||
-          !transporteForm.origen_direccion.trim() ||
-          !transporteForm.destino_ubigeo ||
-          !transporteForm.destino_direccion.trim()
-        if (missing) {
-          toast.error('Complete los datos obligatorios de transporte de carga (marcados con *)')
+        // SUNAT rechaza (3116-3126) si el XML no trae ubigeo y dirección de origen y destino, el
+        // detalle del viaje y los 3 valores referenciales (ver
+        // internal/detraccion/service.go:validateTransporteFields). Registro MTC, config.
+        // vehicular y las TM de carga quedan opcionales. El valor referencial no cambia la
+        // detracción: se calcula siempre sobre el importe de la venta.
+        const positive = (v: string) => (parseFloat(v.replace(',', '.')) || 0) > 0
+        const faltan: string[] = []
+        if (!/^\d{6}$/.test(transporteForm.origen_ubigeo)) faltan.push('ubigeo de origen')
+        if (!transporteForm.origen_direccion.trim()) faltan.push('dirección de origen')
+        if (!/^\d{6}$/.test(transporteForm.destino_ubigeo)) faltan.push('ubigeo de destino')
+        if (!transporteForm.destino_direccion.trim()) faltan.push('dirección de destino')
+        if (!transporteForm.trip_detail.trim()) faltan.push('detalle del viaje')
+        if (!positive(transporteForm.valor_referencial_pen)) faltan.push('valor referencial del servicio')
+        if (!positive(transporteForm.valor_ref_carga_efectiva_pen)) faltan.push('valor referencial de la carga efectiva')
+        if (!positive(transporteForm.valor_ref_carga_util_pen)) faltan.push('valor referencial de la carga útil nominal')
+        if (faltan.length > 0) {
+          toast.error(`SUNAT exige para transporte de carga: ${faltan.join(', ')}`)
           return
         }
       }
@@ -1812,11 +1817,16 @@ function SalesRegisterContent({
                     valor_referencial_pen: transporteValorReferencial,
                     mtc_registro: transporteForm.mtc_registro.trim(),
                     configuracion_vehicular: transporteForm.configuracion_vehicular.trim(),
-                    // El backend/XML SUNAT siguen esperando punto_origen/punto_destino como texto
-                    // libre (AdditionalItemProperty catálogo 55) — se compone aquí para no tocar
-                    // ese contrato ni la generación del comprobante.
+                    // punto_origen/punto_destino: etiqueta legible (impresión). Lo que viaja a SUNAT
+                    // (cac:Delivery) son el ubigeo de 6 dígitos y la dirección detallada.
                     punto_origen: `${transporteForm.origen_direccion.trim()} - ${transporteForm.origen_ubigeo_label}`,
                     punto_destino: `${transporteForm.destino_direccion.trim()} - ${transporteForm.destino_ubigeo_label}`,
+                    origin_ubigeo: transporteForm.origen_ubigeo,
+                    origin_address: transporteForm.origen_direccion.trim(),
+                    destination_ubigeo: transporteForm.destino_ubigeo,
+                    destination_address: transporteForm.destino_direccion.trim(),
+                    valor_ref_carga_efectiva_pen: parseFloat(transporteForm.valor_ref_carga_efectiva_pen.replace(',', '.')) || 0,
+                    valor_ref_carga_util_pen: parseFloat(transporteForm.valor_ref_carga_util_pen.replace(',', '.')) || 0,
                     carga_efectiva_tm: parseFloat(transporteForm.carga_efectiva_tm) || 0,
                     carga_util_tm: parseFloat(transporteForm.carga_util_tm) || 0,
                     trip_detail: transporteForm.trip_detail.trim(),
@@ -2240,6 +2250,7 @@ function SalesRegisterContent({
                       origen_ubigeo: '', origen_ubigeo_label: '', origen_direccion: '',
                       destino_ubigeo: '', destino_ubigeo_label: '', destino_direccion: '',
                       carga_efectiva_tm: '', carga_util_tm: '', trip_detail: '',
+                      valor_ref_carga_efectiva_pen: '', valor_ref_carga_util_pen: '',
                     })
                   }
                   // El anticipo exige venta interna (0101) en el backend; si se elige cualquier
@@ -2482,7 +2493,7 @@ function SalesRegisterContent({
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Valor referencial (S/) (opcional)
+                    Valor referencial del servicio (S/) *
                   </label>
                   <input
                     type="number" min={0} step="0.01"
@@ -2490,13 +2501,35 @@ function SalesRegisterContent({
                     value={transporteForm.valor_referencial_pen}
                     onChange={(e) => setTransporteForm((f) => ({ ...f, valor_referencial_pen: e.target.value }))}
                   />
-                  <p className="text-[11px] text-gray-500 mt-1">
-                    Tabla D.S. 020-2021-MTC. Solo referencia impresa en el comprobante — la
-                    detracción siempre se calcula sobre el importe de la venta.
-                  </p>
                 </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Valor referencial carga efectiva (S/) *
+                  </label>
+                  <input
+                    type="number" min={0} step="0.01"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white tabular-nums"
+                    value={transporteForm.valor_ref_carga_efectiva_pen}
+                    onChange={(e) => setTransporteForm((f) => ({ ...f, valor_ref_carga_efectiva_pen: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Valor referencial carga útil nominal (S/) *
+                  </label>
+                  <input
+                    type="number" min={0} step="0.01"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white tabular-nums"
+                    value={transporteForm.valor_ref_carga_util_pen}
+                    onChange={(e) => setTransporteForm((f) => ({ ...f, valor_ref_carga_util_pen: e.target.value }))}
+                  />
+                </div>
+                <p className="sm:col-span-2 lg:col-span-4 text-[11px] text-gray-500 -mt-1">
+                  Los tres valores referenciales los exige SUNAT en el comprobante (tabla D.S.
+                  020-2021-MTC). La detracción siempre se calcula sobre el importe de la venta.
+                </p>
                 <div className="sm:col-span-2 lg:col-span-4">
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Detalle del viaje (opcional)</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Detalle del viaje *</label>
                   <textarea
                     rows={2}
                     className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white resize-y"
@@ -2505,7 +2538,7 @@ function SalesRegisterContent({
                     placeholder="Ej. Transporte de cemento en bolsas, viaje directo sin trasbordo"
                   />
                   <p className="text-[11px] text-gray-500 mt-1">
-                    Solo referencia impresa en el comprobante — no viaja al XML SUNAT.
+                    SUNAT lo exige en el comprobante (cac:Despatch/Instructions).
                   </p>
                 </div>
               </div>
