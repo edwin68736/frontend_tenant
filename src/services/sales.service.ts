@@ -13,6 +13,8 @@ export interface Sale {
   series: string
   number: string
   issue_date: string
+  /** Vencimiento del comprobante (ventas a crédito); null en contado. */
+  due_date?: string | null
   contact_id: number | null
   contact_name?: string
   /** RUC/DNI del cliente; lo resuelve el backend al listar. */

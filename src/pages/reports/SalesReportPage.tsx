@@ -142,6 +142,8 @@ type ReportSaleRow = Sale & {
  *  Orden fijo pedido por el usuario — no reordenar sin confirmar con él. */
 const COLS: ExcelExportColumn<ReportSaleRow>[] = [
   { key: 'issue_date', label: 'Fecha', format: formatIssueDate },
+  // Ventas al contado no tienen vencimiento: guion, igual que Cuentas por cobrar.
+  { key: 'due_date', label: 'Vencimiento', format: (v: unknown) => formatIssueDate(v) || '—' },
   { key: 'doc_sunat_code', label: 'Tipo CP/Doc' },
   { key: 'doc_type_effective', label: 'Comprobante' },
   { key: 'serie_sin_ceros', label: 'Serie' },
@@ -185,6 +187,7 @@ const COLS: ExcelExportColumn<ReportSaleRow>[] = [
  */
 const PDF_LAYOUT: Record<string, { weight: number; align?: 'right' | 'center' }> = {
   issue_date: { weight: 17 },
+  due_date: { weight: 17 },
   doc_type_effective: { weight: 26 },
   serie_sin_ceros: { weight: 19 },
   contact_doc_number: { weight: 20 },
