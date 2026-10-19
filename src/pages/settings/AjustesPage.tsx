@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { PosPrintersSettings } from '@/components/settings/PosPrintersSettings'
+import { ScannerSettingsCard } from '@/components/settings/ScannerSettingsCard'
 import { DevServerSettings } from '@/components/settings/DevServerSettings'
 import { ErpSettingsTab } from '@/components/settings/ErpSettingsTab'
 import UsersPage from '@/pages/users/UsersPage'
@@ -28,7 +29,7 @@ export default function AjustesPage() {
         [
           { id: 'empresa', label: 'Empresa', show: canCompany },
           { id: 'usuarios', label: 'Usuarios', show: canUsers },
-          { id: 'impresoras', label: 'Impresoras', show: canPrinters },
+          { id: 'impresoras', label: 'Equipo', show: canPrinters },
         ] as { id: ErpSettingsMainTab; label: string; show: boolean }[]
       ).filter((t) => t.show),
     [canCompany, canUsers, canPrinters],
@@ -62,7 +63,7 @@ export default function AjustesPage() {
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
           <div className="min-w-0">
             <h1 className="text-base sm:text-xl font-bold text-gray-900">
-              {printersOnly ? 'Impresoras del equipo' : 'Ajustes'}
+              {printersOnly ? 'Equipo (impresoras y escáner)' : 'Ajustes'}
             </h1>
             <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-gray-600 hidden sm:block">
               {printersOnly
@@ -100,7 +101,12 @@ export default function AjustesPage() {
         <div className="mt-3 sm:mt-5">
           {activeTab === 'empresa' && canCompany && <ErpSettingsTab />}
           {activeTab === 'usuarios' && canUsers && <UsersPage />}
-          {activeTab === 'impresoras' && canPrinters && <PosPrintersSettings />}
+          {activeTab === 'impresoras' && canPrinters && (
+            <div className="space-y-4">
+              <PosPrintersSettings />
+              <ScannerSettingsCard />
+            </div>
+          )}
         </div>
       </div>
     </div>

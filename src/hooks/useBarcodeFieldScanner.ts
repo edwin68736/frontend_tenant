@@ -1,5 +1,5 @@
-import { useCallback, useRef, useState } from 'react'
-import { isCapacitorNative } from '@/lib/platform/detect'
+import { useCallback, useRef } from 'react'
+import { useBarcodeInput } from './useBarcodeInput'
 
 type Options = {
   /** Se invoca al recibir un código (Enter con modo escáner activo o lectura por cámara). */
@@ -9,92 +9,54 @@ type Options = {
 }
 
 /**
- * Escáner de campo: cámara en Capacitor Android/iOS; input + lector USB en web/Tauri.
+ * Escáner de campo (rellena un input con el código): cámara en Capacitor o lector físico HID,
+ * según la preferencia del dispositivo. Envoltorio fino sobre `useBarcodeInput`.
  */
 export function useBarcodeFieldScanner({ onScan, closeCameraOnScan = true }: Options) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [scannerMode, setScannerMode] = useState(false)
-  const [cameraScannerOpen, setCameraScannerOpen] = useState(false)
-  const useCameraBarcodeScanner = isCapacitorNative()
+  const onScanRef = useRef(onScan)
+  onScanRef.current = onScan
 
-  const focusInput = useCallback(() => {
-    window.setTimeout(() => {
-      inputRef.current?.focus()
-      inputRef.current?.select()
-    }, 0)
+  const handleCode = useCallback((code: string) => {
+    onScanRef.current(code)
   }, [])
 
-  const closeScanner = useCallback(() => {
-    setScannerMode(false)
-    setCameraScannerOpen(false)
-  }, [])
-
-  const deactivateScanner = useCallback(() => {
-    closeScanner()
-  }, [closeScanner])
-
-  const toggleScannerMode = useCallback(() => {
-    if (useCameraBarcodeScanner) {
-      setScannerMode(true)
-      setCameraScannerOpen(true)
-      return
-    }
-    setScannerMode(on => {
-      const next = !on
-      if (next) focusInput()
-      else setCameraScannerOpen(false)
-      return next
-    })
-  }, [focusInput, useCameraBarcodeScanner])
-
-  const openCameraScanner = useCallback(() => {
-    setScannerMode(true)
-    setCameraScannerOpen(true)
-  }, [])
-
-  /**
-   * Fuerza el modo "lector físico" (foco en el input, sin cámara) aunque estemos en
-   * Capacitor nativo, donde `toggleScannerMode` abre la cámara por defecto. Así, en la
-   * app Android/iOS empaquetada, el usuario puede elegir pistola/lector USB en vez de
-   * cámara sin perder la opción de cámara (que sigue disponible con el botón normal).
-   */
-  const activatePhysicalScanner = useCallback(() => {
-    setCameraScannerOpen(false)
-    setScannerMode(true)
-    focusInput()
-  }, [focusInput])
+  const base = useBarcodeInput({ onCode: handleCode, closeCameraOnScan })
+  const { submit, selectMode, activate, deactivate, toggle, active } = base
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (scannerMode && e.key === 'Enter') {
+      if (active && e.key === 'Enter') {
         e.preventDefault()
         const code = e.currentTarget.value.trim()
-        if (code) onScan(code)
+        if (code) void submit(code)
       }
     },
-    [onScan, scannerMode],
+    [active, submit],
   )
 
   const handleCameraScan = useCallback(
     (code: string) => {
-      const trimmed = code.trim()
-      if (!trimmed) return
-      onScan(trimmed)
-      if (closeCameraOnScan) closeScanner()
+      void base.submitFromCamera(code)
     },
-    [closeCameraOnScan, closeScanner, onScan],
+    [base],
   )
 
   return {
-    inputRef,
-    scannerMode,
-    cameraScannerOpen,
-    useCameraBarcodeScanner,
-    toggleScannerMode,
-    openCameraScanner,
-    activatePhysicalScanner,
-    closeScanner,
-    deactivateScanner,
+    inputRef: base.inputRef,
+    scannerMode: active,
+    cameraScannerOpen: base.cameraOpen,
+    /** true si este equipo tiene cámara de escaneo (app Capacitor). */
+    useCameraBarcodeScanner: base.canUseCamera,
+    usingCameraNow: base.mode === 'camera',
+    softKeyboard: base.softKeyboard,
+    captureInputMode: base.captureInputMode,
+    toggleSoftKeyboard: base.toggleSoftKeyboard,
+    selectScannerMode: selectMode,
+    toggleScannerMode: toggle,
+    openCameraScanner: activate,
+    activatePhysicalScanner: () => selectMode('reader'),
+    closeScanner: deactivate,
+    deactivateScanner: deactivate,
     handleKeyDown,
     handleCameraScan,
   }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Package, Upload, Download, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Barcode, Trash2, CheckCircle, Eye, EyeOff, Keyboard, Loader2, Tag, SlidersHorizontal, X, Store } from 'lucide-react'
+import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Package, Upload, Download, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Barcode, Trash2, CheckCircle, Eye, EyeOff, Loader2, Tag, SlidersHorizontal, X, Store } from 'lucide-react'
 import { ProductImportModal } from '@/components/products/ProductImportModal'
 import { ProductPriceUpdateModal } from '@/components/products/ProductPriceUpdateModal'
 import { BulkDeleteProductsPinModal } from '@/components/products/BulkDeleteProductsPinModal'
@@ -28,6 +28,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { SearchSelect, MIN_OPTIONS_FOR_SEARCH } from '@/components/ui/SearchSelect'
 import { useBarcodeFieldScanner } from '@/hooks/useBarcodeFieldScanner'
 import { BarcodeScannerModal } from '@/components/barcode/BarcodeScannerModal'
+import { ScannerModeControl } from '@/components/barcode/ScannerModeControl'
 import { useBranch } from '@/contexts/BranchContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { clsx } from 'clsx'
@@ -1890,6 +1891,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                   value={form.code ?? ''}
                   onChange={(e) => setF('code', e.target.value)}
                   onKeyDown={pageMode === 'product' ? codeBarcodeScan.handleKeyDown : undefined}
+                  inputMode={pageMode === 'product' ? codeBarcodeScan.captureInputMode : undefined}
                   aria-label={pageMode === 'product' ? 'Código de barras' : 'Código de producto'}
                   autoComplete="off"
                 />
@@ -1904,44 +1906,14 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 </button>
               </div>
               {pageMode === 'product' && (
-                <button
-                  type="button"
-                  onClick={codeBarcodeScan.toggleScannerMode}
-                  className={clsx(
-                    'inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 sm:p-2 transition-colors touch-manipulation shrink-0 w-auto',
-                    codeBarcodeScan.scannerMode && codeBarcodeScan.cameraScannerOpen
-                      ? 'border-primary-300 bg-primary-50 text-primary-700'
-                      : 'border-gray-200 bg-stone-50 text-stone-600 hover:bg-stone-100',
-                  )}
-                  title={
-                    codeBarcodeScan.useCameraBarcodeScanner
-                      ? 'Escanear con la cámara'
-                      : codeBarcodeScan.scannerMode
-                        ? 'Modo escáner activo: escanee o pegue el código'
-                        : 'Activar escáner de código de barras'
-                  }
-                  aria-label="Escanear con la cámara"
-                >
-                  <ScanBarcode size={18} aria-hidden />
-                  <span className="sr-only">Cámara</span>
-                </button>
-              )}
-              {pageMode === 'product' && codeBarcodeScan.useCameraBarcodeScanner && (
-                <button
-                  type="button"
-                  onClick={codeBarcodeScan.activatePhysicalScanner}
-                  className={clsx(
-                    'inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 sm:p-2 transition-colors touch-manipulation shrink-0 w-auto',
-                    codeBarcodeScan.scannerMode && !codeBarcodeScan.cameraScannerOpen
-                      ? 'border-primary-300 bg-primary-50 text-primary-700'
-                      : 'border-gray-200 bg-stone-50 text-stone-600 hover:bg-stone-100',
-                  )}
-                  title="Usar lector físico (pistola USB/Bluetooth) en vez de la cámara"
-                  aria-label="Usar lector físico de código de barras"
-                >
-                  <Keyboard size={18} aria-hidden />
-                  <span className="sr-only">Lector físico</span>
-                </button>
+                <ScannerModeControl
+                  active={codeBarcodeScan.scannerMode}
+                  mode={codeBarcodeScan.usingCameraNow ? 'camera' : 'reader'}
+                  canUseCamera={codeBarcodeScan.useCameraBarcodeScanner}
+                  onSelect={codeBarcodeScan.selectScannerMode}
+                  softKeyboard={codeBarcodeScan.softKeyboard}
+                  onToggleSoftKeyboard={codeBarcodeScan.toggleSoftKeyboard}
+                />
               )}
             </div>
             {pageMode === 'product' && codeBarcodeScan.scannerMode && !codeBarcodeScan.cameraScannerOpen && (

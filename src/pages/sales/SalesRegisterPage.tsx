@@ -89,6 +89,7 @@ import { roundSunat, calcPaymentChange, sumMoney, nonCashOverpay } from '@/utils
 import { quotationsService } from '@/services/quotations.service'
 import { useBarcodeProductScanner } from '@/hooks/useBarcodeProductScanner'
 import { BarcodeScannerModal } from '@/components/barcode/BarcodeScannerModal'
+import { ScannerModeControl } from '@/components/barcode/ScannerModeControl'
 import {
   buildSalePreviewPrintData,
   validateSalePreviewInput,
@@ -2593,27 +2594,19 @@ function SalesRegisterContent({
             >
               <Package size={14} /> Producto manual
             </button>
-            <button
-              type="button"
-              onClick={barcodeScan.toggleScannerMode}
-              disabled={barcodeScan.scanProcessing}
-              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium shrink-0 disabled:opacity-60 ${
-                barcodeScan.scannerMode
-                  ? 'border-primary-400 bg-[rgb(var(--p50))] text-[rgb(var(--p700))]'
-                  : 'border-primary-300 text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))]'
-              }`}
-              title={
-                barcodeScan.scannerMode
-                  ? 'Desactivar escáner'
-                  : 'Activar escáner de código de barras'
-              }
-            >
-              <ScanBarcode size={14} /> {barcodeScan.scannerMode ? 'Escáner activo' : 'Escanear'}
-            </button>
+            <ScannerModeControl
+              variant="labeled"
+              active={barcodeScan.scannerMode}
+              mode={barcodeScan.usingCameraNow ? 'camera' : 'reader'}
+              canUseCamera={barcodeScan.useCameraBarcodeScanner}
+              onSelect={barcodeScan.selectScannerMode}
+              softKeyboard={barcodeScan.softKeyboard}
+              onToggleSoftKeyboard={barcodeScan.toggleSoftKeyboard}
+            />
             <p className="text-xs text-gray-500 ml-auto">Total de ítems: {items.length}</p>
           </div>
 
-          {barcodeScan.scannerMode && !barcodeScan.useCameraBarcodeScanner && (
+          {barcodeScan.scannerMode && !barcodeScan.usingCameraNow && (
             <div className="mb-3">
               <label className="block text-xs font-medium text-gray-600 mb-1">
                 Código de barras
@@ -2630,7 +2623,7 @@ function SalesRegisterContent({
                   value={barcodeScan.scanQuery}
                   onChange={e => barcodeScan.setScanQuery(e.target.value)}
                   onKeyDown={barcodeScan.handleSearchKeyDown}
-                  disabled={barcodeScan.scanProcessing}
+                  inputMode={barcodeScan.captureInputMode}
                   placeholder="Pegue o escanee el código y presione Enter"
                   className="w-full rounded-xl border border-primary-300 bg-[rgb(var(--p50))]/40 py-2 pl-9 pr-3 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[rgb(var(--p500))]/30 focus:border-primary-400 disabled:opacity-60"
                   autoComplete="off"
@@ -2648,7 +2641,7 @@ function SalesRegisterContent({
               </p>
             </div>
           )}
-          {barcodeScan.scannerMode && barcodeScan.useCameraBarcodeScanner && (
+          {barcodeScan.scannerMode && barcodeScan.usingCameraNow && (
             <p className="mb-3 text-xs text-primary-700 bg-primary-50 border border-primary-200 rounded-xl px-3 py-2">
               Cámara activa — apunta al código de barras del producto.
             </p>

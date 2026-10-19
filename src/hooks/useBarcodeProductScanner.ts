@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { isCapacitorNative } from '@/lib/platform/detect'
 import { productsService, type Product } from '@/services/products.service'
 import { findProductByBarcodeInList } from '@/utils/barcodeLookup'
+import { useBarcodeInput } from './useBarcodeInput'
 
 type Options = {
   products?: Product[]
@@ -16,7 +16,10 @@ type Options = {
   closeCameraOnScan?: boolean
 }
 
-/** Escáner por cámara (Capacitor) o input + lector USB (web/Tauri). */
+/**
+ * Escáner de productos: cámara (Capacitor) o lector físico HID (campo + Enter), según la
+ * preferencia del dispositivo. Envoltorio fino sobre `useBarcodeInput`.
+ */
 export function useBarcodeProductScanner({
   products = [],
   branchId,
@@ -25,176 +28,102 @@ export function useBarcodeProductScanner({
   showSuccessToast = true,
   closeCameraOnScan = true,
 }: Options) {
-  const searchInputRef = useRef<HTMLInputElement>(null)
-  const wedgeInputRef = useRef<HTMLInputElement>(null)
-  const [scannerMode, setScannerMode] = useState(false)
-  const [cameraScannerOpen, setCameraScannerOpen] = useState(false)
-  const [scanQuery, setScanQuery] = useState('')
-  const [scanProcessing, setScanProcessing] = useState(false)
-  const useCameraBarcodeScanner = isCapacitorNative()
-  // Fuerza modo lector físico aunque estemos en Capacitor nativo (donde por defecto se
-  // abre cámara). Con esto activo, el efecto de abajo no reabre la cámara.
-  const [forcePhysicalScanner, setForcePhysicalScanner] = useState(false)
-  const usingCameraNow = useCameraBarcodeScanner && !forcePhysicalScanner
+  const [scanQuery, setScanQueryState] = useState('')
 
-  const focusScanInput = useCallback(() => {
-    window.setTimeout(() => {
-      searchInputRef.current?.focus()
-      searchInputRef.current?.select()
-    }, 0)
+  // Últimas versiones de las opciones: la cola procesa varias lecturas seguidas y no debe
+  // usar el estado de la renderización en que arrancó.
+  const optsRef = useRef({ products, branchId, onProductFound, onClearSearch, showSuccessToast })
+  optsRef.current = { products, branchId, onProductFound, onClearSearch, showSuccessToast }
+
+  const handleCode = useCallback(async (code: string): Promise<boolean> => {
+    const o = optsRef.current
+    try {
+      const product =
+        findProductByBarcodeInList(o.products, code) ??
+        (await productsService.lookupByBarcode(code, o.branchId ?? undefined))
+      if (product) {
+        o.onProductFound(product)
+        setScanQueryState('')
+        o.onClearSearch?.()
+        if (o.showSuccessToast) toast.success(`${product.name} agregado`)
+        return true
+      }
+      toast.error(`No se encontró un producto con el código ${code}`)
+    } catch {
+      toast.error('Error al buscar el producto')
+    }
+    return false
   }, [])
 
-  const resolveProduct = useCallback(
-    async (code: string): Promise<Product | null> => {
-      const trimmed = code.trim()
-      if (!trimmed) return null
-      return (
-        findProductByBarcodeInList(products, trimmed) ??
-        (await productsService.lookupByBarcode(trimmed, branchId ?? undefined))
-      )
-    },
-    [products, branchId],
-  )
+  const base = useBarcodeInput({ onCode: handleCode, closeCameraOnScan })
+  const { submit, submitFromCamera, selectMode, activate, deactivate, toggle, active } = base
 
-  const closeScanner = useCallback(() => {
-    setScannerMode(false)
-    setCameraScannerOpen(false)
-    setScanQuery('')
-    setForcePhysicalScanner(false)
-  }, [])
-
+  /** Entrada del modal de cámara (o pegado manual). */
   const handleBarcodeScan = useCallback(
     async (rawCode: string) => {
-      const code = rawCode.trim()
-      if (!code || scanProcessing) return
-      setScanProcessing(true)
-      try {
-        const product = await resolveProduct(code)
-        if (product) {
-          onProductFound(product)
-          setScanQuery('')
-          onClearSearch?.()
-          if (showSuccessToast) toast.success(`${product.name} agregado`)
-          if (usingCameraNow && closeCameraOnScan) {
-            closeScanner()
-          } else if (!usingCameraNow) {
-            focusScanInput()
-          }
-        } else {
-          toast.error('No se encontró un producto con ese código')
-        }
-      } catch {
-        toast.error('Error al buscar el producto')
-      } finally {
-        setScanProcessing(false)
-      }
+      if (base.mode === 'camera') await submitFromCamera(rawCode)
+      else await submit(rawCode)
     },
-    [
-      closeCameraOnScan,
-      closeScanner,
-      focusScanInput,
-      onClearSearch,
-      onProductFound,
-      resolveProduct,
-      scanProcessing,
-      showSuccessToast,
-      usingCameraNow,
-    ],
+    [base.mode, submit, submitFromCamera],
   )
 
-  const activateScanner = useCallback(() => {
-    setForcePhysicalScanner(false)
-    setScannerMode(true)
-    if (useCameraBarcodeScanner) {
-      setCameraScannerOpen(true)
-    } else {
-      focusScanInput()
-    }
-  }, [focusScanInput, useCameraBarcodeScanner])
-
-  const deactivateScanner = useCallback(() => {
-    closeScanner()
-  }, [closeScanner])
-
-  const toggleScannerMode = useCallback(() => {
-    setScannerMode(on => {
-      const next = !on
-      if (!next) {
-        setCameraScannerOpen(false)
-        setScanQuery('')
-        setForcePhysicalScanner(false)
-      } else {
-        setForcePhysicalScanner(false)
-        if (useCameraBarcodeScanner) {
-          setCameraScannerOpen(true)
-        } else {
-          focusScanInput()
-        }
-      }
-      return next
-    })
-  }, [focusScanInput, useCameraBarcodeScanner])
-
-  /**
-   * Fuerza el modo "lector físico" (foco en el input, sin cámara) aunque estemos en
-   * Capacitor nativo, donde por defecto se abre cámara. La cámara sigue disponible
-   * aparte con `activateScanner`/`toggleScannerMode`.
-   */
-  const activatePhysicalScanner = useCallback(() => {
-    setForcePhysicalScanner(true)
-    setCameraScannerOpen(false)
-    setScannerMode(true)
-    focusScanInput()
-  }, [focusScanInput])
-
-  useEffect(() => {
-    if (!scannerMode) {
-      setCameraScannerOpen(false)
-      return
-    }
-    if (usingCameraNow) {
-      setCameraScannerOpen(true)
-      return
-    }
-    focusScanInput()
-  }, [scannerMode, usingCameraNow, focusScanInput])
+  // El campo se vacía en cuanto se lee (la lectura queda en cola), para que la siguiente
+  // no se concatene con la anterior aunque el producto no exista.
+  const takeFieldValue = useCallback(
+    (el: HTMLInputElement) => {
+      const code = el.value.trim()
+      setScanQueryState('')
+      onClearSearch?.()
+      return code
+    },
+    [onClearSearch, setScanQueryState],
+  )
 
   const handleSearchKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (scannerMode && e.key === 'Enter') {
+      if (active && e.key === 'Enter') {
         e.preventDefault()
-        void handleBarcodeScan(e.currentTarget.value)
+        const code = takeFieldValue(e.currentTarget)
+        if (code) void submit(code)
       }
     },
-    [handleBarcodeScan, scannerMode],
+    [active, submit, takeFieldValue],
   )
 
+  const wedgeInputRef = useRef<HTMLInputElement>(null)
   const handleWedgeKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'Enter') {
         e.preventDefault()
-        void handleBarcodeScan(e.currentTarget.value)
+        const code = e.currentTarget.value.trim()
         e.currentTarget.value = ''
+        if (code) void submit(code)
       }
     },
-    [handleBarcodeScan],
+    [submit],
   )
 
   return {
-    searchInputRef,
+    searchInputRef: base.inputRef,
     wedgeInputRef,
-    scannerMode,
-    cameraScannerOpen,
-    useCameraBarcodeScanner,
-    usingCameraNow,
+    scannerMode: active,
+    cameraScannerOpen: base.cameraOpen,
+    /** true si este equipo tiene cámara de escaneo (app Capacitor). */
+    useCameraBarcodeScanner: base.canUseCamera,
+    usingCameraNow: base.mode === 'camera',
+    scannerPreference: base.mode,
     scanQuery,
-    setScanQuery,
-    scanProcessing,
-    activateScanner,
-    activatePhysicalScanner,
-    deactivateScanner,
-    closeScanner,
-    toggleScannerMode,
+    setScanQuery: setScanQueryState,
+    scanProcessing: base.processing,
+    softKeyboard: base.softKeyboard,
+    captureInputMode: base.captureInputMode,
+    toggleSoftKeyboard: base.toggleSoftKeyboard,
+    selectScannerMode: selectMode,
+    activateScanner: activate,
+    activatePhysicalScanner: () => selectMode('reader'),
+    deactivateScanner: deactivate,
+    closeScanner: deactivate,
+    toggleScannerMode: toggle,
     handleBarcodeScan,
     handleSearchKeyDown,
     handleWedgeKeyDown,

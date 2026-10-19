@@ -7,7 +7,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
-import { Plus, Search, ShoppingCart, Trash2, X, ChevronRight, UserPlus, Package, ScanBarcode, LayoutGrid, Keyboard, Boxes, History, Tag } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Trash2, X, ChevronRight, UserPlus, Package, ScanBarcode, LayoutGrid, Boxes, History, Tag } from 'lucide-react'
 import { clsx } from 'clsx'
 import { productsService, getProductImageUrl, type Product, type Category } from '@/services/products.service'
 import { contactsService, type Contact } from '@/services/contacts.service'
@@ -73,6 +73,7 @@ import {
 import { useFlyToCart } from '@/hooks/useFlyToCart'
 import { useBarcodeProductScanner } from '@/hooks/useBarcodeProductScanner'
 import { BarcodeScannerModal } from '@/components/barcode/BarcodeScannerModal'
+import { ScannerModeControl } from '@/components/barcode/ScannerModeControl'
 import { playCartAddSound, playCartRemoveSound } from '@/utils/cartSounds'
 import { descriptionWithPresentation, productConfigurationBadge, productNeedsSaleConfiguration, presentationIdFromSelection } from '@/utils/productModifiers'
 
@@ -1070,48 +1071,21 @@ function POSContent() {
                   value={q}
                   onChange={e => setQ(e.target.value)}
                   onKeyDown={barcodeScan.handleSearchKeyDown}
-                  disabled={barcodeScan.scanProcessing}
+                  inputMode={barcodeScan.captureInputMode}
+                  autoComplete="off"
                 />
                 {(loadingProducts || barcodeScan.scanProcessing) && (
                   <div className="absolute right-2.5 h-4 w-4 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" aria-hidden />
                 )}
               </div>
-              <button
-                type="button"
-                onClick={barcodeScan.toggleScannerMode}
-                className={clsx(
-                  'shrink-0 inline-flex items-center justify-center rounded-xl border p-2 transition-colors touch-manipulation',
-                  barcodeScan.scannerMode && barcodeScan.usingCameraNow
-                    ? 'border-primary-300 bg-primary-50 text-primary-700'
-                    : 'border-stone-200 bg-stone-50 text-stone-600 hover:bg-stone-100',
-                )}
-                title={
-                  barcodeScan.useCameraBarcodeScanner
-                    ? 'Escanear con la cámara'
-                    : barcodeScan.scannerMode
-                      ? 'Modo escáner activo: Enter agrega al carrito'
-                      : 'Activar escáner de código de barras'
-                }
-                aria-label="Escanear con la cámara"
-              >
-                <ScanBarcode size={18} aria-hidden />
-              </button>
-              {barcodeScan.useCameraBarcodeScanner && (
-                <button
-                  type="button"
-                  onClick={barcodeScan.activatePhysicalScanner}
-                  className={clsx(
-                    'shrink-0 inline-flex items-center justify-center rounded-xl border p-2 transition-colors touch-manipulation',
-                    barcodeScan.scannerMode && !barcodeScan.usingCameraNow
-                      ? 'border-primary-300 bg-primary-50 text-primary-700'
-                      : 'border-stone-200 bg-stone-50 text-stone-600 hover:bg-stone-100',
-                  )}
-                  title="Usar lector físico (pistola USB/Bluetooth) en vez de la cámara"
-                  aria-label="Usar lector físico de código de barras"
-                >
-                  <Keyboard size={18} aria-hidden />
-                </button>
-              )}
+              <ScannerModeControl
+                active={barcodeScan.scannerMode}
+                mode={barcodeScan.usingCameraNow ? 'camera' : 'reader'}
+                canUseCamera={barcodeScan.useCameraBarcodeScanner}
+                onSelect={barcodeScan.selectScannerMode}
+                softKeyboard={barcodeScan.softKeyboard}
+                onToggleSoftKeyboard={barcodeScan.toggleSoftKeyboard}
+              />
               <PosProductViewModeToggle mode={productViewMode} onChange={changeProductViewMode} />
             </div>
           </div>
