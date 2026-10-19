@@ -554,7 +554,20 @@ export async function validateCatalogProductExcel(file: File): Promise<ImportVal
     const rowNumber = index + 2
     const codigo = String(row.codigo ?? '').trim()
     if (codigo) {
-      codesInFile.set(codigo, rowNumber)
+      // El backend usa el código como clave: dos filas con el mismo código se pisan y queda solo
+      // el producto de la última fila (p. ej. un Excel con el código de ejemplo de la plantilla copiado).
+      const firstRow = codesInFile.get(codigo.toLowerCase())
+      if (firstRow != null) {
+        extraErrors.push({
+          row: rowNumber,
+          column: 'codigo',
+          field: 'codigo',
+          message: `El código «${codigo}» ya aparece en la fila ${firstRow}. Cada producto necesita un código distinto (o déjelo vacío para generarlo automáticamente).`,
+          value: codigo,
+        })
+        return
+      }
+      codesInFile.set(codigo.toLowerCase(), rowNumber)
     }
     const stockInicial = Math.max(0, Number(row.stock_inicial ?? 0) || 0)
     const controlStock = parseExcelBoolean(row.control_stock)
