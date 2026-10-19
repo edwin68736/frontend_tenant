@@ -186,6 +186,8 @@ export interface PrintCompany {
   /** Tamaño del logo por formato (todos los comprobantes): pequeno | mediano | grande. */
   logo_size_ticket?: string
   logo_size_a4?: string
+  /** Diseño del PDF A4 de comprobantes (slug del registro en utils/receiptA4). Vacío = por defecto. */
+  pdf_a4_design?: string
 }
 
 export interface PrintBankAccount {
