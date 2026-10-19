@@ -4,7 +4,7 @@ import { Calendar, Check, ChevronLeft, CreditCard, FileUp, Hash, Loader2, Packag
 import { Modal } from '@/components/ui/Modal'
 import { useSubscriptionStatus } from '@/contexts/SubscriptionStatusContext'
 import { subscriptionService, type PublicPlan } from '@/services/subscription.service'
-import { formatMoney } from '@/pages/subscription/subscriptionUx'
+import { billingCyclePaymentTotal, formatMoney } from '@/pages/subscription/subscriptionUx'
 import PaymentMethodsPanel from '@/pages/subscription/PaymentMethodsPanel'
 import { SUBSCRIPTION_BLOCKED_MODAL_Z } from '@/utils/uiLayers'
 
@@ -114,7 +114,19 @@ export default function PlanPickerModal({ open, onClose }: Props) {
   const isLifetime = selected?.billing_cycle === 'lifetime'
   const availableCycles = selected ? cyclesOf(selected) : []
   const selectedCycle = availableCycles.find(c => c.months === months)
-  const totalAmount = selectedCycle?.net_amount ?? 0
+  const planAmount = selectedCycle?.net_amount ?? 0
+  // Una cuenta suspendida paga el plan MÁS la reconexión: el backend exige el total completo para
+  // aprobar el pago (ApprovePayment: payment.amount >= ciclo + recargo congelado al enviar). Mismo
+  // criterio que `billingCyclePaymentTotal` del modal de pago de un cobro emitido. Con la cuenta
+  // activa (renovación anticipada) o con recargo 0 en Cobros SaaS, el total es solo el plan.
+  const reconnectionFee = hub?.billing_context?.reconnection_fee ?? 0
+  const totalAmount = hub
+    ? billingCyclePaymentTotal({ amount: planAmount, reconnection_fee: reconnectionFee }, hub.subscription)
+    : planAmount
+  const includesReconnectionFee = selectedCycle != null && totalAmount > planAmount
+  const isSuspendedNeedingFee = Boolean(
+    hub && reconnectionFee > 0 && (hub.subscription.is_suspended || hub.subscription.tenant_status === 'suspended'),
+  )
   // Plan que el tenant ya tiene activo, si está en el catálogo — mismo criterio que el
   // auto-select del useEffect. Sirve para el atajo «Volver a mi plan actual» en la grilla.
   const currentPlan = plans.find(p => Boolean(hub?.subscription.can_operate) && p.name === hub?.subscription.plan_name)
@@ -215,6 +227,15 @@ export default function PlanPickerModal({ open, onClose }: Props) {
               botón «Elegir otro plan» para volver, mostrar el mismo indicador ahí encima era
               redundante — dos formas de decir "estás en el paso 2" en la misma pantalla. */}
           <StepIndicator />
+
+          {/* Aviso previo: el tenant suspendido tiene que enterarse del recargo ANTES de elegir,
+              no recién al ver el total en el paso de pago. */}
+          {isSuspendedNeedingFee && (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-800">
+              Tu cuenta está suspendida: al renovar se suma un cargo de reconexión de{' '}
+              <strong>{formatMoney(reconnectionFee)}</strong> al precio del plan.
+            </p>
+          )}
 
           {/* Camino de vuelta simétrico a «Elegir otro plan»: si el tenant llegó acá y no
               quiere cambiar de plan, tiene que poder volver a renovar el que ya tiene sin
@@ -370,14 +391,28 @@ export default function PlanPickerModal({ open, onClose }: Props) {
               <span className="p-2 rounded-lg bg-white text-primary-600 shrink-0">
                 <CreditCard size={16} />
               </span>
-              <div className="flex-1 flex items-center justify-between gap-2 min-w-0">
-                <span className="text-sm text-gray-700">Total a depositar</span>
-                <span className="text-lg font-bold text-gray-900 shrink-0">
-                  {selectedCycle && selectedCycle.net_amount !== selectedCycle.gross_amount && (
-                    <span className="text-sm font-normal text-gray-400 line-through mr-2">{formatMoney(selectedCycle.gross_amount)}</span>
-                  )}
-                  {formatMoney(totalAmount)}
-                </span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm text-gray-700">Total a depositar</span>
+                  <span className="text-lg font-bold text-gray-900 shrink-0">
+                    {selectedCycle && selectedCycle.net_amount !== selectedCycle.gross_amount && (
+                      <span className="text-sm font-normal text-gray-400 line-through mr-2">{formatMoney(selectedCycle.gross_amount)}</span>
+                    )}
+                    {formatMoney(totalAmount)}
+                  </span>
+                </div>
+                {includesReconnectionFee ? (
+                  <div className="mt-2 pt-2 border-t border-primary-100 space-y-1 text-xs">
+                    <div className="flex items-center justify-between text-gray-600">
+                      <span>Plan {selected.name}</span>
+                      <span>{formatMoney(planAmount)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-amber-700 font-medium">
+                      <span>Reconexión (cuenta suspendida)</span>
+                      <span>+{formatMoney(reconnectionFee)}</span>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </div>
           </div>
