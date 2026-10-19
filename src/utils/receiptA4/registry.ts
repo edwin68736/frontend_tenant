@@ -1,5 +1,6 @@
 import type { jsPDF } from 'jspdf'
 import type { PrintData } from '@/types/printData'
+import { renderClassicA4 } from './classic'
 import { renderModernA4 } from './modern'
 
 /**
@@ -22,6 +23,12 @@ export const A4_DESIGNS: A4Design[] = [
     label: 'Moderno',
     description: 'Tipografía sans-serif, datos del cliente y del comprobante en recuadros, totales en celdas.',
     render: renderModernA4,
+  },
+  {
+    slug: 'classic',
+    label: 'Clásico',
+    description: 'Tipografía serif, banner gris con el tipo de comprobante, datos del cliente sin recuadros.',
+    render: renderClassicA4,
   },
 ]
 

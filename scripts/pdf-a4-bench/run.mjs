@@ -32,7 +32,7 @@ mkdirSync(out, { recursive: true })
 
 const bundle = join(out, '_bench.mjs')
 await build({
-  entryPoints: [join(here, 'entry.ts')],
+  entryPoints: [join(here, process.env.BENCH_ENTRY ?? 'entry.ts')],
   outfile: bundle,
   bundle: true,
   platform: 'node',

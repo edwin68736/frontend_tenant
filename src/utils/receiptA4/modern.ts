@@ -14,7 +14,7 @@ import { paymentWalletVisible, renderPaymentWalletBlock } from '@/utils/receiptP
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
 import { formatBankAccountLines, formatWalletAccountLine } from '@/utils/receiptBankAccounts'
 import { getNotaVentaPrintLayout, type NotaVentaPrintLayoutSettings } from '@/services/printers/notaVentaPrintLayout'
-import { PAGE_W, PAGE_H, MARGIN, CONTENT_W, LINE_H, FONT, FONT_SM, FONT_XS, FONT_TITLE, GRAY, CLIENT_LABEL_W, SUNAT_QR_SIZE, formatDocNumber, formatPlainAmount, formatDisplayDate, a4DocTypeTitle, itemLineDiscount, resolveDueDate, customerPayments, primaryPaymentLabel, moneySymbol, qrDataUrl, type A4Ctx, drawTransportDetailBox, drawLineWithPageBreak, drawLegendAndNotes, drawFooter, setFont, useA4FontFamily } from './common'
+import { PAGE_W, PAGE_H, MARGIN, CONTENT_W, LINE_H, FONT, FONT_SM, FONT_XS, FONT_TITLE, GRAY, CLIENT_LABEL_W, SUNAT_QR_SIZE, formatDocNumber, formatPlainAmount, formatDisplayDate, a4DocTypeTitle, itemLineDiscount, resolveDueDate, customerPayments, primaryPaymentLabel, moneySymbol, qrDataUrl, type A4Ctx, drawTransportDetailBox, drawLineWithPageBreak, drawLegendAndNotes, drawFooter, setFont, useA4FontFamily , currencyLabel, issuerContactLines } from './common'
 
 /** Tipografía del diseño Moderno: sans-serif, pedida por el cliente el 14-oct-2026. */
 export const MODERN_FONT_FAMILY = 'helvetica'
@@ -28,28 +28,6 @@ const FIELD_FONT = 7.8
 const FIELD_LINE_H = 3.9
 
 const FIELD_PAD = 2
-
-function drawA4Field(
-  ctx: A4Ctx,
-  label: string,
-  value: string,
-  x: number,
-  opts?: { labelW?: number; valueMaxW?: number },
-) {
-  const { doc, y } = ctx
-  const labelW = opts?.labelW ?? CLIENT_LABEL_W
-  setFont(doc, FONT, 'bold')
-  doc.text(`${label} :`, x, y)
-  setFont(doc, FONT, 'normal')
-  const valueX = x + labelW
-  const maxW = opts?.valueMaxW ?? CONTENT_W - labelW
-  const lines = doc.splitTextToSize(value || '—', maxW)
-  doc.text(lines[0] ?? '—', valueX, y)
-  for (let i = 1; i < lines.length; i++) {
-    ctx.y += LINE_H
-    doc.text(lines[i], valueX, ctx.y)
-  }
-}
 
 /**
  * Cabecera: logo a la izquierda, datos del emisor CENTRADOS en el espacio del medio y recuadro
@@ -133,8 +111,7 @@ export async function drawHeader(
   if (addr) pushInfoLine(addr)
   const showContact = !nvLayout || nvLayout.showEmailAndPhone
   // Solo si hay dato: antes salía "Central telefónica:" vacío.
-  if (showContact && data.company.phone?.trim()) pushInfoLine(`Central telefónica: ${data.company.phone.trim()}`)
-  if (showContact && data.company.email?.trim()) pushInfoLine(`Email: ${data.company.email.trim()}`)
+  if (showContact) for (const line of issuerContactLines(data)) pushInfoLine(line)
   const notes = trimCompanyAdditionalNotes(data.company.additional_notes)
   if (notes) {
     cy += 0.5
@@ -218,10 +195,6 @@ function drawFieldBox(doc: jsPDF, x: number, y: number, w: number, h: number, ro
     lines.forEach((ln, i) => doc.text(ln, valueX, ly + i * FIELD_LINE_H))
     ly += Math.max(1, lines.length) * FIELD_LINE_H
   }
-}
-
-function currencyLabel(currency: string): string {
-  return currency === 'USD' ? 'Dólares' : 'Soles'
 }
 
 /**

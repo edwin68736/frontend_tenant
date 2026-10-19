@@ -400,3 +400,27 @@ export function setFont(doc: jsPDF, size: number, style: 'normal' | 'bold' | 'it
 }
 
 export type TableCol = { label: string; w: number; align?: 'left' | 'right' | 'center' }
+
+/** Moneda legible del comprobante para la etiqueta «Moneda». */
+export function currencyLabel(currency: string): string {
+  return currency === 'USD' ? 'Dólares' : 'Soles'
+}
+
+/** Teléfono y correo del emisor para la cabecera: solo los que existen (antes salía «Central telefónica:» vacío). */
+export function issuerContactLines(data: PrintData): string[] {
+  const lines: string[] = []
+  const phone = data.company.phone?.trim()
+  const email = data.company.email?.trim()
+  if (phone) lines.push(`Central telefónica: ${phone}`)
+  if (email) lines.push(`Email: ${email}`)
+  return lines
+}
+
+/** Hora de emisión, moneda y tipo de cambio (USD) del comprobante, en un solo texto corto. */
+export function issueMetaText(data: PrintData): string {
+  const parts: string[] = []
+  if (data.issue_time?.trim()) parts.push(`Hora: ${data.issue_time.trim().slice(0, 8)}`)
+  parts.push(`Moneda: ${currencyLabel(data.currency)}`)
+  if (data.currency === 'USD' && data.exchange_rate) parts.push(`T.C.: ${data.exchange_rate}`)
+  return parts.join('    ')
+}
