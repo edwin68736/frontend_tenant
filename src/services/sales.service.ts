@@ -366,7 +366,23 @@ export interface ProfitDetailSummary {
 }
 
 /** Totales globales del listado con los mismos filtros (no solo la página actual). */
+/** Totales de una sola moneda (PEN | USD): los importes de monedas distintas no se suman. */
+export interface SaleListCurrencySummary {
+  currency: string
+  sum_total: number
+  sum_subtotal: number
+  sum_tax: number
+  sum_cancelled: number
+  sum_active: number
+  count_cancelled: number
+  count_active: number
+  sum_change_amount: number
+}
+
 export interface SaleListSummary {
+  /** Mismos totales separados por moneda. Los sum_* planos suman todas las monedas tal cual
+   *  (legado): para mostrar importes usar este campo. */
+  by_currency?: SaleListCurrencySummary[]
   sum_total: number
   sum_subtotal: number
   sum_tax: number
@@ -380,7 +396,8 @@ export interface SaleListSummary {
   spot_total?: number
   /** Vuelto total entregado en las ventas del filtro. */
   sum_change_amount?: number
-  payment_totals: Array<{ method: string; total: number }>
+  /** Una entrada por método y moneda (la detracción SPOT siempre PEN). */
+  payment_totals: Array<{ method: string; total: number; currency?: string }>
 }
 
 const emptySaleSummary = (): SaleListSummary => ({

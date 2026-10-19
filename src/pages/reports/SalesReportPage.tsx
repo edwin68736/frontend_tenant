@@ -3,7 +3,8 @@ import axios from 'axios'
 import { Search } from 'lucide-react'
 import { FileDown, FileSpreadsheet } from 'lucide-react'
 import { toast } from 'sonner'
-import { salesService, type Sale, type SaleListSummary } from '@/services/sales.service'
+import { salesService, type Sale, type SaleListSummary, type SaleListCurrencySummary } from '@/services/sales.service'
+import { formatSaleMoney, saleCurrencySymbol } from '@/utils/formatMoney'
 import { companyService } from '@/services/company.service'
 import { cashbankService, type PaymentMethodRecord } from '@/services/cashbank.service'
 import { exportTableToPdf, type ExportColumn as PdfExportColumn } from '@/utils/exportPdf'
@@ -110,9 +111,40 @@ function formatIssueDate(v: unknown): string {
   return formatDisplayDatePeru(s)
 }
 
-const fmtMoneyCell = (v: unknown) => {
+/** Monto con el símbolo de la moneda de CADA venta (S/ o US$). En Excel las columnas monetarias
+ *  van como número (excelNumber) y la moneda se lee en la columna "Moneda". */
+const fmtMoneyCell = (v: unknown, r?: { currency?: string }) => {
   const n = Number(v)
-  return Number.isFinite(n) ? n.toFixed(2) : ''
+  return Number.isFinite(n) ? formatSaleMoney(n, r?.currency) : ''
+}
+
+const currencyCode = (c?: string | null) => String(c || 'PEN').trim().toUpperCase() || 'PEN'
+
+/** Una fila de totales por moneda: nunca se suman soles y dólares en un mismo número. Con una sola
+ *  moneda sale la fila "TOTAL" de siempre. */
+function buildFooterRows<C extends { key: unknown; excelNumber?: boolean }>(
+  cols: C[],
+  rows: ReportSaleRow[],
+  allRows: ReportSaleRow[],
+): (string | number)[][] {
+  const groups = new Map<string, ReportSaleRow[]>()
+  for (const r of rows) {
+    const k = currencyCode(r.currency)
+    groups.set(k, [...(groups.get(k) ?? []), r])
+  }
+  if (groups.size === 0) groups.set('PEN', [])
+  const multi = groups.size > 1
+  const ordered = [...groups.entries()].sort(([a], [b]) => (a === 'PEN' ? -1 : b === 'PEN' ? 1 : a.localeCompare(b)))
+  return ordered.map(([cur, rs]) =>
+    cols.map((col, i) => {
+      if (i === 0) return multi ? `TOTAL ${saleCurrencySymbol(cur)}` : 'TOTAL'
+      if (col.key === 'contact_name') return `No anuladas: ${rs.length}/${allRows.filter((r) => currencyCode(r.currency) === cur).length}`
+      if (col.key === 'currency') return cur
+      if (!col.excelNumber) return ''
+      const sum = rs.reduce((acc, row) => acc + (Number(row[col.key as keyof typeof row]) || 0), 0)
+      return Math.round(sum * 100) / 100
+    }),
+  )
 }
 
 /** Fila del reporte con los campos que se calculan en el cliente (no vienen del backend). */
@@ -149,6 +181,7 @@ const COLS: ExcelExportColumn<ReportSaleRow>[] = [
   { key: 'serie_sin_ceros', label: 'Serie' },
   { key: 'contact_doc_number', label: 'N° documento', format: (v: unknown) => String(v ?? '') || '—' },
   { key: 'contact_name', label: 'Cliente' },
+  { key: 'currency', label: 'Moneda', format: (v: unknown) => currencyCode(v as string) },
   { key: 'subtotal', label: 'Subtotal', format: fmtMoneyCell, excelNumber: true },
   { key: 'tax_amount', label: 'IGV', format: fmtMoneyCell, excelNumber: true },
   { key: 'total', label: 'Total facturado', format: fmtMoneyCell, excelNumber: true },
@@ -186,21 +219,22 @@ const COLS: ExcelExportColumn<ReportSaleRow>[] = [
  * Excel— Tipo CP/Doc, Tipo operación, Registrado por y RR / Estado RR. `weight` es el ancho relativo.
  */
 const PDF_LAYOUT: Record<string, { weight: number; align?: 'right' | 'center' }> = {
-  issue_date: { weight: 17 },
-  due_date: { weight: 17 },
-  doc_type_effective: { weight: 26 },
-  serie_sin_ceros: { weight: 19 },
-  contact_doc_number: { weight: 20 },
-  contact_name: { weight: 39 },
-  subtotal: { weight: 16, align: 'right' },
-  tax_amount: { weight: 14, align: 'right' },
-  total: { weight: 17, align: 'right' },
-  net_effect: { weight: 17, align: 'right' },
+  issue_date: { weight: 19 },
+  due_date: { weight: 20 },
+  doc_type_effective: { weight: 23 },
+  serie_sin_ceros: { weight: 18 },
+  contact_doc_number: { weight: 21 },
+  contact_name: { weight: 24 },
+  currency: { weight: 15, align: 'center' },
+  subtotal: { weight: 19, align: 'right' },
+  tax_amount: { weight: 18, align: 'right' },
+  total: { weight: 20, align: 'right' },
+  net_effect: { weight: 20, align: 'right' },
   detraccion_amount: { weight: 18, align: 'right' },
-  net_payable: { weight: 17, align: 'right' },
-  cpe_status: { weight: 15 },
-  payment_method: { weight: 19 },
-  status: { weight: 15 },
+  net_payable: { weight: 20, align: 'right' },
+  cpe_status: { weight: 17 },
+  payment_method: { weight: 15 },
+  status: { weight: 14 },
 }
 const PDF_COLS: (PdfExportColumn<ReportSaleRow> & { excelNumber?: boolean })[] = COLS.filter(
   (c) => PDF_LAYOUT[String(c.key)],
@@ -215,6 +249,18 @@ const PDF_COLS: (PdfExportColumn<ReportSaleRow> & { excelNumber?: boolean })[] =
 const countsInTotals = (r: ReportSaleRow): boolean => {
   if (String(r.status || '').toLowerCase() === 'cancelled') return false
   return r.doc_type !== 'NOTA_CREDITO' && r.doc_type !== 'NOTA_DEBITO'
+}
+
+/** Un importe por moneda, uno bajo otro (nunca mezclados en una sola cifra). */
+function MoneyLines({ items, className }: { items: { currency: string; amount: number }[]; className: string }) {
+  const list = items.length ? items : [{ currency: 'PEN', amount: 0 }]
+  return (
+    <>
+      {list.map((i) => (
+        <p key={i.currency} className={list.length > 1 ? className.replace('text-2xl', 'text-base') : className}>{formatSaleMoney(i.amount, i.currency)}</p>
+      ))}
+    </>
+  )
 }
 
 const DOC_TYPE_LABELS: Record<string, string> = {
@@ -355,15 +401,30 @@ export default function SalesReportPage() {
         sumNetPayable: 0,
         countDetraccion: 0,
         sumChangeAmount: 0,
-        methodCards: [] as { code: string; label: string; total: number }[],
+        byCurrency: [] as SaleListCurrencySummary[],
+        methodCards: [] as { code: string; label: string; total: number; currency: string }[],
       }
     }
-    const methodCards = (s.payment_totals ?? []).slice(0, 6).map((pt) => ({
-      code: pt.method,
-      label: formatPaymentMethod(pt.method),
-      total: pt.total,
-    }))
+    // Totales por moneda (backend nuevo). Sin by_currency (backend viejo) se asume una sola moneda: PEN.
+    const byCurrency: SaleListCurrencySummary[] = s.by_currency?.length
+      ? s.by_currency
+      : [{
+          currency: 'PEN', sum_total: s.sum_total, sum_subtotal: s.sum_subtotal, sum_tax: s.sum_tax,
+          sum_cancelled: s.sum_cancelled, sum_active: s.sum_active, count_cancelled: s.count_cancelled,
+          count_active: s.count_active, sum_change_amount: s.sum_change_amount ?? 0,
+        }]
+    const multiCurrency = byCurrency.length > 1
+    const methodCards = (s.payment_totals ?? []).slice(0, multiCurrency ? 8 : 6).map((pt) => {
+      const cur = currencyCode(pt.currency)
+      return {
+        code: pt.method,
+        label: formatPaymentMethod(pt.method) + (multiCurrency ? ` (${saleCurrencySymbol(cur)})` : ''),
+        total: pt.total,
+        currency: cur,
+      }
+    })
     return {
+      byCurrency,
       amountTotal: s.sum_total,
       amountCancelled: s.sum_cancelled,
       amountActive: s.sum_active,
@@ -398,15 +459,12 @@ export default function SalesReportPage() {
 
       // Los totales suman SOLO las ventas no anuladas (ver countsInTotals), no lo que se ve en rojo.
       const totalRows = withDoc.filter(countsInTotals)
-      const sumOf = (key: string) =>
-        Math.round(totalRows.reduce((sum, row) => sum + (Number(row[key as keyof typeof row]) || 0), 0) * 100) / 100
-      const footerRow = PDF_COLS.map((col, i) => {
-        if (i === 0) return 'TOTAL'
-        if (col.key === 'contact_name') return `No anuladas: ${totalRows.length} de ${withDoc.length}`
-        return col.excelNumber ? sumOf(String(col.key)) : ''
-      })
+      const footerRows = buildFooterRows(PDF_COLS, totalRows, withDoc)
 
-      const money = (n: number) => `S/ ${n.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      const money = (n: number, cur = 'PEN') => `${saleCurrencySymbol(cur)} ${n.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+      const multiCur = stats.byCurrency.length > 1
+      const perCur = (label: string, pick: (c: SaleListCurrencySummary) => number) =>
+        stats.byCurrency.map((c) => ({ label: multiCur ? `${label} (${saleCurrencySymbol(c.currency)})` : label, value: money(pick(c), c.currency) }))
       const branchName = filters.branch_id ? branches.find((b) => b.id === Number(filters.branch_id))?.name : ''
       const methodName = filters.payment_method
         ? paymentMethods.find((pm) => pm.code === filters.payment_method)?.name || filters.payment_method
@@ -427,13 +485,14 @@ export default function SalesReportPage() {
 
       // Mismas cifras que las tarjetas de la pantalla (resumen del backend sobre todo el filtro).
       const summaryBoxes = [
-        { label: 'Total no anuladas', value: money(stats.amountActive) },
+        ...perCur('Total no anuladas', (c) => c.sum_active),
+        // Detracción SPOT y neto cobrable salen de la detracción (siempre en soles).
         { label: 'Neto cobrable', value: money(stats.sumNetPayable) },
         { label: 'Detracción SPOT', value: money(stats.sumDetraccion) },
-        { label: 'Total anuladas', value: money(stats.amountCancelled) },
-        { label: 'Vuelto', value: money(stats.sumChangeAmount) },
-        { label: 'Total general (incl. anuladas)', value: money(stats.amountTotal) },
-        ...stats.methodCards.map((m) => ({ label: m.label, value: money(m.total) })),
+        ...perCur('Total anuladas', (c) => c.sum_cancelled),
+        ...perCur('Vuelto', (c) => c.sum_change_amount),
+        ...perCur('Total general (incl. anuladas)', (c) => c.sum_total),
+        ...stats.methodCards.map((m) => ({ label: m.label, value: money(m.total, m.currency) })),
       ]
 
       await exportTableToPdf<ReportSaleRow>(
@@ -444,7 +503,7 @@ export default function SalesReportPage() {
         {
           subtitle,
           summary: summaryBoxes,
-          footerRow,
+          footerRows,
           rowTextColor: (row) => (isCancelled(row) ? [200, 30, 30] : undefined),
         },
       )
@@ -463,19 +522,13 @@ export default function SalesReportPage() {
       // La fila TOTAL suma solo las ventas no anuladas (y sin notas de crédito/débito) del archivo:
       // ver countsInTotals. Respeta los filtros aplicados y cuadra con las tarjetas de arriba.
       const totalRows = withDoc.filter(countsInTotals)
-      const footerRow = COLS.map((col, i) => {
-        if (i === 0) return 'TOTAL'
-        if (col.key === 'contact_name') return `No anuladas: ${totalRows.length} de ${withDoc.length}`
-        if (!col.excelNumber) return ''
-        const sum = totalRows.reduce((acc, row) => acc + (Number(row[col.key as keyof typeof row]) || 0), 0)
-        return Math.round(sum * 100) / 100
-      })
+      const footerRows = buildFooterRows(COLS, totalRows, withDoc)
       await exportTableToExcel<ReportSaleRow>(
         'Ventas',
         COLS,
         withDoc,
         `reporte-ventas-${filters.from || 'todo'}-${filters.to || 'todo'}.xlsx`,
-        footerRow,
+        footerRows,
       )
       toast.success('Excel descargado')
     } catch {
@@ -615,7 +668,7 @@ export default function SalesReportPage() {
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-8 gap-3">
           <div className="rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Total no anuladas</p>
-            <p className="text-2xl font-bold text-violet-900">S/ {stats.amountActive.toFixed(2)}</p>
+            <MoneyLines items={stats.byCurrency.map((c) => ({ currency: c.currency, amount: c.sum_active }))} className="text-2xl font-bold text-violet-900" />
             <p className="text-[10px] text-violet-700/80 mt-0.5">Monto factura (incl. detracción)</p>
           </div>
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
@@ -630,24 +683,24 @@ export default function SalesReportPage() {
           </div>
           <div className="rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-orange-700">Total anuladas</p>
-            <p className="text-2xl font-bold text-orange-900">S/ {stats.amountCancelled.toFixed(2)}</p>
+            <MoneyLines items={stats.byCurrency.map((c) => ({ currency: c.currency, amount: c.sum_cancelled }))} className="text-2xl font-bold text-orange-900" />
           </div>
           <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">Vuelto</p>
-            <p className="text-2xl font-bold text-sky-950">S/ {stats.sumChangeAmount.toFixed(2)}</p>
+            <MoneyLines items={stats.byCurrency.map((c) => ({ currency: c.currency, amount: c.sum_change_amount }))} className="text-2xl font-bold text-sky-950" />
           </div>
           {stats.methodCards.map((card) => {
             const cl = paymentMethodStatCardClasses(card.code)
             return (
               <div key={card.code || card.label} className={cl.wrap}>
                 <p className={cl.label}>{card.label}</p>
-                <p className={cl.amount}>S/ {card.total.toFixed(2)}</p>
+                <p className={cl.amount}>{formatSaleMoney(card.total, card.currency)}</p>
               </div>
             )
           })}
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Total general (incl. anuladas)</p>
-            <p className="text-2xl font-bold text-slate-900">S/ {stats.amountTotal.toFixed(2)}</p>
+            <MoneyLines items={stats.byCurrency.map((c) => ({ currency: c.currency, amount: c.sum_total }))} className="text-2xl font-bold text-slate-900" />
           </div>
         </div>
       )}
