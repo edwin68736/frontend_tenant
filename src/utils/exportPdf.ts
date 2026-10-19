@@ -34,6 +34,11 @@ export interface ExportPdfOptions<T> {
    * decimales). Mismo contenido que se pasa al Excel.
    */
   footerRow?: (string | number)[]
+  /**
+   * Varias filas de totales (p. ej. una por moneda cuando el reporte mezcla PEN y USD). Se dibujan
+   * tras `footerRow`; mismo contenido que se pasa al Excel.
+   */
+  footerRows?: (string | number)[][]
   /** Color del texto de una fila (p. ej. gris para las anuladas). */
   rowTextColor?: (row: T) => Rgb | undefined
 }
@@ -180,8 +185,9 @@ export async function exportTableToPdf<T extends object>(
     y += ROW_H
   })
 
-  // ── Fila de totales ────────────────────────────────────────────────────────
-  if (options.footerRow) {
+  // ── Filas de totales ───────────────────────────────────────────────────────
+  const footers = [...(options.footerRow ? [options.footerRow] : []), ...(options.footerRows ?? [])]
+  footers.forEach((footer) => {
     if (y + ROW_H + 1 > bottom) {
       doc.addPage('a4', 'landscape')
       y = MARGIN + 2
@@ -197,13 +203,13 @@ export async function exportTableToPdf<T extends object>(
     doc.setTextColor(17, 24, 39)
     let x = MARGIN
     columns.forEach((col, i) => {
-      const cell = options.footerRow?.[i]
+      const cell = footer[i]
       const text = typeof cell === 'number' ? fmtNumber(cell) : String(cell ?? '')
       drawCell(doc, ellipsize(doc, text, widths[i] - 2.4), x, widths[i], y + (ROW_H + 0.8) / 2 + 1.1, typeof cell === 'number' ? 'right' : col.align)
       x += widths[i]
     })
     y += ROW_H + 0.8
-  }
+  })
 
   finishPages(doc, title)
   await downloadJsPdf(doc, outName)

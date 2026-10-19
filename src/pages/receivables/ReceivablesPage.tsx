@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Search, Wallet, AlertCircle, Building2, FileText } from 'lucide-react'
+import { Search, Wallet, AlertCircle, Building2, FileText, FileDown, FileSpreadsheet } from 'lucide-react'
 import RequireModule from '@/components/ui/RequireModule'
 import { useAuth } from '@/contexts/AuthContext'
 import { Modal } from '@/components/ui/Modal'
@@ -12,6 +12,8 @@ import {
 } from '@/services/receivables.service'
 import { cashbankService, type PaymentMethodRecord } from '@/services/cashbank.service'
 import { formatDisplayDatePeru } from '@/utils/datesPeru'
+import { formatSaleMoney } from '@/utils/formatMoney'
+import { exportReceivablesExcel, exportReceivablesPdf } from '@/utils/receivablesExport'
 import { CollectPaymentModal } from '@/components/receivables/CollectPaymentModal'
 
 export default function ReceivablesPage() {
@@ -31,6 +33,10 @@ function ReceivablesContent() {
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState('open')
   const [search, setSearch] = useState('')
+  // Filtros con los que se cargó la tabla que se ve (el buscador solo aplica al enviar el formulario):
+  // las exportaciones usan estos, no lo que esté a medio escribir.
+  const [applied, setApplied] = useState({ status: 'open', search: '' })
+  const [exporting, setExporting] = useState<'pdf' | 'excel' | null>(null)
   const [collectRow, setCollectRow] = useState<ReceivableRow | null>(null)
   const [statement, setStatement] = useState<AccountStatement | null>(null)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
@@ -44,6 +50,7 @@ function ReceivablesContent() {
       ])
       setRows(listRes.data)
       setSummary(sum)
+      setApplied({ status: statusFilter, search })
     } catch {
       toast.error('Error al cargar cuentas por cobrar')
     } finally {
@@ -58,6 +65,40 @@ function ReceivablesContent() {
   useEffect(() => {
     cashbankService.listPaymentMethods().then(setPaymentMethods).catch(() => {})
   }, [])
+
+  const STATUS_LABELS: Record<string, string> = {
+    open: 'Abiertas',
+    overdue: 'Vencidas',
+    bn_pending: 'BN pendiente',
+    all: 'Todas',
+  }
+
+  /** Exporta TODAS las filas del filtro aplicado (la tabla trae solo las primeras 100). */
+  const handleExport = async (kind: 'pdf' | 'excel') => {
+    setExporting(kind)
+    try {
+      const { data } = await receivablesService.list({
+        status: applied.status,
+        search: applied.search || undefined,
+        page: 1,
+        page_size: 100000,
+      })
+      if (data.length === 0) {
+        toast.error('No hay cuentas por cobrar para exportar')
+        return
+      }
+      if (kind === 'pdf') {
+        await exportReceivablesPdf(data, { statusLabel: STATUS_LABELS[applied.status] ?? applied.status, search: applied.search })
+      } else {
+        await exportReceivablesExcel(data)
+      }
+      toast.success(kind === 'pdf' ? 'PDF descargado' : 'Excel descargado')
+    } catch {
+      toast.error('Error al exportar')
+    } finally {
+      setExporting(null)
+    }
+  }
 
   const openStatement = async (contactId: number) => {
     try {
@@ -97,7 +138,7 @@ function ReceivablesContent() {
             Cobros de ventas a crédito (cuotas), saldo pendiente y detracción SPOT
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value)}
@@ -126,12 +167,35 @@ function ReceivablesContent() {
               <Search size={16} />
             </button>
           </form>
+          <button
+            type="button"
+            onClick={() => void handleExport('excel')}
+            disabled={loading || rows.length === 0 || exporting !== null}
+            className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50"
+          >
+            <FileSpreadsheet size={14} /> Exportar a Excel
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleExport('pdf')}
+            disabled={loading || rows.length === 0 || exporting !== null}
+            className="flex items-center gap-2 px-3 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-50"
+          >
+            <FileDown size={14} /> Exportar a PDF
+          </button>
         </div>
       </div>
 
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <KpiCard label="Saldo directo" value={`S/ ${summary.total_direct_due.toFixed(2)}`} />
+          <KpiCard
+            label="Saldo directo"
+            value={
+              summary.by_currency && summary.by_currency.length > 0
+                ? summary.by_currency.map(c => formatSaleMoney(c.direct_due, c.currency)).join(' + ')
+                : `S/ ${summary.total_direct_due.toFixed(2)}`
+            }
+          />
           <KpiCard label="SPOT pendiente BN" value={`S/ ${summary.total_spot_pending.toFixed(2)}`} />
           <KpiCard label="Documentos abiertos" value={String(summary.count_open)} />
           <KpiCard label="Vencidos" value={String(summary.count_overdue)} accent="red" />
@@ -192,14 +256,14 @@ function ReceivablesContent() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       {row.has_detraccion ? (
-                        <span title="Neto cobrable">S/ {row.direct_target.toFixed(2)}</span>
+                        <span title="Neto cobrable">{formatSaleMoney(row.direct_target, row.currency)}</span>
                       ) : (
-                        <span>S/ {row.total.toFixed(2)}</span>
+                        <span>{formatSaleMoney(row.total, row.currency)}</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right text-gray-600">S/ {row.direct_paid.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-right text-gray-600">{formatSaleMoney(row.direct_paid, row.currency)}</td>
                     <td className="px-4 py-3 text-right font-semibold text-emerald-700">
-                      {row.direct_due > 0 ? `S/ ${row.direct_due.toFixed(2)}` : '—'}
+                      {row.direct_due > 0 ? formatSaleMoney(row.direct_due, row.currency) : '—'}
                     </td>
                     <td className="px-4 py-3 text-right text-xs">
                       {row.spot_pending > 0 ? (

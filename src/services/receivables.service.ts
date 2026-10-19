@@ -22,6 +22,9 @@ export interface ReceivableRow {
   contact_name: string
   contact_doc_number: string
   total: number
+  /** Moneda del comprobante (PEN | USD): total/neto/cobrado/saldo están en esta moneda. */
+  currency?: string
+  exchange_rate?: number | null
   status: string
   payment_condition_code?: string
   has_detraccion: boolean
@@ -38,7 +41,16 @@ export interface ReceivableRow {
   next_installment_due?: string | null
 }
 
+export interface ReceivablesCurrencySummary {
+  currency: string
+  direct_due: number
+  count_open: number
+  count_overdue: number
+}
+
 export interface ReceivablesSummary {
+  /** Saldo directo por moneda (el total_direct_due plano mezcla PEN y USD). */
+  by_currency?: ReceivablesCurrencySummary[]
   total_direct_due: number
   total_spot_pending: number
   count_open: number

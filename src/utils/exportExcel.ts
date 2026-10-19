@@ -17,7 +17,7 @@ export async function exportTableToExcel<T extends object>(
   /** Fila extra al final (ej. totales). Opt-in: quien no la pase mantiene el export de siempre
    *  sin fila agregada — Kardex, Productos, etc. no la necesitan (o directamente no tendría
    *  sentido sumar sus columnas, como un saldo corriente). */
-  footerRow?: CellValue[],
+  footerRow?: CellValue[] | CellValue[][],
 ): Promise<void> {
   const headers: CellValue[] = columns.map(c => c.label)
   const body: CellValue[][] = data.map(row =>
@@ -32,7 +32,11 @@ export async function exportTableToExcel<T extends object>(
     })
   )
   const rows: CellValue[][] = [headers, ...body]
-  if (footerRow) rows.push(footerRow)
+  if (footerRow) {
+    // Una sola fila (CellValue[]) o varias (p. ej. una por moneda).
+    if (Array.isArray(footerRow[0])) rows.push(...(footerRow as CellValue[][]))
+    else rows.push(footerRow as CellValue[])
+  }
   const bytes = await writeXlsx({
     sheets: [{ name: sheetName.slice(0, 31), rows }],
   })
