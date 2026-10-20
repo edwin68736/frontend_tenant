@@ -272,7 +272,9 @@
 .vs-ln .del { width: 34px; height: 34px; border: 0; background: none; color: #c0392b; border-radius: 10px; display: grid; place-items: center; flex: none; }
 .vs-order { background: #fff; border-radius: 26px 26px 0 0; padding: 16px 18px calc(20px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 10px; box-shadow: 0 -10px 30px rgb(5 14 60 / 0.08); }
 .vs-fld { border: 2px solid var(--vs-line); border-radius: 16px; padding: 8px 14px; background: #fff; display: block; }
-.vs-fld:focus-within { border-color: var(--vs-blue); box-shadow: 0 0 0 4px color-mix(in srgb, var(--vs-blue) 12%, transparent); }
+/* Campos del pedido: foco suave en el borde, sin el azul fuerte ni el contorno global (igual que el buscador). */
+.vs-fld:focus-within { border-color: color-mix(in srgb, var(--vs-blue) 22%, transparent); }
+.vs-shop .vs-fld input:focus-visible { outline: 0; }
 .vs-fld small { display: block; font: 700 11px var(--vs-fb); letter-spacing: 0.07em; text-transform: uppercase; color: var(--vs-muted); }
 .vs-fld input { width: 100%; border: 0; outline: 0; background: transparent; font: 600 16px var(--vs-fb); color: var(--vs-ink); padding: 2px 0 0; box-shadow: none; }
 .vs-tot { display: flex; justify-content: space-between; align-items: baseline; }
