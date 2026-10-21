@@ -494,6 +494,7 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
       show_igv_breakdown_on_sale_note: companyConfig?.show_igv_breakdown_on_sale_note !== false,
       logo_size_ticket: companyConfig?.logo_size_ticket,
       logo_size_a4: companyConfig?.logo_size_a4,
+      pdf_a4_design: companyConfig?.pdf_a4_design,
     },
     branch: {
       name: branchName || 'Principal',

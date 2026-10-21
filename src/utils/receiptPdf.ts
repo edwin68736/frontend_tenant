@@ -32,7 +32,7 @@ import {
 import { bankAccountTextLines, renderTicketPaymentAndSunatQrRow } from '@/utils/receiptTicketFooter'
 import { fitReceiptLogoMm, resolveReceiptLogoForPdf } from '@/utils/receiptLogoPdf'
 import { rasterPxForMm } from '@/utils/receiptPdfRaster'
-import { renderReceiptA4 } from '@/utils/receiptPdfA4'
+import { renderReceiptA4, resolveA4Design, DEFAULT_A4_DESIGN } from '@/utils/receiptA4'
 import { getNotaVentaPrintLayout } from '@/services/printers/notaVentaPrintLayout'
 import { normalizeLogoPrintSize, scaleLogoDimension } from '@/services/printers/logoPrintSize'
 
@@ -657,13 +657,24 @@ export async function generateReceiptPdf(
   }
 
   // === FORMATO A4 ===
-  await renderReceiptA4(doc, data)
-
-  if (options?.preview) {
-    applyPreviewWatermark(doc, pageW, A4_HEIGHT)
+  let a4Doc = doc
+  try {
+    await renderReceiptA4(doc, data)
+  } catch (e) {
+    // Un fallo de estilo no debe impedir imprimir el comprobante: si el diseño elegido falla, se rehace
+    // en una hoja nueva (la anterior quedó dibujada a medias) con el diseño por defecto.
+    const failed = resolveA4Design(data).slug
+    if (failed === DEFAULT_A4_DESIGN) throw e
+    console.error(`[receiptPdf] el diseño A4 "${failed}" falló; se usa el diseño por defecto`, e)
+    a4Doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: false })
+    await renderReceiptA4(a4Doc, { ...data, company: { ...data.company, pdf_a4_design: DEFAULT_A4_DESIGN } })
   }
 
-  return doc
+  if (options?.preview) {
+    applyPreviewWatermark(a4Doc, pageW, A4_HEIGHT)
+  }
+
+  return a4Doc
 }
 
 export async function printDataToPdfBlob(

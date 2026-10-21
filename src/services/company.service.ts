@@ -42,6 +42,8 @@ export interface CompanyConfig {
   /** Tamaño del logo en TODOS los comprobantes, separado por formato: pequeno | mediano | grande. */
   logo_size_ticket?: string
   logo_size_a4?: string
+  /** Diseño del PDF A4 de comprobantes (slug: modern | classic). Ausente = backend sin esta función. */
+  pdf_a4_design?: string
   wallet_provider?: string
   wallet_phone?: string
   wallet_qr_url?: string

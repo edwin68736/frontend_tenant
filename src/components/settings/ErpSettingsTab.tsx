@@ -4,6 +4,7 @@ import { ErpCompanySettings } from '@/components/settings/erp/ErpCompanySettings
 import { ReceiptWalletSettings } from '@/components/company/ReceiptWalletSettings'
 import { SaleNoteBrandingSettings } from '@/components/company/SaleNoteBrandingSettings'
 import { LogoSizeSettings } from '@/components/company/LogoSizeSettings'
+import { A4DesignSettings } from '@/components/company/A4DesignSettings'
 import CompanySunatPage from '@/pages/company/CompanySunatPage'
 import CompanyBranchesPage from '@/pages/company/CompanyBranchesPage'
 import CompanySeriesPage from '@/pages/company/CompanySeriesPage'
@@ -48,6 +49,7 @@ export function ErpSettingsTab() {
       {tab === 'empresa' && <ErpCompanySettings />}
       {tab === 'comprobantes' && (
         <div className="space-y-5">
+          <A4DesignSettings />
           <LogoSizeSettings />
           <ReceiptWalletSettings />
           <SaleNoteBrandingSettings />
