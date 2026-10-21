@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, ToggleLeft, ToggleRight, Search } from 'lucide-re
 import { usersService, type TenantUser, type Role } from '@/services/users.service'
 import { restaurantService } from '@/services/restaurant.service'
 import { useAuth } from '@/contexts/AuthContext'
+import { useModules } from '@/contexts/ModulesContext'
 import { Modal } from '@/components/ui/Modal'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { SearchSelect, MIN_OPTIONS_FOR_SEARCH } from '@/components/ui/SearchSelect'
@@ -20,6 +21,10 @@ const empty = () => ({ name: '', email: '', password: '', role_id: 0, branchIds:
 export default function UsersPage() {
   const { hasModule } = useAuth()
   const hasRestaurant = hasModule('restaurant')
+  const { limits, refresh: refreshLimits } = useModules()
+  const seats = limits.users
+  const seatsKnown = !seats.unlimited && seats.max > 0
+  const atSeatLimit = seatsKnown && seats.used >= seats.max
   const moduleColumns = useModuleProfileColumns()
   const [users, setUsers] = useState<TenantUser[]>([])
   const [roles, setRoles] = useState<Role[]>([])
@@ -65,6 +70,10 @@ export default function UsersPage() {
   }, [q, hasRestaurant])
 
   const openNew = () => {
+    if (atSeatLimit) {
+      toast.error('Llegaste al límite de usuarios de tu plan. Actualiza tu plan para agregar más.')
+      return
+    }
     setEditing(null)
     setForm(empty())
     setShow(true)
@@ -131,6 +140,7 @@ export default function UsersPage() {
       }
       setShow(false)
       load()
+      void refreshLimits()
     } catch (e: any) {
       toast.error(e.response?.data?.error ?? e.response?.data?.message ?? 'Error')
     } finally {
@@ -145,6 +155,7 @@ export default function UsersPage() {
       toast.success('Eliminado')
       setConfirmDeleteId(null)
       load()
+      void refreshLimits()
     } catch (e: any) {
       toast.error(e.response?.data?.error ?? 'Error')
     } finally {
@@ -160,6 +171,7 @@ export default function UsersPage() {
     try {
       await usersService.toggleUser(u.id)
       load()
+      void refreshLimits()
     } catch (e: unknown) {
       const msg =
         e && typeof e === 'object' && 'response' in e
@@ -210,11 +222,18 @@ export default function UsersPage() {
           <h2 className="text-lg font-bold text-gray-800">Usuarios</h2>
           <p className="text-sm text-gray-500">
             Acceso al sistema y perfiles por módulo (solo si el módulo está activo en su plan)
+            {seatsKnown && (
+              <span className="ml-1 font-medium text-gray-700">
+                · {seats.used} de {seats.max} usuarios
+              </span>
+            )}
           </p>
         </div>
         <button
           onClick={openNew}
-          className="flex items-center justify-center gap-1.5 w-full sm:w-auto px-4 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90 flex-shrink-0"
+          disabled={atSeatLimit}
+          title={atSeatLimit ? 'Llegaste al límite de usuarios de tu plan' : undefined}
+          className="flex items-center justify-center gap-1.5 w-full sm:w-auto px-4 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90 flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Plus size={15} /> Nuevo usuario
         </button>
