@@ -63,7 +63,7 @@ export function GuiasListSection({
 
   const rows = list.filter((d) => (d.guia_sunat_code || '09') === guiaSunatCode)
   const newGuiaPath = `/billing/docs/despatches/${guiaSunatCode === '31' ? 'transportista' : 'remitente'}/new`
-  const sectionTitle = guiaSunatCode === '31' ? 'Guías de remisión — Transportista (31)' : 'Guías de remisión — Remitente (09)'
+  const sectionTitle = `Guías emitidas (${rows.length})`
 
   const closeDocumentViewer = () => {
     setDocumentViewerOpen(false)
@@ -315,7 +315,7 @@ export function GuiasListSection({
                 <h3 className="font-bold text-gray-800">
                   {detailDespatch.series}-{detailDespatch.correlative}
                 </h3>
-                <p className="text-xs text-gray-500">{sectionTitle}</p>
+                <p className="text-xs text-gray-500">{guiaSunatCode === '31' ? 'Guía de remisión transportista' : 'Guía de remisión remitente'}</p>
               </div>
               <button type="button" onClick={() => setDetailDespatch(null)} className="p-2 rounded-lg hover:bg-gray-100">
                 <X size={16} />
