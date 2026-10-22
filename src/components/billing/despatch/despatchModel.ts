@@ -94,6 +94,8 @@ export interface DespatchDraft {
   chofer2: SecondaryDriverDraft
   vehiculo2: string
   docsRel: RelatedDocDraft[]
+  /** El origen elegido es una factura o boleta pero todavía no se escogió ninguna. */
+  needsSource: boolean
   observacion: string
 }
 
@@ -133,6 +135,7 @@ export function emptyDraft(kind: GreKind, branchId: number): DespatchDraft {
     chofer2: { doc_type: '1', doc: '', licencia: '', nombres: '' },
     vehiculo2: '',
     docsRel: [],
+    needsSource: false,
     observacion: '',
   }
 }
@@ -193,6 +196,7 @@ export function validateDraft(d: DespatchDraft, ctx: ValidationContext): Section
   const ruc = cleanDoc(ctx.companyRuc)
 
   if (!ctx.hasSeries) add(d.kind === '31' ? 'party' : 'motivo', d.kind === '31' ? 'Falta configurar una serie de guía transportista (Empresa → Series).' : 'Falta configurar una serie de guía remitente (Empresa → Series).')
+  if (d.kind === '09' && d.needsSource && !d.sourceSaleId) add('motivo', 'Selecciona la factura o boleta de origen.')
   if (d.kind === '09' && d.motivo === 'otros' && !d.otrosDescripcion.trim()) {
     add('motivo', 'Cuéntanos brevemente el motivo del traslado.')
   }

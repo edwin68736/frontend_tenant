@@ -27,7 +27,9 @@ import {
   type Place,
   type SectionId,
 } from './despatchModel'
-import type { DespatchPrefill } from './prefill'
+import { buildDespatchPrefillFromSaleDetail, type DespatchPrefill } from './prefill'
+import { salesService, type Sale } from '@/services/sales.service'
+import { SalePicker } from './SalePicker'
 import { PartyPicker } from './PartyPicker'
 import { PlaceCard } from './PlaceCard'
 import { TransportPicker } from './TransportPicker'
@@ -82,6 +84,8 @@ export function DespatchForm({
   const [touched, setTouched] = useState<Partial<Record<SectionId, boolean>>>({})
   const [attempted, setAttempted] = useState(false)
   const [lookupBusy, setLookupBusy] = useState(false)
+  const [origin, setOrigin] = useState<'independiente' | '01' | '03'>('independiente')
+  const [sourceLoading, setSourceLoading] = useState(false)
   const [fleetReady, setFleetReady] = useState(false)
   const topRef = useRef<HTMLDivElement>(null)
 
@@ -231,6 +235,50 @@ export function DespatchForm({
     setTouched((t) => ({ ...t, motivo: true }))
   }
 
+  // Origen de la guía: independiente o a partir de una factura/boleta (trae cliente y productos).
+  const changeOrigin = (o: 'independiente' | '01' | '03') => {
+    setOrigin(o)
+    setDraft((d) => ({
+      ...d,
+      needsSource: o !== 'independiente',
+      sourceSaleId: null,
+      sourceLabel: '',
+      items: [],
+      party: emptyParty(),
+      motivo: 'venta',
+      partidaTouched: false,
+      llegadaTouched: false,
+      bultos: '1',
+      bultosTouched: false,
+    }))
+  }
+
+  const pickSale = async (sale: Sale) => {
+    setSourceLoading(true)
+    setDraft((d) => ({ ...d, sourceLabel: `${sale.series}-${sale.number}` }))
+    try {
+      const pre = buildDespatchPrefillFromSaleDetail(await salesService.get(sale.id))
+      setDraft((d) => ({
+        ...d,
+        branchId: pre.branchId,
+        party: pre.party,
+        items: pre.items,
+        sourceSaleId: pre.sourceSaleId,
+        sourceLabel: pre.sourceLabel,
+        motivo: 'venta',
+        bultos: String(Math.max(1, Math.ceil(pre.items.reduce((acc, i) => acc + i.cantidad, 0)))),
+        bultosTouched: false,
+        partidaTouched: false,
+        llegadaTouched: false,
+      }))
+    } catch {
+      toast.error('No se pudo cargar el comprobante')
+      setDraft((d) => ({ ...d, sourceLabel: '' }))
+    } finally {
+      setSourceLoading(false)
+    }
+  }
+
   const loadRelatedGre = async () => {
     const number = draft.relatedGre.trim()
     if (!number) return
@@ -354,6 +402,26 @@ export function DespatchForm({
         <button type="button" onClick={() => setKind(null)} className="text-xs text-gray-500 hover:text-gray-800 underline">
           Cambiar el tipo de guía
         </button>
+      )}
+
+      {/* Origen de la guía (remitente): independiente o desde una factura/boleta ya emitida. */}
+      {is09 && !prefill && (
+        <div className="grid grid-cols-2 lg:grid-cols-12 gap-3">
+          <div className="col-span-2 lg:col-span-4">
+            <label className={lbl}>Origen de la guía *</label>
+            <select className={inputCls} value={origin} onChange={(e) => changeOrigin(e.target.value as 'independiente' | '01' | '03')}>
+              <option value="independiente">Guía independiente</option>
+              <option value="01">Desde una factura</option>
+              <option value="03">Desde una boleta</option>
+            </select>
+          </div>
+          {origin !== 'independiente' && (
+            <div className="col-span-2 lg:col-span-8">
+              <label className={lbl}>{origin === '01' ? 'Factura *' : 'Boleta *'}</label>
+              <SalePicker key={origin} sunatCode={origin} selectedLabel={draft.sourceLabel} loading={sourceLoading} onPick={(s) => void pickSale(s)} onClear={() => changeOrigin(origin)} />
+            </div>
+          )}
+        </div>
       )}
 
       {/* Documento: misma grilla de 12 columnas que el formulario de ventas. */}
