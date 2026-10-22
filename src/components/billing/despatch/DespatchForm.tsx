@@ -159,7 +159,7 @@ export function DespatchForm({
       const b = branchById(id)
       return {
         address: b?.address?.trim() || company.address,
-        ubigeo: b?.fiscal_domicile_code?.trim() || company.ubigeo,
+        ubigeo: /^\d{6}$/.test(b?.fiscal_domicile_code?.trim() ?? '') ? b!.fiscal_domicile_code!.trim() : company.ubigeo,
         branchId: id,
       }
     },
