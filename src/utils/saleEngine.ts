@@ -2,10 +2,10 @@
  * Motor tributario unificado de ventas (espejo de backend_go/pkg/tax/sale_engine.go).
  * Orden SUNAT/Greenter: descuento por línea → descuento global → IGV.
  *
- * Los descuentos en monto que teclea el usuario se expresan en los mismos términos que el precio:
- * con IGV cuando la línea tiene el IGV incluido (S/ 100 de descuento sobre S/ 395 dejan S/ 295), sin
- * IGV cuando el precio es sin IGV. El servidor y SUNAT trabajan siempre sobre la BASE imponible, así
- * que el motor convierte (monto ÷ (1+IGV)) y expone ese valor en `payloadDiscountValue` /
+ * Todo descuento en monto se aplica al TOTAL que paga el cliente, no a la base imponible: S/ 100 sobre
+ * S/ 395 con IGV incluido dejan S/ 295, y S/ 100 sobre un precio sin IGV bajan el total en S/ 100. El
+ * servidor y SUNAT trabajan sobre la BASE, así que el motor convierte (monto ÷ (1+IGV), sin IGV en
+ * líneas exoneradas/inafectas) y expone ese valor en `payloadDiscountValue` /
  * `globalPayloadValue`: es lo que debe viajar al backend. Los porcentajes no cambian.
  */
 
@@ -64,7 +64,7 @@ export type SaleResult = {
 /** Factor (1 + IGV) por el que se multiplica la base para llegar al importe que paga el cliente. */
 function priceFactor(line: SaleLineInput, taxRate: number, taxConfig?: Partial<TaxConfig>): number {
   const rate = effectiveRate(line.igvAffectationType || '10', taxRate, taxConfig)
-  return line.priceIncludesIgv && rate > 0 ? 1 + rate / 100 : 1
+  return rate > 0 ? 1 + rate / 100 : 1
 }
 
 /**
@@ -137,7 +137,7 @@ export function calcSaleCheckout(input: SaleCheckoutInput): SaleResult {
 
   // Factor global: promedio de (1+IGV) ponderado por la base de cada línea cobrable, para que un
   // descuento en monto sobre un documento mixto (con y sin IGV incluido) se convierta de forma
-  // proporcional. Con todas las líneas con IGV incluido vale 1.18; sin IGV incluido, 1.
+  // proporcional. Con líneas gravadas vale 1.18 (todo descuento se aplica al total); exoneradas, 1.
   let weighted = 0
   let weightBase = 0
   lines.forEach((line, i) => {

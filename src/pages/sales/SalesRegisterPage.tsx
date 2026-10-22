@@ -769,17 +769,17 @@ function SalesRegisterContent({
           const includes = it.price_includes_igv ?? true
           const gravado = /^1[0-7]$/.test(aff)
           const rate = gravado ? taxConfig.taxRate : 0
-          const factor = includes && rate > 0 ? 1 + rate / 100 : 1
+          const factor = rate > 0 ? 1 + rate / 100 : 1
           let lineMode: 'percent' | 'amount' | undefined
           let lineValue: number | undefined
           if ((it.line_discount_mode === 'percent' || it.line_discount_mode === 'amount') && (it.line_discount_value ?? 0) > 0) {
             lineMode = it.line_discount_mode
             lineValue = lineMode === 'amount' ? baseDiscountToDisplayAmount(it.line_discount_value ?? 0, factor) : it.line_discount_value
           } else if ((it.discount ?? 0) > 0) {
-            // Cotización anterior a v151: solo existe el monto bruto (formato CalcItem), que ya es
-            // el importe con IGV que se tecleó.
+            // Cotización anterior a v151: solo existe el monto bruto (formato CalcItem). Con IGV
+            // incluido ya es el importe con IGV tecleado; con precio sin IGV es base y se lleva al total.
             lineMode = 'amount'
-            lineValue = roundSunat(it.discount)
+            lineValue = includes ? roundSunat(it.discount) : baseDiscountToDisplayAmount(it.discount, factor)
           }
           return { it, aff, includes, lineMode, lineValue }
         })
