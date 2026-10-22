@@ -9,7 +9,7 @@ import { PrintDocButton } from '@/components/print/PrintDocButton'
 import { configuredTicketPaperMm } from '@/utils/receiptTicketPaper'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
-import { formatDisplayDatePeru, getTodayPeru } from '@/utils/datesPeru'
+import { clampIssueDatePeru, formatDisplayDatePeru, getMaxIssueDatePeru, getMinIssueDatePeru, getTodayPeru } from '@/utils/datesPeru'
 import { useAuth } from '@/contexts/AuthContext'
 import { companyService, tenantCanEmitFactura } from '@/services/company.service'
 import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
@@ -347,7 +347,7 @@ function SalesContent() {
     try {
       const res = await salesService.issueElectronicFromNota(emitRow.id, {
         series_id: sid,
-        issue_date: emitIssueDate.trim() || undefined,
+        issue_date: clampIssueDatePeru(emitIssueDate),
         contact_id: emitContactId,
       })
       toast.success(
@@ -889,7 +889,10 @@ function SalesContent() {
                   type="date"
                   className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
                   value={emitIssueDate}
+                  min={getMinIssueDatePeru()}
+                  max={getMaxIssueDatePeru()}
                   onChange={(e) => setEmitIssueDate(e.target.value)}
+                  onBlur={() => setEmitIssueDate((v) => clampIssueDatePeru(v))}
                 />
               </div>
             </div>
