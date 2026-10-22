@@ -3,7 +3,7 @@ import axios from 'axios'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Search, Eye, X, Plus, FileText, ExternalLink, RefreshCw, Download, Ticket, FileDown, ChevronDown, Ban } from 'lucide-react'
+import { Search, Eye, X, Plus, FileText, ExternalLink, RefreshCw, Download, Ticket, FileDown, ChevronDown, Ban, Truck } from 'lucide-react'
 import { salesService, type Sale, type SaleDetail } from '@/services/sales.service'
 import { PrintDocButton } from '@/components/print/PrintDocButton'
 import { configuredTicketPaperMm } from '@/utils/receiptTicketPaper'
@@ -35,6 +35,9 @@ import { quickAddDefaultsFromQuery } from '@/utils/contactQuickAdd'
 import { contactsService, type Contact } from '@/services/contacts.service'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
 import { filterRucContacts, contactOptionLabel, rucContactLabel } from '@/utils/checkoutContacts'
+import { DespatchForm } from '@/components/billing/despatch/DespatchForm'
+import { buildDespatchPrefillFromSaleDetail, type DespatchPrefill } from '@/components/billing/despatch/prefill'
+import { filterAllGuiaSeries, hasGuiaSeriesForCode, GUIA_SERIES_SETTINGS_PATH, guiaSeriesMissingMessage, type GuiaSeriesRow } from '@/utils/despatchSeries'
 
 const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
 const TABLE_SKELETON_ROWS = 6
@@ -80,6 +83,11 @@ function SalesContent() {
   // El backend solo exige el módulo, pero anular repone stock y revierte caja: se pide un
   // permiso explícito para no dejarlo al alcance de cualquiera con acceso a ventas.
   const canCancel = hasModule('sales') && hasPermission('sales.cancel')
+  const canGuia = hasModule('despatch') && hasPermission('billing.despatch')
+  const [guiaPrefill, setGuiaPrefill] = useState<DespatchPrefill | null>(null)
+  const [guiaSeries, setGuiaSeries] = useState<GuiaSeriesRow[]>([])
+  const [guiaBranches, setGuiaBranches] = useState<{ id: number; name: string }[]>([])
+  const [guiaLoadingId, setGuiaLoadingId] = useState<number | null>(null)
   const { sunat } = useBranchCheckoutSeries()
   const canFactura = tenantCanEmitFactura(sunat)
 
@@ -354,6 +362,27 @@ function SalesContent() {
       toast.error(msg ?? 'No se pudo emitir el comprobante')
     } finally {
       setEmitSubmitting(false)
+    }
+  }
+
+  // Guía de remisión (remitente) a partir de una nota de venta: misma pantalla que desde factura o boleta.
+  const openGuia = async (saleId: number) => {
+    setGuiaLoadingId(saleId)
+    try {
+      const [seriesData, branchesData, saleDetail] = await Promise.all([companyService.listSeries({}), companyService.listBranches(), salesService.get(saleId)])
+      const raw = seriesData as GuiaSeriesRow[] | { data?: GuiaSeriesRow[] }
+      const list = filterAllGuiaSeries(Array.isArray(raw) ? raw : (raw?.data ?? []))
+      if (!hasGuiaSeriesForCode(list, '09')) {
+        toast.error(guiaSeriesMissingMessage('09'), { action: { label: 'Ir a series', onClick: () => window.location.assign(GUIA_SERIES_SETTINGS_PATH) } })
+        return
+      }
+      setGuiaSeries(list)
+      setGuiaBranches(Array.isArray(branchesData) ? branchesData : [])
+      setGuiaPrefill(buildDespatchPrefillFromSaleDetail(saleDetail))
+    } catch {
+      toast.error('No se pudo preparar la guía de remisión')
+    } finally {
+      setGuiaLoadingId(null)
     }
   }
 
@@ -689,6 +718,18 @@ function SalesContent() {
                           title="Emitir factura o boleta"
                         >
                           <FileText size={14} /> Emitir
+                        </button>
+                      )}
+                      {canGuia && !isCancelled && !s.electronic_issue_sale_id && (
+                        <button
+                          type="button"
+                          onClick={() => void openGuia(s.id)}
+                          disabled={guiaLoadingId === s.id}
+                          className="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg disabled:opacity-50"
+                          title="Generar guía de remisión"
+                          aria-label="Generar guía de remisión"
+                        >
+                          <Truck size={14} />
                         </button>
                       )}
                       {/* Mismas reglas que el backend: solo notas de venta no anuladas y
@@ -1093,6 +1134,25 @@ function SalesContent() {
             {cancelling ? 'Anulando…' : 'Anular nota de venta'}
           </button>
         </div>
+      </Modal>
+
+      <Modal open={!!guiaPrefill} onClose={() => setGuiaPrefill(null)} contentClassName="max-w-4xl" closeOnBackdropClick={false}>
+        {guiaPrefill && (
+          <DespatchForm
+            layout="modal"
+            initialKind="09"
+            title="Generar guía desde nota de venta"
+            prefill={guiaPrefill}
+            onClose={() => setGuiaPrefill(null)}
+            onCreated={() => {
+              toast.success('Guía encolada. Consulte en Documentos → G.R. Remitente.')
+              setGuiaPrefill(null)
+            }}
+            series={guiaSeries}
+            branches={guiaBranches}
+            mainBranchId={guiaBranches.find((b) => b.name === 'Principal')?.id ?? guiaBranches[0]?.id ?? 1}
+          />
+        )}
       </Modal>
 
       <Modal open={detailLoading || !!detail} onClose={() => setDetail(null)}>

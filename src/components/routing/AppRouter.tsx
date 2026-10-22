@@ -211,8 +211,8 @@ function AppRoutes() {
         {/* Guías de remisión: vistas independientes por tipo (remitente 09 / transportista 31). */}
         <Route path="billing/docs/despatches/:guiaTipo/new" element={<Lazy><Protected perm="billing.despatch"><GuiaRemisionCreatePage /></Protected></Lazy>} />
         <Route path="billing/docs/despatches/:guiaTipo" element={<Lazy><Protected perm="billing.despatch"><GuiaListPage /></Protected></Lazy>} />
-        {/* Compatibilidad con enlaces viejos a la vista combinada. */}
-        <Route path="billing/docs/despatches/new" element={<Navigate to="/billing/docs/despatches/remitente/new" replace />} />
+        {/* Sin tipo en la ruta: el formulario pregunta primero qué guía se necesita. */}
+        <Route path="billing/docs/despatches/new" element={<Lazy><Protected perm="billing.despatch"><GuiaRemisionCreatePage /></Protected></Lazy>} />
         <Route path="billing/docs/despatches" element={<Navigate to="/billing/docs/despatches/remitente" replace />} />
         <Route path="billing/docs" element={<Navigate to="/billing/docs/retentions" replace />} />
         <Route path="billing/docs/:docType" element={<Lazy><Protected perm="billing.advanced_docs"><SunatDocsPage /></Protected></Lazy>} />

@@ -195,10 +195,15 @@ export function toTipoDocIdentidadCode(value: string): string {
   return value
 }
 
-/** Catálogo 20 — Motivo de traslado (guía de remisión). */
+/**
+ * Catálogo 20 — Motivos de traslado que el formulario de guías soporta hoy. El formulario los
+ * presenta en lenguaje de negocio (ver despatchModel.MOTIVOS); el usuario no ve los códigos.
+ */
 export const SUNAT_MOTIVO_TRASLADO: { code: string; label: string }[] = [
   { code: '01', label: 'Venta' },
+  { code: '02', label: 'Compra' },
   { code: '04', label: 'Traslado entre establecimientos' },
+  { code: '06', label: 'Devolución' },
   { code: '13', label: 'Otros' },
 ]
 

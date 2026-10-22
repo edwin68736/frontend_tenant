@@ -234,6 +234,10 @@ export const billingService = {
     api.get('/api/billing/despatches').then(r => r.data),
   createDespatch: (payload: CreateDespatchInput): Promise<{ success: boolean; async?: boolean; message?: string; despatch: SunatDespatch }> =>
     api.post('/api/billing/despatches', payload).then(r => r.data),
+  lastDespatchTransport: (branchId: number, tipo: '09' | '31'): Promise<LastDespatchTransport> =>
+    api.get('/api/billing/despatches/last-transport', { params: { branch_id: branchId, tipo } }).then(r => r.data),
+  lookupDespatch: (number: string): Promise<DespatchLookupResult> =>
+    api.get('/api/billing/despatches/lookup', { params: { number } }).then(r => r.data),
   getDespatchStatus: (id: number): Promise<SunatDespatch> =>
     api.get(`/api/billing/despatches/${id}/status`).then(r => r.data),
 
@@ -448,12 +452,37 @@ export interface SunatReversion {
   details?: RevertedDocLine[]
 }
 
+/** Últimos datos de transporte usados en una guía de la sucursal (para preseleccionar). */
+export interface LastDespatchTransport {
+  found: boolean
+  mod_traslado?: string
+  carrier_doc?: string
+  placa?: string
+  driver_doc?: string
+}
+
+/** Guía remitente propia, para autocompletar una guía transportista que la referencia. */
+export interface DespatchLookupResult {
+  number: string
+  remitente: { tipo_doc: string; num_doc: string; rzn_social: string; address: string; ubigeo: string }
+  destinatario: { tipo_doc: string; num_doc: string; rzn_social: string; address: string; ubigeo: string }
+  partida: { ubigueo: string; direccion: string }
+  llegada: { ubigueo: string; direccion: string }
+  peso_total: number
+  num_bultos: number
+  details: Array<{ codigo: string; descripcion: string; unidad: string; cantidad: number }>
+}
+
 export interface CreateDespatchInput {
   branch_id: number
   series_id: number
   source_sale_id?: number
-  destinatario: { tipo_doc: string; num_doc: string; rzn_social: string; address: string; ubigeo?: string }
+  destinatario: { tipo_doc: string; num_doc: string; rzn_social: string; address?: string; ubigeo?: string }
   remitente?: { tipo_doc: string; num_doc: string; rzn_social: string; address: string; ubigeo?: string }
+  /** Compra (02): el proveedor; el destinatario es la propia empresa. */
+  tercero?: { tipo_doc: string; num_doc: string; rzn_social: string; address?: string; ubigeo?: string }
+  observacion?: string
+  docs_relacionados?: Array<{ tipo: string; nro: string; emisor?: string }>
   envio: {
     cod_traslado: string
     des_traslado: string
@@ -478,6 +507,13 @@ export interface CreateDespatchInput {
     chofer_licencia?: string
     chofer_nombres?: string
     chofer_apellidos?: string
+    ind_m1l?: boolean
+    ind_retorno_envases?: boolean
+    ind_retorno_vehiculo_vacio?: boolean
+    ind_transbordo?: boolean
+    paga_flete_remitente?: boolean
+    chofer_secundario?: { tipo_doc?: string; doc: string; licencia: string; nombres?: string; apellidos?: string }
+    vehiculo_secundario?: { placa: string; hab_cert?: string }
   }
   details: Array<{ codigo: string; descripcion: string; unidad: string; cantidad: number }>
 }

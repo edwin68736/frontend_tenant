@@ -18,7 +18,8 @@ import { BillingOperationTypeBadge } from '@/components/billing/BillingOperation
 import { BillingDetractionDetail } from '@/components/billing/BillingDetractionDetail'
 import { SalePaymentsBreakdown } from '@/components/sales/SalePaymentsBreakdown'
 import { BnConfirmationPanel } from '@/components/receivables/BnConfirmationPanel'
-import { DespatchFormModal, buildDespatchPrefillFromSaleDetail, type DespatchPrefill } from '@/components/billing/DespatchFormModal'
+import { DespatchForm } from '@/components/billing/despatch/DespatchForm'
+import { buildDespatchPrefillFromSaleDetail, type DespatchPrefill } from '@/components/billing/despatch/prefill'
 import { FiscalRetentionPerceptionModal } from '@/components/billing/FiscalRetentionPerceptionModal'
 import { FiscalReissueModal, type FiscalReissueTarget } from '@/components/billing/FiscalReissueModal'
 import {
@@ -1960,20 +1961,28 @@ function BillingContent() {
         </button>
       </Modal>
 
-      {canGuia && <DespatchFormModal
-        open={guiaModalOpen}
-        onClose={() => { setGuiaModalOpen(false); setGuiaPrefill(null) }}
-        onCreated={() => toast.success('Guía encolada. Consulte en Documentos → G.R. Remitente.')}
-        series={guiaSeries}
-        branches={guiaBranches}
-        mainBranchId={guiaBranches.find(b => b.name === 'Principal')?.id ?? guiaBranches[0]?.id ?? 1}
-        prefill={guiaPrefill}
-        title="Generar guía desde comprobante"
-        // Generar una guía a partir de un comprobante propio siempre es remitente (09): la
-        // guía transportista (31) es para cuando la empresa transporta mercadería ajena, un
-        // flujo sin relación con "emití esta factura/boleta".
-        guiaSunatCode="09"
-      />}
+      {canGuia && (
+        <Modal open={guiaModalOpen} onClose={() => { setGuiaModalOpen(false); setGuiaPrefill(null) }} contentClassName="max-w-4xl" closeOnBackdropClick={false}>
+          {guiaPrefill && (
+            <DespatchForm
+              layout="modal"
+              // Una guía nacida de un comprobante propio siempre es remitente (09).
+              initialKind="09"
+              title="Generar guía desde comprobante"
+              prefill={guiaPrefill}
+              onClose={() => { setGuiaModalOpen(false); setGuiaPrefill(null) }}
+              onCreated={() => {
+                toast.success('Guía encolada. Consulte en Documentos → G.R. Remitente.')
+                setGuiaModalOpen(false)
+                setGuiaPrefill(null)
+              }}
+              series={guiaSeries}
+              branches={guiaBranches}
+              mainBranchId={guiaBranches.find(b => b.name === 'Principal')?.id ?? guiaBranches[0]?.id ?? 1}
+            />
+          )}
+        </Modal>
+      )}
 
       <FiscalRetentionPerceptionModal
         mode="perception"

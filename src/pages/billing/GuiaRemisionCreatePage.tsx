@@ -1,22 +1,24 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { DespatchFormModal } from '@/components/billing/DespatchFormModal'
+import { DespatchForm } from '@/components/billing/despatch/DespatchForm'
 import { filterAllGuiaSeries, type GuiaSunatCode, type GuiaSeriesRow } from '@/utils/despatchSeries'
 import { companyService } from '@/services/company.service'
 import RequireModule from '@/components/ui/RequireModule'
 import SunatRequiredMessage from '@/components/ui/SunatRequiredMessage'
 
-/** Segmento de ruta (remitente/transportista) → código SUNAT de la guía. */
-function guiaSunatCodeFromParam(guiaTipo: string | undefined): GuiaSunatCode {
-  return guiaTipo === 'transportista' ? '31' : '09'
+/** Segmento de ruta (remitente/transportista) → código SUNAT; sin segmento se pregunta qué guía necesita. */
+function guiaSunatCodeFromParam(guiaTipo: string | undefined): GuiaSunatCode | undefined {
+  if (guiaTipo === 'transportista') return '31'
+  if (guiaTipo === 'remitente') return '09'
+  return undefined
 }
 
 function GuiaRemisionCreateContent() {
   const navigate = useNavigate()
   const { guiaTipo } = useParams<{ guiaTipo: string }>()
-  const guiaSunatCode = guiaSunatCodeFromParam(guiaTipo)
-  const listPath = `/billing/docs/despatches/${guiaSunatCode === '31' ? 'transportista' : 'remitente'}`
+  const initialKind = guiaSunatCodeFromParam(guiaTipo)
+  const listPathFor = (code: GuiaSunatCode) => `/billing/docs/despatches/${code === '31' ? 'transportista' : 'remitente'}`
 
   const [sunatEnabled, setSunatEnabled] = useState<boolean | null>(null)
   const [series, setSeries] = useState<GuiaSeriesRow[]>([])
@@ -54,17 +56,13 @@ function GuiaRemisionCreateContent() {
   if (!sunatEnabled) return <SunatRequiredMessage />
 
   const mainBranchId = branches.find((b) => b.name === 'Principal')?.id ?? branches[0]?.id ?? 1
-  const title =
-    guiaSunatCode === '31' ? 'Nueva guía transportista (31)' : 'Nueva guía de remisión (09)'
-
   return (
-    <DespatchFormModal
+    <DespatchForm
       layout="page"
-      open
-      guiaSunatCode={guiaSunatCode}
-      title={title}
-      onClose={() => navigate(listPath)}
-      onCreated={() => navigate(listPath)}
+      initialKind={initialKind}
+      title="Nueva guía de remisión"
+      onClose={() => navigate(listPathFor(initialKind ?? '09'))}
+      onCreated={(_, kind) => navigate(listPathFor(kind))}
       series={series}
       branches={branches}
       mainBranchId={mainBranchId}
