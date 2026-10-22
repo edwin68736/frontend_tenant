@@ -63,6 +63,8 @@ type Props = {
   loading: boolean
   rawTotal: number
   payableTotal: number
+  /** Descuento ya calculado por el motor sobre la base (el monto en S/ se teclea con IGV). */
+  discountBase?: number
   discountMode: CheckoutDiscountMode
   discountValue: number
   onDiscountModeChange: (mode: CheckoutDiscountMode) => void
@@ -103,6 +105,7 @@ export function POSCheckoutModal({
   loading,
   rawTotal,
   payableTotal,
+  discountBase,
   discountMode,
   discountValue,
   onDiscountModeChange,
@@ -138,8 +141,8 @@ export function POSCheckoutModal({
   const discountPrevRef = useRef(0)
 
   const discountAmount = useMemo(
-    () => calcCheckoutDiscountAmount(rawTotal, discountMode, discountValue),
-    [rawTotal, discountMode, discountValue],
+    () => discountBase ?? calcCheckoutDiscountAmount(rawTotal, discountMode, discountValue),
+    [discountBase, rawTotal, discountMode, discountValue],
   )
 
   useEffect(() => {

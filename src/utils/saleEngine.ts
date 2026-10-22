@@ -1,11 +1,17 @@
 /**
  * Motor tributario unificado de ventas (espejo de backend_go/pkg/tax/sale_engine.go).
  * Orden SUNAT/Greenter: descuento por línea → descuento global → IGV.
+ *
+ * Los descuentos en monto que teclea el usuario se expresan en los mismos términos que el precio:
+ * con IGV cuando la línea tiene el IGV incluido (S/ 100 de descuento sobre S/ 395 dejan S/ 295), sin
+ * IGV cuando el precio es sin IGV. El servidor y SUNAT trabajan siempre sobre la BASE imponible, así
+ * que el motor convierte (monto ÷ (1+IGV)) y expone ese valor en `payloadDiscountValue` /
+ * `globalPayloadValue`: es lo que debe viajar al backend. Los porcentajes no cambian.
  */
 
 import { calcCheckoutDiscountAmount, distributeCheckoutDiscountToLines, type CheckoutDiscountMode } from '@/utils/checkoutDiscount'
 import { isBonificacionGravada } from '@/constants/igvAffectation'
-import { calcItem, calcItemWithSubtotalDiscount, subtotalDiscountToLineDiscount, type TaxConfig } from '@/utils/taxCalc'
+import { calcItem, calcItemWithSubtotalDiscount, effectiveRate, subtotalDiscountToLineDiscount, type TaxConfig } from '@/utils/taxCalc'
 import { roundSunat } from '@/utils/money'
 
 export type SaleLineInput = {
@@ -34,6 +40,10 @@ export type SaleLineResult = {
   taxAmount: number
   total: number
   storedDiscount: number
+  /** Descuento de línea tal como lo ve el cliente (con IGV si el precio lo incluye). */
+  lineDiscountDisplay: number
+  /** Valor a enviar al backend: monto sobre la base imponible, o el porcentaje tal cual. */
+  payloadDiscountValue: number
 }
 
 export type SaleResult = {
@@ -41,7 +51,34 @@ export type SaleResult = {
   subtotal: number
   taxAmount: number
   total: number
+  /** Descuento global sobre la base imponible (lo que declara el XML). */
   globalDiscountAmount: number
+  /** Descuento global tal como lo ve el cliente (con IGV si los precios lo incluyen). */
+  globalDiscountDisplay: number
+  /** Valor a enviar al backend: monto sobre la base imponible, o el porcentaje tal cual. */
+  globalPayloadValue: number
+  /** Factor (1+IGV) ponderado con el que se convierte el descuento global entre base y con IGV. */
+  globalFactor: number
+}
+
+/** Factor (1 + IGV) por el que se multiplica la base para llegar al importe que paga el cliente. */
+function priceFactor(line: SaleLineInput, taxRate: number, taxConfig?: Partial<TaxConfig>): number {
+  const rate = effectiveRate(line.igvAffectationType || '10', taxRate, taxConfig)
+  return line.priceIncludesIgv && rate > 0 ? 1 + rate / 100 : 1
+}
+
+/**
+ * Inversa de la conversión del motor: dado un descuento ya expresado sobre la base, el monto que
+ * hay que mostrar en el formulario (con IGV). Evita que el redondeo desplace un centavo al
+ * reabrir un documento guardado.
+ */
+export function baseDiscountToDisplayAmount(base: number, factor: number): number {
+  if (!(base > 0) || !(factor > 1)) return roundSunat(base)
+  const guess = roundSunat(base * factor)
+  for (const cand of [guess, roundSunat(guess - 0.01), roundSunat(guess + 0.01)]) {
+    if (roundSunat(cand / factor) === roundSunat(base)) return cand
+  }
+  return guess
 }
 
 export function calcSaleCheckout(input: SaleCheckoutInput): SaleResult {
@@ -53,6 +90,9 @@ export function calcSaleCheckout(input: SaleCheckoutInput): SaleResult {
     taxAmount: 0,
     total: 0,
     globalDiscountAmount: 0,
+    globalDiscountDisplay: 0,
+    globalPayloadValue: 0,
+    globalFactor: 1,
   }
   if (n === 0) return out
 
@@ -62,7 +102,10 @@ export function calcSaleCheckout(input: SaleCheckoutInput): SaleResult {
   for (const line of lines) {
     const aff = line.igvAffectationType || '10'
     const grossSub = roundSunat(calcItem(line.unitPrice, line.quantity, 0, aff, line.priceIncludesIgv, taxRate, taxConfig).subtotal)
-    const lineDisc = calcCheckoutDiscountAmount(grossSub, line.lineDiscountMode || 'amount', line.lineDiscountValue || 0)
+    const lineMode = line.lineDiscountMode || 'amount'
+    const typed = line.lineDiscountValue || 0
+    const factor = priceFactor(line, taxRate, taxConfig)
+    const lineDisc = calcCheckoutDiscountAmount(grossSub, lineMode, lineMode === 'amount' ? typed / factor : typed)
     const afterLine = roundSunat(
       calcItemWithSubtotalDiscount(
         line.unitPrice,
@@ -87,13 +130,28 @@ export function calcSaleCheckout(input: SaleCheckoutInput): SaleResult {
       taxAmount: 0,
       total: 0,
       storedDiscount: 0,
+      lineDiscountDisplay: roundSunat(lineDisc * factor),
+      payloadDiscountValue: lineMode === 'amount' ? lineDisc : Math.min(100, Math.max(0, typed)),
     })
   }
 
+  // Factor global: promedio de (1+IGV) ponderado por la base de cada línea cobrable, para que un
+  // descuento en monto sobre un documento mixto (con y sin IGV incluido) se convierta de forma
+  // proporcional. Con todas las líneas con IGV incluido vale 1.18; sin IGV incluido, 1.
+  let weighted = 0
+  let weightBase = 0
+  lines.forEach((line, i) => {
+    if (isBonificacionGravada(line.igvAffectationType || '10')) return
+    weighted += afterLineSubs[i] * priceFactor(line, taxRate, taxConfig)
+    weightBase += afterLineSubs[i]
+  })
+  const globalFactor = weightBase > 0 ? weighted / weightBase : 1
+  const globalMode = input.globalDiscountMode || 'amount'
+  const globalTyped = input.globalDiscountValue || 0
   const globalDisc = calcCheckoutDiscountAmount(
     subtotalAfterLineSum,
-    input.globalDiscountMode || 'amount',
-    input.globalDiscountValue || 0,
+    globalMode,
+    globalMode === 'amount' ? globalTyped / globalFactor : globalTyped,
   )
   const chargeableAfterLine = afterLineSubs.map((sub, i) =>
     isBonificacionGravada(lines[i].igvAffectationType || '10') ? 0 : sub,
@@ -137,6 +195,9 @@ export function calcSaleCheckout(input: SaleCheckoutInput): SaleResult {
   })
 
   out.globalDiscountAmount = globalDisc
+  out.globalFactor = globalFactor
+  out.globalDiscountDisplay = roundSunat(globalDisc * globalFactor)
+  out.globalPayloadValue = globalMode === 'amount' ? globalDisc : Math.min(100, Math.max(0, globalTyped))
   return out
 }
 

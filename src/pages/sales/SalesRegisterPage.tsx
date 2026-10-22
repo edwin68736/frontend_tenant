@@ -74,7 +74,7 @@ import type { PrintData } from '@/types/printData'
 import { getTipoComprobanteLabel } from '@/constants/sunat'
 import { SUNAT_MAX_MONTO_CLIENTE_SIN_RUC, SUNAT_RUC_LENGTH } from '@/constants/sunat'
 import { cashbankService, type BankAccount, type CashSession, type PaymentMethodRecord } from '@/services/cashbank.service'
-import { calcSaleCheckout } from '@/utils/saleEngine'
+import { baseDiscountToDisplayAmount, calcSaleCheckout } from '@/utils/saleEngine'
 import { calcItem, calcItemWithSubtotalDiscount, getAfectacionGroup, type SunatAfectacionGroup } from '@/utils/taxCalc'
 import { addDaysToDateString, clampIssueDatePeru, getMaxIssueDatePeru, getMinIssueDatePeru, getTodayPeru, isIssueDateAllowed } from '@/utils/datesPeru'
 import {
@@ -761,31 +761,53 @@ function SalesRegisterContent({
         }
         // Descuento global: se rehidrata tal como se tecleó. Sin esto, abrir la cotización para
         // editarla o convertirla mostraba el descuento en 0 y el total subía en silencio.
+        // El servidor guarda los montos sobre la BASE imponible; el formulario los muestra en los
+        // términos del precio (con IGV si el precio lo incluye), así que se convierten al abrir.
         const gMode = q.global_discount_mode === 'percent' || q.global_discount_mode === 'amount' ? q.global_discount_mode : null
+        const qItems = (detail.items ?? []).map((it) => {
+          const aff = it.igv_affectation_type || '10'
+          const includes = it.price_includes_igv ?? true
+          const gravado = /^1[0-7]$/.test(aff)
+          const rate = gravado ? taxConfig.taxRate : 0
+          const factor = includes && rate > 0 ? 1 + rate / 100 : 1
+          let lineMode: 'percent' | 'amount' | undefined
+          let lineValue: number | undefined
+          if ((it.line_discount_mode === 'percent' || it.line_discount_mode === 'amount') && (it.line_discount_value ?? 0) > 0) {
+            lineMode = it.line_discount_mode
+            lineValue = lineMode === 'amount' ? baseDiscountToDisplayAmount(it.line_discount_value ?? 0, factor) : it.line_discount_value
+          } else if ((it.discount ?? 0) > 0) {
+            // Cotización anterior a v151: solo existe el monto bruto (formato CalcItem), que ya es
+            // el importe con IGV que se tecleó.
+            lineMode = 'amount'
+            lineValue = roundSunat(it.discount)
+          }
+          return { it, aff, includes, lineMode, lineValue }
+        })
+        let globalShown = q.global_discount_value ?? 0
+        if (gMode === 'amount' && globalShown > 0) {
+          const factorCalc = calcSaleCheckout({
+            lines: qItems.map((x) => ({
+              unitPrice: x.it.unit_price,
+              quantity: x.it.quantity,
+              igvAffectationType: x.aff,
+              priceIncludesIgv: x.includes,
+              lineDiscountMode: x.lineMode,
+              lineDiscountValue: x.lineValue,
+            })),
+            taxRate: taxConfig.taxRate,
+            taxConfig,
+          })
+          globalShown = baseDiscountToDisplayAmount(globalShown, factorCalc.globalFactor)
+        }
         if (gMode && (q.global_discount_value ?? 0) > 0) {
           setDiscountMode(gMode)
-          setDiscountValue(q.global_discount_value ?? 0)
+          setDiscountValue(globalShown)
         } else {
           setDiscountMode('percent')
           setDiscountValue(0)
         }
         setItems(
-          (detail.items ?? []).map((it) => {
-            const aff = it.igv_affectation_type || '10'
-            const includes = it.price_includes_igv ?? true
-            let lineMode: 'percent' | 'amount' | undefined
-            let lineValue: number | undefined
-            if ((it.line_discount_mode === 'percent' || it.line_discount_mode === 'amount') && (it.line_discount_value ?? 0) > 0) {
-              lineMode = it.line_discount_mode
-              lineValue = it.line_discount_value
-            } else if ((it.discount ?? 0) > 0) {
-              // Cotización anterior a v151: solo existe el monto bruto (formato CalcItem). Se
-              // convierte a monto sobre la base imponible, que es lo que entiende el formulario.
-              const gravado = /^1[0-7]$/.test(aff)
-              const rate = gravado ? taxConfig.taxRate : 0
-              lineMode = 'amount'
-              lineValue = roundSunat(includes && rate > 0 ? it.discount / (1 + rate / 100) : it.discount)
-            }
+          qItems.map(({ it, aff, includes, lineMode, lineValue }) => {
             return {
               product_id: it.product_id ?? null,
               presentation_id: it.presentation_id ?? undefined,
@@ -1070,6 +1092,13 @@ function SalesRegisterContent({
     () => roundSunat(saleCalc.lines.reduce((s, l) => s + l.lineDiscountSubtotal, 0)),
     [saleCalc],
   )
+  // Lo que ve el cliente en el resumen (con IGV si el precio lo incluye); la vista previa de
+  // impresión y el XML siguen usando los montos sobre la base de arriba.
+  const lineDiscountShown = useMemo(
+    () => roundSunat(saleCalc.lines.reduce((s, l) => s + l.lineDiscountDisplay, 0)),
+    [saleCalc],
+  )
+  const checkoutDiscountShown = saleCalc.globalDiscountDisplay
   const checkoutDiscountAmount = saleCalc.globalDiscountAmount
   const subtotalGlobal = saleCalc.subtotal
   const taxGlobal = saleCalc.taxAmount
@@ -1549,7 +1578,7 @@ function SalesRegisterContent({
           // El descuento viaja como se tecleó (modo + valor), línea y global: así el servidor
           // calcula con el mismo motor que la venta y puede devolverlo al editar o convertir.
           global_discount_mode: discountValue > 0 ? discountMode : undefined,
-          global_discount_value: discountValue > 0 ? discountValue : undefined,
+          global_discount_value: discountValue > 0 ? saleCalc.globalPayloadValue : undefined,
           items: items.map((it, idx) => ({
             product_id: it.product_id ?? null,
             presentation_id: it.presentation_id ?? undefined,
@@ -1560,7 +1589,7 @@ function SalesRegisterContent({
             unit_price: it.unit_price,
             discount: saleCalc.lines[idx]?.storedDiscount ?? 0,
             line_discount_mode: (it.line_discount_value ?? 0) > 0 ? (it.line_discount_mode ?? 'amount') : undefined,
-            line_discount_value: (it.line_discount_value ?? 0) > 0 ? it.line_discount_value : undefined,
+            line_discount_value: (it.line_discount_value ?? 0) > 0 ? saleCalc.lines[idx]?.payloadDiscountValue : undefined,
             // La unidad de venta viaja con la línea: sin ella la venta convertida descontaba el
             // inventario como si se hubieran vendido unidades sueltas.
             sale_unit_id: it.sale_unit_id,
@@ -1846,8 +1875,8 @@ function SalesRegisterContent({
               }
             : undefined,
         global_discount_mode: discountValue > 0 ? discountMode : undefined,
-        global_discount_value: discountValue > 0 ? discountValue : undefined,
-        items: items.map((it) => ({
+        global_discount_value: discountValue > 0 ? saleCalc.globalPayloadValue : undefined,
+        items: items.map((it, idx) => ({
           product_id: it.product_id ?? null,
           presentation_id: it.presentation_id,
           // sale_unit_id: contrato real (sales.service.ts:253, aceptado por el backend desde
@@ -1860,7 +1889,7 @@ function SalesRegisterContent({
           quantity: it.quantity,
           unit_price: it.unit_price,
           line_discount_mode: (it.line_discount_value ?? 0) > 0 ? (it.line_discount_mode ?? 'amount') : undefined,
-          line_discount_value: (it.line_discount_value ?? 0) > 0 ? it.line_discount_value : undefined,
+          line_discount_value: (it.line_discount_value ?? 0) > 0 ? saleCalc.lines[idx]?.payloadDiscountValue : undefined,
           igv_affectation_type: it.igv_affectation_type,
           price_includes_igv: it.price_includes_igv,
           modifiers_json: it.modifiers_json ?? '',
@@ -3110,13 +3139,13 @@ function SalesRegisterContent({
                     {lineDiscountTotal > 0 && (
                       <div className="flex justify-between text-amber-800 text-xs">
                         <span>Desc. por línea</span>
-                        <span className="tabular-nums">− {fmt(lineDiscountTotal)}</span>
+                        <span className="tabular-nums">− {fmt(lineDiscountShown)}</span>
                       </div>
                     )}
                     {checkoutDiscountAmount > 0 && (
                       <div className="flex justify-between text-amber-800 text-xs">
                         <span>Desc. global</span>
-                        <span className="tabular-nums">− {fmt(checkoutDiscountAmount)}</span>
+                        <span className="tabular-nums">− {fmt(checkoutDiscountShown)}</span>
                       </div>
                     )}
                     {totalsByAfectacion.exonerado.total > 0 && (

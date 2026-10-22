@@ -839,7 +839,7 @@ function POSContent() {
         due_date: today,
         payments: validPayments.map((p) => ({ method: p.method, amount: roundSunat(Number(p.amount)) })),
         global_discount_mode: checkoutDiscountValue > 0 ? checkoutDiscountMode : undefined,
-        global_discount_value: checkoutDiscountValue > 0 ? checkoutDiscountValue : undefined,
+        global_discount_value: checkoutDiscountValue > 0 ? saleCalc.globalPayloadValue : undefined,
         items: cart.map((i) => {
           if (isManualCartLine(i)) {
             return {
@@ -1502,6 +1502,7 @@ function POSContent() {
         loading={processing}
         rawTotal={rawSubtotalGlobal}
         payableTotal={payableTotal}
+        discountBase={checkoutDiscountAmount}
         discountMode={checkoutDiscountMode}
         discountValue={checkoutDiscountValue}
         onDiscountModeChange={setCheckoutDiscountMode}
