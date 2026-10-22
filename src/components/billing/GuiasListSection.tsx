@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { RefreshCw, Plus, Download, Eye, X, FileCode, Archive, Search } from 'lucide-react'
+import { RefreshCw, Download, Eye, X, FileCode, Archive, Search } from 'lucide-react'
 import {
   billingService,
   type SunatDespatch,
@@ -14,6 +13,7 @@ import { DocumentViewerModal } from '@/components/ui/DocumentViewerModal'
 import { createLocalReceiptPdfObjectUrl, downloadLocalReceiptPdf } from '@/utils/localReceiptPdf'
 import { formatDisplayDatePeru } from '@/utils/datesPeru'
 import {
+  BILLING_STATUS_FILTER_OPTIONS,
   billingStatusColor,
   billingStatusLabel,
   canShowCdr,
@@ -22,12 +22,14 @@ import {
   normalizeBillingStatus,
 } from '@/constants/billingStatus'
 
+const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
+
 function despatchBillingStatus(d: SunatDespatch): string {
   return normalizeBillingStatus(d.billing_status || d.status)
 }
 
 /**
- * Listado de guías de remisión de UN solo tipo (09 o 31).
+ * Listado de guías de remisión de UN solo tipo (09 o 31), con el patrón de la lista de comprobantes.
  *
  * Antes remitente y transportista se mezclaban en una sola tabla con una columna extra para
  * distinguirlas; separadas por página no hace falta esa columna — el tipo ya lo dice el título.
@@ -36,7 +38,6 @@ export function GuiasListSection({
   guiaSunatCode,
   list,
   loading,
-  onRefresh,
   statusLoading,
   setStatusLoading,
   onStatusUpdated,
@@ -44,12 +45,16 @@ export function GuiasListSection({
   guiaSunatCode: GuiaSunatCode
   list: SunatDespatch[]
   loading: boolean
-  onRefresh: () => void
   statusLoading: number | null
   setStatusLoading: (id: number | null) => void
   onStatusUpdated?: (d: SunatDespatch) => void
 }) {
-  const navigate = useNavigate()
+  const [statusFilter, setStatusFilter] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [perPage, setPerPage] = useState<number>(25)
+  const [page, setPage] = useState(1)
   const [detailDespatch, setDetailDespatch] = useState<SunatDespatch | null>(null)
   const [detailInvoice, setDetailInvoice] = useState<InvoiceInfo | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -61,9 +66,17 @@ export function GuiasListSection({
   const [downloadingDoc, setDownloadingDoc] = useState<{ saleId: number; type: 'xml' | 'xml-generated' | 'cdr' } | null>(null)
   const documentViewerUrlRef = useRef<string | null>(null)
 
-  const rows = list.filter((d) => (d.guia_sunat_code || '09') === guiaSunatCode)
-  const newGuiaPath = `/billing/docs/despatches/${guiaSunatCode === '31' ? 'transportista' : 'remitente'}/new`
-  const sectionTitle = `Guías emitidas (${rows.length})`
+  const term = searchTerm.trim().toLowerCase()
+  const filtered = list
+    .filter((d) => (d.guia_sunat_code || '09') === guiaSunatCode)
+    .filter((d) => !statusFilter || despatchBillingStatus(d) === statusFilter)
+    .filter((d) => !term || `${d.series}-${d.correlative}`.toLowerCase().includes(term) || (d.destinatario_razon ?? '').toLowerCase().includes(term) || (d.destinatario_ruc ?? '').includes(term))
+    .filter((d) => !dateFrom || d.issue_date.slice(0, 10) >= dateFrom)
+    .filter((d) => !dateTo || d.issue_date.slice(0, 10) <= dateTo)
+  const total = filtered.length
+  const lastPage = Math.max(1, Math.ceil(total / perPage))
+  const currentPage = Math.min(page, lastPage)
+  const rows = filtered.slice((currentPage - 1) * perPage, currentPage * perPage)
 
   const closeDocumentViewer = () => {
     setDocumentViewerOpen(false)
@@ -118,18 +131,40 @@ export function GuiasListSection({
   const colCount = 8
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100 flex justify-between items-center">
-        <h3 className="font-semibold text-gray-800">{sectionTitle}</h3>
-        <div className="flex gap-2">
-          <button type="button" onClick={onRefresh} disabled={loading} className="p-2 text-gray-500 hover:text-gray-700" title="Actualizar lista">
-            <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-          </button>
-          <button type="button" onClick={() => navigate(newGuiaPath)} className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700">
-            <Plus size={14} /> Nueva guía
-          </button>
+    <div className="space-y-4">
+      <div className="flex gap-2 flex-wrap items-center">
+        <select className="border border-gray-200 rounded-xl px-3 py-2 text-sm min-w-[180px]" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); setPage(1) }}>
+          {BILLING_STATUS_FILTER_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+        <div className="relative flex-1 min-w-[240px]">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            className="w-full border border-gray-200 rounded-xl pl-8 pr-3 py-2 text-sm"
+            placeholder="Buscar por destinatario, serie o número..."
+            value={searchTerm}
+            onChange={(e) => { setSearchTerm(e.target.value); setPage(1) }}
+          />
+        </div>
+        <input type="date" className="border border-gray-200 rounded-xl px-3 py-2 text-sm" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1) }} aria-label="Desde" />
+        <input type="date" className="border border-gray-200 rounded-xl px-3 py-2 text-sm" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1) }} aria-label="Hasta" />
+        <div className="flex items-center gap-2 ml-auto">
+          <span className="text-sm text-gray-600 whitespace-nowrap">Mostrar</span>
+          <select className="border border-gray-200 rounded-xl px-3 py-2 text-sm" value={perPage} onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1) }}>
+            {PER_PAGE_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+          <span className="text-sm text-gray-600 whitespace-nowrap">por página</span>
         </div>
       </div>
+
+      <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
       <div className="w-full overflow-x-auto">
         <table className="w-full text-sm min-w-[900px]">
           <thead className="bg-gray-50 border-b border-gray-100">
@@ -306,6 +341,26 @@ export function GuiasListSection({
           </tbody>
         </table>
       </div>
+      </div>
+
+      {total > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 py-2 px-1">
+          <p className="text-sm text-gray-600">
+            Mostrando {(currentPage - 1) * perPage + 1}-{Math.min(currentPage * perPage, total)} de {total} guías
+          </p>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setPage(Math.max(1, currentPage - 1))} disabled={currentPage <= 1} className="px-3 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
+              Anterior
+            </button>
+            <span className="text-sm text-gray-600">
+              Página {currentPage} de {lastPage}
+            </span>
+            <button type="button" onClick={() => setPage(Math.min(lastPage, currentPage + 1))} disabled={currentPage >= lastPage} className="px-3 py-1.5 rounded-xl border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
+              Siguiente
+            </button>
+          </div>
+        </div>
+      )}
 
       <Modal open={detailDespatch != null} onClose={() => setDetailDespatch(null)} contentClassName="max-w-lg">
         {detailDespatch && (

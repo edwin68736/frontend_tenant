@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
+import { Plus, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { billingService, type SunatDespatch } from '@/services/billing.service'
 import { GuiasListSection } from '@/components/billing/GuiasListSection'
@@ -24,6 +25,7 @@ export default function GuiaListPage() {
 
 function GuiaListContent() {
   const { guiaTipo } = useParams<{ guiaTipo: string }>()
+  const navigate = useNavigate()
   const guiaSunatCode = guiaSunatCodeFromParam(guiaTipo)
   const [sunatEnabled, setSunatEnabled] = useState<boolean | null>(null)
   const [despatches, setDespatches] = useState<SunatDespatch[]>([])
@@ -66,21 +68,33 @@ function GuiaListContent() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-bold text-gray-800">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-gray-800">
           {guiaSunatCode === '31' ? 'Guías de remisión — Transportista' : 'Guías de remisión — Remitente'}
-        </h2>
-        <p className="text-sm text-gray-500">
+          </h2>
+          <p className="text-sm text-gray-500">
           {guiaSunatCode === '31'
             ? 'Su empresa transporta mercadería de terceros (GRE 31).'
             : 'Traslado de su propia mercadería, con transporte propio o contratado (GRE 09).'}
-        </p>
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={loadDespatches} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-50 flex-shrink-0">
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Actualizar
+          </button>
+          <button
+            onClick={() => navigate(`/billing/docs/despatches/${guiaSunatCode === '31' ? 'transportista' : 'remitente'}/new`)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium bg-[rgb(var(--p600))] text-white hover:opacity-90"
+          >
+            <Plus size={14} /> Nueva guía
+          </button>
+        </div>
       </div>
       <GuiasListSection
         guiaSunatCode={guiaSunatCode}
         list={despatches}
         loading={loading}
-        onRefresh={loadDespatches}
         statusLoading={statusLoading}
         setStatusLoading={setStatusLoading}
         onStatusUpdated={(d) => setDespatches(prev => prev.map(x => x.id === d.id ? d : x))}
