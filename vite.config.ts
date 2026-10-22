@@ -68,6 +68,13 @@ export default defineConfig(({ mode }) => {
       target: ['es2019', 'safari13', 'ios13', 'chrome87', 'firefox78', 'edge88'],
       rollupOptions: {
         output: {
+          // El worker de pdf.js (.mjs) se sirve con Content-Type application/octet-stream en el nginx de producción
+          // y el navegador rechaza cargar un módulo con ese tipo: la vista previa/ticket en PNG fallaba. Emitirlo
+          // como .js hace que cualquier servidor lo entregue como JavaScript.
+          assetFileNames: (asset) =>
+            (asset.names ?? [asset.name ?? '']).some((n) => n.endsWith('.mjs'))
+              ? 'assets/[name]-[hash].js'
+              : 'assets/[name]-[hash][extname]',
           // Chunks por paquete. Antes solo se separaban recharts/jspdf/pdfjs por coincidencia de texto en la ruta, y
           // Rollup dejaba DENTRO de vendor-charts a react y react-dom (los usa recharts, el primero que los pidió)
           // y dentro de vendor-jspdf a utilidades compartidas: la entrada tenía que importar esos archivos para
