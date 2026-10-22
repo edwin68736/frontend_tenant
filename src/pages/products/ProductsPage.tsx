@@ -158,6 +158,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const { activeBranchId, activeBranch } = useBranch()
   const { hasPermission } = useAuth()
   const canDeleteProducts = hasPermission('products.delete')
+  // Sin products.view_cost el servidor omite el costo y no deja pisarlo al guardar: no se muestra el campo.
+  const canViewCost = hasPermission('products.view_cost')
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [brands, setBrands] = useState<Brand[]>([])
@@ -2003,7 +2005,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               </button>
             )}
           </div>
-          {pageMode === 'product' && (
+          {pageMode === 'product' && canViewCost && (
             <div className="min-w-0">
               <label className="block text-xs font-medium text-gray-600 mb-1">Precio compra</label>
               <MoneyAmountInput

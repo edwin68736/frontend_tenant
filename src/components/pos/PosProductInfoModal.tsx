@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Boxes, History, Tag, X } from 'lucide-react'
+import { Boxes, DollarSign, Tag, X } from 'lucide-react'
 import { PortalModal } from '@/components/ui/PortalModal'
 import { companyService, type BranchRow } from '@/services/company.service'
 import { inventoryService, type StockByBranch } from '@/services/inventory.service'
@@ -17,13 +17,13 @@ type Props = {
 
 const MODE_TITLE: Record<PosProductInfoMode, string> = {
   stock: 'Stock por sucursal',
-  purchase: 'Historial de compras',
+  purchase: 'Costo del producto',
   price: 'Precios',
 }
 
 const MODE_ICON: Record<PosProductInfoMode, typeof Boxes> = {
   stock: Boxes,
-  purchase: History,
+  purchase: DollarSign,
   price: Tag,
 }
 
@@ -31,7 +31,7 @@ const MODE_ICON: Record<PosProductInfoMode, typeof Boxes> = {
  * Info rápida de un producto desde su tarjeta en el POS (stock por sucursal, precio de
  * compra, precio de venta) — sin salir del punto de venta a buscarlo en Productos.
  *
- * `purchase` (historial de compras): todavía no existe un endpoint que liste las compras de
+ * `purchase` (costo): botón visible solo con products.view_cost (el servidor además omite el costo sin ese permiso). Todavía no existe un endpoint que liste las compras de
  * UN producto puntual (la lista de compras no filtra por product_id) — por eso acá se muestra
  * el precio de compra actual del producto (dato que sí existe) con un aviso de que el
  * historial detallado no está disponible todavía, en vez de dejar el botón sin hacer nada.
@@ -132,14 +132,14 @@ export function PosProductInfoModal({ open, onClose, mode, product }: Props) {
           {mode === 'purchase' && (
             <div className="space-y-3">
               <div className="rounded-xl bg-stone-50 border border-stone-100 p-3">
-                <p className="text-xs text-stone-500">Precio de compra actual</p>
+                <p className="text-xs text-stone-500">Costo actual</p>
                 <p className="text-lg font-semibold text-stone-800 tabular-nums">
                   {formatMoney(Number(product.purchase_price) || 0)}
                 </p>
               </div>
               <p className="text-xs text-stone-500">
-                Aún no hay historial de compras detallado disponible para un producto puntual — este es
-                el costo de compra registrado en la ficha del producto.
+                Este es el costo de compra registrado en la ficha del producto (aún no hay historial
+                detallado de compras por producto).
               </p>
             </div>
           )}

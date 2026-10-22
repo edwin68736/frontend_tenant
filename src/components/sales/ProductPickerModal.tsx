@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Boxes, History, Search, Tag, X } from 'lucide-react'
+import { Boxes, DollarSign, Search, Tag, X } from 'lucide-react'
 import { productsService, getProductImageUrl, type Product } from '@/services/products.service'
 import { useBranch } from '@/contexts/BranchContext'
+import { useAuth } from '@/contexts/AuthContext'
 import { formatSaleMoney } from '@/utils/formatMoney'
 import {
   productConfigurationBadge,
@@ -42,6 +43,9 @@ export function ProductPickerModal({
     variant === 'sale' ? Number(p.sale_price ?? 0) : Number(p.purchase_price ?? 0)
 
   const { activeBranchId } = useBranch()
+  const { hasPermission } = useAuth()
+  const canViewStockInfo = hasPermission('pos.view_stock')
+  const canViewCostInfo = hasPermission('products.view_cost')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [products, setProducts] = useState<Product[]>([])
@@ -159,24 +163,28 @@ export function ProductPickerModal({
                   </td>
                   <td className="px-2 py-2.5">
                     <div className="flex w-[6rem] rounded-lg border border-gray-200 divide-x divide-gray-200 overflow-hidden">
-                      <button
-                        type="button"
-                        onClick={openInfo('stock', p)}
-                        title="Stock por sucursal"
-                        aria-label="Ver stock por sucursal"
-                        className="flex-1 flex items-center justify-center py-1.5 text-gray-500 hover:text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))]"
-                      >
-                        <Boxes size={13} aria-hidden />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={openInfo('purchase', p)}
-                        title="Historial de compras"
-                        aria-label="Ver historial de compras"
-                        className="flex-1 flex items-center justify-center py-1.5 text-gray-500 hover:text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))]"
-                      >
-                        <History size={13} aria-hidden />
-                      </button>
+                      {canViewStockInfo && (
+                        <button
+                          type="button"
+                          onClick={openInfo('stock', p)}
+                          title="Stock por sucursal"
+                          aria-label="Ver stock por sucursal"
+                          className="flex-1 flex items-center justify-center py-1.5 text-gray-500 hover:text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))]"
+                        >
+                          <Boxes size={13} aria-hidden />
+                        </button>
+                      )}
+                      {canViewCostInfo && (
+                        <button
+                          type="button"
+                          onClick={openInfo('purchase', p)}
+                          title="Costo del producto"
+                          aria-label="Ver costo del producto"
+                          className="flex-1 flex items-center justify-center py-1.5 text-gray-500 hover:text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))]"
+                        >
+                          <DollarSign size={13} aria-hidden />
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={openInfo('price', p)}

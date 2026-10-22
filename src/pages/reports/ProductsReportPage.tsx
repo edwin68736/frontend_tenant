@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useAuth } from '@/contexts/AuthContext'
 import { FileDown, FileSpreadsheet, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { productsService, type ProductReportRow } from '@/services/products.service'
@@ -52,6 +53,9 @@ const COLS: ExportColumn<ProductReportRow>[] = [
 type Branch = { id: number; name: string }
 
 export default function ProductsReportPage() {
+  const { hasPermission } = useAuth()
+  const canViewCost = hasPermission('products.view_cost')
+  const cols = canViewCost ? COLS : COLS.filter((c) => c.key !== 'purchase_price')
   const [branches, setBranches] = useState<Branch[]>([])
   const [data, setData] = useState<ProductReportRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -120,7 +124,7 @@ export default function ProductsReportPage() {
         toast.error('No hay datos para exportar')
         return
       }
-      exportTableToPdf<ProductReportRow>('Reporte de productos', COLS, rows, 'reporte-productos.pdf')
+      exportTableToPdf<ProductReportRow>('Reporte de productos', cols, rows, 'reporte-productos.pdf')
       toast.success('PDF descargado')
     } catch {
       toast.error('Error al exportar')
@@ -134,7 +138,7 @@ export default function ProductsReportPage() {
         toast.error('No hay datos para exportar')
         return
       }
-      await exportTableToExcel<ProductReportRow>('Productos', COLS, rows, 'reporte-productos.xlsx')
+      await exportTableToExcel<ProductReportRow>('Productos', cols, rows, 'reporte-productos.xlsx')
       toast.success('Excel descargado')
     } catch {
       toast.error('Error al exportar')
@@ -242,7 +246,7 @@ export default function ProductsReportPage() {
                   <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Categoría</th>
                   <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Unidad</th>
                   <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">P. venta</th>
-                  <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">P. compra</th>
+                  {canViewCost && <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">P. compra</th>}
                   <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">
                     {branchId ? 'Stock (sucursal)' : 'Stock total'}
                   </th>
@@ -260,7 +264,7 @@ export default function ProductsReportPage() {
                       <td className="px-4 py-2 text-gray-600">{row.category_name || '—'}</td>
                       <td className="px-4 py-2">{row.unit}</td>
                       <td className="px-4 py-2 whitespace-nowrap">S/ {Number(row.sale_price).toFixed(2)}</td>
-                      <td className="px-4 py-2 whitespace-nowrap">S/ {Number(row.purchase_price).toFixed(2)}</td>
+                      {canViewCost && <td className="px-4 py-2 whitespace-nowrap">S/ {Number(row.purchase_price).toFixed(2)}</td>}
                       <td className="px-4 py-2 whitespace-nowrap">
                         {row.manage_stock ? String(row.stock_total ?? 0) : '—'}
                       </td>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useAuth } from '@/contexts/AuthContext'
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
@@ -43,6 +44,8 @@ type Props = {
 }
 
 export function QuickProductCreateModal({ open, onClose, onCreated }: Props) {
+  const { hasPermission } = useAuth()
+  const canViewCost = hasPermission('products.view_cost')
   const [form, setForm] = useState<QuickProductForm>(() => emptyForm())
   const [units, setUnits] = useState<Unit[]>([])
   const [saving, setSaving] = useState(false)
@@ -146,16 +149,18 @@ export function QuickProductCreateModal({ open, onClose, onCreated }: Props) {
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Precio compra</label>
-            <MoneyAmountInput
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-              value={form.purchase_price}
-              onChange={v => patch({ purchase_price: Math.max(0, v) })}
-              emptyWhenZero
-              clearOnFocus
-            />
-          </div>
+          {canViewCost && (
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Precio compra</label>
+              <MoneyAmountInput
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                value={form.purchase_price}
+                onChange={v => patch({ purchase_price: Math.max(0, v) })}
+                emptyWhenZero
+                clearOnFocus
+              />
+            </div>
+          )}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Precio venta *</label>
             <MoneyAmountInput

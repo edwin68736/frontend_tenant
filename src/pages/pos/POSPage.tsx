@@ -7,7 +7,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
-import { Plus, Search, ShoppingCart, Trash2, X, ChevronRight, UserPlus, Package, ScanBarcode, LayoutGrid, Boxes, History, Tag } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Trash2, X, ChevronRight, UserPlus, Package, ScanBarcode, LayoutGrid, Boxes, DollarSign, Tag } from 'lucide-react'
 import { clsx } from 'clsx'
 import { productsService, getProductImageUrl, type Product, type Category } from '@/services/products.service'
 import { contactsService, type Contact } from '@/services/contacts.service'
@@ -97,6 +97,8 @@ export default function POSPage() {
 function POSContent() {
   const { hasModule, hasPermission } = useAuth()
   const canEditPrice = hasPermission('sales.override_price')
+  const canViewStockInfo = hasPermission('pos.view_stock')
+  const canViewCostInfo = hasPermission('products.view_cost')
   const { activeBranchId } = useBranch()
   const { checkoutSeries, seriesMetaReady, hasCheckoutSeries, sunat: cachedSunat } =
     useBranchCheckoutSeries()
@@ -1236,24 +1238,28 @@ function POSContent() {
                         </div>
                       </button>
                       <div className="flex border-t border-stone-200 divide-x divide-stone-200">
-                        <button
-                          type="button"
-                          onClick={openInfo('stock')}
-                          title="Stock por sucursal"
-                          aria-label="Ver stock por sucursal"
-                          className="flex-1 flex items-center justify-center py-1.5 text-stone-500 hover:text-primary-600 hover:bg-primary-50"
-                        >
-                          <Boxes size={13} aria-hidden />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={openInfo('purchase')}
-                          title="Historial de compras"
-                          aria-label="Ver historial de compras"
-                          className="flex-1 flex items-center justify-center py-1.5 text-stone-500 hover:text-primary-600 hover:bg-primary-50"
-                        >
-                          <History size={13} aria-hidden />
-                        </button>
+                        {canViewStockInfo && (
+                          <button
+                            type="button"
+                            onClick={openInfo('stock')}
+                            title="Stock por sucursal"
+                            aria-label="Ver stock por sucursal"
+                            className="flex-1 flex items-center justify-center py-1.5 text-stone-500 hover:text-primary-600 hover:bg-primary-50"
+                          >
+                            <Boxes size={13} aria-hidden />
+                          </button>
+                        )}
+                        {canViewCostInfo && (
+                          <button
+                            type="button"
+                            onClick={openInfo('purchase')}
+                            title="Costo del producto"
+                            aria-label="Ver costo del producto"
+                            className="flex-1 flex items-center justify-center py-1.5 text-stone-500 hover:text-primary-600 hover:bg-primary-50"
+                          >
+                            <DollarSign size={13} aria-hidden />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={openInfo('price')}
