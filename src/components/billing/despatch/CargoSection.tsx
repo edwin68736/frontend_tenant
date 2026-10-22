@@ -1,28 +1,21 @@
 import { useState } from 'react'
-import { PackagePlus, Pencil, Trash2 } from 'lucide-react'
+import { Package, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { ProductPickerModal } from '@/components/sales/ProductPickerModal'
 import type { Product } from '@/services/products.service'
 import { normalizeSunatUnit, sunatUnitDisplayName, sunatUnitSelectOptions } from '@/constants/sunatUnits'
-import { getTodayPeru } from '@/utils/datesPeru'
 import { newKey, type DespatchDraft, type LineItem } from './despatchModel'
-import { Field, inputCls } from './ui'
+import { inputCls } from './ui'
 
-/** Ítems, peso total, bultos sugeridos y fecha del traslado. */
-export function CargoSection({
-  draft,
-  onPatch,
-  allowProducts,
-  allowManual,
-}: {
-  draft: DespatchDraft
-  onPatch: (p: Partial<DespatchDraft>) => void
-  /** Elegir del catálogo de productos (guía remitente sin comprobante de origen). */
-  allowProducts: boolean
-  /** Línea libre: mercadería que no está en mi catálogo (guía transportista). */
-  allowManual: boolean
-}) {
+const th = 'text-left px-3 py-2.5 text-xs font-semibold text-gray-500 uppercase'
+
+/**
+ * Ítems de la guía: se eligen del catálogo de productos de Tukifac («Agregar producto», el mismo
+ * selector de ventas) o se escriben a mano («Producto manual»). El resto de la carga (peso,
+ * bultos) lo pide el formulario junto a la tabla.
+ */
+export function ItemsTable({ draft, onPatch }: { draft: DespatchDraft; onPatch: (p: Partial<DespatchDraft>) => void }) {
   const [picker, setPicker] = useState(false)
 
   const setItems = (items: LineItem[]) => {
@@ -52,108 +45,96 @@ export function CargoSection({
       ])
     }
     toast.success(`«${p.name}» agregado`)
-    setPicker(false)
   }
 
   const patchItem = (key: string, p: Partial<LineItem>) => setItems(draft.items.map((it) => (it.key === key ? { ...it, ...p } : it)))
+  const fromCatalog = (it: LineItem) => Boolean(it.product_id) || Boolean(draft.sourceSaleId)
 
   return (
-    <div className="space-y-4">
-      {draft.items.length > 0 ? (
-        <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200">
-          {draft.items.map((it) => (
-            <li key={it.key} className="flex flex-wrap items-center gap-2 px-3 py-2.5">
-              {it.product_id || draft.sourceSaleId ? (
-                <div className="min-w-0 flex-1 basis-48">
-                  <p className="text-sm text-gray-900 truncate">{it.descripcion}</p>
-                  {it.codigo && <p className="text-[11px] text-gray-400">{it.codigo}</p>}
-                </div>
-              ) : (
-                <input
-                  className={`${inputCls} flex-1 basis-48`}
-                  value={it.descripcion}
-                  placeholder="Descripción de la mercadería"
-                  onChange={(e) => patchItem(it.key, { descripcion: e.target.value })}
-                />
-              )}
-              <input
-                type="number"
-                min={0}
-                step="any"
-                aria-label="Cantidad"
-                className={`${inputCls} w-24`}
-                value={it.cantidad || ''}
-                onChange={(e) => patchItem(it.key, { cantidad: Number(e.target.value) })}
-              />
-              {it.product_id || draft.sourceSaleId ? (
-                <span className="text-xs text-gray-500 w-20">{sunatUnitDisplayName(it.unidad)}</span>
-              ) : (
-                <select className={`${inputCls} w-28`} value={it.unidad} onChange={(e) => patchItem(it.key, { unidad: e.target.value })} aria-label="Unidad">
-                  {sunatUnitSelectOptions().map((u) => (
-                    <option key={u.value} value={u.value}>
-                      {u.label}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <button type="button" aria-label="Quitar" onClick={() => setItems(draft.items.filter((x) => x.key !== it.key))} className="p-1.5 text-gray-400 hover:text-red-600">
-                <Trash2 size={15} />
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="text-xs text-gray-500 rounded-xl border border-dashed border-gray-300 px-3 py-4 text-center">Aún no hay productos en la guía.</p>
-      )}
+    <>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setPicker(true)}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[rgb(var(--p600))] text-white text-sm font-medium hover:opacity-90 shrink-0"
+        >
+          <Plus size={14} /> Agregar producto
+        </button>
+        <button
+          type="button"
+          onClick={() => setItems([...draft.items, { key: newKey(), codigo: '', descripcion: '', unidad: 'NIU', cantidad: 1 }])}
+          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-amber-300 text-amber-700 text-sm font-medium hover:bg-amber-50 shrink-0"
+        >
+          <Package size={14} /> Producto manual
+        </button>
+        <p className="text-xs text-gray-500 ml-auto">Total de ítems: {draft.items.length}</p>
+      </div>
 
-      {(allowProducts || allowManual) && (
-        <div className="flex flex-wrap gap-2">
-          {allowProducts && (
-            <button type="button" onClick={() => setPicker(true)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-700 hover:bg-gray-50">
-              <PackagePlus size={15} /> Agregar producto
-            </button>
-          )}
-          {allowManual && (
-            <button
-              type="button"
-              onClick={() => setItems([...draft.items, { key: newKey(), codigo: '', descripcion: '', unidad: 'NIU', cantidad: 1 }])}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-700 hover:bg-gray-50"
-            >
-              <Pencil size={14} /> Escribir una línea
-            </button>
-          )}
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Field label="Peso total (kg) *">
-          <input
-            type="number"
-            min={0}
-            step="0.01"
-            className={inputCls}
-            value={draft.peso}
-            onChange={(e) => onPatch({ peso: e.target.value })}
-            placeholder="0.00"
-          />
-        </Field>
-        <Field label="Bultos" hint={draft.bultosTouched ? undefined : 'Sugerido con la suma de cantidades'}>
-          <input
-            type="number"
-            min={1}
-            className={inputCls}
-            value={draft.bultos}
-            onChange={(e) => onPatch({ bultos: e.target.value, bultosTouched: true })}
-          />
-        </Field>
-        <Field label="Fecha del traslado *">
-          <input type="date" min={getTodayPeru()} className={inputCls} value={draft.fecha} onChange={(e) => onPatch({ fecha: e.target.value })} />
-        </Field>
+      <div className="overflow-x-auto rounded-xl border border-gray-200">
+        <table className="w-full text-sm min-w-[640px] table-fixed">
+          <thead className="bg-gray-50 border-b border-gray-100">
+            <tr>
+              <th className={th}>Descripción</th>
+              <th className={`${th} w-[160px]`}>Código</th>
+              <th className={`${th} w-28`}>Unid.</th>
+              <th className={`${th} w-28`}>Cant.</th>
+              <th className="w-12" />
+            </tr>
+          </thead>
+          <tbody>
+            {draft.items.length === 0 && (
+              <tr>
+                <td colSpan={5} className="px-3 py-6 text-center text-xs text-gray-500">
+                  Aún no hay productos. Usa «Agregar producto» para elegirlos de tu catálogo.
+                </td>
+              </tr>
+            )}
+            {draft.items.map((it) => (
+              <tr key={it.key} className="border-b border-gray-50 hover:bg-gray-50/50">
+                <td className="px-3 py-2">
+                  {fromCatalog(it) ? (
+                    <span className="text-gray-800 block truncate">{it.descripcion}</span>
+                  ) : (
+                    <input className={inputCls} value={it.descripcion} placeholder="Descripción de la mercadería" onChange={(e) => patchItem(it.key, { descripcion: e.target.value })} />
+                  )}
+                </td>
+                <td className="px-3 py-2">
+                  {fromCatalog(it) ? (
+                    <span className="text-gray-500 text-xs font-mono">{it.codigo}</span>
+                  ) : (
+                    <input className={inputCls} value={it.codigo} onChange={(e) => patchItem(it.key, { codigo: e.target.value })} />
+                  )}
+                </td>
+                <td className="px-3 py-2">
+                  {fromCatalog(it) ? (
+                    <span className="text-xs text-gray-600">{sunatUnitDisplayName(it.unidad)}</span>
+                  ) : (
+                    <select className={inputCls} value={it.unidad} onChange={(e) => patchItem(it.key, { unidad: e.target.value })} aria-label="Unidad">
+                      {sunatUnitSelectOptions().map((u) => (
+                        <option key={u.value} value={u.value}>
+                          {u.label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </td>
+                <td className="px-3 py-2">
+                  <input type="number" min={0} step="any" aria-label="Cantidad" className={inputCls} value={it.cantidad || ''} onChange={(e) => patchItem(it.key, { cantidad: Number(e.target.value) })} />
+                </td>
+                <td className="px-1 py-2 text-center">
+                  <button type="button" aria-label="Quitar" onClick={() => setItems(draft.items.filter((x) => x.key !== it.key))} className="p-1.5 text-gray-400 hover:text-red-600">
+                    <Trash2 size={15} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       <Modal open={picker} onClose={() => setPicker(false)} contentClassName="max-w-2xl">
-        <ProductPickerModal variant="sale" onAdd={addProduct} onClose={() => setPicker(false)} />
+        <ProductPickerModal variant="sale" onAdd={(p) => { addProduct(p); setPicker(false) }} onClose={() => setPicker(false)} />
       </Modal>
-    </div>
+    </>
   )
 }

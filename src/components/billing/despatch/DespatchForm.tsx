@@ -9,6 +9,7 @@ import {
   filterGuiaSeriesBySunatCode,
   type GuiaSeriesRow,
 } from '@/utils/despatchSeries'
+import { getTodayPeru } from '@/utils/datesPeru'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import {
   MOTIVOS,
@@ -30,9 +31,9 @@ import type { DespatchPrefill } from './prefill'
 import { PartyPicker } from './PartyPicker'
 import { PlaceCard } from './PlaceCard'
 import { TransportPicker } from './TransportPicker'
-import { CargoSection } from './CargoSection'
+import { ItemsTable } from './CargoSection'
 import { MoreOptions } from './MoreOptions'
-import { ChoiceCard, Field, SectionCard, inputCls } from './ui'
+import { Section, inputCls } from './ui'
 
 export interface DespatchFormProps {
   /** Tipo de guía ya elegido (por la ruta o por venir de un comprobante). Sin valor = se pregunta primero. */
@@ -277,7 +278,7 @@ export function DespatchForm({
       .finally(() => setSending(false))
   }
 
-  // ---- Paso inicial ---------------------------------------------------------------------------
+  // ---- Cabecera y paso inicial ----------------------------------------------------------------
   const listPath = kindNow === '31' ? '/billing/docs/despatches/transportista' : '/billing/docs/despatches/remitente'
   const header = (
     <header className="flex items-center gap-3 pb-4 border-b border-gray-100">
@@ -288,11 +289,14 @@ export function DespatchForm({
       ) : null}
       <div className="min-w-0 flex-1">
         <h1 className="text-base font-bold text-gray-900">{title ?? 'Nueva guía de remisión'}</h1>
-        {draft.sourceLabel && (
-          <p className="text-xs text-gray-500 mt-0.5 inline-flex items-center gap-1">
-            <FileText size={12} /> Desde el comprobante <strong className="font-mono">{draft.sourceLabel}</strong>
-          </p>
-        )}
+        <p className="text-xs text-gray-500 mt-0.5 inline-flex items-center gap-1">
+          {kind ? (kind === '31' ? 'Guía de remisión transportista' : 'Guía de remisión remitente') : 'Elige el tipo de guía'}
+          {draft.sourceLabel && (
+            <>
+              <FileText size={12} className="ml-2" /> Desde el comprobante <strong className="font-mono">{draft.sourceLabel}</strong>
+            </>
+          )}
+        </p>
       </div>
       {layout === 'modal' && (
         <button type="button" onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg" aria-label="Cerrar">
@@ -301,13 +305,14 @@ export function DespatchForm({
       )}
     </header>
   )
+  const shell = layout === 'page' ? 'bg-white rounded-2xl shadow-sm border border-gray-100 p-4 md:p-6 space-y-5' : 'space-y-5'
 
   if (!kind) {
     return (
-      <div className="max-w-3xl mx-auto space-y-5">
+      <div className={shell}>
         {header}
-        <h2 className="text-lg font-semibold text-gray-900">¿Qué guía necesitas?</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <h2 className="text-base font-semibold text-gray-900">¿Qué guía necesitas?</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <button type="button" onClick={() => chooseKind('09')} className="text-left rounded-2xl border border-gray-200 bg-white p-5 hover:border-[rgb(var(--p400))] hover:shadow-sm transition">
             <PackageOpen size={26} className="text-[rgb(var(--p600))]" />
             <p className="mt-3 font-semibold text-gray-900">Yo envío mis mercaderías</p>
@@ -323,234 +328,283 @@ export function DespatchForm({
     )
   }
 
-  // ---- Secciones ------------------------------------------------------------------------------
+  // ---- Campos ---------------------------------------------------------------------------------
   const sourceLocked = draft.sourceSaleId != null
+  const publico = is09 && draft.transporte === 'empresa'
   const partyType: 'customer' | 'supplier' | '' =
     draft.motivo === 'compra' || (draft.motivo === 'devolucion' && draft.devolucionHacia === 'proveedor') ? 'supplier' : draft.motivo === 'otros' ? '' : 'customer'
-  const partyTitle = is09
-    ? draft.motivo === 'traslado'
-      ? '¿A qué local lo envías?'
-      : draft.motivo === 'compra'
-        ? '¿Quién te vende?'
-        : draft.motivo === 'devolucion'
-          ? '¿A quién se lo devuelves?'
-          : draft.motivo === 'otros'
-            ? '¿Quién lo recibe?'
-            : '¿A quién se lo envías?'
-    : '¿De quién es la mercadería?'
+  const lbl = 'block text-xs font-medium text-gray-600 mb-1'
   const fromBranchName = branchById(draft.branchId)?.name ?? ''
-  const usesOwnTransport = !is09 || draft.transporte === 'propio'
-
-  const sectionNums = is09 ? { party: 2, route: 3, transport: 4, cargo: 5 } : { party: 1, route: 2, transport: 3, cargo: 4 }
-
-  const routeTitles = is09
-    ? draft.motivo === 'compra'
-      ? { a: 'Se recoge en', b: 'Llega a mi local' }
-      : { a: 'Sale de', b: 'Llega a' }
-    : { a: 'Punto de recojo', b: 'Punto de entrega' }
+  const branchOptions = branchRows.filter((b) => b.active !== false)
+  const partidaTitle = is09 ? (draft.motivo === 'compra' ? 'Punto de partida (proveedor)' : 'Punto de partida') : 'Punto de partida (remitente)'
+  const llegadaTitle = is09 ? (draft.motivo === 'compra' ? 'Punto de llegada (mi local)' : 'Punto de llegada') : 'Punto de llegada (destinatario)'
 
   const summary = [
     is09 ? (MOTIVOS.find((m) => m.id === draft.motivo)?.title ?? '') : 'Transporte de carga',
     is09 && !partyIsCompany(draft) && draft.party.rzn_social ? draft.party.rzn_social : !is09 && draft.receiver.rzn_social ? `para ${draft.receiver.rzn_social}` : '',
     Number(draft.peso) > 0 ? `${draft.peso} kg` : '',
-    draft.items.length ? `${draft.items.length} producto${draft.items.length > 1 ? 's' : ''}` : '',
+    draft.items.length ? `${draft.items.length} ítem${draft.items.length > 1 ? 's' : ''}` : '',
   ]
     .filter(Boolean)
     .join(' · ')
 
   const body = (
-    <div className="space-y-4 text-sm" ref={topRef}>
+    <div className="space-y-5 text-sm" ref={topRef}>
       {!sourceLocked && !initialKind && (
         <button type="button" onClick={() => setKind(null)} className="text-xs text-gray-500 hover:text-gray-800 underline">
           Cambiar el tipo de guía
         </button>
       )}
 
-      {is09 && (
-        <div data-sec="motivo">
-          <SectionCard n={1} title="¿Qué vas a hacer con la mercadería?" subtitle="Elige el motivo del traslado" errors={errors.motivo} showErrors={showErr('motivo')}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
-              {MOTIVOS.map((m) => (
-                <ChoiceCard
-                  key={m.id}
-                  selected={draft.motivo === m.id}
-                  onClick={() => chooseMotivo(m.id)}
-                  title={m.title}
-                  hint={m.hint}
-                  disabled={sourceLocked && (m.id === 'traslado' || m.id === 'compra')}
-                />
-              ))}
-            </div>
-            {draft.motivo === 'otros' && (
-              <Field label="Describe el motivo *" hint="Aparece en la guía (máx. 100 caracteres)">
-                <input className={inputCls} maxLength={100} value={draft.otrosDescripcion} onChange={(e) => patch({ otrosDescripcion: e.target.value }, 'motivo')} placeholder="Ej. Muestras para una feria" />
-              </Field>
-            )}
-          </SectionCard>
+      {/* Documento: misma grilla de 12 columnas que el formulario de ventas. */}
+      <div className="grid grid-cols-2 lg:grid-cols-12 gap-3" data-sec="motivo">
+        <div className="lg:col-span-3">
+          <label className={lbl}>Sucursal</label>
+          <select
+            className={inputCls}
+            value={draft.branchId}
+            disabled={sourceLocked}
+            onChange={(e) => patch({ branchId: Number(e.target.value), partidaTouched: false, llegadaTouched: false })}
+          >
+            {(branchOptions.length ? branchOptions : branches).map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
         </div>
-      )}
-
-      <div data-sec="party">
-        <SectionCard n={sectionNums.party} title={partyTitle} errors={errors.party} showErrors={showErr('party')}>
-          {!is09 && (
-            <div className="space-y-2">
-              <p className="text-xs text-gray-500">Si ya emitiste la guía del remitente desde este sistema, cárgala y completamos los datos.</p>
-              <div className="flex gap-2">
-                <input
-                  className={`${inputCls} max-w-xs`}
-                  value={draft.relatedGre}
-                  onChange={(e) => patch({ relatedGre: e.target.value })}
-                  placeholder="Guía del remitente, ej. T001-23"
-                  aria-label="Guía del remitente"
-                />
-                <button type="button" onClick={() => void loadRelatedGre()} disabled={lookupBusy || !draft.relatedGre.trim()} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50">
-                  {lookupBusy ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />} Cargar
-                </button>
-              </div>
+        <div className="lg:col-span-2">
+          <label className={lbl}>Serie</label>
+          <select className={`${inputCls} font-mono`} value={seriesId || ''} disabled>
+            {seriesForKind.length === 0 && <option value="">Sin serie</option>}
+            {seriesForKind.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.series}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="lg:col-span-2">
+          <label className={lbl}>Fecha de emisión</label>
+          <input type="date" className={inputCls} value={getTodayPeru()} disabled />
+        </div>
+        <div className="lg:col-span-2">
+          <label className={lbl}>Fecha de traslado *</label>
+          <input type="date" min={getTodayPeru()} className={inputCls} value={draft.fecha} onChange={(e) => patch({ fecha: e.target.value }, 'cargo')} />
+        </div>
+        {is09 ? (
+          <div className="col-span-2 lg:col-span-3">
+            <label className={lbl}>Motivo de traslado *</label>
+            <select className={inputCls} value={draft.motivo} onChange={(e) => chooseMotivo(e.target.value as DespatchDraft['motivo'])}>
+              {MOTIVOS.map((m) => (
+                <option key={m.id} value={m.id} disabled={sourceLocked && (m.id === 'traslado' || m.id === 'compra')}>
+                  {m.title}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div className="col-span-2 lg:col-span-3">
+            <label className={lbl}>Guía de remisión remitente relacionada</label>
+            <div className="flex gap-2">
+              <input className={inputCls} value={draft.relatedGre} onChange={(e) => patch({ relatedGre: e.target.value })} placeholder="Ej. T001-23" aria-label="Guía remitente relacionada" />
+              <button type="button" onClick={() => void loadRelatedGre()} disabled={lookupBusy || !draft.relatedGre.trim()} className="inline-flex items-center gap-1 px-3 rounded-xl border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50 shrink-0">
+                {lookupBusy ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />} Cargar
+              </button>
             </div>
-          )}
+          </div>
+        )}
+        {is09 && draft.motivo === 'otros' && (
+          <div className="col-span-2 lg:col-span-12">
+            <label className={lbl}>Descripción del motivo *</label>
+            <input className={inputCls} maxLength={100} value={draft.otrosDescripcion} onChange={(e) => patch({ otrosDescripcion: e.target.value }, 'motivo')} placeholder="Ej. Muestras para una feria" />
+          </div>
+        )}
+      </div>
+      {showErr('motivo') &&
+        errors.motivo?.map((e, i) => (
+          <p key={i} className="text-xs text-red-600">
+            {e}
+          </p>
+        ))}
 
-          {is09 && draft.motivo === 'traslado' && (
-            <div className="space-y-2">
-              <Field label="Sucursal de destino *" hint="El destinatario de la guía es tu propia empresa">
+      {/* Destinatario / remitente */}
+      <Section errors={errors.party} showErrors={showErr('party')}>
+        {is09 ? (
+          <div className="grid grid-cols-2 lg:grid-cols-12 gap-3">
+            {draft.motivo === 'traslado' ? (
+              <div className="col-span-2 lg:col-span-6">
+                <label className={lbl}>Sucursal de destino *</label>
                 <SearchableSelect
                   value={draft.destinoBranchId}
                   onChange={(v) => patch({ destinoBranchId: v === null ? null : Number(v), llegadaTouched: false }, 'party')}
                   options={branchRows.filter((b) => b.active !== false && b.id !== draft.branchId).map((b) => ({ value: b.id, label: b.name }))}
-                  placeholder={branchRows.length <= 1 ? 'Necesitas otra sucursal registrada' : 'Elige la sucursal'}
+                  placeholder={branchRows.length <= 1 ? 'Necesitas otra sucursal registrada' : 'Seleccionar sucursal'}
                   searchable={false}
                 />
-              </Field>
+                <p className="text-[11px] text-gray-400 mt-1">El destinatario es tu propia empresa.</p>
+              </div>
+            ) : (
+              <div className="col-span-2 lg:col-span-8">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-medium text-gray-600">{partyRoleLabel(draft)} *</label>
+                  {draft.motivo === 'devolucion' && (
+                    <span className="inline-flex gap-3 text-xs text-gray-600">
+                      {(['cliente', 'proveedor'] as const).map((h) => (
+                        <label key={h} className="inline-flex items-center gap-1 cursor-pointer">
+                          <input type="radio" checked={draft.devolucionHacia === h} onChange={() => patch({ devolucionHacia: h, party: emptyParty(), llegadaTouched: false }, 'party')} />
+                          {h === 'cliente' ? 'Cliente' : 'Proveedor'}
+                        </label>
+                      ))}
+                    </span>
+                  )}
+                </div>
+                <PartyPicker
+                  key={`party-${draft.motivo}-${draft.devolucionHacia}-${draft.kind}`}
+                  value={draft.party}
+                  onChange={(p) => patch({ party: p, partidaTouched: false, llegadaTouched: false }, 'party')}
+                  contactType={partyType}
+                  companyRuc={company.ruc}
+                  requireAddress={draft.motivo === 'compra'}
+                  addressLabel="Dirección"
+                  placeholder="Buscar por RUC, DNI o nombre"
+                />
+              </div>
+            )}
+            <div className="col-span-2 lg:col-span-4">
+              <label className={lbl}>Modalidad de traslado *</label>
+              <select className={inputCls} value={draft.transporte} onChange={(e) => patch({ transporte: e.target.value as 'propio' | 'empresa' }, 'transport')}>
+                <option value="propio">Transporte privado</option>
+                <option value="empresa">Transporte público</option>
+              </select>
             </div>
-          )}
-
-          {is09 && draft.motivo === 'devolucion' && (
-            <div className="grid grid-cols-2 gap-2 max-w-sm">
-              <ChoiceCard selected={draft.devolucionHacia === 'cliente'} onClick={() => patch({ devolucionHacia: 'cliente', party: emptyParty(), llegadaTouched: false }, 'party')} title="A un cliente" />
-              <ChoiceCard selected={draft.devolucionHacia === 'proveedor'} onClick={() => patch({ devolucionHacia: 'proveedor', party: emptyParty(), llegadaTouched: false }, 'party')} title="A un proveedor" />
-            </div>
-          )}
-
-          {(!is09 || draft.motivo !== 'traslado') && (
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div>
-              {!is09 && <p className="text-xs font-semibold text-gray-600 mb-2">Remitente (quien entrega la mercadería)</p>}
+              <label className={lbl}>Remitente (quien entrega la mercadería) *</label>
               <PartyPicker
-                key={`party-${draft.motivo}-${draft.devolucionHacia}`}
+                key="remitente"
                 value={draft.party}
-                onChange={(p) => patch({ party: p, partidaTouched: false, llegadaTouched: false }, 'party')}
-                contactType={is09 ? partyType : ''}
+                onChange={(p) => patch({ party: p, partidaTouched: false }, 'party')}
+                contactType=""
                 companyRuc={company.ruc}
-                requireAddress={!is09 || draft.motivo === 'compra'}
-                addressLabel={!is09 ? 'Dirección fiscal' : 'Dirección'}
-                placeholder={`Busca al ${partyRoleLabel(draft).toLowerCase()} por RUC, DNI o nombre`}
+                requireAddress
+                addressLabel="Dirección fiscal"
+                placeholder="Buscar por RUC, DNI o nombre"
               />
             </div>
-          )}
-
-          {!is09 && (
             <div>
-              <p className="text-xs font-semibold text-gray-600 mb-2">Destinatario (quien recibe la mercadería)</p>
+              <label className={lbl}>Destinatario (quien recibe la mercadería) *</label>
               <PartyPicker
                 key="receiver"
                 value={draft.receiver}
                 onChange={(p) => patch({ receiver: p, llegadaTouched: false }, 'party')}
                 contactType=""
                 companyRuc={company.ruc}
-                placeholder="Busca al destinatario por RUC, DNI o nombre"
+                placeholder="Buscar por RUC, DNI o nombre"
               />
             </div>
-          )}
-        </SectionCard>
-      </div>
-
-      <div data-sec="route">
-        <SectionCard n={sectionNums.route} title={is09 ? 'Ruta del traslado' : 'Puntos de recojo y entrega'} subtitle="Precargamos las direcciones; cámbialas si hace falta" errors={errors.route} showErrors={showErr('route')}>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <PlaceCard
-              title={routeTitles.a}
-              caption={is09 ? (draft.motivo === 'compra' ? draft.party.rzn_social : fromBranchName) : draft.party.rzn_social}
-              place={draft.partida}
-              branches={is09 && draft.motivo !== 'compra' ? branchRows : undefined}
-              onChange={(p) => {
-                const next: Partial<DespatchDraft> = { partida: p, partidaTouched: true }
-                if (is09 && draft.motivo !== 'compra' && p.branchId) next.branchId = p.branchId
-                patch(next, 'route')
-              }}
-            />
-            <PlaceCard
-              title={routeTitles.b}
-              caption={
-                is09
-                  ? draft.motivo === 'compra'
-                    ? fromBranchName
-                    : draft.motivo === 'traslado'
-                      ? (branchById(draft.destinoBranchId)?.name ?? '')
-                      : draft.party.rzn_social
-                  : draft.receiver.rzn_social
-              }
-              place={draft.llegada}
-              branches={is09 && (draft.motivo === 'compra' || draft.motivo === 'traslado') ? branchRows : undefined}
-              lockedBranchId={is09 && draft.motivo === 'traslado' ? draft.branchId : undefined}
-              onChange={(p) => {
-                const next: Partial<DespatchDraft> = { llegada: p, llegadaTouched: true }
-                if (is09 && draft.motivo === 'compra' && p.branchId) next.branchId = p.branchId
-                if (is09 && draft.motivo === 'traslado' && p.branchId) next.destinoBranchId = p.branchId
-                patch(next, 'route')
-              }}
-            />
           </div>
-        </SectionCard>
-      </div>
+        )}
+      </Section>
 
-      <div data-sec="transport">
-        <SectionCard n={sectionNums.transport} title={is09 ? '¿Quién transporta?' : 'Conductor y vehículo'} errors={errors.transport} showErrors={showErr('transport')}>
+      {/* Datos de envío */}
+      <Section title="Datos de envío" errors={errors.route} showErrors={showErr('route')}>
+        <div data-sec="route" className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <PlaceCard
+            title={partidaTitle}
+            caption={is09 ? (draft.motivo === 'compra' ? draft.party.rzn_social : fromBranchName) : draft.party.rzn_social}
+            place={draft.partida}
+            branches={is09 && draft.motivo !== 'compra' ? branchRows : undefined}
+            onChange={(p) => {
+              const next: Partial<DespatchDraft> = { partida: p, partidaTouched: true }
+              if (is09 && draft.motivo !== 'compra' && p.branchId) next.branchId = p.branchId
+              patch(next, 'route')
+            }}
+          />
+          <PlaceCard
+            title={llegadaTitle}
+            caption={
+              is09
+                ? draft.motivo === 'compra'
+                  ? fromBranchName
+                  : draft.motivo === 'traslado'
+                    ? (branchById(draft.destinoBranchId)?.name ?? '')
+                    : draft.party.rzn_social
+                : draft.receiver.rzn_social
+            }
+            place={draft.llegada}
+            branches={is09 && (draft.motivo === 'compra' || draft.motivo === 'traslado') ? branchRows : undefined}
+            lockedBranchId={is09 && draft.motivo === 'traslado' ? draft.branchId : undefined}
+            onChange={(p) => {
+              const next: Partial<DespatchDraft> = { llegada: p, llegadaTouched: true }
+              if (is09 && draft.motivo === 'compra' && p.branchId) next.branchId = p.branchId
+              if (is09 && draft.motivo === 'traslado' && p.branchId) next.destinoBranchId = p.branchId
+              patch(next, 'route')
+            }}
+          />
+        </div>
+      </Section>
+
+      {/* Transporte */}
+      <Section title={publico ? 'Transportista' : 'Conductor y vehículo'} errors={errors.transport} showErrors={showErr('transport')}>
+        <div data-sec="transport">
           <TransportPicker
             draft={draft}
             fleet={fleet}
-            allowCompany={is09}
-            hideVehicle={is09 && draft.m1l && draft.transporte === 'propio'}
+            publico={publico}
+            hideVehicle={is09 && draft.m1l && !publico}
             onPatch={(p) => patch(p, 'transport')}
             onFleetChange={(f) => setFleet((cur) => ({ ...cur, ...f }))}
           />
-        </SectionCard>
-      </div>
+        </div>
+      </Section>
 
-      <div data-sec="cargo">
-        <SectionCard n={sectionNums.cargo} title={is09 ? 'La carga' : 'La mercadería'} errors={errors.cargo} showErrors={showErr('cargo')}>
-          <CargoSection draft={draft} onPatch={(p) => patch(p, 'cargo')} allowProducts={is09 && !sourceLocked} allowManual={!is09} />
-        </SectionCard>
-      </div>
+      {/* Mercadería */}
+      <Section title="Mercadería" errors={errors.cargo} showErrors={showErr('cargo')}>
+        <div data-sec="cargo" className="space-y-3">
+          <ItemsTable draft={draft} onPatch={(p) => patch(p, 'cargo')} />
+          <div className="grid grid-cols-2 lg:grid-cols-12 gap-3">
+            <div className="lg:col-span-3">
+              <label className={lbl}>Peso total (KGM) *</label>
+              <input type="number" min={0} step="0.01" className={inputCls} value={draft.peso} onChange={(e) => patch({ peso: e.target.value }, 'cargo')} placeholder="0.00" />
+            </div>
+            <div className="lg:col-span-3">
+              <label className={lbl}>N° de bultos</label>
+              <input type="number" min={1} className={inputCls} value={draft.bultos} onChange={(e) => patch({ bultos: e.target.value, bultosTouched: true }, 'cargo')} />
+            </div>
+          </div>
+        </div>
+      </Section>
 
-      <MoreOptions draft={draft} onPatch={(p) => patch(p)} ownTransport={usesOwnTransport} />
+      <MoreOptions draft={draft} onPatch={(p) => patch(p)} ownTransport={!publico} />
     </div>
   )
 
   const footer = (
-    <div className={`${layout === 'page' ? 'sticky bottom-0' : ''} -mx-1 px-1 bg-white/95 backdrop-blur border-t border-gray-100 pt-3 pb-1 mt-4`}>
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
-        <div className="min-w-0 text-xs text-gray-600" aria-live="polite">
-          {summary && <p className="truncate font-medium text-gray-800">{summary}</p>}
-          <p className={allErrors.length ? 'text-amber-700' : 'text-emerald-700'}>
-            {allErrors.length ? `Falta completar: ${allErrors.length} ${allErrors.length === 1 ? 'punto' : 'puntos'}` : 'Todo listo para emitir'}
-            {seriesForKind[0] && <span className="text-gray-400"> · Serie {seriesForKind[0].series}</span>}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button type="button" onClick={onClose} className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
-            Cancelar
-          </button>
-          <button type="button" onClick={submit} disabled={sending} className="px-5 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50">
-            {sending ? 'Emitiendo…' : 'Emitir guía'}
-          </button>
-        </div>
+    <div className="pt-4 border-t border-gray-100 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div className="min-w-0 text-xs text-gray-600" aria-live="polite">
+        {summary && <p className="truncate font-medium text-gray-800">{summary}</p>}
+        <p className={allErrors.length ? 'text-amber-700' : 'text-emerald-700'}>
+          {allErrors.length ? `Falta completar ${allErrors.length} ${allErrors.length === 1 ? 'dato' : 'datos'}` : 'Todo listo para emitir'}
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-2 md:flex md:justify-end">
+        <button type="button" onClick={onClose} className="px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">
+          Cancelar
+        </button>
+        <button type="button" onClick={submit} disabled={sending} className="px-5 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50">
+          {sending ? 'Emitiendo…' : 'Emitir guía'}
+        </button>
       </div>
     </div>
   )
 
   return (
-    <div className={layout === 'page' ? 'max-w-4xl mx-auto' : ''}>
+    <div className={shell}>
       {header}
-      <div className="mt-4">{body}</div>
+      {body}
       {footer}
     </div>
   )

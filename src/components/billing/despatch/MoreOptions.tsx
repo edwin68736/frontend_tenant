@@ -41,15 +41,15 @@ export function MoreOptions({
     (draft.observacion ? 1 : 0)
 
   return (
-    <section className="rounded-2xl border border-gray-200 bg-white">
+    <section className="border-t border-gray-100 pt-3">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="w-full flex items-center justify-between px-4 sm:px-5 py-3.5 text-left"
+        className="w-full flex items-center justify-between py-1.5 text-left"
       >
-        <span className="text-sm font-semibold text-gray-900">
-          Más opciones
+        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+          Opciones adicionales
           <span className="ml-2 text-xs font-normal text-gray-500">
             {activeCount > 0 ? `${activeCount} activada${activeCount > 1 ? 's' : ''}` : 'Solo si las necesitas'}
           </span>
@@ -58,7 +58,7 @@ export function MoreOptions({
       </button>
 
       {open && (
-        <div className="px-4 sm:px-5 pb-5 space-y-5 border-t border-gray-100 pt-4">
+        <div className="space-y-5 pt-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {remitente && (
               <Check

@@ -11,7 +11,7 @@ export type Motivo = 'venta' | 'traslado' | 'compra' | 'devolucion' | 'otros'
 
 export const MOTIVOS: { id: Motivo; code: string; title: string; hint: string }[] = [
   { id: 'venta', code: '01', title: 'Venta', hint: 'Entrego mercadería a un cliente' },
-  { id: 'traslado', code: '04', title: 'Traslado entre mis locales', hint: 'Muevo mercadería a otra sucursal' },
+  { id: 'traslado', code: '04', title: 'Traslado entre establecimientos de la misma empresa', hint: 'Muevo mercadería a otra sucursal' },
   { id: 'compra', code: '02', title: 'Compra', hint: 'Recojo lo que me vende un proveedor' },
   { id: 'devolucion', code: '06', title: 'Devolución', hint: 'Devuelvo mercadería a un cliente o proveedor' },
   { id: 'otros', code: '13', title: 'Otros', hint: 'Cualquier otro traslado (lo describo)' },
@@ -206,7 +206,7 @@ export function validateDraft(d: DespatchDraft, ctx: ValidationContext): Section
       if (!d.party.num_doc.trim() || !d.party.rzn_social.trim()) {
         add('party', `Busca al ${partyRoleLabel(d).toLowerCase()} por RUC o DNI.`)
       } else if (ruc && cleanDoc(d.party.num_doc) === ruc) {
-        add('party', 'No puedes enviarte a tu propia empresa con este motivo; usa «Traslado entre mis locales».')
+        add('party', 'No puedes enviarte a tu propia empresa con este motivo; usa «Traslado entre establecimientos».')
       }
     }
   } else {

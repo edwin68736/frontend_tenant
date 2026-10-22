@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { AlertCircle, Check } from 'lucide-react'
+import { AlertCircle } from 'lucide-react'
 import { ubigeoService, ubigeoToIds } from '@/services/ubigeo.service'
 
 export const inputCls =
@@ -15,46 +15,33 @@ export function Field({ label, hint, children, className = '' }: { label: string
   )
 }
 
-/** Sección numerada del formulario guiado, con el estado (lista / falta algo) a la vista. */
-export function SectionCard({
-  n,
+/** Sección del formulario: mismo patrón que el de ventas (divisor superior y título corto). */
+export function Section({
   title,
-  subtitle,
   errors,
   showErrors,
   children,
   right,
 }: {
-  n: number
-  title: string
-  subtitle?: string
+  title?: string
   errors?: string[]
   showErrors?: boolean
   children: ReactNode
   right?: ReactNode
 }) {
-  const hasErr = !!errors?.length
   return (
-    <section className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5" data-section={n}>
-      <header className="flex items-start gap-3 mb-4">
-        <span
-          className={`shrink-0 w-7 h-7 rounded-full text-xs font-bold flex items-center justify-center ${
-            hasErr ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
-          }`}
-        >
-          {hasErr ? n : <Check size={14} />}
-        </span>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
-          {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
+    <section className="border-t border-gray-100 pt-5 space-y-3">
+      {(title || right) && (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {title && <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{title}</h2>}
+          {right}
         </div>
-        {right}
-      </header>
-      <div className="space-y-4">{children}</div>
-      {showErrors && hasErr && (
-        <ul className="mt-4 space-y-1" role="alert">
-          {errors!.map((e, i) => (
-            <li key={i} className="flex items-start gap-1.5 text-xs text-amber-700">
+      )}
+      {children}
+      {showErrors && !!errors?.length && (
+        <ul className="space-y-1" role="alert">
+          {errors.map((e, i) => (
+            <li key={i} className="flex items-start gap-1.5 text-xs text-red-600">
               <AlertCircle size={13} className="mt-0.5 shrink-0" />
               <span>{e}</span>
             </li>
@@ -65,39 +52,6 @@ export function SectionCard({
   )
 }
 
-export function ChoiceCard({
-  selected,
-  onClick,
-  title,
-  hint,
-  icon,
-  disabled,
-}: {
-  selected: boolean
-  onClick: () => void
-  title: string
-  hint?: string
-  icon?: ReactNode
-  disabled?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      aria-pressed={selected}
-      className={`text-left rounded-xl border px-3.5 py-3 transition-colors disabled:opacity-50 ${
-        selected ? 'border-[rgb(var(--p500))] bg-[rgb(var(--p50))] ring-1 ring-[rgb(var(--p400))]' : 'border-gray-200 bg-white hover:border-gray-300'
-      }`}
-    >
-      <span className="flex items-center gap-2 text-sm font-medium text-gray-900">
-        {icon}
-        {title}
-      </span>
-      {hint && <span className="block text-[11px] text-gray-500 mt-0.5">{hint}</span>}
-    </button>
-  )
-}
 
 const ubigeoLabelCache = new Map<string, string>()
 
