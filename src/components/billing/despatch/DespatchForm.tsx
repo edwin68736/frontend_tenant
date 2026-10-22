@@ -134,10 +134,8 @@ export function DespatchForm({
     const key = `${kind}:${draft.branchId}`
     if (preselectedFor.current === key) return
     preselectedFor.current = key
-    let alive = true
     Promise.all([billingService.lastDespatchTransport(draft.branchId, kind).catch(() => null), fleetService.defaults().catch(() => ({}))]).then(
       ([last, defaults]) => {
-        if (!alive) return
         const def = defaults as Awaited<ReturnType<typeof fleetService.defaults>>
         const driverByDoc = last?.found && last.driver_doc ? fleet.drivers.find((d) => d.doc_number === last.driver_doc) : undefined
         const vehicleByPlate = last?.found && last.placa ? fleet.vehicles.find((v) => normPlate(v.plate) === normPlate(last.placa!)) : undefined
@@ -154,9 +152,6 @@ export function DespatchForm({
         }))
       },
     )
-    return () => {
-      alive = false
-    }
   }, [fleetReady, kind, draft.branchId, fleet])
 
   const branchById = useCallback((id: number | null | undefined) => branchRows.find((b) => b.id === id), [branchRows])
