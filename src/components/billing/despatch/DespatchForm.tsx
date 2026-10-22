@@ -30,6 +30,7 @@ import {
 import { buildDespatchPrefillFromSaleDetail, type DespatchPrefill } from './prefill'
 import { salesService, type Sale } from '@/services/sales.service'
 import { SalePicker } from './SalePicker'
+import { GrePicker } from './GrePicker'
 import { PartyPicker } from './PartyPicker'
 import { PlaceCard } from './PlaceCard'
 import { TransportPicker } from './TransportPicker'
@@ -84,7 +85,7 @@ export function DespatchForm({
   const [touched, setTouched] = useState<Partial<Record<SectionId, boolean>>>({})
   const [attempted, setAttempted] = useState(false)
   const [lookupBusy, setLookupBusy] = useState(false)
-  const [origin, setOrigin] = useState<'independiente' | '01' | '03'>('independiente')
+  const [origin, setOrigin] = useState<'independiente' | '01' | '03' | 'gre'>('independiente')
   const [sourceLoading, setSourceLoading] = useState(false)
   const [fleetReady, setFleetReady] = useState(false)
   const topRef = useRef<HTMLDivElement>(null)
@@ -235,12 +236,14 @@ export function DespatchForm({
     setTouched((t) => ({ ...t, motivo: true }))
   }
 
-  // Origen de la guía: independiente o a partir de una factura/boleta (trae cliente y productos).
-  const changeOrigin = (o: 'independiente' | '01' | '03') => {
+  // Documento relacionado: la factura/boleta (o la GRE remitente) se envía a SUNAT como documento relacionado y trae cliente y productos.
+  const changeOrigin = (o: 'independiente' | '01' | '03' | 'gre') => {
     setOrigin(o)
     setDraft((d) => ({
       ...d,
-      needsSource: o !== 'independiente',
+      relatedGre: '',
+      receiver: d.kind === '31' ? emptyParty() : d.receiver,
+      needsSource: o === '01' || o === '03',
       sourceSaleId: null,
       sourceLabel: '',
       items: [],
@@ -279,8 +282,8 @@ export function DespatchForm({
     }
   }
 
-  const loadRelatedGre = async () => {
-    const number = draft.relatedGre.trim()
+  const loadRelatedGre = async (numberArg?: string) => {
+    const number = (numberArg ?? draft.relatedGre).trim()
     if (!number) return
     setLookupBusy(true)
     try {
@@ -405,20 +408,33 @@ export function DespatchForm({
       )}
 
       {/* Origen de la guía (remitente): independiente o desde una factura/boleta ya emitida. */}
-      {is09 && !prefill && (
+      {!prefill && (
         <div className="grid grid-cols-2 lg:grid-cols-12 gap-3">
           <div className="col-span-2 lg:col-span-4">
-            <label className={lbl}>Origen de la guía *</label>
-            <select className={inputCls} value={origin} onChange={(e) => changeOrigin(e.target.value as 'independiente' | '01' | '03')}>
-              <option value="independiente">Guía independiente</option>
-              <option value="01">Desde una factura</option>
-              <option value="03">Desde una boleta</option>
+            <label className={lbl}>Documento relacionado *</label>
+            <select className={inputCls} value={origin} onChange={(e) => changeOrigin(e.target.value as 'independiente' | '01' | '03' | 'gre')}>
+              <option value="independiente">Ninguno (guía independiente)</option>
+              {is09 ? (
+                <>
+                  <option value="01">Factura</option>
+                  <option value="03">Boleta</option>
+                </>
+              ) : (
+                <option value="gre">Guía de remisión remitente</option>
+              )}
             </select>
           </div>
-          {origin !== 'independiente' && (
+          {origin === 'gre' && !is09 && (
+            <div className="col-span-2 lg:col-span-8">
+              <label className={lbl}>Guía de remisión remitente *</label>
+              <GrePicker key="gre" selectedLabel={draft.relatedGre} onPick={(n) => void loadRelatedGre(n)} onClear={() => changeOrigin('gre')} />
+            </div>
+          )}
+          {is09 && origin !== 'independiente' && (
+
             <div className="col-span-2 lg:col-span-8">
               <label className={lbl}>{origin === '01' ? 'Factura *' : 'Boleta *'}</label>
-              <SalePicker key={origin} sunatCode={origin} selectedLabel={draft.sourceLabel} loading={sourceLoading} onPick={(s) => void pickSale(s)} onClear={() => changeOrigin(origin)} />
+              <SalePicker key={origin} sunatCode={origin as '01' | '03'} selectedLabel={draft.sourceLabel} loading={sourceLoading} onPick={(s) => void pickSale(s)} onClear={() => changeOrigin(origin)} />
             </div>
           )}
         </div>
@@ -471,17 +487,7 @@ export function DespatchForm({
               ))}
             </select>
           </div>
-        ) : (
-          <div className="col-span-2 lg:col-span-3">
-            <label className={lbl}>Guía de remisión remitente relacionada</label>
-            <div className="flex gap-2">
-              <input className={inputCls} value={draft.relatedGre} onChange={(e) => patch({ relatedGre: e.target.value })} placeholder="Ej. T001-23" aria-label="Guía remitente relacionada" />
-              <button type="button" onClick={() => void loadRelatedGre()} disabled={lookupBusy || !draft.relatedGre.trim()} className="inline-flex items-center gap-1 px-3 rounded-xl border border-gray-200 text-sm hover:bg-gray-50 disabled:opacity-50 shrink-0">
-                {lookupBusy ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />} Cargar
-              </button>
-            </div>
-          </div>
-        )}
+        ) : null}
         {is09 && draft.motivo === 'otros' && (
           <div className="col-span-2 lg:col-span-12">
             <label className={lbl}>Descripción del motivo *</label>
