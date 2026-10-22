@@ -23,7 +23,6 @@ const IMPLIED_BY: Record<string, string[]> = {
   'products.view': ['sales.pos', 'sales.create', 'products.create', 'products.edit', 'products.delete'],
   'sales.view': ['sales.create', 'sales.pos', 'sales.edit', 'sales.cancel'],
   'sales.create': ['sales.pos'],
-  'pos.view_stock': ['inventory.manage'],
 }
 
 /** Igual que tenantHasPermission en Go: exacto, luego "{modulo}.manage", luego implicancias puntuales. */

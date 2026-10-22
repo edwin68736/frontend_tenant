@@ -4,7 +4,7 @@ import { PortalModal } from '@/components/ui/PortalModal'
 import { companyService, type BranchRow } from '@/services/company.service'
 import { inventoryService, type StockByBranch } from '@/services/inventory.service'
 import { formatMoney } from '@/utils/format'
-import type { Product } from '@/services/products.service'
+import { productsService, type Product } from '@/services/products.service'
 
 export type PosProductInfoMode = 'stock' | 'purchase' | 'price'
 
@@ -31,7 +31,7 @@ const MODE_ICON: Record<PosProductInfoMode, typeof Boxes> = {
  * Info rápida de un producto desde su tarjeta en el POS (stock por sucursal, precio de
  * compra, precio de venta) — sin salir del punto de venta a buscarlo en Productos.
  *
- * `purchase` (costo): botón visible solo con products.view_cost (el servidor además omite el costo sin ese permiso). Todavía no existe un endpoint que liste las compras de
+ * `purchase` (costo): botón visible solo con pos.view_cost (el servidor además lo sirve aparte). Todavía no existe un endpoint que liste las compras de
  * UN producto puntual (la lista de compras no filtra por product_id) — por eso acá se muestra
  * el precio de compra actual del producto (dato que sí existe) con un aviso de que el
  * historial detallado no está disponible todavía, en vez de dejar el botón sin hacer nada.
@@ -43,6 +43,8 @@ export function PosProductInfoModal({ open, onClose, mode, product }: Props) {
   const [branches, setBranches] = useState<BranchRow[]>([])
   const [stockRows, setStockRows] = useState<StockByBranch[]>([])
   const [loading, setLoading] = useState(false)
+  const [cost, setCost] = useState<number | null>(null)
+  const [costError, setCostError] = useState(false)
 
   useEffect(() => {
     if (!open || mode !== 'stock' || !product) return
@@ -67,6 +69,22 @@ export function PosProductInfoModal({ open, onClose, mode, product }: Props) {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, mode, product?.id])
+
+  // El costo no viaja en la lista de productos (se omite sin products.view_cost): se pide aparte,
+  // con el permiso propio de esta vista (pos.view_cost).
+  useEffect(() => {
+    if (!open || mode !== 'purchase' || !product) return
+    let cancelled = false
+    setCost(null)
+    setCostError(false)
+    productsService
+      .getCost(product.id)
+      .then((c) => !cancelled && setCost(c))
+      .catch(() => !cancelled && setCostError(true))
+    return () => {
+      cancelled = true
+    }
   }, [open, mode, product?.id])
 
   if (!mode || !product) return null
@@ -134,7 +152,7 @@ export function PosProductInfoModal({ open, onClose, mode, product }: Props) {
               <div className="rounded-xl bg-stone-50 border border-stone-100 p-3">
                 <p className="text-xs text-stone-500">Costo actual</p>
                 <p className="text-lg font-semibold text-stone-800 tabular-nums">
-                  {formatMoney(Number(product.purchase_price) || 0)}
+                  {costError ? 'No disponible' : cost == null ? '…' : formatMoney(cost)}
                 </p>
               </div>
               <p className="text-xs text-stone-500">

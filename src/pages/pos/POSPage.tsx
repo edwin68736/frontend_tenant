@@ -98,7 +98,8 @@ function POSContent() {
   const { hasModule, hasPermission } = useAuth()
   const canEditPrice = hasPermission('sales.override_price')
   const canViewStockInfo = hasPermission('pos.view_stock')
-  const canViewCostInfo = hasPermission('products.view_cost')
+  const canViewCostInfo = hasPermission('pos.view_cost')
+  const canViewPricesInfo = hasPermission('pos.view_prices')
   const { activeBranchId } = useBranch()
   const { checkoutSeries, seriesMetaReady, hasCheckoutSeries, sunat: cachedSunat } =
     useBranchCheckoutSeries()
@@ -1260,15 +1261,17 @@ function POSContent() {
                             <DollarSign size={13} aria-hidden />
                           </button>
                         )}
-                        <button
-                          type="button"
-                          onClick={openInfo('price')}
-                          title="Precios"
-                          aria-label="Ver precios"
-                          className="flex-1 flex items-center justify-center py-1.5 text-stone-500 hover:text-primary-600 hover:bg-primary-50"
-                        >
-                          <Tag size={13} aria-hidden />
-                        </button>
+                        {canViewPricesInfo && (
+                          <button
+                            type="button"
+                            onClick={openInfo('price')}
+                            title="Precios"
+                            aria-label="Ver precios"
+                            className="flex-1 flex items-center justify-center py-1.5 text-stone-500 hover:text-primary-600 hover:bg-primary-50"
+                          >
+                            <Tag size={13} aria-hidden />
+                          </button>
+                        )}
                       </div>
                     </div>
                   )

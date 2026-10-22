@@ -520,6 +520,10 @@ export const productsService = {
         total: r.data.total ?? 0,
       })),
 
+  /** Costo actual para el botón «Costo» del POS (permiso pos.view_cost, independiente de Productos). */
+  getCost: (id: number) =>
+    api.get<{ data: { id: number; cost: number } }>(`/api/products/${id}/cost`).then(r => Number(r.data.data?.cost) || 0),
+
   get: (id: number) =>
     api.get<ProductDetailResponse>('/api/products/' + id).then(r => ({
       data: r.data.data,

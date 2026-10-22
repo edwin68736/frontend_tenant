@@ -45,7 +45,8 @@ export function ProductPickerModal({
   const { activeBranchId } = useBranch()
   const { hasPermission } = useAuth()
   const canViewStockInfo = hasPermission('pos.view_stock')
-  const canViewCostInfo = hasPermission('products.view_cost')
+  const canViewCostInfo = hasPermission('pos.view_cost')
+  const canViewPricesInfo = hasPermission('pos.view_prices')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [products, setProducts] = useState<Product[]>([])
@@ -185,15 +186,17 @@ export function ProductPickerModal({
                           <DollarSign size={13} aria-hidden />
                         </button>
                       )}
-                      <button
-                        type="button"
-                        onClick={openInfo('price', p)}
-                        title="Precios"
-                        aria-label="Ver precios"
-                        className="flex-1 flex items-center justify-center py-1.5 text-gray-500 hover:text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))]"
-                      >
-                        <Tag size={13} aria-hidden />
-                      </button>
+                      {canViewPricesInfo && (
+                        <button
+                          type="button"
+                          onClick={openInfo('price', p)}
+                          title="Precios"
+                          aria-label="Ver precios"
+                          className="flex-1 flex items-center justify-center py-1.5 text-gray-500 hover:text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))]"
+                        >
+                          <Tag size={13} aria-hidden />
+                        </button>
+                      )}
                     </div>
                   </td>
                   <td className="px-2 md:px-4 py-2.5">
