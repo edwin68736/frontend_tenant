@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ChevronDown, Plus, Trash2 } from 'lucide-react'
-import type { DespatchDraft } from './despatchModel'
+import { emptyRelatedDoc, type DespatchDraft, type RelatedDocDraft } from './despatchModel'
 import { Field, inputCls } from './ui'
 
 const DOC_TYPES = [
@@ -27,17 +27,20 @@ export function MoreOptions({
   onPatch,
   /** Hay conductor y vehículo propios que declarar (no aplica con empresa de transporte). */
   ownTransport,
+  companyRuc,
 }: {
   draft: DespatchDraft
   onPatch: (p: Partial<DespatchDraft>) => void
   ownTransport: boolean
+  companyRuc: string
 }) {
+  const setRow = (i: number, p: Partial<RelatedDocDraft>) => onPatch({ docsRel: draft.docsRel.map((x, j) => (j === i ? { ...x, ...p } : x)) })
   const [open, setOpen] = useState(false)
   const remitente = draft.kind === '09'
   const activeCount =
     [draft.m1l, draft.retornoEnvases, draft.retornoVacio, draft.transbordo, draft.pagaFleteRemitente].filter(Boolean).length +
     (draft.chofer2.doc || draft.vehiculo2 ? 1 : 0) +
-    draft.docsRel.filter((d) => d.nro).length +
+    draft.docsRel.filter((d) => !d.primary && d.numero).length +
     (draft.observacion ? 1 : 0)
 
   return (
@@ -103,31 +106,44 @@ export function MoreOptions({
 
           <div className="space-y-2">
             <p className="text-xs font-semibold text-gray-600">Documentos relacionados</p>
-            {draft.docsRel.map((d, i) => (
-              <div key={i} className="flex flex-wrap gap-2 items-center">
-                <select
-                  className={`${inputCls} w-56`}
-                  value={d.tipo}
-                  onChange={(e) => onPatch({ docsRel: draft.docsRel.map((x, j) => (j === i ? { ...x, tipo: e.target.value } : x)) })}
-                >
-                  {DOC_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  className={`${inputCls} w-44`}
-                  placeholder="Ej. F001-123"
-                  value={d.nro}
-                  onChange={(e) => onPatch({ docsRel: draft.docsRel.map((x, j) => (j === i ? { ...x, nro: e.target.value } : x)) })}
-                />
-                <button type="button" aria-label="Quitar" className="p-1.5 text-gray-400 hover:text-red-600" onClick={() => onPatch({ docsRel: draft.docsRel.filter((_, j) => j !== i) })}>
-                  <Trash2 size={15} />
-                </button>
-              </div>
-            ))}
-            <button type="button" onClick={() => onPatch({ docsRel: [...draft.docsRel, { tipo: '01', nro: '' }] })} className="inline-flex items-center gap-1 text-xs font-medium text-[rgb(var(--p700))] hover:underline">
+            {draft.docsRel.map((d, i) =>
+              d.primary ? null : (
+                <div key={i} className="grid grid-cols-2 lg:grid-cols-12 gap-2 items-end">
+                  <div className="col-span-2 lg:col-span-4">
+                    <label className="block text-[11px] text-gray-500 mb-0.5">Tipo</label>
+                    <select className={inputCls} value={d.tipo} onChange={(e) => setRow(i, { tipo: e.target.value })}>
+                      {DOC_TYPES.map((t) => (
+                        <option key={t.value} value={t.value}>
+                          {t.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="col-span-2 lg:col-span-3">
+                    <label className="block text-[11px] text-gray-500 mb-0.5">RUC del emisor</label>
+                    <input className={inputCls} inputMode="numeric" maxLength={11} placeholder="11 dígitos" value={d.ruc} onChange={(e) => setRow(i, { ruc: e.target.value.replace(/\D/g, '') })} />
+                  </div>
+                  <div className="lg:col-span-2">
+                    <label className="block text-[11px] text-gray-500 mb-0.5">Serie</label>
+                    <input className={inputCls} maxLength={4} placeholder="T001" value={d.serie} onChange={(e) => setRow(i, { serie: e.target.value.toUpperCase() })} />
+                  </div>
+                  <div className="lg:col-span-2">
+                    <label className="block text-[11px] text-gray-500 mb-0.5">Número</label>
+                    <input className={inputCls} inputMode="numeric" maxLength={8} placeholder="123" value={d.numero} onChange={(e) => setRow(i, { numero: e.target.value.replace(/\D/g, '') })} />
+                  </div>
+                  <div className="lg:col-span-1">
+                    <button type="button" aria-label="Quitar" className="p-2 text-gray-400 hover:text-red-600" onClick={() => onPatch({ docsRel: draft.docsRel.filter((_, j) => j !== i) })}>
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                </div>
+              ),
+            )}
+            <button
+              type="button"
+              onClick={() => onPatch({ docsRel: [...draft.docsRel, emptyRelatedDoc(remitente ? '01' : '09', remitente ? companyRuc : '')] })}
+              className="inline-flex items-center gap-1 text-xs font-medium text-[rgb(var(--p700))] hover:underline"
+            >
               <Plus size={13} /> Agregar documento
             </button>
           </div>
