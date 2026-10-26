@@ -62,6 +62,7 @@ const VehiculosPage = lazy(() => import('@/pages/fleet/VehiculosPage'))
 const ModulesPage = lazy(() => import('@/pages/modules/ModulesPage'))
 const MembershipsPage = lazy(() => import('@/pages/memberships/MembershipsPage'))
 const PedidosWebPage = lazy(() => import('@/pages/ecommerce/PedidosWebPage'))
+const EcommerceSettingsPage = lazy(() => import('@/pages/ecommerce/EcommerceSettingsPage'))
 const ReportsLayout = lazy(() => import('@/pages/reports/ReportsLayout'))
 const SalesReportPage = lazy(() => import('@/pages/reports/SalesReportPage'))
 const ProductsReportPage = lazy(() => import('@/pages/reports/ProductsReportPage'))
@@ -222,6 +223,8 @@ function AppRoutes() {
         <Route path="modules" element={<Lazy><Protected perm="modules.manage"><ModulesPage /></Protected></Lazy>} />
         <Route path="memberships" element={<Lazy><Protected perm="memberships.view"><MembershipsPage /></Protected></Lazy>} />
         <Route path="sales/pedidos-web" element={<Lazy><Protected perm="ecommerce.orders"><PedidosWebPage /></Protected></Lazy>} />
+        <Route path="store-settings" element={<Navigate to="/store-settings/general" replace />} />
+        <Route path="store-settings/:section" element={<Lazy><Protected perm="ecommerce.manage"><EcommerceSettingsPage /></Protected></Lazy>} />
         {/* reports.*: permiso propio por reporte (no el .view del módulo dueño de los datos) —
             solo gatea la PÁGINA; los endpoints que consumen cada reporte se quedan exigiendo el
             permiso de su módulo real, sin cambios. reports.manage implica todos (regla genérica
