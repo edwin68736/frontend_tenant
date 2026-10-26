@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { Copy, ExternalLink, Upload } from 'lucide-react'
-import { ecommerceService, type EcommerceSettings } from '@/services/ecommerce.service'
+import { ecommerceService, parsePaymentMethods, type EcommerceSettings, type PaymentMethod } from '@/services/ecommerce.service'
+import PaymentMethodsEditor from './PaymentMethodsEditor'
 import { getTenantSlug, getRootDomain, resolvePublicAssetUrl } from '@/config/apiBaseUrl'
 
 function ecommercePublicUrl(): string {
@@ -22,6 +23,7 @@ export default function EcommerceGeneralSettings() {
   const [whatsappOverride, setWhatsappOverride] = useState('')
   const [enabled, setEnabled] = useState(false)
   const [showStock, setShowStock] = useState(true)
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([])
   const logoInputRef = useRef<HTMLInputElement>(null)
   const [uploadingLogo, setUploadingLogo] = useState(false)
 
@@ -38,6 +40,7 @@ export default function EcommerceGeneralSettings() {
         setWhatsappOverride(data.whatsapp_number || '')
         setEnabled(data.enabled)
         setShowStock(data.show_stock)
+        setPaymentMethods(parsePaymentMethods(data.payment_methods_json))
       })
       .catch(() => toast.error('Error cargando ajustes de la tienda'))
       .finally(() => setLoading(false))
@@ -55,6 +58,7 @@ export default function EcommerceGeneralSettings() {
         description,
         whatsapp_number: whatsappOverride,
         show_stock: showStock,
+        payment_methods: paymentMethods,
       })
       setSettings(data)
       setResolvedWhatsApp(resolved_whatsapp_number)
@@ -201,6 +205,8 @@ export default function EcommerceGeneralSettings() {
           Déjalo vacío para usar el mismo teléfono de Ajustes → Empresa, o escribe uno exclusivo para la tienda.
         </p>
       </div>
+
+      <PaymentMethodsEditor value={paymentMethods} onChange={setPaymentMethods} />
 
       <div className="pt-2">
         <button

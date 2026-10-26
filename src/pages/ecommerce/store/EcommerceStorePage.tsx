@@ -601,6 +601,7 @@ export default function EcommerceStorePage() {
         onClose={() => setCartOpen(false)}
         cart={cart}
         whatsappNumber={settings?.whatsapp_number || ''}
+        paymentMethods={settings?.payment_methods ?? []}
         storeName={settings?.store_name || 'la tienda'}
         onCartChange={setCart}
       />

@@ -3,7 +3,8 @@ import { X, Minus, Plus, Trash2, MessageCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { type StoreCartLine, setCartQuantity, cartTotal, clearCart } from './storeCart'
 import { normalizePhoneForWhatsApp } from '@/utils/membershipReminders'
-import { publicEcommerceService } from '@/services/ecommerce.service'
+import { publicEcommerceService, type PaymentMethod } from '@/services/ecommerce.service'
+import { paymentDetailLines, paymentDisplayName } from '../paymentMethods'
 import { getApiBaseUrl, getTenantSlug, isLocalDevHost, resolvePublicAssetUrl } from '@/config/apiBaseUrl'
 
 function formatSoles(n: number): string {
@@ -27,6 +28,7 @@ export default function StoreCartDrawer({
   cart,
   whatsappNumber,
   storeName,
+  paymentMethods = [],
   onCartChange,
 }: {
   open: boolean
@@ -34,11 +36,14 @@ export default function StoreCartDrawer({
   cart: StoreCartLine[]
   whatsappNumber: string
   storeName: string
+  paymentMethods?: PaymentMethod[]
   onCartChange: (cart: StoreCartLine[]) => void
 }) {
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
   const [sending, setSending] = useState(false)
+  const [payIdx, setPayIdx] = useState<number | null>(null)
+  const payment = payIdx !== null ? paymentMethods[payIdx] : undefined
 
   const total = cartTotal(cart)
 
@@ -54,6 +59,10 @@ export default function StoreCartDrawer({
     }
     if (!normalizePhoneForWhatsApp(customerPhone)) {
       toast.error('Ingresa un número de celular válido para continuar')
+      return
+    }
+    if (paymentMethods.length > 0 && !payment) {
+      toast.error('Elige cómo vas a pagar para continuar')
       return
     }
     const waNumber = normalizePhoneForWhatsApp(whatsappNumber)
@@ -80,6 +89,7 @@ export default function StoreCartDrawer({
       const message =
         `Hola ${storeName}, quiero hacer este pedido (N° ${orderNumber}):\n\n${lines}\n\nTotal: ${formatSoles(total)}` +
         (customerName ? `\n\nMi nombre: ${customerName}` : '') +
+        (payment ? `\n\nMétodo de pago: ${paymentDisplayName(payment)} (te envío la captura del pago por este chat)` : '') +
         (pdfToken ? `\n\nPDF del pedido: ${orderPdfUrl(orderNumber, pdfToken)}` : '')
       window.open(`https://wa.me/${waNumber}?text=${encodeURIComponent(message)}`, '_blank')
       clearCart()
@@ -179,6 +189,27 @@ export default function StoreCartDrawer({
                 required
               />
             </label>
+            {paymentMethods.length > 0 && (
+              <fieldset className="vs-pay">
+                <legend>¿Cómo vas a pagar? *</legend>
+                {paymentMethods.map((m, i) => (
+                  <label key={i} className={`vs-pay-opt ${payIdx === i ? 'on' : ''}`}>
+                    <input type="radio" name="vs-pay" checked={payIdx === i} onChange={() => setPayIdx(i)} />
+                    <span className="t">{paymentDisplayName(m)}</span>
+                    {payIdx === i && (
+                      <span className="d">
+                        {paymentDetailLines(m).map((l) => (
+                          <span key={l.k}><b>{l.k}:</b> {l.v}</span>
+                        ))}
+                      </span>
+                    )}
+                  </label>
+                ))}
+                <p className="vs-note" style={{ margin: 0, textAlign: 'left' }}>
+                  Puedes hacer el pago ahora, tomar una captura y adjuntarla en el chat de WhatsApp después de enviar tu pedido.
+                </p>
+              </fieldset>
+            )}
             <div className="vs-tot">
               <span style={{ fontWeight: 600, color: 'var(--vs-muted)' }}>Total</span>
               <b>{formatSoles(total)}</b>
@@ -187,7 +218,7 @@ export default function StoreCartDrawer({
               type="button"
               className="vs-wabtn"
               onClick={() => void handleCheckout()}
-              disabled={sending || !customerName.trim() || !customerPhone.trim()}
+              disabled={sending || !customerName.trim() || !customerPhone.trim() || (paymentMethods.length > 0 && !payment)}
             >
               <MessageCircle size={22} aria-hidden />
               {sending ? 'Enviando...' : 'Pedir por WhatsApp'}
