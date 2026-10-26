@@ -4,10 +4,21 @@ import { toast } from 'sonner'
 import { type StoreCartLine, setCartQuantity, cartTotal, clearCart } from './storeCart'
 import { normalizePhoneForWhatsApp } from '@/utils/membershipReminders'
 import { publicEcommerceService } from '@/services/ecommerce.service'
-import { getApiBaseUrl, resolvePublicAssetUrl } from '@/config/apiBaseUrl'
+import { getApiBaseUrl, getTenantSlug, isLocalDevHost, resolvePublicAssetUrl } from '@/config/apiBaseUrl'
 
 function formatSoles(n: number): string {
   return `S/ ${n.toFixed(2)}`
+}
+
+/** Enlace abierto desde WhatsApp (sin cabeceras). En localhost el backend identifica la empresa por query. */
+function orderPdfUrl(orderNumber: number, token: string): string {
+  const base = getApiBaseUrl()
+  let url = `${base}/api/public/ecommerce/orders/${orderNumber}/pdf?t=${token}`
+  const slug = getTenantSlug()
+  if (slug && isLocalDevHost(new URL(base || window.location.origin, window.location.origin).hostname)) {
+    url += `&tenant_slug=${encodeURIComponent(slug)}`
+  }
+  return url
 }
 
 export default function StoreCartDrawer({
@@ -69,7 +80,7 @@ export default function StoreCartDrawer({
       const message =
         `Hola ${storeName}, quiero hacer este pedido (N° ${orderNumber}):\n\n${lines}\n\nTotal: ${formatSoles(total)}` +
         (customerName ? `\n\nMi nombre: ${customerName}` : '') +
-        (pdfToken ? `\n\nPDF del pedido: ${getApiBaseUrl()}/api/public/ecommerce/orders/${orderNumber}/pdf?t=${pdfToken}` : '')
+        (pdfToken ? `\n\nPDF del pedido: ${orderPdfUrl(orderNumber, pdfToken)}` : '')
       window.open(`https://wa.me/${waNumber}?text=${encodeURIComponent(message)}`, '_blank')
       clearCart()
       onCartChange([])
