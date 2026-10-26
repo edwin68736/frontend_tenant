@@ -234,6 +234,6 @@ export const publicEcommerceService = {
 
   createOrder: (input: { customer_name?: string; customer_phone?: string; items: EcommerceOrderItem[] }) =>
     api
-      .post<{ order_number: number }>('/api/public/ecommerce/orders', input)
-      .then(r => r.data.order_number),
+      .post<{ order_number: number; pdf_token?: string }>('/api/public/ecommerce/orders', input)
+      .then(r => ({ orderNumber: r.data.order_number, pdfToken: r.data.pdf_token || '' })),
 }

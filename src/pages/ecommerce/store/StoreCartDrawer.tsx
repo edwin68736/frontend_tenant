@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { type StoreCartLine, setCartQuantity, cartTotal, clearCart } from './storeCart'
 import { normalizePhoneForWhatsApp } from '@/utils/membershipReminders'
 import { publicEcommerceService } from '@/services/ecommerce.service'
-import { resolvePublicAssetUrl } from '@/config/apiBaseUrl'
+import { getApiBaseUrl, resolvePublicAssetUrl } from '@/config/apiBaseUrl'
 
 function formatSoles(n: number): string {
   return `S/ ${n.toFixed(2)}`
@@ -52,7 +52,7 @@ export default function StoreCartDrawer({
     }
     setSending(true)
     try {
-      const orderNumber = await publicEcommerceService.createOrder({
+      const { orderNumber, pdfToken } = await publicEcommerceService.createOrder({
         customer_name: customerName || undefined,
         customer_phone: customerPhone || undefined,
         items: cart.map((l) => ({
@@ -68,7 +68,8 @@ export default function StoreCartDrawer({
       const lines = cart.map((l) => `• ${l.name}${l.detail ? ` (${l.detail})` : ''} x${l.quantity} — ${formatSoles(l.quantity * l.unit_price)}`).join('\n')
       const message =
         `Hola ${storeName}, quiero hacer este pedido (N° ${orderNumber}):\n\n${lines}\n\nTotal: ${formatSoles(total)}` +
-        (customerName ? `\n\nMi nombre: ${customerName}` : '')
+        (customerName ? `\n\nMi nombre: ${customerName}` : '') +
+        (pdfToken ? `\n\nPDF del pedido: ${getApiBaseUrl()}/api/public/ecommerce/orders/${orderNumber}/pdf?t=${pdfToken}` : '')
       window.open(`https://wa.me/${waNumber}?text=${encodeURIComponent(message)}`, '_blank')
       clearCart()
       onCartChange([])
