@@ -439,7 +439,9 @@ export const productsService = {
     exclude_combos?: boolean,
     brand_id?: number,
     /** Muestra solo los inactivos (en vez de incluirlos junto con los activos). */
-    inactive_only?: boolean
+    inactive_only?: boolean,
+    /** Orden del servidor (id | code | name | category | price | stock | catalog). catalog = agrupado por categoría. */
+    sort_by?: string
   ) =>
     api
       .get<{ data: Product[]; total?: number }>('/api/products', {
@@ -456,6 +458,7 @@ export const productsService = {
           ...(exclude_combos ? { exclude_combos: true } : {}),
           ...(brand_id ? { brand_id } : {}),
           ...(inactive_only ? { inactive_only: true } : {}),
+          ...(sort_by ? { sort_by } : {}),
         },
       })
       .then(r => ({

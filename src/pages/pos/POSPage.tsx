@@ -272,7 +272,7 @@ function POSContent() {
     let cancelled = false
     setLoadingProducts(true)
     productsService
-      .list(q, selectedCat ?? undefined, undefined, true, 1, POS_PRODUCTS_PER_PAGE, undefined, undefined, activeBranchId)
+      .list(q, selectedCat ?? undefined, undefined, true, 1, POS_PRODUCTS_PER_PAGE, undefined, undefined, activeBranchId, undefined, undefined, undefined, 'catalog')
       .then(({ data, total }) => {
         if (cancelled) return
         setProducts(data ?? [])
@@ -305,7 +305,7 @@ function POSContent() {
     const next = productPage + 1
     setLoadingMoreProducts(true)
     productsService
-      .list(q, selectedCat ?? undefined, undefined, true, next, POS_PRODUCTS_PER_PAGE, undefined, undefined, activeBranchId)
+      .list(q, selectedCat ?? undefined, undefined, true, next, POS_PRODUCTS_PER_PAGE, undefined, undefined, activeBranchId, undefined, undefined, undefined, 'catalog')
       .then(({ data }) => {
         setProducts((prev) => {
           const seen = new Set(prev.map((p) => p.id))
