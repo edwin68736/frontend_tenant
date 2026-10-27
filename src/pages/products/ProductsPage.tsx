@@ -158,6 +158,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const { activeBranchId, activeBranch } = useBranch()
   const { hasPermission } = useAuth()
   const canDeleteProducts = hasPermission('products.delete')
+  const canAdjustStock = hasPermission('inventory.adjust')
   // Sin products.view_cost el servidor omite el costo y no deja pisarlo al guardar: no se muestra el campo.
   const canViewCost = hasPermission('products.view_cost')
   const [products, setProducts] = useState<Product[]>([])
@@ -1649,13 +1650,15 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                           <span className="font-mono text-sm text-gray-800">
                             {typeof stockByProductId[p.id] === 'number' ? stockByProductId[p.id] : '—'}
                           </span>
-                          <button
-                            type="button"
-                            onClick={() => setAdjustmentProduct(p)}
-                            className="text-xs px-2 py-1 rounded-lg border border-[rgb(var(--p300))] text-[rgb(var(--p700))] hover:bg-[rgb(var(--p50))]"
-                          >
-                            Ajustar
-                          </button>
+                          {canAdjustStock && (
+                            <button
+                              type="button"
+                              onClick={() => setAdjustmentProduct(p)}
+                              className="text-xs px-2 py-1 rounded-lg border border-[rgb(var(--p300))] text-[rgb(var(--p700))] hover:bg-[rgb(var(--p50))]"
+                            >
+                              Ajustar
+                            </button>
+                          )}
                         </div>
                       ) : (
                         <span className="text-xs text-gray-400">No controla stock</span>
