@@ -96,6 +96,7 @@ export default function POSPage() {
 
 function POSContent() {
   const { hasModule, hasPermission } = useAuth()
+  const canOpenCash = hasPermission('cashbank.open')
   const canEditPrice = hasPermission('sales.override_price')
   const canViewStockInfo = hasPermission('pos.view_stock')
   const canViewCostInfo = hasPermission('pos.view_cost')
@@ -936,7 +937,10 @@ function POSContent() {
       <div className="flex flex-col items-center justify-center py-20 text-center">
         <ShoppingCart size={40} className="text-gray-300 mb-4" />
         <h3 className="text-xl font-bold text-gray-700">Caja cerrada</h3>
-        <p className="text-gray-400 text-sm mt-1 mb-6">Debes abrir la caja para usar el POS</p>
+        <p className="text-gray-400 text-sm mt-1 mb-6">
+          {canOpenCash ? 'Debes abrir la caja para usar el POS' : 'No tienes permiso para abrir caja. Pide a un usuario autorizado que la abra para usar el POS.'}
+        </p>
+        {canOpenCash && (
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-600">Balance inicial: S/</span>
           <MoneyAmountInput className="w-28 border border-gray-200 rounded-xl px-3 py-2 text-sm"
@@ -946,6 +950,7 @@ function POSContent() {
             {openingSession ? 'Abriendo...' : 'Abrir caja'}
           </button>
         </div>
+        )}
       </div>
     )
   }
