@@ -904,6 +904,8 @@ function POSContent() {
       setPayments([])
       setCheckoutDiscountValue(0)
       setCheckoutDiscountMode('percent')
+      // La búsqueda quedaba filtrando el catálogo (y sin texto visible en modo escáner) tras la venta.
+      setQ('')
       // La cámara del escáner quedaba abierta detrás del recibo tras generar la venta.
       barcodeScan.closeScanner()
     } catch (e: unknown) {
