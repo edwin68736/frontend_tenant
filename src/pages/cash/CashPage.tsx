@@ -360,7 +360,9 @@ function CashContent() {
                           triggerClassName="inline-flex items-center gap-0.5 p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg ring-1 ring-gray-200 disabled:opacity-40"
                           items={[
                             {
-                              hidden: !isMine,
+                              // La gaveta se abre desde el navegador (impresora local), sin pasar por el servidor:
+                              // se liga a cashbank.movements, el permiso de manejar efectivo del turno.
+                              hidden: !isMine || !canMovements,
                               icon: <Unlock size={14} className="text-gray-500" />,
                               label: 'Abrir gaveta',
                               disabled: openingDrawer,
