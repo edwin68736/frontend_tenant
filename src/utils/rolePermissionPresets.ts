@@ -38,7 +38,8 @@ export const ROLE_PRESETS: RolePreset[] = [
     keys: [
       'dashboard.view',
       'company.view',
-      'contacts.view',
+      'customers.view',
+      'suppliers.view',
       // Ventas y comprobantes
       'sales.view',
       'billing.send',

@@ -64,7 +64,7 @@ const SIMPLE_ITEMS: SimpleItem[] = [
     label: 'Clientes',
     icon: <BookUser size={16} />,
     module: 'contacts',
-    permission: 'contacts.view',
+    permission: 'customers.view',
   },
 ]
 
@@ -192,7 +192,7 @@ const NAV_GROUPS: NavGroup[] = [
         label: 'Proveedores',
         icon: <Building2 size={14} />,
         module: 'contacts',
-        permission: 'contacts.view',
+        permission: 'suppliers.view',
       },
     ],
   },

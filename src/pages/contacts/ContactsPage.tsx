@@ -70,9 +70,14 @@ export default function ContactsPage() {
 
 export function ContactsContent({ contactType, pageTitle, pageSubtitle }: ContactsListConfig) {
   const { hasPermission } = useAuth()
-  const canCreate = hasPermission('contacts.create')
-  const canEdit = hasPermission('contacts.edit')
-  const canDelete = hasPermission('contacts.delete')
+  // Clientes y proveedores tienen permisos propios (customers.* / suppliers.*) sobre la misma tabla.
+  const permModule = contactType === 'supplier' ? 'suppliers' : 'customers'
+  const canCreate = hasPermission(`${permModule}.create`)
+  // Un contacto "ambos" es cliente y proveedor a la vez: modificarlo exige los dos permisos.
+  const canMutate = (c: Contact, action: 'edit' | 'delete') =>
+    c.type === 'both'
+      ? hasPermission(`customers.${action}`) && hasPermission(`suppliers.${action}`)
+      : hasPermission(`${permModule}.${action}`)
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
@@ -479,7 +484,7 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
                     >
                       <Eye size={14} />
                     </button>
-                    {canEdit && (
+                    {canMutate(c, 'edit') && (
                       <button
                         type="button"
                         onClick={() => handleToggle(c)}
@@ -493,7 +498,7 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
                         {c.active ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
                       </button>
                     )}
-                    {canEdit && (
+                    {canMutate(c, 'edit') && (
                       <button
                         type="button"
                         onClick={() => openEdit(c)}
@@ -503,7 +508,7 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
                         <Pencil size={14} />
                       </button>
                     )}
-                    {canDelete && (
+                    {canMutate(c, 'delete') && (
                       <button
                         type="button"
                         onClick={() => handleDelete(c.id)}

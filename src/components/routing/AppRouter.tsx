@@ -174,7 +174,7 @@ function AppRoutes() {
         <Route path="quotations/new" element={<Lazy><Protected perm="quotations.create"><QuotationRegisterPage /></Protected></Lazy>} />
         <Route path="quotations/:id/edit" element={<Lazy><Protected perm="quotations.edit"><QuotationRegisterPage /></Protected></Lazy>} />
         <Route path="purchases/register" element={<Lazy><Protected perm="purchases.create"><PurchaseRegisterPage /></Protected></Lazy>} />
-        <Route path="purchases/suppliers" element={<Lazy><Protected perm="contacts.view"><SuppliersPage /></Protected></Lazy>} />
+        <Route path="purchases/suppliers" element={<Lazy><Protected perm="suppliers.view"><SuppliersPage /></Protected></Lazy>} />
         <Route path="purchases/payables" element={<Lazy><Protected perm="payables.view"><PayablesPage /></Protected></Lazy>} />
         <Route path="purchases" element={<Lazy><Protected perm="purchases.view"><PurchasesPage /></Protected></Lazy>} />
         <Route path="products" element={<Lazy><Protected perm="products.view"><ProductsPage /></Protected></Lazy>} />
@@ -183,7 +183,7 @@ function AppRoutes() {
         <Route path="products/categories" element={<Lazy><Protected perm="products.view"><CategoriesPage /></Protected></Lazy>} />
         <Route path="products/brands" element={<Lazy><Protected perm="products.view"><BrandsPage /></Protected></Lazy>} />
         <Route path="products/units" element={<Lazy><Protected perm="products.view"><UnitsPage /></Protected></Lazy>} />
-        <Route path="contacts" element={<Lazy><Protected perm="contacts.view"><ContactsPage /></Protected></Lazy>} />
+        <Route path="contacts" element={<Lazy><Protected perm="customers.view"><ContactsPage /></Protected></Lazy>} />
         <Route path="inventory" element={<Lazy><Protected perm="inventory.view"><InventoryPage /></Protected></Lazy>} />
         <Route path="inventory/services" element={<Navigate to="/products/services" replace />} />
         <Route path="inventory/transfers" element={<Lazy><Protected perm="inventory.manage"><InventoryTransfersPage /></Protected></Lazy>} />
