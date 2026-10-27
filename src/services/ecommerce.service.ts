@@ -214,6 +214,8 @@ export interface PublicStoreSettings {
   /** Si es false, no mostrar disponibilidad/"Agotado" — tratar todos los productos como disponibles. */
   show_stock: boolean
   hero_style?: HeroStyle
+  /** Datos de contacto de la empresa para el pie (cada uno puede venir vacío). */
+  contact?: { address: string; phone: string; email: string }
   /** Solo los habilitados. */
   payment_methods?: PaymentMethod[]
   sliders: EcommerceSlider[]
