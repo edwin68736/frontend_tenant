@@ -9,6 +9,7 @@
  * cross-platform de antes, pero con el sonido real en vez de tonos sintetizados.
  */
 import cashRegisterUrl from '@/assets/sound/cash-register.mp3'
+import { isSoundEnabled } from '@/utils/soundPrefs'
 
 let audioCtx: AudioContext | null = null
 let bufferPromise: Promise<AudioBuffer | null> | null = null
@@ -46,6 +47,8 @@ export const SALE_SOUND_LEAD_MS = 700
 export function playSaleReceiptSound(maxWaitMs = SALE_SOUND_LEAD_MS): Promise<void> {
   return new Promise<void>((resolve) => {
     try {
+      // Silenciado por el usuario: se resuelve al instante para no retrasar la impresión.
+      if (!isSoundEnabled()) return resolve()
       const ctx = getAudioContext()
       if (!ctx) return resolve()
       if (!bufferPromise) bufferPromise = loadBuffer(ctx)
