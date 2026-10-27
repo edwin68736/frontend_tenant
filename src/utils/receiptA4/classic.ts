@@ -161,7 +161,8 @@ async function drawHeader(
     })
   }
 
-  pushInfoLine(`RUC ${data.company.ruc}`)
+  // El RUC ya va en el recuadro del comprobante; solo se repite aquí si ese recuadro está oculto (nota de venta).
+  if (nvLayout && !nvLayout.showDocTypeAndNumber) pushInfoLine(`RUC ${data.company.ruc}`)
   const addr = getPrintIssuerAddress(data)
   if (addr) pushInfoLine(addr)
   const showContact = !nvLayout || nvLayout.showEmailAndPhone
