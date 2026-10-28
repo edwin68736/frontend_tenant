@@ -16,6 +16,7 @@
 import { sunatUnitCode } from '@/constants/sunatUnits'
 import { isGravadoOperacionNoOnerosa } from '@/constants/igvAffectation'
 import type { PrintItem } from '@/types/printData'
+import { formatUnitPrice, roundDisplay, roundSunat } from '@/utils/money'
 
 export function receiptItemIsOperacionGratuita(it: Pick<PrintItem, 'igv_affectation_type'>): boolean {
   return isGravadoOperacionNoOnerosa(it.igv_affectation_type ?? '')
@@ -41,7 +42,9 @@ export function receiptItemDisplayTotal(it: PrintItem, formatAmount: (n: number)
 
 /** Precio unitario (P.UNIT / P.U.): legacy `document_items.unit_price` referencial. */
 export function receiptItemDisplayUnitPrice(it: PrintItem, formatAmount: (n: number) => string): string {
-  return formatAmount(it.unit_price ?? 0)
+  const price = it.unit_price ?? 0
+  // Precio por gramo/mililitro (S/ 0.0045): a 2 decimales saldría "0.00" en el comprobante.
+  return roundDisplay(price) === roundSunat(price) ? formatAmount(price) : formatUnitPrice(price)
 }
 
 /**

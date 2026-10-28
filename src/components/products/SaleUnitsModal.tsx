@@ -3,7 +3,8 @@ import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { useAuth } from '@/contexts/AuthContext'
-import { SaleUnitsEditor } from '@/components/products/SaleUnitsEditor'
+import { SaleUnitsEditor, type FractionalPreset } from '@/components/products/SaleUnitsEditor'
+import { formatUnitPrice, roundSunat } from '@/utils/money'
 import { SaleUnitBranchPricesPanel } from '@/components/products/SaleUnitBranchPricesPanel'
 import { productsService, type ProductSaleUnit, type Unit } from '@/services/products.service'
 
@@ -13,6 +14,9 @@ type Props = {
   productName?: string
   /** Nombre visible de la unidad base del producto (ej. "KG", "Unidades"). */
   baseUnitLabel: string
+  /** Código SUNAT de la unidad base (KGM, LTR…) y precio de venta base, para los atajos Gramo/Mililitro. */
+  baseUnitCode?: string
+  basePrice?: number
   onClose: () => void
   /** Se llama tras guardar o eliminar con éxito, para que el padre refresque su propio resumen. */
   onChanged?: () => void
@@ -52,7 +56,8 @@ function validateRow(u: ProductSaleUnit): string | null {
   if (u.is_base && u.conversion_factor !== 1) {
     return `La unidad base "${name}" debe tener factor de conversión igual a 1.`
   }
-  if (!(u.price1 > 0)) return `El precio 1 de "${name}" debe ser mayor a 0.`
+  // El precio se guarda con hasta 6 decimales: uno que redondea a 0 (ej. 0.0000004) no es un precio.
+  if (!(roundSunat(u.price1) > 0)) return `El precio 1 de "${name}" debe ser mayor a 0.`
   if (u.price2 != null && !(u.price2 > 0)) return `El precio 2 de "${name}" debe ser mayor a 0 si se especifica.`
   if (u.price3 != null && !(u.price3 > 0)) return `El precio 3 de "${name}" debe ser mayor a 0 si se especifica.`
   return null
@@ -74,7 +79,17 @@ function errorMessage(e: unknown, fallback: string): string {
  * Solo tiene sentido para un producto ya existente (con id) — no se ofrece durante la creación
  * inicial (Fase 7B, sección 6 del encargo).
  */
-export function SaleUnitsModal({ open, productId, productName, baseUnitLabel, onClose, onChanged, embedded }: Props) {
+export function SaleUnitsModal({
+  open,
+  productId,
+  productName,
+  baseUnitLabel,
+  baseUnitCode,
+  basePrice,
+  onClose,
+  onChanged,
+  embedded,
+}: Props) {
   const { hasPermission } = useAuth()
   const canCreate = hasPermission('products.create')
   const canEdit = hasPermission('products.edit')
@@ -129,6 +144,32 @@ export function SaleUnitsModal({ open, productId, productName, baseUnitLabel, on
 
   const handleAddRow = () => {
     setUnits((prev) => [...prev, emptyRow(prev.length)])
+  }
+
+  // Atajo de venta fraccionada: KGM → Gramo (GRM), LTR → Mililitro (MLT), factor 0.001. El precio
+  // sugerido es el de la unidad base entre 1000 (S/ 4.50 el kilo → S/ 0.0045 el gramo); se puede editar.
+  const handleAddPreset = (preset: FractionalPreset) => {
+    const catalog = catalogUnits.find((u) => u.code.toUpperCase() === preset.code)
+    if (!catalog) {
+      toast.error(`La unidad ${preset.code} no está disponible en el catálogo de unidades de este negocio.`)
+      return
+    }
+    const suggested = basePrice && basePrice > 0 ? roundSunat(basePrice / 1000) : 0
+    setUnits((prev) => [
+      ...prev,
+      {
+        ...emptyRow(prev.length),
+        name: preset.name,
+        unit_id: catalog.id,
+        unit: catalog.code,
+        conversion_factor: 0.001,
+        allow_fraction: false,
+        price1: suggested,
+      },
+    ])
+    if (suggested > 0) {
+      toast.success(`Precio sugerido S/ ${formatUnitPrice(suggested)} por ${preset.name.toLowerCase()}. Revísalo y guarda.`)
+    }
   }
 
   const handleRemoveRow = (index: number) => {
@@ -234,11 +275,13 @@ export function SaleUnitsModal({ open, productId, productName, baseUnitLabel, on
           units={units}
           catalogUnits={catalogUnits}
           baseUnitLabel={baseUnitLabel}
+          baseUnitCode={baseUnitCode}
           canCreate={canCreate}
           canEdit={canEdit}
           canDelete={canDelete}
           onChangeRow={handleChangeRow}
           onAddRow={handleAddRow}
+          onAddPreset={handleAddPreset}
           onRemoveRow={handleRemoveRow}
           onManageBranchPrices={setBranchPricesFor}
         />
@@ -270,11 +313,13 @@ export function SaleUnitsModal({ open, productId, productName, baseUnitLabel, on
             units={units}
             catalogUnits={catalogUnits}
             baseUnitLabel={baseUnitLabel}
+            baseUnitCode={baseUnitCode}
             canCreate={canCreate}
             canEdit={canEdit}
             canDelete={canDelete}
             onChangeRow={handleChangeRow}
             onAddRow={handleAddRow}
+            onAddPreset={handleAddPreset}
             onRemoveRow={handleRemoveRow}
             onManageBranchPrices={setBranchPricesFor}
           />

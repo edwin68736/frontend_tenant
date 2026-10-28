@@ -2281,6 +2281,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
             productId={editing.id}
             productName={editing.name}
             baseUnitLabel={productUnitFormDisplayName(editing.unit ?? '')}
+            baseUnitCode={editing.unit ?? ''}
+            basePrice={Number(editing.sale_price) || 0}
             onClose={() => {}}
           />
         )}

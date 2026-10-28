@@ -36,6 +36,18 @@ export function formatAmountDisplay(n: number): string {
 }
 
 /**
+ * Precio unitario para UI: 2 decimales como mínimo y hasta 6 cuando el precio los necesita, sin
+ * ceros de relleno. Un gramo de arroz a S/ 4.50 el kilo cuesta S/ 0.0045 — con formatAmountDisplay
+ * se vería "0.00". Ej: 4.5 → "4.50", 0.0045 → "0.0045", 12 → "12.00".
+ */
+export function formatUnitPrice(n: number): string {
+  const v = roundSunat(n)
+  const trimmed = v.toFixed(SUNAT_DECIMALS).replace(/0+$/, '')
+  const decimals = trimmed.includes('.') ? trimmed.split('.')[1].length : 0
+  return decimals >= DISPLAY_DECIMALS ? trimmed : v.toFixed(DISPLAY_DECIMALS)
+}
+
+/**
  * Parsea entrada de usuario → precisión interna (6 dec).
  * No trunca a 2 decimales al guardar.
  */

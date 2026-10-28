@@ -11,8 +11,7 @@ import {
   type ProductSaleUnit,
   type SaleUnitBranchPrice,
 } from '@/services/products.service'
-import { formatSaleMoney } from '@/utils/formatMoney'
-import { formatAmountDisplay } from '@/utils/money'
+import { formatAmountDisplay, formatUnitPrice } from '@/utils/money'
 import { productUnitFormDisplayName } from '@/constants/sunatUnits'
 import type { CatalogCartLine } from '@/utils/posCart'
 import { createCatalogCartLine } from '@/utils/posCart'
@@ -53,6 +52,11 @@ type Props = {
  * flujo real de ventas hoy). No reimplementa el resto del algoritmo (niveles 2/3, validación de
  * pertenencia, etc.) — la autoridad final sigue siendo el backend en POST /sales.
  */
+/** "S/ 0.0045": precio unitario con los decimales que necesite (venta por gramo/mililitro). */
+function formatPrice(amount: number): string {
+  return `S/ ${formatUnitPrice(amount)}`
+}
+
 function resolveSaleUnitPrice1(
   saleUnit: ProductSaleUnit,
   branchPrices: SaleUnitBranchPrice[],
@@ -381,6 +385,7 @@ export function ProductConfigureModal({ product, branchId, stacked, enableSaleUn
           sale_unit: {
             id: selectedSaleUnit.id ?? 0,
             name: selectedSaleUnit.name,
+            unit: selectedSaleUnit.unit,
             conversion_factor: selectedSaleUnit.conversion_factor,
             allow_fraction: selectedSaleUnit.allow_fraction,
           },
@@ -455,7 +460,7 @@ export function ProductConfigureModal({ product, branchId, stacked, enableSaleUn
             <div>
               <p className="text-sm text-gray-600">{displayBaseLabel}</p>
               <p className="text-xl font-bold text-[rgb(var(--p700))] tabular-nums">
-                {formatSaleMoney(displayBaseAmount)}
+                {formatPrice(displayBaseAmount)}
               </p>
             </div>
           </div>
@@ -523,7 +528,7 @@ export function ProductConfigureModal({ product, branchId, stacked, enableSaleUn
                         >
                           {u.name}
                           <span className="block text-[11px] font-normal opacity-90 tabular-nums">
-                            S/ {formatAmountDisplay(price)}
+                            S/ {formatUnitPrice(price)}
                           </span>
                           {u.is_base ? (
                             <span className="block text-[10px] font-normal opacity-75">Unidad base</span>
@@ -665,7 +670,7 @@ export function ProductConfigureModal({ product, branchId, stacked, enableSaleUn
                         <span>{row.sign === 'plus' ? `+ ${row.label}` : row.label}</span>
                         <span className="tabular-nums">
                           {row.sign === 'plus' ? '+' : ''}
-                          {formatSaleMoney(row.amount)}
+                          {formatPrice(row.amount)}
                         </span>
                       </div>
                     ))
@@ -674,7 +679,7 @@ export function ProductConfigureModal({ product, branchId, stacked, enableSaleUn
                   ) : (
                     <div className="flex justify-between text-sm text-gray-700">
                       <span>Precio base</span>
-                      <span className="tabular-nums">{formatSaleMoney(basePrice)}</span>
+                      <span className="tabular-nums">{formatPrice(basePrice)}</span>
                     </div>
                   )}
                   {selected.length > 0 && (
@@ -682,7 +687,7 @@ export function ProductConfigureModal({ product, branchId, stacked, enableSaleUn
                   )}
                   <div className="flex justify-between font-bold text-gray-900 pt-2 border-t border-gray-200 text-base">
                     <span>Total unitario</span>
-                    <span className="text-[rgb(var(--p700))] tabular-nums">{formatSaleMoney(unitPrice)}</span>
+                    <span className="text-[rgb(var(--p700))] tabular-nums">{formatPrice(unitPrice)}</span>
                   </div>
                 </section>
               )}

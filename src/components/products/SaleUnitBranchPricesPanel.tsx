@@ -232,6 +232,7 @@ export function SaleUnitBranchPricesPanel({
                                 value={formDraft.price1}
                                 onChange={(v) => setFormDraft((d) => ({ ...d, price1: Math.max(0, v) }))}
                                 emptyWhenZero
+                                fullPrecision
                                 placeholder="0.00"
                                 className="w-full min-h-[44px] border border-gray-200 rounded-xl px-3 py-2 text-sm tabular-nums"
                                 autoFocus
@@ -245,6 +246,7 @@ export function SaleUnitBranchPricesPanel({
                                 value={formDraft.price2 ?? 0}
                                 onChange={(v) => setFormDraft((d) => ({ ...d, price2: v > 0 ? v : null }))}
                                 emptyWhenZero
+                                fullPrecision
                                 placeholder="0.00"
                                 className="w-full min-h-[44px] border border-gray-200 rounded-xl px-3 py-2 text-sm tabular-nums"
                               />
@@ -257,6 +259,7 @@ export function SaleUnitBranchPricesPanel({
                                 value={formDraft.price3 ?? 0}
                                 onChange={(v) => setFormDraft((d) => ({ ...d, price3: v > 0 ? v : null }))}
                                 emptyWhenZero
+                                fullPrecision
                                 placeholder="0.00"
                                 className="w-full min-h-[44px] border border-gray-200 rounded-xl px-3 py-2 text-sm tabular-nums"
                               />

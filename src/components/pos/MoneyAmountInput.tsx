@@ -1,5 +1,5 @@
 ﻿import { useRef, useState, type InputHTMLAttributes } from 'react'
-import { formatAmountDisplay, parseMoneyInput, roundDisplay } from '@/utils/money'
+import { formatAmountDisplay, formatUnitPrice, parseMoneyInput, roundDisplay, roundSunat } from '@/utils/money'
 
 type Props = Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'> & {
   value: number
@@ -8,6 +8,8 @@ type Props = Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 
   emptyWhenZero?: boolean
   /** Al enfocar limpia el campo; al salir sin escribir restaura el valor anterior. */
   clearOnFocus?: boolean
+  /** Precio unitario: muestra hasta 6 decimales (S/ 0.0045 por gramo) en vez de redondear a 2. */
+  fullPrecision?: boolean
 }
 
 /**
@@ -18,6 +20,7 @@ export function MoneyAmountInput({
   onChange,
   emptyWhenZero = false,
   clearOnFocus = false,
+  fullPrecision = false,
   onFocus,
   onBlur,
   ...rest
@@ -26,8 +29,9 @@ export function MoneyAmountInput({
   const [draft, setDraft] = useState('')
   const prevOnFocusRef = useRef(0)
 
-  const blurredDisplay =
-    emptyWhenZero && roundDisplay(value) === 0 ? '' : formatAmountDisplay(value)
+  const format = fullPrecision ? formatUnitPrice : formatAmountDisplay
+  const isZero = fullPrecision ? roundSunat(value) === 0 : roundDisplay(value) === 0
+  const blurredDisplay = emptyWhenZero && isZero ? '' : format(value)
 
   return (
     <input
@@ -42,7 +46,7 @@ export function MoneyAmountInput({
         if (clearOnFocus) {
           setDraft('')
         } else {
-          setDraft(emptyWhenZero && value === 0 ? '' : formatAmountDisplay(value))
+          setDraft(emptyWhenZero && value === 0 ? '' : format(value))
         }
         onFocus?.(e)
       }}

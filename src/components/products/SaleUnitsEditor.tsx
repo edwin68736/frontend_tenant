@@ -2,17 +2,29 @@ import { Plus, Trash2 } from 'lucide-react'
 import type { ProductSaleUnit, Unit } from '@/services/products.service'
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 
+/** Atajos de venta fraccionada: unidad base → unidad menor (1/1000) con su código SUNAT. */
+export type FractionalPreset = { baseCode: string; code: string; name: string; label: string }
+
+export const FRACTIONAL_PRESETS: FractionalPreset[] = [
+  { baseCode: 'KGM', code: 'GRM', name: 'Gramo', label: 'Agregar unidad Gramo' },
+  { baseCode: 'LTR', code: 'MLT', name: 'Mililitro', label: 'Agregar unidad Mililitro' },
+]
+
 type Props = {
   units: ProductSaleUnit[]
   /** Catálogo SUNAT N°03 (TenantUnit) para elegir la unidad comercial propia de cada SaleUnit. */
   catalogUnits: Unit[]
   /** Nombre visible de la unidad base del producto (ej. "KG", "Unidades") — para el texto de ayuda del factor. */
   baseUnitLabel: string
+  /** Código SUNAT de la unidad base del producto (KGM, LTR…): decide qué atajos de venta fraccionada se ofrecen. */
+  baseUnitCode?: string
   canCreate: boolean
   canEdit: boolean
   canDelete: boolean
   onChangeRow: (index: number, patch: Partial<ProductSaleUnit>) => void
   onAddRow: () => void
+  /** Agrega una fila ya armada para vender a granel (Gramo desde KGM, Mililitro desde LTR). */
+  onAddPreset?: (preset: FractionalPreset) => void
   onRemoveRow: (index: number) => void
   /** Abre la gestión de precios por sucursal (Fase 7D) de una unidad ya guardada (con id). */
   onManageBranchPrices: (row: ProductSaleUnit) => void
@@ -31,14 +43,21 @@ export function SaleUnitsEditor({
   units,
   catalogUnits,
   baseUnitLabel,
+  baseUnitCode,
   canCreate,
   canEdit,
   canDelete,
   onChangeRow,
   onAddRow,
+  onAddPreset,
   onRemoveRow,
   onManageBranchPrices,
 }: Props) {
+  const presets = FRACTIONAL_PRESETS.filter(
+    (p) =>
+      p.baseCode === (baseUnitCode ?? '').toUpperCase() &&
+      !units.some((u) => (u.unit ?? '').toUpperCase() === p.code),
+  )
   return (
     <div className="flex flex-col flex-1 min-h-0 space-y-2">
       <div className="flex items-center justify-between gap-2 shrink-0">
@@ -58,6 +77,20 @@ export function SaleUnitsEditor({
         x12, Pack x6 o Unidad — con conversión hacia la unidad base ({baseUnitLabel || 'sin unidad'}
         ). No reemplazan las presentaciones ni tienen stock propio.
       </p>
+      {canCreate && onAddPreset && presets.length > 0 && (
+        <div className="flex flex-wrap gap-2 shrink-0">
+          {presets.map((p) => (
+            <button
+              key={p.code}
+              type="button"
+              onClick={() => onAddPreset(p)}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-[rgb(var(--p700))] border border-[rgb(var(--p200))] bg-[rgb(var(--p50))] hover:bg-[rgb(var(--p100))] px-2.5 py-1.5 rounded-lg"
+            >
+              <Plus size={14} /> {p.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {units.length === 0 ? (
         <p className="text-xs text-gray-400 py-2">Aún no hay unidades de venta configuradas.</p>
@@ -155,6 +188,7 @@ export function SaleUnitsEditor({
                       value={row.price1}
                       onChange={(v) => onChangeRow(index, { price1: Math.max(0, v) })}
                       emptyWhenZero
+                      fullPrecision
                       placeholder="0.00"
                       disabled={rowLocked}
                       className="w-full min-h-[44px] border border-gray-200 rounded-xl px-3 py-2 text-sm tabular-nums disabled:bg-gray-50 disabled:text-gray-400"
@@ -168,6 +202,7 @@ export function SaleUnitsEditor({
                       value={row.price2 ?? 0}
                       onChange={(v) => onChangeRow(index, { price2: v > 0 ? v : null })}
                       emptyWhenZero
+                      fullPrecision
                       placeholder="0.00"
                       disabled={rowLocked}
                       className="w-full min-h-[44px] border border-gray-200 rounded-xl px-3 py-2 text-sm tabular-nums disabled:bg-gray-50 disabled:text-gray-400"
@@ -181,6 +216,7 @@ export function SaleUnitsEditor({
                       value={row.price3 ?? 0}
                       onChange={(v) => onChangeRow(index, { price3: v > 0 ? v : null })}
                       emptyWhenZero
+                      fullPrecision
                       placeholder="0.00"
                       disabled={rowLocked}
                       className="w-full min-h-[44px] border border-gray-200 rounded-xl px-3 py-2 text-sm tabular-nums disabled:bg-gray-50 disabled:text-gray-400"

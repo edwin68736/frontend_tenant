@@ -248,7 +248,8 @@ function catalogLineToSaleItem(line: CatalogCartLine): SaleFormItem {
     // llega al XML y al A4/ticket, que no leen modifiers_json. Antes solo el nombre: la
     // previsualización mostraba la presentación pero el comprobante emitido no.
     description: descriptionWithPresentation(p.name, line.modifiers),
-    unit: normalizeSunatUnit(p.unit ?? '', p.type ?? 'product'),
+    // Con unidad de venta (Gramo, Caja…) la línea se declara con SU unidad SUNAT, no con la del producto.
+    unit: line.sale_unit?.unit || normalizeSunatUnit(p.unit ?? '', p.type ?? 'product'),
     quantity: line.quantity,
     unit_price: line.unit_price,
     igv_affectation_type: p.igv_affectation_type ?? '10',
@@ -2793,6 +2794,7 @@ function SalesRegisterContent({
                           onChange={(v) => updateItem(idx, 'unit_price', Math.max(0, v))}
                           clearOnFocus
                           emptyWhenZero
+                          fullPrecision
                           readOnly={priceLocked}
                           title={priceLocked ? 'No tienes permiso para cambiar el precio' : undefined}
                         />

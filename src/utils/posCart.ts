@@ -7,7 +7,7 @@ import {
   calcUnitPriceWithModifiers,
   modifiersToJson,
 } from '@/utils/productModifiers'
-import { roundMoney } from '@/utils/checkoutDiscount'
+import { roundSunat } from '@/utils/money'
 import { comboSignature, comboSelectionsToJson, type ComboCartState } from '@/utils/comboCart'
 
 /**
@@ -21,6 +21,8 @@ import { comboSignature, comboSelectionsToJson, type ComboCartState } from '@/ut
 export type CartSaleUnit = {
   id: number
   name: string
+  /** Código SUNAT propio de la unidad de venta (GRM, MLT, BX…): es la unidad que se declara en la línea. */
+  unit?: string
   conversion_factor: number
   allow_fraction: boolean
 }
@@ -105,7 +107,9 @@ export function cartLineHasMissingPrice(line: PosCartLine): boolean {
 }
 
 export function applyCatalogLineUnitPrice(line: CatalogCartLine, unitPrice: number): CatalogCartLine {
-  const price = roundMoney(Math.max(0, unitPrice))
+  // roundSunat y no roundMoney: el precio de una unidad de venta puede tener hasta 6 decimales
+  // (S/ 0.0045 por gramo) y redondearlo a 2 lo dejaría en 0.
+  const price = roundSunat(Math.max(0, unitPrice))
   return {
     ...line,
     unit_price: price,
