@@ -80,7 +80,7 @@ export function formatDisplayDate(dateStr?: string): string {
 }
 
 export function a4DocTypeTitle(data: PrintData): string {
-  return receiptDocTypeTitle(data.sunat_code, data.fiscal)
+  return receiptDocTypeTitle(data.sunat_code, data.fiscal, data.doc_type)
 }
 
 export function itemLineDiscount(it: PrintData['items'][0]): number {

@@ -313,6 +313,7 @@ function SalesRegisterContent({
   const { user, hasModule, hasPermission } = useAuth()
   // sales.override_price (incidente 2026-09-17): sin el permiso, el precio unitario queda de
   // solo lectura — protección de UI, el backend igual re-valida contra el catálogo por su cuenta.
+  const canOpenCash = hasPermission('cashbank.open')
   const canEditPrice = hasPermission('sales.override_price')
   const { activeBranchId, activeBranch } = useBranch()
   // Dirección de la sucursal activa para la previsualización del comprobante (BranchBrief no la trae).
@@ -1998,10 +1999,13 @@ function SalesRegisterContent({
             <div>
               <p className="text-sm font-semibold text-amber-900">Caja cerrada</p>
               <p className="text-xs text-amber-800 mt-0.5">
-                Debe abrir su sesión de caja para registrar ventas (incluye administrador).
+                {canOpenCash
+                  ? 'Debe abrir su sesión de caja para registrar ventas (incluye administrador).'
+                  : 'No tienes permiso para abrir caja. Pide a un usuario autorizado que la abra para registrar ventas.'}
               </p>
             </div>
           </div>
+          {canOpenCash && (
           <div className="flex flex-wrap items-center gap-2 shrink-0">
             <label className="text-xs text-amber-900 flex items-center gap-1.5">
               Saldo inicial
@@ -2026,6 +2030,7 @@ function SalesRegisterContent({
               Ir a Caja
             </Link>
           </div>
+          )}
         </div>
       )}
       {linkQuotationId && !isQuotation && (

@@ -56,19 +56,9 @@ import {
   PRODUCT_EXPIRY_BADGE_CLASS,
 } from '@/utils/productExpiry'
 import { resolveSaleUnitNames, saleLineUnitLabel } from '@/utils/saleUnitNames'
+import { chartColor } from '@/utils/chartColors'
 
 const ZONE = 'America/Lima'
-
-const CHART_COLORS = [
-  'rgb(var(--p600, 37 99 235))',
-  '#7c3aed',
-  '#059669',
-  '#d97706',
-  '#dc2626',
-  '#0891b2',
-  '#db2777',
-  '#4f46e5',
-]
 
 function formatDayPeru(d: Date): string {
   return formatInTimeZone(d, ZONE, 'yyyy-MM-dd')
@@ -402,7 +392,7 @@ export default function DashboardPage() {
     return (analytics?.by_payment_method ?? []).map((x, i) => ({
       name: paymentLabel(x.key),
       value: x.total,
-      fill: CHART_COLORS[i % CHART_COLORS.length],
+      fill: chartColor(i),
     }))
   }, [analytics])
 
@@ -410,7 +400,7 @@ export default function DashboardPage() {
     return (analytics?.by_doc_type ?? []).map((x, i) => ({
       name: docTypeLabel(x.key),
       value: x.total,
-      fill: CHART_COLORS[i % CHART_COLORS.length],
+      fill: chartColor(i),
     }))
   }, [analytics])
 
@@ -419,7 +409,7 @@ export default function DashboardPage() {
       name: x.name || '—',
       value: x.total,
       // Las filas de ajuste (otras categorías, descuentos…) van en gris para no confundirlas con una categoría.
-      fill: x.adjustment ? '#94a3b8' : CHART_COLORS[i % CHART_COLORS.length],
+      fill: x.adjustment ? '#94a3b8' : chartColor(i),
     }))
   }, [analytics])
 

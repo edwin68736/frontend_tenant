@@ -146,10 +146,16 @@ export function inferPrepaymentRelatedDocType(documentNumber: string): '02' | '0
 }
 
 /** Título del comprobante en PDF local (emisión de anticipo vs factura/boleta normal). */
-export function receiptDocTypeTitle(sunatCode: string, fiscal?: PrintFiscalContext | null): string {
+export function receiptDocTypeTitle(
+  sunatCode: string,
+  fiscal?: PrintFiscalContext | null,
+  docType?: string | null,
+): string {
   if (fiscal?.has_prepayment_emit) {
     return (fiscal.prepayment_label ?? 'COMPROBANTE DE ANTICIPO').toUpperCase()
   }
+  // El pedido web reusa el código QT (no fiscal, sin QR) de las cotizaciones, pero se titula aparte.
+  if (String(sunatCode ?? '').trim() === 'QT' && /pedido/i.test(docType ?? '')) return 'PEDIDO WEB'
   const map: Record<string, string> = {
     '00': 'NOTA DE VENTA',
     '01': 'FACTURA ELECTRÓNICA',

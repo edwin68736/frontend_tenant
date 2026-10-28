@@ -21,6 +21,32 @@ export interface EcommerceSettings {
   show_stock: boolean
   /** 'split' = texto + botón junto a la imagen; 'image' = solo la imagen completa a todo el ancho. */
   hero_style: HeroStyle
+  /** JSON crudo de los medios de pago (usar parsePaymentMethods). */
+  payment_methods_json?: string
+}
+
+export type PaymentMethodType = 'yape' | 'plin' | 'bank' | 'cash' | 'other'
+
+/** Medio de pago informativo que la tienda muestra al hacer el pedido (no se cobra ni valida). */
+export interface PaymentMethod {
+  type: PaymentMethodType
+  label: string
+  enabled: boolean
+  holder: string
+  account: string
+  cci: string
+  bank: string
+  note: string
+}
+
+export function parsePaymentMethods(raw?: string): PaymentMethod[] {
+  if (!raw) return []
+  try {
+    const v = JSON.parse(raw)
+    return Array.isArray(v) ? (v as PaymentMethod[]) : []
+  } catch {
+    return []
+  }
 }
 
 export type HeroStyle = 'split' | 'image'
@@ -45,6 +71,7 @@ export interface UpdateEcommerceSettingsInput {
   category_style?: string
   show_stock?: boolean
   hero_style?: HeroStyle
+  payment_methods?: PaymentMethod[]
 }
 
 export interface EcommerceSlider {
@@ -187,6 +214,10 @@ export interface PublicStoreSettings {
   /** Si es false, no mostrar disponibilidad/"Agotado" — tratar todos los productos como disponibles. */
   show_stock: boolean
   hero_style?: HeroStyle
+  /** Datos de contacto de la empresa para el pie (cada uno puede venir vacío). */
+  contact?: { address: string; phone: string; email: string }
+  /** Solo los habilitados. */
+  payment_methods?: PaymentMethod[]
   sliders: EcommerceSlider[]
 }
 
@@ -234,6 +265,6 @@ export const publicEcommerceService = {
 
   createOrder: (input: { customer_name?: string; customer_phone?: string; items: EcommerceOrderItem[] }) =>
     api
-      .post<{ order_number: number }>('/api/public/ecommerce/orders', input)
-      .then(r => r.data.order_number),
+      .post<{ order_number: number; pdf_token?: string }>('/api/public/ecommerce/orders', input)
+      .then(r => ({ orderNumber: r.data.order_number, pdfToken: r.data.pdf_token || '' })),
 }

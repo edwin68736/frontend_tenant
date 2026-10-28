@@ -20,6 +20,7 @@ import { companyService } from '@/services/company.service'
 import { UbigeoSelects } from '@/components/UbigeoSelects'
 import { ubigeoToIds } from '@/services/ubigeo.service'
 import RequireModule from '@/components/ui/RequireModule'
+import { useAuth } from '@/contexts/AuthContext'
 import { Modal } from '@/components/ui/Modal'
 import {
   SUNAT_TIPO_DOC_IDENTIDAD_LIST,
@@ -68,6 +69,15 @@ export default function ContactsPage() {
 }
 
 export function ContactsContent({ contactType, pageTitle, pageSubtitle }: ContactsListConfig) {
+  const { hasPermission } = useAuth()
+  // Clientes y proveedores tienen permisos propios (customers.* / suppliers.*) sobre la misma tabla.
+  const permModule = contactType === 'supplier' ? 'suppliers' : 'customers'
+  const canCreate = hasPermission(`${permModule}.create`)
+  // Un contacto "ambos" es cliente y proveedor a la vez: modificarlo exige los dos permisos.
+  const canMutate = (c: Contact, action: 'edit' | 'delete') =>
+    c.type === 'both'
+      ? hasPermission(`customers.${action}`) && hasPermission(`suppliers.${action}`)
+      : hasPermission(`${permModule}.${action}`)
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
   const [q, setQ] = useState('')
@@ -377,16 +387,20 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
           <p className="text-sm text-gray-500">{pageSubtitle}</p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setImportOpen(true)}
-            className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
-            <FileSpreadsheet size={15} /> Importar
-          </button>
-          <button onClick={openNew} className="flex items-center gap-1.5 px-4 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90">
-            <Plus size={15} /> Nuevo {entityLabel}
-          </button>
+          {canCreate && (
+            <button
+              type="button"
+              onClick={() => setImportOpen(true)}
+              className="flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              <FileSpreadsheet size={15} /> Importar
+            </button>
+          )}
+          {canCreate && (
+            <button onClick={openNew} className="flex items-center gap-1.5 px-4 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90">
+              <Plus size={15} /> Nuevo {entityLabel}
+            </button>
+          )}
         </div>
       </div>
 
@@ -470,34 +484,40 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
                     >
                       <Eye size={14} />
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => handleToggle(c)}
-                      className={`p-1.5 rounded-lg ${
-                        c.active
-                          ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                          : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
-                      }`}
-                      title={c.active ? 'Desactivar' : 'Reactivar'}
-                    >
-                      {c.active ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openEdit(c)}
-                      className="p-1.5 rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200"
-                      title="Editar"
-                    >
-                      <Pencil size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(c.id)}
-                      className="p-1.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 hover:text-red-700"
-                      title="Eliminar"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    {canMutate(c, 'edit') && (
+                      <button
+                        type="button"
+                        onClick={() => handleToggle(c)}
+                        className={`p-1.5 rounded-lg ${
+                          c.active
+                            ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                            : 'bg-amber-100 text-amber-700 hover:bg-amber-200'
+                        }`}
+                        title={c.active ? 'Desactivar' : 'Reactivar'}
+                      >
+                        {c.active ? <ToggleRight size={16} /> : <ToggleLeft size={16} />}
+                      </button>
+                    )}
+                    {canMutate(c, 'edit') && (
+                      <button
+                        type="button"
+                        onClick={() => openEdit(c)}
+                        className="p-1.5 rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200"
+                        title="Editar"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    )}
+                    {canMutate(c, 'delete') && (
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(c.id)}
+                        className="p-1.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 hover:text-red-700"
+                        title="Eliminar"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>

@@ -11,8 +11,13 @@ import {
 } from '@/utils/despatchSeries'
 import { getTodayPeru } from '@/utils/datesPeru'
 import { SearchableSelect } from '@/components/SearchableSelect'
+import { consultaService } from '@/services/consulta.service'
 import {
   MOTIVOS,
+  emptyRelatedDoc,
+  isValidRuc,
+  splitDocNumber,
+  type RelatedDocDraft,
   buildPayload,
   emptyDraft,
   emptyParty,
@@ -85,7 +90,7 @@ export function DespatchForm({
   const [touched, setTouched] = useState<Partial<Record<SectionId, boolean>>>({})
   const [attempted, setAttempted] = useState(false)
   const [lookupBusy, setLookupBusy] = useState(false)
-  const [origin, setOrigin] = useState<'independiente' | '01' | '03' | 'gre'>('independiente')
+  const [origin, setOrigin] = useState<'independiente' | '01' | '03' | 'gre' | 'externa'>('independiente')
   const [sourceLoading, setSourceLoading] = useState(false)
   const [fleetReady, setFleetReady] = useState(false)
   const topRef = useRef<HTMLDivElement>(null)
@@ -232,11 +237,12 @@ export function DespatchForm({
   }
 
   // Documento relacionado: la factura/boleta (o la GRE remitente) se envía a SUNAT como documento relacionado y trae cliente y productos.
-  const changeOrigin = (o: 'independiente' | '01' | '03' | 'gre') => {
+  const changeOrigin = (o: 'independiente' | '01' | '03' | 'gre' | 'externa') => {
     setOrigin(o)
     setDraft((d) => ({
       ...d,
-      relatedGre: '',
+      needsRelatedGre: d.kind === '31' && (o === 'gre' || o === 'externa'),
+      docsRel: [...d.docsRel.filter((x) => !x.primary), ...(o === 'externa' ? [{ ...emptyRelatedDoc('09'), primary: true }] : [])],
       receiver: d.kind === '31' ? emptyParty() : d.receiver,
       needsSource: o === '01' || o === '03',
       sourceSaleId: null,
@@ -277,15 +283,44 @@ export function DespatchForm({
     }
   }
 
-  const loadRelatedGre = async (numberArg?: string) => {
-    const number = (numberArg ?? draft.relatedGre).trim()
+  // Guía remitente de otra empresa/sistema: no se consulta la BD; se registra como documento relacionado.
+  const primaryDoc = draft.docsRel.find((x) => x.primary)
+  const setPrimaryDoc = (p: Partial<RelatedDocDraft>) => setDraft((d) => ({ ...d, docsRel: d.docsRel.map((x) => (x.primary ? { ...x, ...p } : x)) }))
+
+  const useExternalGre = (raw: string) => {
+    const { serie, numero } = splitDocNumber(raw)
+    setOrigin('externa')
+    setDraft((d) => ({
+      ...d,
+      needsRelatedGre: true,
+      docsRel: [...d.docsRel.filter((x) => !x.primary), { ...emptyRelatedDoc('09', d.party.num_doc), serie, numero, primary: true }],
+    }))
+  }
+
+  const consultExternalRuc = async (ruc: string) => {
+    if (!company.ruc || !isValidRuc(ruc) || ruc === company.ruc) return
+    try {
+      const res = await consultaService.ruc(company.ruc, ruc)
+      if (!res.success || !res.razon_social) return
+      setDraft((d) =>
+        d.party.num_doc === ruc
+          ? d
+          : { ...d, partidaTouched: false, party: { tipo_doc: '6', num_doc: ruc, rzn_social: res.razon_social ?? '', address: res.direccion ?? res.direccion_completa ?? '', ubigeo: res.ubigeo ?? '' } },
+      )
+    } catch {
+      /* la consulta es una ayuda: si falla, el remitente se completa a mano */
+    }
+  }
+
+  const loadRelatedGre = async (numberArg: string) => {
+    const number = numberArg.trim()
     if (!number) return
     setLookupBusy(true)
     try {
       const r = await billingService.lookupDespatch(number)
       setDraft((d) => ({
         ...d,
-        relatedGre: r.number,
+        docsRel: [...d.docsRel.filter((x) => !x.primary), { tipo: '09', ruc: r.remitente.num_doc, ...splitDocNumber(r.number), primary: true }],
         party: { tipo_doc: r.remitente.tipo_doc, num_doc: r.remitente.num_doc, rzn_social: r.remitente.rzn_social, address: r.partida.direccion, ubigeo: r.partida.ubigueo },
         receiver: { tipo_doc: r.destinatario.tipo_doc, num_doc: r.destinatario.num_doc, rzn_social: r.destinatario.rzn_social, address: r.llegada.direccion, ubigeo: r.llegada.ubigueo },
         partidaTouched: false,
@@ -298,7 +333,8 @@ export function DespatchForm({
       toast.success(`Cargamos los datos de la guía ${r.number}`)
     } catch (e) {
       const msg = (e as { response?: { data?: { error?: string } } }).response?.data?.error
-      toast.message(msg ?? 'No encontramos esa guía en tu sistema.', { description: 'Puedes completar los datos a mano; el número quedará como documento relacionado.' })
+      useExternalGre(number)
+      toast.message(msg ?? 'No encontramos esa guía en tu sistema, se enviará como documento relacionado.', { description: 'Completa el RUC del remitente, la serie y el número.' })
     } finally {
       setLookupBusy(false)
     }
@@ -407,7 +443,7 @@ export function DespatchForm({
         <div className="grid grid-cols-2 lg:grid-cols-12 gap-3">
           <div className="col-span-2 lg:col-span-4">
             <label className={lbl}>Documento relacionado *</label>
-            <select className={inputCls} value={origin} onChange={(e) => changeOrigin(e.target.value as 'independiente' | '01' | '03' | 'gre')}>
+            <select className={inputCls} value={origin} onChange={(e) => changeOrigin(e.target.value as 'independiente' | '01' | '03' | 'gre' | 'externa')}>
               <option value="independiente">Ninguno (guía independiente)</option>
               {is09 ? (
                 <>
@@ -415,14 +451,54 @@ export function DespatchForm({
                   <option value="03">Boleta</option>
                 </>
               ) : (
-                <option value="gre">Guía de remisión remitente</option>
+                <>
+                  <option value="gre">Guía remitente: buscar en mis guías</option>
+                  <option value="externa">Guía remitente: es de otra empresa</option>
+                </>
               )}
             </select>
           </div>
           {origin === 'gre' && !is09 && (
             <div className="col-span-2 lg:col-span-8">
               <label className={lbl}>Guía de remisión remitente *</label>
-              <GrePicker key="gre" selectedLabel={draft.relatedGre} onPick={(n) => void loadRelatedGre(n)} onClear={() => changeOrigin('gre')} />
+              <GrePicker
+                key="gre"
+                selectedLabel={primaryDoc && primaryDoc.serie && primaryDoc.numero ? `${primaryDoc.serie}-${primaryDoc.numero}` : ''}
+                onPick={(n) => void loadRelatedGre(n)}
+                onUseExternal={useExternalGre}
+                onClear={() => changeOrigin('gre')}
+              />
+            </div>
+          )}
+          {origin === 'externa' && !is09 && primaryDoc && (
+            <div className="col-span-2 lg:col-span-8">
+              <div className="grid grid-cols-2 lg:grid-cols-12 gap-3">
+                <div className="col-span-2 lg:col-span-6">
+                  <label className={lbl}>RUC del remitente (emisor de la guía) *</label>
+                  <input
+                    className={inputCls}
+                    inputMode="numeric"
+                    maxLength={11}
+                    placeholder="11 dígitos"
+                    value={primaryDoc.ruc}
+                    onChange={(e) => {
+                      const ruc = e.target.value.replace(/\D/g, '')
+                      setPrimaryDoc({ ruc })
+                      if (isValidRuc(ruc)) void consultExternalRuc(ruc)
+                    }}
+                  />
+                  {primaryDoc.ruc.length === 11 && !isValidRuc(primaryDoc.ruc) && <p className="text-[11px] text-red-600 mt-1">El RUC no es válido.</p>}
+                </div>
+                <div className="lg:col-span-3">
+                  <label className={lbl}>Serie *</label>
+                  <input className={inputCls} maxLength={4} placeholder="T001" value={primaryDoc.serie} onChange={(e) => setPrimaryDoc({ serie: e.target.value.toUpperCase() })} />
+                </div>
+                <div className="lg:col-span-3">
+                  <label className={lbl}>Número *</label>
+                  <input className={inputCls} inputMode="numeric" maxLength={8} placeholder="123" value={primaryDoc.numero} onChange={(e) => setPrimaryDoc({ numero: e.target.value.replace(/\D/g, '') })} />
+                </div>
+              </div>
+              <p className="text-[11px] text-gray-500 mt-1">No se consulta la guía: se envía a SUNAT como documento relacionado. Con el RUC traemos los datos del remitente, que puedes editar abajo.</p>
             </div>
           )}
           {is09 && origin !== 'independiente' && (
@@ -647,7 +723,7 @@ export function DespatchForm({
         </div>
       </Section>
 
-      <MoreOptions draft={draft} onPatch={(p) => patch(p)} ownTransport={!publico} />
+      <MoreOptions draft={draft} onPatch={(p) => patch(p)} ownTransport={!publico} companyRuc={company.ruc} />
     </div>
   )
 

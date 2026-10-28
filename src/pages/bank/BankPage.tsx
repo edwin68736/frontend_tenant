@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { Plus, X, ArrowUpRight, ArrowDownLeft, Banknote, Pencil, Undo2, ChevronRight } from 'lucide-react'
 import { cashbankService, type BankAccount, type BankMovement } from '@/services/cashbank.service'
 import RequireModule from '@/components/ui/RequireModule'
+import { useAuth } from '@/contexts/AuthContext'
 import { Modal } from '@/components/ui/Modal'
 import { getTodayPeru } from '@/utils/datesPeru'
 
@@ -34,6 +35,8 @@ export default function BankPage() {
 }
 
 function BankContent() {
+  // Crear/editar cuentas y registrar movimientos exige cashbank.manage (ver es cashbank.view).
+  const canManageBank = useAuth().hasPermission('cashbank.manage')
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [selected, setSelected] = useState<BankAccount | null>(null)
   const [movements, setMovements] = useState<BankMovement[]>([])
@@ -169,12 +172,14 @@ function BankContent() {
           <h2 className="text-lg font-bold text-gray-800">Cuentas Bancarias</h2>
           <p className="text-sm text-gray-500">Gestión de cuentas y movimientos</p>
         </div>
+        {canManageBank && (
         <button
           onClick={() => { setEditingAccount(null); setAccountForm(emptyAccount()); setShowAccount(true) }}
           className="flex items-center justify-center gap-1.5 w-full sm:w-auto px-4 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90 flex-shrink-0"
         >
           <Plus size={15} /> Nueva cuenta
         </button>
+        )}
       </div>
 
       {/* Grid de cuentas — compacto: la lista de movimientos de abajo es lo que más se usa */}
@@ -191,7 +196,7 @@ function BankContent() {
                 <div className="w-7 h-7 bg-[rgb(var(--p50))] rounded-lg flex items-center justify-center flex-shrink-0"><Banknote size={14} className="text-[rgb(var(--p500))]" /></div>
                 <div className="flex items-center gap-0.5 flex-shrink-0">
                   <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${acc.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{acc.active ? 'Activa' : 'Inactiva'}</span>
-                  <button onClick={e => openEdit(acc, e)} className="p-1 rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Editar"><Pencil size={12} /></button>
+                  {canManageBank && <button onClick={e => openEdit(acc, e)} className="p-1 rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Editar"><Pencil size={12} /></button>}
                 </div>
               </div>
               <p className="font-semibold text-sm text-gray-800 mt-1.5 truncate">{acc.name}</p>
@@ -226,12 +231,14 @@ function BankContent() {
               <p className="text-sm font-semibold text-gray-700 truncate">{selected.name} — Movimientos</p>
               <p className="text-xs text-gray-400">Saldo actual: {selected.currency} {Number(selected.balance).toFixed(2)}</p>
             </div>
+            {canManageBank && (
             <button
               onClick={() => { setMovForm(emptyMov()); setShowMov(true) }}
               className="flex items-center justify-center gap-1 w-full sm:w-auto px-3 py-2 sm:py-1.5 bg-[rgb(var(--p600))] text-white rounded-xl text-xs sm:text-sm font-medium hover:opacity-90 flex-shrink-0"
             >
               <Plus size={12} /> Movimiento
             </button>
+            )}
           </div>
 
           {/* Filtros + resumen del período filtrado */}

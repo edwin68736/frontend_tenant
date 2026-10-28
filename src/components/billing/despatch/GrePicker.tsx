@@ -4,7 +4,18 @@ import { billingService, type SunatDespatch } from '@/services/billing.service'
 import { inputCls } from './ui'
 
 /** Buscador de guías de remisión remitente emitidas desde este sistema (origen de una guía transportista). */
-export function GrePicker({ selectedLabel, onPick, onClear }: { selectedLabel: string; onPick: (number: string) => void; onClear: () => void }) {
+export function GrePicker({
+  selectedLabel,
+  onPick,
+  onUseExternal,
+  onClear,
+}: {
+  selectedLabel: string
+  onPick: (number: string) => void
+  /** El número escrito no está entre mis guías: registrarla como guía de otra empresa. */
+  onUseExternal: (number: string) => void
+  onClear: () => void
+}) {
   const [rows, setRows] = useState<SunatDespatch[]>([])
   const [loaded, setLoaded] = useState(false)
   const [q, setQ] = useState('')
@@ -54,7 +65,22 @@ export function GrePicker({ selectedLabel, onPick, onClear }: { selectedLabel: s
       />
       {open && (
         <ul className="absolute z-20 mt-1 w-full max-h-72 overflow-auto rounded-xl border border-gray-200 bg-white shadow-lg divide-y divide-gray-100">
-          {loaded && filtered.length === 0 && <li className="px-3 py-3 text-xs text-gray-500">No hay guías remitente emitidas desde este sistema que coincidan.</li>}
+          {loaded && filtered.length === 0 && (
+            <li className="px-3 py-3 text-xs text-gray-500 space-y-2">
+              <p>No encontramos esa guía en tu sistema{term ? ` («${q.trim()}»)` : ''}.</p>
+              <button
+                type="button"
+                className="font-medium text-[rgb(var(--p700))] hover:underline"
+                onClick={() => {
+                  setOpen(false)
+                  onUseExternal(q)
+                }}
+              >
+                La guía es de otra empresa: registrarla como documento relacionado
+              </button>
+            </li>
+          )}
+
           {filtered.map((d) => (
             <li key={d.id}>
               <button

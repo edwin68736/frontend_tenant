@@ -146,7 +146,8 @@ function peruIssueTime(): string {
 
 function previewDocumentNumber(series: SalePreviewSeries | null): string {
   if (!series?.series) return 'PREVIEW-00000001'
-  const next = Math.max(1, (series.current_number ?? series.correlative ?? 0) + 1)
+  // `correlative` de la serie ya es el PRÓXIMO número a emitir (el backend lo reserva y recién ahí lo incrementa).
+  const next = Math.max(1, series.correlative ?? series.current_number ?? 1)
   return `${series.series}-${String(next).padStart(8, '0')}`
 }
 

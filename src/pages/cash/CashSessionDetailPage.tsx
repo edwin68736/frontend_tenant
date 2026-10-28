@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { ArrowLeft, FileDown, FileSpreadsheet } from 'lucide-react'
 import RequireModule from '@/components/ui/RequireModule'
+import { useAuth } from '@/contexts/AuthContext'
 import { Modal } from '@/components/ui/Modal'
 import {
   cashbankService,
@@ -57,6 +58,7 @@ export default function CashSessionDetailPage() {
 }
 
 function CashSessionDetailContent() {
+  const { hasPermission } = useAuth()
   const { id } = useParams<{ id: string }>()
   const sessionId = Number(id)
 
@@ -410,7 +412,7 @@ function CashSessionDetailContent() {
         <MovementsList
           movements={movements}
           methodLabelFor={methodLabelFor}
-          onReverse={session.status === 'open' ? setReverseTarget : undefined}
+          onReverse={session.status === 'open' && hasPermission('cashbank.movements') ? setReverseTarget : undefined}
           reversingId={reversingId}
         />
       </div>

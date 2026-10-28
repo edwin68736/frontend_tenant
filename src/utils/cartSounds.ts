@@ -1,10 +1,12 @@
 import beepSrc from '@/assets/sound/beep-29.mp3'
 import removeSrc from '@/assets/sound/button-21.mp3'
+import { isSoundEnabled } from '@/utils/soundPrefs'
 
 let addAudio: HTMLAudioElement | null = null
 let removeAudio: HTMLAudioElement | null = null
 
 function playClip(getAudio: () => HTMLAudioElement) {
+  if (!isSoundEnabled()) return
   try {
     const audio = getAudio()
     audio.currentTime = 0

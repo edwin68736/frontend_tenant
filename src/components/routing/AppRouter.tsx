@@ -62,6 +62,7 @@ const VehiculosPage = lazy(() => import('@/pages/fleet/VehiculosPage'))
 const ModulesPage = lazy(() => import('@/pages/modules/ModulesPage'))
 const MembershipsPage = lazy(() => import('@/pages/memberships/MembershipsPage'))
 const PedidosWebPage = lazy(() => import('@/pages/ecommerce/PedidosWebPage'))
+const EcommerceSettingsPage = lazy(() => import('@/pages/ecommerce/EcommerceSettingsPage'))
 const ReportsLayout = lazy(() => import('@/pages/reports/ReportsLayout'))
 const SalesReportPage = lazy(() => import('@/pages/reports/SalesReportPage'))
 const ProductsReportPage = lazy(() => import('@/pages/reports/ProductsReportPage'))
@@ -173,7 +174,7 @@ function AppRoutes() {
         <Route path="quotations/new" element={<Lazy><Protected perm="quotations.create"><QuotationRegisterPage /></Protected></Lazy>} />
         <Route path="quotations/:id/edit" element={<Lazy><Protected perm="quotations.edit"><QuotationRegisterPage /></Protected></Lazy>} />
         <Route path="purchases/register" element={<Lazy><Protected perm="purchases.create"><PurchaseRegisterPage /></Protected></Lazy>} />
-        <Route path="purchases/suppliers" element={<Lazy><Protected perm="contacts.view"><SuppliersPage /></Protected></Lazy>} />
+        <Route path="purchases/suppliers" element={<Lazy><Protected perm="suppliers.view"><SuppliersPage /></Protected></Lazy>} />
         <Route path="purchases/payables" element={<Lazy><Protected perm="payables.view"><PayablesPage /></Protected></Lazy>} />
         <Route path="purchases" element={<Lazy><Protected perm="purchases.view"><PurchasesPage /></Protected></Lazy>} />
         <Route path="products" element={<Lazy><Protected perm="products.view"><ProductsPage /></Protected></Lazy>} />
@@ -182,7 +183,7 @@ function AppRoutes() {
         <Route path="products/categories" element={<Lazy><Protected perm="products.view"><CategoriesPage /></Protected></Lazy>} />
         <Route path="products/brands" element={<Lazy><Protected perm="products.view"><BrandsPage /></Protected></Lazy>} />
         <Route path="products/units" element={<Lazy><Protected perm="products.view"><UnitsPage /></Protected></Lazy>} />
-        <Route path="contacts" element={<Lazy><Protected perm="contacts.view"><ContactsPage /></Protected></Lazy>} />
+        <Route path="contacts" element={<Lazy><Protected perm="customers.view"><ContactsPage /></Protected></Lazy>} />
         <Route path="inventory" element={<Lazy><Protected perm="inventory.view"><InventoryPage /></Protected></Lazy>} />
         <Route path="inventory/services" element={<Navigate to="/products/services" replace />} />
         <Route path="inventory/transfers" element={<Lazy><Protected perm="inventory.manage"><InventoryTransfersPage /></Protected></Lazy>} />
@@ -222,6 +223,8 @@ function AppRoutes() {
         <Route path="modules" element={<Lazy><Protected perm="modules.manage"><ModulesPage /></Protected></Lazy>} />
         <Route path="memberships" element={<Lazy><Protected perm="memberships.view"><MembershipsPage /></Protected></Lazy>} />
         <Route path="sales/pedidos-web" element={<Lazy><Protected perm="ecommerce.orders"><PedidosWebPage /></Protected></Lazy>} />
+        <Route path="store-settings" element={<Navigate to="/store-settings/general" replace />} />
+        <Route path="store-settings/:section" element={<Lazy><Protected perm="ecommerce.manage"><EcommerceSettingsPage /></Protected></Lazy>} />
         {/* reports.*: permiso propio por reporte (no el .view del módulo dueño de los datos) —
             solo gatea la PÁGINA; los endpoints que consumen cada reporte se quedan exigiendo el
             permiso de su módulo real, sin cambios. reports.manage implica todos (regla genérica

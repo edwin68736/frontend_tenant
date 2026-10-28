@@ -400,9 +400,9 @@ export async function generateReceiptPdf(
     addSpace(2)
 
     // Título comprobante
+    // El RUC ya se imprime una sola vez bajo la razón social (cabecera); no repetirlo aquí.
     if (!nvLayout || nvLayout.showDocTypeAndNumber) {
-      addTicketLineCenter(`R.U.C. ${data.company.ruc}`, FONT_SIZE_SM)
-      addTicketLineCenter(receiptDocTypeTitle(data.sunat_code, data.fiscal), FONT_SIZE)
+      addTicketLineCenter(receiptDocTypeTitle(data.sunat_code, data.fiscal, data.doc_type), FONT_SIZE)
       doc.setFontSize(FONT_SIZE_TITLE)
       doc.text(formatDocNumber(data), pageW / 2, y, { align: 'center' })
       y += ticketLineH + 2

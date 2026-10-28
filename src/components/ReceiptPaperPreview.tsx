@@ -94,7 +94,7 @@ export function ReceiptPaperPreview({
         <Sep />
 
         <div className="text-center font-bold">
-          <p>{receiptDocTypeTitle(printData.sunat_code, printData.fiscal)}</p>
+          <p>{receiptDocTypeTitle(printData.sunat_code, printData.fiscal, printData.doc_type)}</p>
           <p>{printData.number}</p>
         </div>
 

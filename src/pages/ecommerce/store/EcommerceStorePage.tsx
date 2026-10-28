@@ -12,6 +12,9 @@ import {
   Plus,
   Minus,
   Tag,
+  MapPin,
+  Phone,
+  Mail,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -61,6 +64,7 @@ export default function EcommerceStorePage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [notAvailable, setNotAvailable] = useState(false)
   const [slide, setSlide] = useState(0)
+  const [soloReady, setSoloReady] = useState(false)
   const [cartOpen, setCartOpen] = useState(false)
   const [cart, setCart] = useState<StoreCartLine[]>([])
   const [detailProduct, setDetailProduct] = useState<ProductReportRow | null>(null)
@@ -172,7 +176,11 @@ export default function EcommerceStorePage() {
 
   const activeCategoryName = categoryId ? categories.find((c) => c.id === categoryId)?.name : null
   const waContact = settings?.whatsapp_number ? normalizePhoneForWhatsApp(settings.whatsapp_number) : ''
-  const priceFilterActive = Boolean(minPrice || maxPrice)
+  const contactAddress = settings?.contact?.address?.trim() ?? ''
+  const contactPhone = settings?.contact?.phone?.trim() ?? ''
+  const contactEmail = settings?.contact?.email?.trim() ?? ''
+  const hasContactData = Boolean(contactAddress || contactPhone || contactEmail)
+  const priceFilterActive =Boolean(minPrice || maxPrice)
   const showStockOn = settings?.show_stock !== false
   const categoryStyle = settings?.category_style === 'pills' ? 'pills' : 'tiles'
   const itemCount = cartCount(cart)
@@ -277,17 +285,20 @@ export default function EcommerceStorePage() {
 
       <main className="vs-wrap">
         {/* Hero: carrusel con texto + botón, o panel de marca si no hay sliders */}
-        {heroImageOnly ? (
+        {!settings ? (
+          // Hasta tener la config no se sabe si el hero es "con texto" o "solo imagen": placeholder neutro sin textos.
+          <section className="vs-hero skeleton" aria-hidden />
+        ) : heroImageOnly ? (
           <section className="vs-hero solo" aria-label="Destacado">
-            <div className="vs-solo-stack">
+            <div className={`vs-solo-stack ${soloReady ? '' : 'pending'}`}>
               {soloSlides.map((s, i) =>
                 s.link ? (
                   <a key={s.key} href={s.link} className={`vs-solo-slide ${i === slideIdx ? 'on' : ''}`} aria-hidden={i !== slideIdx} tabIndex={i === slideIdx ? 0 : -1}>
-                    <img src={s.src} alt="" />
+                    <img src={s.src} alt="" onLoad={() => setSoloReady(true)} onError={() => setSoloReady(true)} />
                   </a>
                 ) : (
                   <div key={s.key} className={`vs-solo-slide ${i === slideIdx ? 'on' : ''}`} aria-hidden={i !== slideIdx}>
-                    <img src={s.src} alt="" />
+                    <img src={s.src} alt="" onLoad={() => setSoloReady(true)} onError={() => setSoloReady(true)} />
                   </div>
                 ),
               )}
@@ -565,8 +576,24 @@ export default function EcommerceStorePage() {
                 >
                   <MessageCircle size={18} aria-hidden /> WhatsApp
                 </a>
-              ) : (
+              ) : !hasContactData ? (
                 <p style={{ margin: 0 }}>Sin contacto configurado</p>
+              ) : null}
+              {hasContactData && (
+                <div className="vs-contact">
+                  <p className="k">Datos de contacto</p>
+                  <ul>
+                    {contactAddress && (
+                      <li><MapPin size={16} aria-hidden /> <span>{contactAddress}</span></li>
+                    )}
+                    {contactPhone && (
+                      <li><Phone size={16} aria-hidden /> <a href={`tel:${contactPhone.replace(/[^\d+]/g, '')}`}>{contactPhone}</a></li>
+                    )}
+                    {contactEmail && (
+                      <li><Mail size={16} aria-hidden /> <a href={`mailto:${contactEmail}`}>{contactEmail}</a></li>
+                    )}
+                  </ul>
+                </div>
               )}
             </div>
           </div>
@@ -601,6 +628,7 @@ export default function EcommerceStorePage() {
         onClose={() => setCartOpen(false)}
         cart={cart}
         whatsappNumber={settings?.whatsapp_number || ''}
+        paymentMethods={settings?.payment_methods ?? []}
         storeName={settings?.store_name || 'la tienda'}
         onCartChange={setCart}
       />

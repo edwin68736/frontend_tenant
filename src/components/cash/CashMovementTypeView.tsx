@@ -51,7 +51,8 @@ const COPY: Record<MovementType, { title: string; subtitle: string; emptyLabel: 
  * mismo criterio de alcance que usa el resto de Caja, sin filtro extra desde el frontend. */
 export function CashMovementTypeView({ type }: { type: MovementType }) {
   const { activeBranchId } = useBranch()
-  const { user } = useAuth()
+  const { user, hasPermission } = useAuth()
+  const canMovements = hasPermission('cashbank.movements')
   const copy = COPY[type]
 
   const [rows, setRows] = useState<MovementReportRow[]>([])
@@ -223,6 +224,7 @@ export function CashMovementTypeView({ type }: { type: MovementType }) {
           <div className={`px-3 py-2 rounded-xl text-sm font-semibold ${type === 'income' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-600'}`}>
             {copy.amountLabel}: S/ {totalAmount.toFixed(2)}
           </div>
+          {canMovements && (
           <button
             type="button"
             onClick={openAddModal}
@@ -232,6 +234,7 @@ export function CashMovementTypeView({ type }: { type: MovementType }) {
           >
             <Plus size={16} /> {copy.addLabel}
           </button>
+          )}
         </div>
       </div>
 

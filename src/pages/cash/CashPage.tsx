@@ -77,6 +77,10 @@ function CashContent() {
   const [deleteTarget, setDeleteTarget] = useState<CashSession | null>(null)
   const [sessionAdminBusy, setSessionAdminBusy] = useState(false)
   // Corregir el monto de apertura es de quien abre la caja; borrarla, de quien la administra.
+  const canOpenCash = hasPermission('cashbank.open')
+  const canCloseCash = hasPermission('cashbank.close')
+  const canMovements = hasPermission('cashbank.movements')
+  const canArqueo = hasPermission('cashbank.arqueo')
   const canAdjustOpening = hasPermission('cashbank.open')
   const canDeleteSession = hasPermission('cashbank.manage')
 
@@ -258,7 +262,7 @@ function CashContent() {
           <p className="text-sm text-gray-500">Sesiones de operaciones — abre, cierra y revisa el detalle de cada una</p>
         </div>
         {/* Sin caja abierta para mí en esta sucursal: la única acción posible antes de operar. */}
-        {session === null && (
+        {session === null && canOpenCash && (
           <button onClick={() => setShowOpen(true)} className="px-4 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90 whitespace-nowrap">
             Abrir caja
           </button>
@@ -310,10 +314,10 @@ function CashContent() {
                       {s.status === 'closed' ? (
                         s.arqueo_json ? (
                           <button type="button" onClick={() => { setArqueoModalSession(s); setArqueoModalMode('view'); setArqueoForm(parseArqueoJson(s.arqueo_json)) }} className="text-xs text-[rgb(var(--p600))] hover:underline">Ver arqueo</button>
-                        ) : (
+                        ) : canArqueo ? (
                           <button type="button" onClick={() => { setArqueoModalSession(s); setArqueoModalMode('add'); setArqueoForm(emptyArqueo()) }} className="text-xs text-amber-600 hover:underline">Hacer arqueo</button>
-                        )
-                      ) : isMine ? (
+                        ) : null
+                      ) : isMine && canArqueo ? (
                         <button
                           type="button"
                           title="Contar el efectivo de mi caja abierta"
@@ -326,7 +330,7 @@ function CashContent() {
                     </td>
                     <td className="px-3 sm:px-4 py-2">
                       <div className="flex items-center gap-2 whitespace-nowrap">
-                        {isMine && (
+                        {isMine && canMovements && (
                           <>
                             <button
                               type="button"
@@ -356,14 +360,16 @@ function CashContent() {
                           triggerClassName="inline-flex items-center gap-0.5 p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg ring-1 ring-gray-200 disabled:opacity-40"
                           items={[
                             {
-                              hidden: !isMine,
+                              // La gaveta se abre desde el navegador (impresora local), sin pasar por el servidor:
+                              // se liga a cashbank.movements, el permiso de manejar efectivo del turno.
+                              hidden: !isMine || !canMovements,
                               icon: <Unlock size={14} className="text-gray-500" />,
                               label: 'Abrir gaveta',
                               disabled: openingDrawer,
                               onClick: () => void handleOpenDrawer(),
                             },
                             {
-                              hidden: !isMine,
+                              hidden: !isMine || !canCloseCash,
                               icon: <Wallet size={14} className="text-gray-600" />,
                               label: 'Cerrar caja',
                               onClick: () => { setCloseNotes(''); setCloseArqueo(session?.arqueo_json ? parseArqueoJson(session.arqueo_json) : emptyArqueo()); setCloseWithArqueo(!!session?.arqueo_json); setShowClose(true) },

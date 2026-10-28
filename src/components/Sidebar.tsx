@@ -9,7 +9,7 @@ import {
   Utensils, FileText, X, Grid3x3, Layers, ChefHat, UserCog,
   Shield, MapPin, FileCode, ShieldCheck, ArrowRightLeft, ListOrdered, LayoutGrid, RotateCcw, ShoppingBag,
   ChevronLeft, ChevronRight, BarChart3, CreditCard, Briefcase, UserCircle, Car, Lock, Send, FileSignature,
-  Ruler, TrendingUp, TrendingDown,
+  Ruler, TrendingUp, TrendingDown, Settings2, Image as ImageIcon,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -64,7 +64,7 @@ const SIMPLE_ITEMS: SimpleItem[] = [
     label: 'Clientes',
     icon: <BookUser size={16} />,
     module: 'contacts',
-    permission: 'contacts.view',
+    permission: 'customers.view',
   },
 ]
 
@@ -135,6 +135,33 @@ const NAV_GROUPS: NavGroup[] = [
         permission: 'ecommerce.orders',
         exact: true,
       },
+      {
+        id: 'tienda-ajustes-general',
+        to: '/store-settings/general',
+        label: 'Ajustes generales',
+        icon: <Settings2 size={14} />,
+        module: 'ecommerce',
+        permission: 'ecommerce.manage',
+        exact: true,
+      },
+      {
+        id: 'tienda-ajustes-diseno',
+        to: '/store-settings/design',
+        label: 'Diseño',
+        icon: <Grid3x3 size={14} />,
+        module: 'ecommerce',
+        permission: 'ecommerce.manage',
+        exact: true,
+      },
+      {
+        id: 'tienda-ajustes-banners',
+        to: '/store-settings/banners',
+        label: 'Banners',
+        icon: <ImageIcon size={14} />,
+        module: 'ecommerce',
+        permission: 'ecommerce.manage',
+        exact: true,
+      },
     ],
   },
   {
@@ -165,7 +192,7 @@ const NAV_GROUPS: NavGroup[] = [
         label: 'Proveedores',
         icon: <Building2 size={14} />,
         module: 'contacts',
-        permission: 'contacts.view',
+        permission: 'suppliers.view',
       },
     ],
   },

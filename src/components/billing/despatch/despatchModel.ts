@@ -52,10 +52,42 @@ export interface SecondaryDriverDraft {
   nombres: string
 }
 
+/**
+ * Documento relacionado (catálogo 61): tipo, RUC del emisor, serie y número. `primary` marca el
+ * documento principal de la guía (la GRE remitente de una guía transportista): se edita arriba
+ * y no se repite en «Opciones adicionales».
+ */
 export interface RelatedDocDraft {
   tipo: string
-  nro: string
+  ruc: string
+  serie: string
+  numero: string
+  primary?: boolean
 }
+
+export const emptyRelatedDoc = (tipo = '01', ruc = ''): RelatedDocDraft => ({ tipo, ruc, serie: '', numero: '' })
+
+/** RUC peruano: 11 dígitos con dígito verificador (módulo 11). */
+export function isValidRuc(ruc: string): boolean {
+  if (!/^\d{11}$/.test(ruc)) return false
+  const weights = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2]
+  const sum = weights.reduce((acc, w, i) => acc + w * Number(ruc[i]), 0)
+  const check = (11 - (sum % 11)) % 10
+  return check === Number(ruc[10])
+}
+
+/** Serie de 4 caracteres alfanuméricos (T001, EG01…) y número de hasta 8 dígitos. */
+export const isValidSerie = (s: string) => /^[A-Z0-9]{4}$/i.test(s.trim())
+export const isValidNumero = (n: string) => /^\d{1,8}$/.test(n.trim())
+
+const docFilled = (d: RelatedDocDraft) => Boolean(d.serie.trim() || d.numero.trim())
+
+/** «T001-9» → { serie, numero } (sin ceros a la izquierda en el número). */
+export function splitDocNumber(raw: string): { serie: string; numero: string } {
+  const [serie = '', numero = ''] = raw.trim().toUpperCase().split('-')
+  return { serie, numero: numero.replace(/^0+(?=\d)/, '') }
+}
+
 
 export interface DespatchDraft {
   kind: GreKind
@@ -85,7 +117,6 @@ export interface DespatchDraft {
   items: LineItem[]
   sourceSaleId: number | null
   sourceLabel: string
-  relatedGre: string
   m1l: boolean
   retornoEnvases: boolean
   retornoVacio: boolean
@@ -96,6 +127,8 @@ export interface DespatchDraft {
   docsRel: RelatedDocDraft[]
   /** El origen elegido es una factura o boleta pero todavía no se escogió ninguna. */
   needsSource: boolean
+  /** Guía transportista: el documento relacionado principal es una guía remitente que se debe indicar. */
+  needsRelatedGre: boolean
   observacion: string
 }
 
@@ -126,7 +159,6 @@ export function emptyDraft(kind: GreKind, branchId: number): DespatchDraft {
     items: [],
     sourceSaleId: null,
     sourceLabel: '',
-    relatedGre: '',
     m1l: false,
     retornoEnvases: false,
     retornoVacio: false,
@@ -136,6 +168,7 @@ export function emptyDraft(kind: GreKind, branchId: number): DespatchDraft {
     vehiculo2: '',
     docsRel: [],
     needsSource: false,
+    needsRelatedGre: false,
     observacion: '',
   }
 }
@@ -200,6 +233,19 @@ export function validateDraft(d: DespatchDraft, ctx: ValidationContext): Section
   if (d.kind === '09' && d.motivo === 'otros' && !d.otrosDescripcion.trim()) {
     add('motivo', 'Cuéntanos brevemente el motivo del traslado.')
   }
+
+  // Documentos relacionados: formato (no existencia). Si una fila se empieza, debe completarse.
+  const rowErr = (x: RelatedDocDraft, label: string) => {
+    if (!isValidRuc(x.ruc.trim())) add('party', `${label}: el RUC del emisor no es válido (11 dígitos).`)
+    if (!isValidSerie(x.serie)) add('party', `${label}: la serie debe tener 4 caracteres (por ejemplo T001).`)
+    if (!isValidNumero(x.numero)) add('party', `${label}: indica el número del documento.`)
+  }
+  if (d.kind === '31' && d.needsRelatedGre) {
+    const primary = d.docsRel.find((x) => x.primary)
+    if (!primary) add('party', 'Indica la guía de remisión remitente (RUC del remitente, serie y número).')
+    else rowErr(primary, 'Guía remitente relacionada')
+  }
+  d.docsRel.filter((x) => !x.primary && docFilled(x)).forEach((x, i) => rowErr(x, `Documento relacionado ${i + 1}`))
 
   // Partes
   if (d.kind === '09') {
@@ -368,9 +414,16 @@ export function buildPayload(
   if (d.kind === '31') payload.remitente = toParty(d.party)
   if (d.kind === '09' && d.motivo === 'compra') payload.tercero = toParty(d.party)
 
-  const docs = d.docsRel.filter((x) => x.nro.trim()).map((x) => ({ tipo: x.tipo, nro: x.nro.trim() }))
-  if (d.kind === '31' && d.relatedGre.trim() && !docs.some((x) => x.nro.toUpperCase() === d.relatedGre.trim().toUpperCase())) {
-    docs.unshift({ tipo: '09', nro: d.relatedGre.trim() })
+  const seen = new Set<string>()
+  const docs: NonNullable<CreateDespatchInput['docs_relacionados']> = []
+  for (const x of d.docsRel) {
+    if (!x.serie.trim() || !x.numero.trim()) continue
+    const nro = `${x.serie.trim().toUpperCase()}-${x.numero.trim().replace(/^0+(?=\d)/, '')}`
+    const emisor = x.ruc.trim()
+    const key = `${x.tipo}|${emisor}|${nro}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    docs.push({ tipo: x.tipo, nro, emisor: emisor || undefined })
   }
   if (docs.length) payload.docs_relacionados = docs
   return payload
