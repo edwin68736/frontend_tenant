@@ -234,8 +234,12 @@ export function SaleUnitsModal({
       } else {
         toast.success('Unidades de venta guardadas')
       }
-      load()
-      onChanged?.()
+      // Si TODAS fallaron (ej. validación del servidor) no se recarga: así el usuario conserva lo que
+      // escribió y puede corregirlo, en vez de ver la lista vaciada.
+      if (failed.length === 0 || failed.length < toSave.length) {
+        load()
+        onChanged?.()
+      }
     } finally {
       setSaving(false)
     }

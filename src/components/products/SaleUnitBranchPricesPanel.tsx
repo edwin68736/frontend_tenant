@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { companyService, type BranchRow } from '@/services/company.service'
 import { productsService, type SaleUnitBranchPrice } from '@/services/products.service'
+import { formatUnitPrice } from '@/utils/money'
 
 type Props = {
   open: boolean
@@ -44,7 +45,7 @@ function errorMessage(e: unknown, fallback: string): string {
 }
 
 function money(n: number | null | undefined): string {
-  return `S/ ${Number(n ?? 0).toFixed(2)}`
+  return `S/ ${formatUnitPrice(Number(n ?? 0))}`
 }
 
 /**

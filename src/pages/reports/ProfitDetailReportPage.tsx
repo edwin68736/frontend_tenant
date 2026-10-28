@@ -8,6 +8,7 @@ import { exportTableToPdf } from '@/utils/exportPdf'
 import { exportTableToExcel } from '@/utils/exportExcel'
 import type { ExportColumn } from '@/utils/exportPdf'
 import { formatDisplayDatePeru, getTodayPeru } from '@/utils/datesPeru'
+import { formatUnitPrice } from '@/utils/money'
 
 type Branch = { id: number; name: string }
 
@@ -49,9 +50,9 @@ const EXPORT_COLS: ExportColumn<ProfitDetailRow>[] = [
   { key: 'contact_name', label: 'Comercial' },
   { key: 'product_name', label: 'Detalle' },
   { key: 'quantity', label: 'Cantidad', format: (v: unknown) => fmtQty(v) },
-  { key: 'purchase_price', label: 'Precio compra', format: (v: unknown) => Number(v).toFixed(2) },
-  { key: 'sale_price', label: 'Precio venta', format: (v: unknown) => Number(v).toFixed(2) },
-  { key: 'profit_unit', label: 'Ganancia unidad', format: (v: unknown) => Number(v).toFixed(2) },
+  { key: 'purchase_price', label: 'Precio compra', format: (v: unknown) => formatUnitPrice(Number(v)) },
+  { key: 'sale_price', label: 'Precio venta', format: (v: unknown) => formatUnitPrice(Number(v)) },
+  { key: 'profit_unit', label: 'Ganancia unidad', format: (v: unknown) => formatUnitPrice(Number(v)) },
   { key: 'profit_total', label: 'Ganancia total', format: (v: unknown) => Number(v).toFixed(2) },
 ]
 
@@ -316,10 +317,10 @@ export default function ProfitDetailReportPage() {
                       <td className="px-4 py-2 text-gray-900">{row.contact_name}</td>
                       <td className="px-4 py-2 text-gray-700">{row.product_name}</td>
                       <td className="px-4 py-2 text-right tabular-nums">{fmtQty(row.quantity)}</td>
-                      <td className="px-4 py-2 text-right tabular-nums text-gray-600">{fmtMoney(row.purchase_price)}</td>
-                      <td className="px-4 py-2 text-right tabular-nums text-gray-600">{fmtMoney(row.sale_price)}</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-gray-600">S/ {formatUnitPrice(Number(row.purchase_price) || 0)}</td>
+                      <td className="px-4 py-2 text-right tabular-nums text-gray-600">S/ {formatUnitPrice(Number(row.sale_price) || 0)}</td>
                       <td className={`px-4 py-2 text-right tabular-nums ${row.profit_unit < 0 ? 'text-red-600' : 'text-gray-700'}`}>
-                        {fmtMoney(row.profit_unit)}
+                        S/ {formatUnitPrice(Number(row.profit_unit) || 0)}
                       </td>
                       <td className={`px-4 py-2 text-right tabular-nums font-semibold ${row.profit_total < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
                         {fmtMoney(row.profit_total)}

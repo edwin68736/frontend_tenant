@@ -37,7 +37,7 @@ import { docTypeShortLabel } from '@/utils/paymentMethodVisual'
 import { BranchSeriesEmptyState } from '@/components/pos/BranchSeriesEmptyState'
 import { pickVariosContactId, isFacturaDocType, checkoutContactIsValid, isVariosContact } from '@/utils/checkoutContacts'
 import { pickDefaultCheckoutSeries } from '@/utils/posCheckoutSeries'
-import { paidCoversTotal, roundSunat, sumMoney, nonCashOverpay } from '@/utils/money'
+import { paidCoversTotal, roundDisplay, roundSunat, sumMoney, nonCashOverpay } from '@/utils/money'
 import type { CheckoutDiscountMode } from '@/utils/checkoutDiscount'
 import { buildTaxConfigFromSunat } from '@/constants/tax'
 import { findPaymentMethodRecord, isPaymentMethodLinkedForSale } from '@/utils/paymentMethodCheckout'
@@ -701,7 +701,7 @@ function POSContent() {
   const openCheckoutNow = () => {
     resetCheckoutToDefaultDocType()
     const cashCode = defaultOperationalPaymentCode(paymentMethods)
-    setPayments([{ method: cashCode, amount: roundSunat(payableTotal), reference: '' }])
+    setPayments([{ method: cashCode, amount: roundDisplay(payableTotal), reference: '' }])
     setCheckoutOpen(true)
     // Al pasar a cobrar ya no se va a seguir escaneando: cerrar la cámara si estaba abierta.
     barcodeScan.closeScanner()
@@ -719,7 +719,7 @@ function POSContent() {
     if (!checkoutOpen || payments.length !== 1) return
     setPayments((prev) => {
       if (prev.length !== 1) return prev
-      const nextAmount = roundSunat(payableTotal)
+      const nextAmount = roundDisplay(payableTotal)
       if (Math.abs((prev[0]?.amount ?? 0) - nextAmount) < 0.009) return prev
       return [{ ...prev[0], amount: nextAmount }]
     })
