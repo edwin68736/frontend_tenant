@@ -72,8 +72,10 @@ export function calcUnitPriceWithModifiers(
   return roundMoney(unit + extrasSum)
 }
 
+// 6 decimales (precisión de BD): una unidad de venta como el gramo cuesta S/ 0.0045 y a 2 decimales
+// el precio unitario de la línea quedaba en 0.
 function roundMoney(n: number): number {
-  return Math.round(n * 100) / 100
+  return Math.round(n * 1e6) / 1e6
 }
 
 export function normalizeItemNote(note: string): string {
@@ -99,7 +101,7 @@ export function buildCatalogConfigureKey(
 ): string {
   const serialPart = serials?.length ? `@s${[...serials].sort().join(',')}` : ''
   const saleUnitPart = saleUnitId ? `@su${saleUnitId}` : ''
-  return `${buildConfigureKey(modifiers, itemNote)}@u${roundMoney(unitPrice).toFixed(2)}${serialPart}${saleUnitPart}`
+  return `${buildConfigureKey(modifiers, itemNote)}@u${roundMoney(unitPrice).toFixed(6)}${serialPart}${saleUnitPart}`
 }
 
 export function hasConfigurableModifierUI(

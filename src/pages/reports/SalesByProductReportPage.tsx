@@ -10,6 +10,7 @@ import { productsService } from '@/services/products.service'
 import { companyService } from '@/services/company.service'
 import { exportTableToPdf } from '@/utils/exportPdf'
 import { exportTableToExcel } from '@/utils/exportExcel'
+import { formatUnitPrice } from '@/utils/money'
 import type { ExportColumn } from '@/utils/exportPdf'
 import { formatDisplayDatePeru, getTodayPeru } from '@/utils/datesPeru'
 import { resolveSaleUnitNames, saleLineUnitLabel } from '@/utils/saleUnitNames'
@@ -60,7 +61,7 @@ const EXPORT_COLS: ExportColumn<Row>[] = [
   { key: 'quantity_sold', label: 'Cantidad', format: (v: unknown) => Number(v).toFixed(3) },
   { key: 'sales_count', label: 'Comprobantes', format: (v: unknown) => String(v ?? '') },
   { key: 'total_amount', label: 'Total (S/)', format: (v: unknown) => Number(v).toFixed(2) },
-  { key: 'avg_unit_price', label: 'Precio prom. (S/)', format: (v: unknown) => Number(v).toFixed(2) },
+  { key: 'avg_unit_price', label: 'Precio prom. (S/)', format: (v: unknown) => formatUnitPrice(Number(v)) },
 ]
 
 function fmtMoney(n: unknown): string {
@@ -380,7 +381,7 @@ export default function SalesByProductReportPage() {
                             {fmtMoney(row.total_amount)}
                           </td>
                           <td className="px-4 py-2 text-right tabular-nums text-gray-600">
-                            {fmtMoney(row.avg_unit_price)}
+                            S/ {formatUnitPrice(Number(row.avg_unit_price) || 0)}
                           </td>
                         </tr>
                       </Fragment>

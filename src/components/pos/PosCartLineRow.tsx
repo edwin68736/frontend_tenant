@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Package, AlertTriangle } from 'lucide-react'
 import { clsx } from 'clsx'
-import { roundMoney } from '@/utils/checkoutDiscount'
+import { formatUnitPrice, roundSunat } from '@/utils/money'
 import { getProductImageUrl } from '@/services/products.service'
 import type { PosCartLine } from '@/utils/posCart'
 import {
@@ -13,7 +13,12 @@ import {
   normalizeSaleUnitQuantity,
 } from '@/utils/posCart'
 import { formatModifierLines } from '@/utils/productModifiers'
-import { normalizeQuantityForUnit, normalizeSunatUnit, unitAllowsDecimals } from '@/constants/sunatUnits'
+import {
+  normalizeQuantityForUnit,
+  normalizeSunatUnit,
+  productUnitFormDisplayName,
+  unitAllowsDecimals,
+} from '@/constants/sunatUnits'
 import { useRoundedQuantityBadge } from '@/components/ui/UnitQuantityInput'
 
 type Props = {
@@ -32,9 +37,15 @@ type Props = {
   canEditPrice?: boolean
 }
 
+// Hasta 6 decimales: el precio de una unidad de venta (gramo, mililitro) puede ser S/ 0.0045.
 function formatUnitPriceInput(n: number): string {
-  const v = roundMoney(n)
-  return Number.isInteger(v) ? String(v) : v.toFixed(2)
+  const v = roundSunat(n)
+  return Number.isInteger(v) ? String(v) : formatUnitPrice(v)
+}
+
+/** Equivalente en unidad base (250 g con factor 0.001 → "0.25"): lo que se descuenta del stock. */
+function baseQuantityLabel(quantity: number, factor: number): string {
+  return String(Math.round(quantity * factor * 1e6) / 1e6)
 }
 
 function CartUnitPriceInput({
@@ -67,7 +78,7 @@ function CartUnitPriceInput({
       setEditing(false)
       return
     }
-    if (roundMoney(parsed) !== roundMoney(savedRef.current)) {
+    if (roundSunat(parsed) !== roundSunat(savedRef.current)) {
       onCommit(String(parsed))
     }
     setEditing(false)
@@ -214,6 +225,7 @@ export function PosCartLineRow({
   const modifierLines = catalog && line.modifiers.length > 0 ? formatModifierLines(line.modifiers) : []
   const itemNote = catalog ? (line.notes ?? '').trim() : ''
   const missingPrice = cartLineHasMissingPrice(line)
+  const baseUnitName = catalog ? productUnitFormDisplayName(line.product.unit ?? '') : ''
 
   return (
     <li
@@ -266,8 +278,14 @@ export function PosCartLineRow({
               <span className="block text-[10px] text-gray-500 font-mono">Serie: {line.serials.join(', ')}</span>
             ) : null}
             <div className="text-[11px] text-stone-400 mt-0.5">
-              x{line.quantity} · {subtotalLabel}
+              x{line.quantity}
+              {saleUnit?.unit ? ` ${saleUnit.unit}` : ''} · {subtotalLabel}
             </div>
+            {saleUnit && saleUnit.conversion_factor !== 1 && (
+              <div className="text-[10px] text-stone-500 leading-snug">
+                = {baseQuantityLabel(line.quantity, saleUnit.conversion_factor)} {baseUnitName}
+              </div>
+            )}
           </div>
           <div className="flex flex-col items-end gap-1 shrink-0 self-start">
             <CartUnitPriceInput

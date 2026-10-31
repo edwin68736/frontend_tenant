@@ -213,7 +213,7 @@ export function POSCheckoutModal({
     }
     while (next.length > count) next.pop()
     if (count === 1 && next[0]) {
-      next[0] = { ...next[0], amount: roundSunat(payableTotal) }
+      next[0] = { ...next[0], amount: roundDisplay(payableTotal) }
     }
     onPaymentsChange(next)
   }

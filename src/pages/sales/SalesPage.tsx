@@ -27,7 +27,7 @@ import {
 import { downloadReceiptPdf, openReceiptPdfInNewTab } from '@/utils/receiptPdf'
 import { SalePaymentsBreakdown } from '@/components/sales/SalePaymentsBreakdown'
 import { formatPaymentMethodLabel } from '@/utils/paymentMethodLabel'
-import { formatSaleMoney } from '@/utils/formatMoney'
+import { formatSaleMoney, formatSaleUnitPrice } from '@/utils/formatMoney'
 import { enrichPrintDataWithSaleUnitNames, resolveSaleUnitNames, saleLineUnitLabel } from '@/utils/saleUnitNames'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { OnlyCancelledSwitch } from '@/components/ui/OnlyCancelledSwitch'
@@ -1011,7 +1011,7 @@ function SalesContent() {
                         <div>
                           <p className="font-medium text-gray-800">{item.description}</p>
                           <p className="text-gray-400">
-                            {item.quantity} {saleLineUnitLabel(item, saleUnitNames)} × {fmtEmit(Number(item.unit_price))}
+                            {item.quantity} {saleLineUnitLabel(item, saleUnitNames)} × {formatSaleUnitPrice(Number(item.unit_price), emitCurrency)}
                           </p>
                         </div>
                         <p className="font-semibold text-gray-700">{fmtEmit(Number(item.total))}</p>
@@ -1228,7 +1228,7 @@ function SalesContent() {
                       <div>
                         <p className="font-medium text-gray-800">{item.description}</p>
                         <p className="text-xs text-gray-400">
-                          {item.quantity} {saleLineUnitLabel(item, saleUnitNames)} × S/ {Number(item.unit_price).toFixed(2)}
+                          {item.quantity} {saleLineUnitLabel(item, saleUnitNames)} × {formatSaleUnitPrice(Number(item.unit_price))}
                         </p>
                       </div>
                       <p className="font-semibold text-gray-700">S/ {Number(item.total).toFixed(2)}</p>
