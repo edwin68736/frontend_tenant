@@ -700,7 +700,7 @@ function SalesRegisterContent({
   const applyQuotationPrefill = (qId: number) => {
     quotationsService
       .get(qId)
-      .then((detail) => {
+      .then(async (detail) => {
         const q = detail.quotation
         if (q.status === 'converted') {
           toast.error('Esta cotización ya fue convertida')
@@ -791,6 +791,21 @@ function SalesRegisterContent({
           setDiscountMode('percent')
           setDiscountValue(0)
         }
+        // allow_fraction de cada unidad de venta: el detalle de la cotización solo trae sale_unit_id. Sin
+        // esto la línea reabierta cae a la regla por código SUNAT (GRM admite decimales aunque la
+        // unidad de venta no; BX no los admite aunque la unidad sí) y se comporta distinto que al agregarla.
+        const fractionBySaleUnit = new Map<number, boolean>()
+        const saleUnitProductIds = [
+          ...new Set(qItems.filter((x) => x.it.sale_unit_id && x.it.product_id).map((x) => Number(x.it.product_id))),
+        ]
+        await Promise.all(
+          saleUnitProductIds.map((pid) =>
+            productsService
+              .listSaleUnits(pid)
+              .then((units) => units.forEach((u) => u.id != null && fractionBySaleUnit.set(u.id, u.allow_fraction)))
+              .catch(() => undefined),
+          ),
+        )
         setItems(
           qItems.map(({ it, aff, includes, lineMode, lineValue }) => {
             return {
@@ -804,6 +819,7 @@ function SalesRegisterContent({
               line_discount_mode: lineMode,
               line_discount_value: lineValue,
               sale_unit_id: it.sale_unit_id ?? undefined,
+              sale_unit_allow_fraction: it.sale_unit_id ? fractionBySaleUnit.get(it.sale_unit_id) : undefined,
               combo_json: it.combo_json || undefined,
               serials: parseSerialsJson(it.serials_json),
               igv_affectation_type: aff,
