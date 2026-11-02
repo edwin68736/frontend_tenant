@@ -21,6 +21,18 @@ export function UserBranchMultiSelect({ value, onChange, disabled }: Props) {
       .finally(() => setLoading(false))
   }, [])
 
+  // Ids de sucursales que ya no existen (p. ej. eliminadas): no se muestran y, si se enviaran, el backend
+  // rechaza el guardado ("una o más sucursales no son válidas"). Se descartan; si no queda ninguna válida,
+  // se parte de la sucursal principal.
+  useEffect(() => {
+    if (loading || !branches.length) return
+    const valid = value.filter((id) => branches.some((b) => b.id === id))
+    if (valid.length === value.length) return
+    const fallback = (branches.find((b) => b.is_main) ?? branches[0]).id
+    onChange(valid.length ? valid : [fallback])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, branches, value])
+
   const toggle = (id: number) => {
     if (disabled) return
     if (value.includes(id)) {

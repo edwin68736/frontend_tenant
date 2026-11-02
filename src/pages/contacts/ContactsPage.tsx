@@ -306,10 +306,19 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
     finally { setSaving(false) }
   }
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (c: Contact) => {
     if (!confirm('¿Eliminar este contacto?')) return
-    try { await contactsService.delete(id); toast.success('Eliminado'); load() }
-    catch (e: any) { toast.error(e.response?.data?.error ?? 'Error') }
+    try { await contactsService.delete(c.id); toast.success('Eliminado'); load() }
+    catch (e: any) {
+      const data = e.response?.data
+      // Con documentos asociados no se elimina (el comprobante perdería a su cliente): se ofrece desactivarlo.
+      if (data?.code === 'contact_in_use') {
+        if (c.active && confirm(`${data.error}\n\n¿Desactivarlo ahora?`)) await handleToggle(c)
+        else if (!c.active) toast.error(data.error)
+        return
+      }
+      toast.error(data?.error ?? 'Error')
+    }
   }
 
   const handleToggle = async (c: Contact) => {
@@ -511,7 +520,7 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
                     {canMutate(c, 'delete') && (
                       <button
                         type="button"
-                        onClick={() => handleDelete(c.id)}
+                        onClick={() => handleDelete(c)}
                         className="p-1.5 rounded-lg bg-red-100 text-red-600 hover:bg-red-200 hover:text-red-700"
                         title="Eliminar"
                       >
