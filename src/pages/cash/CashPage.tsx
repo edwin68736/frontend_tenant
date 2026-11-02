@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { TrendingUp, TrendingDown, Wallet, History, Pencil, Trash2, Unlock, Eye, MoreVertical, X } from 'lucide-react'
+import { TrendingUp, TrendingDown, Wallet, History, Pencil, Trash2, Unlock, Eye, MoreVertical, X, Printer } from 'lucide-react'
 import { cashbankService, type CashSession, type SessionBalanceSummary } from '@/services/cashbank.service'
 import { openCashDrawer } from '@/services/printers.service'
+import { printCashSessionDetail } from '@/utils/cashSessionDetailPrint'
 import { useBranch } from '@/contexts/BranchContext'
 import { useAuth } from '@/contexts/AuthContext'
 import RequireModule from '@/components/ui/RequireModule'
@@ -83,6 +84,19 @@ function CashContent() {
   const canArqueo = hasPermission('cashbank.arqueo')
   const canAdjustOpening = hasPermission('cashbank.open')
   const canDeleteSession = hasPermission('cashbank.manage')
+  const canViewReports = hasPermission('cashbank.view')
+
+  // Detalle de caja (ticket): imprimir desde el historial y, al cerrar caja, preguntar si imprimir.
+  const [printingDetailId, setPrintingDetailId] = useState<number | null>(null)
+  const [printDetailPrompt, setPrintDetailPrompt] = useState<CashSession | null>(null)
+  const handlePrintDetail = async (target: CashSession) => {
+    setPrintingDetailId(target.id)
+    try {
+      await printCashSessionDetail(target.id, { sessionRow: target })
+    } finally {
+      setPrintingDetailId(null)
+    }
+  }
 
   const load = async () => {
     try {
@@ -155,8 +169,9 @@ function CashContent() {
         const hasAny = Object.values(closeArqueo).some(v => (v ?? 0) > 0)
         if (hasAny) payload.arqueo = closeArqueo
       }
-      await cashbankService.closeSession(session.id, payload)
+      const closed = await cashbankService.closeSession(session.id, payload)
       toast.success('Caja cerrada')
+      if (canViewReports) setPrintDetailPrompt({ ...session, ...closed, id: session.id })
       setShowClose(false)
       setCloseWithArqueo(false)
       setCloseArqueo(emptyArqueo())
@@ -378,6 +393,13 @@ function CashContent() {
                               icon: <Eye size={14} className="text-gray-600" />,
                               label: 'Ver detalle',
                               onClick: () => navigate(`/cashbank/cash/${s.id}`),
+                            },
+                            {
+                              hidden: !canViewReports,
+                              icon: <Printer size={14} className="text-gray-600" />,
+                              label: s.status === 'open' ? 'Imprimir detalle (parcial)' : 'Imprimir detalle',
+                              disabled: printingDetailId === s.id,
+                              onClick: () => void handlePrintDetail(s),
                             },
                             {
                               hidden: !canAdjustOpening,
@@ -699,6 +721,33 @@ function CashContent() {
             className="flex-1 py-2.5 sm:py-2 bg-gray-800 text-white rounded-xl text-sm font-medium disabled:opacity-50"
           >
             {saving ? '...' : 'Cerrar caja'}
+          </button>
+        </div>
+      </Modal>
+
+      {/* Tras cerrar caja: ¿imprimir el detalle? */}
+      <Modal open={!!printDetailPrompt} onClose={() => setPrintDetailPrompt(null)} contentClassName="max-w-md w-full mx-2 sm:mx-0">
+        <div className="flex items-center gap-2">
+          <Printer size={20} className="text-gray-700" />
+          <h3 className="font-bold text-gray-800 text-base sm:text-lg">¿Imprimir el detalle de caja?</h3>
+        </div>
+        <p className="text-sm text-gray-600">
+          Ticket con el resumen, ventas por método de pago, comprobantes, anulados, movimientos y productos vendidos de la caja que acaba de cerrar.
+        </p>
+        <div className="flex flex-col-reverse sm:flex-row gap-2">
+          <button type="button" onClick={() => setPrintDetailPrompt(null)} className="flex-1 py-2.5 sm:py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">No</button>
+          <button
+            type="button"
+            disabled={printingDetailId != null}
+            onClick={() => {
+              const target = printDetailPrompt
+              if (!target) return
+              setPrintDetailPrompt(null)
+              void handlePrintDetail(target)
+            }}
+            className="flex-1 py-2.5 sm:py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50"
+          >
+            Sí, imprimir
           </button>
         </div>
       </Modal>

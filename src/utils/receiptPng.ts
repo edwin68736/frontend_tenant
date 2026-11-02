@@ -90,6 +90,82 @@ export async function printTicketAsPage(data: PrintData, options?: ReceiptPdfOpt
   // El layout (paperMm) se encoge para caber en el ancho imprimible, a la resolución nativa.
   const scale = ((spec.printMm / 25.4) * spec.dpi) / pageWidthPt
   const blob = await generateReceiptPngBlob(data, 'ticket', scale, { ...options, paperWidthMm: paperMm, layoutWidthMm: spec.layoutMm }, spec.binarize)
+  await printTicketPngBlob(blob, paperMm)
+}
+
+/** Ancho de página (mm) con el que hay que maquetar un ticket para ese rollo. */
+export function ticketLayoutWidthMm(paperMm: 58 | 80): number {
+  return TICKET_PRINT_SPEC[paperMm].layoutMm ?? paperMm
+}
+
+/**
+ * Imprime un PDF de ticket YA maquetado (ancho = ticketLayoutWidthMm(paperMm), una sola hoja larga)
+ * con la hoja del rollo: lo usa el detalle de caja. Misma ruta de impresión que los comprobantes.
+ */
+export async function printTicketPdfDocument(
+  doc: { output(type: 'arraybuffer'): ArrayBuffer; output(type: 'blob'): Blob },
+  paperMm: 58 | 80,
+): Promise<void> {
+  // 58 mm: PDF vectorial (hoja del driver de 48 mm), como los comprobantes; el driver dibuja el texto nativo.
+  if (paperMm === 58) {
+    await printPdfBlobInIframe(doc.output('blob'))
+    return
+  }
+  const spec = TICKET_PRINT_SPEC[paperMm]
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(doc.output('arraybuffer')) }).promise
+  const page = await pdf.getPage(1)
+  const pageWidthPt = (ticketLayoutWidthMm(paperMm) / 25.4) * 72
+  const scale = ((spec.printMm / 25.4) * spec.dpi) / pageWidthPt
+  const viewport = page.getViewport({ scale })
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('No se pudo crear el canvas')
+  canvas.width = Math.floor(viewport.width)
+  canvas.height = Math.floor(viewport.height)
+  await page.render({ canvasContext: ctx, viewport }).promise
+  if (spec.binarize) binarizeCanvas(canvas)
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('No se pudo generar PNG'))), 'image/png', 0.92)
+  })
+  await printTicketPngBlob(blob, paperMm)
+}
+
+function printPdfBlobInIframe(blob: Blob): Promise<void> {
+  const url = URL.createObjectURL(blob)
+  return new Promise<void>((resolve, reject) => {
+    const iframe = document.createElement('iframe')
+    iframe.setAttribute('aria-hidden', 'true')
+    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;'
+    iframe.src = url
+    const done = (err?: Error) => {
+      window.setTimeout(() => {
+        iframe.remove()
+        URL.revokeObjectURL(url)
+      }, 2_000)
+      if (err) reject(err)
+      else resolve()
+    }
+    iframe.onload = () => {
+      void (async () => {
+        try {
+          const win = iframe.contentWindow
+          if (!win) return done(new Error('No se pudo abrir el visor de impresión'))
+          win.focus()
+          win.print()
+          await waitForBrowserPrintDialog(win)
+          done()
+        } catch (e) {
+          done(e instanceof Error ? e : new Error(String(e)))
+        }
+      })()
+    }
+    iframe.onerror = () => done(new Error('No se pudo cargar el PDF para imprimir'))
+    document.body.appendChild(iframe)
+  })
+}
+
+async function printTicketPngBlob(blob: Blob, paperMm: 58 | 80): Promise<void> {
+  const spec = TICKET_PRINT_SPEC[paperMm]
   const imgUrl = URL.createObjectURL(blob)
 
   try {

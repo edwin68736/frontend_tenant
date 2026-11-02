@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { ArrowLeft, FileDown, FileSpreadsheet } from 'lucide-react'
+import { ArrowLeft, FileDown, FileSpreadsheet, Printer, Receipt } from 'lucide-react'
 import RequireModule from '@/components/ui/RequireModule'
 import { useAuth } from '@/contexts/AuthContext'
 import { Modal } from '@/components/ui/Modal'
@@ -15,6 +15,7 @@ import {
 import { formatPaymentMethodLabel, isDetractionPaymentMethod } from '@/utils/paymentMethodLabel'
 import { DETRACCION_PAYMENT_METHOD_NAME } from '@/utils/fiscalDetraction'
 import { downloadCashSessionReportPdf } from '@/utils/cashSessionReportPdf'
+import { openCashSessionDetailPdfViewer, printCashSessionDetail } from '@/utils/cashSessionDetailPrint'
 import { downloadCashSessionReportExcel } from '@/utils/cashReportExcel'
 import { categoryLabel } from '@/utils/cashMovementCategories'
 import { MethodBalanceGrid } from '@/components/cash/MethodBalanceGrid'
@@ -183,7 +184,22 @@ function CashSessionDetailContent() {
             <p className="text-sm text-gray-500">{session.status === 'open' ? 'Abierta' : 'Cerrada'} · {new Date(session.opened_at).toLocaleString()}</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void printCashSessionDetail(session.id, { sessionRow: session })}
+            title={session.status === 'open' ? 'Reporte parcial: la caja sigue abierta' : 'Ticket con todo el detalle de la caja'}
+            className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50"
+          >
+            <Printer size={14} /> {session.status === 'open' ? 'Imprimir detalle (parcial)' : 'Imprimir detalle'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void openCashSessionDetailPdfViewer(session.id, { sessionRow: session }).catch(() => toast.error('No se pudo generar el PDF del detalle'))}
+            className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50"
+          >
+            <Receipt size={14} /> PDF ticket
+          </button>
           <button
             type="button"
             onClick={() => void exportPdf()}
