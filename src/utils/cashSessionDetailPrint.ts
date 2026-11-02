@@ -11,6 +11,7 @@ import { openPdfViewer } from '@/components/pdf/pdfViewerStore'
 import { TUKIFAC_APP_NAME } from '@/lib/appVersion'
 import {
   buildCashSessionDetailLines,
+  type CashDetailSections,
   type CashSessionDetailData,
   type TicketLine,
 } from '@/utils/cashSessionDetailLines'
@@ -21,11 +22,15 @@ import { configuredTicketPaperMm, escposColumnsForPaper, type TicketPaperWidthMm
 export async function loadCashSessionDetailData(
   sessionId: number,
   sessionRow?: CashSession | null,
+  sections?: Partial<CashDetailSections>,
 ): Promise<CashSessionDetailData> {
+  // Los comprobantes se piden siempre: el resumen (vigentes/anulados) los usa aunque no se listen.
+  // Los productos solo si la sección está marcada.
+  const wantProducts = sections?.products !== false
   const [report, documents, products, row] = await Promise.all([
     cashbankService.getSessionReport(sessionId),
     cashbankService.getSessionDocumentsReport(sessionId),
-    cashbankService.getSessionProductsReport(sessionId),
+    wantProducts ? cashbankService.getSessionProductsReport(sessionId) : Promise.resolve([]),
     sessionRow ? Promise.resolve(sessionRow) : cashbankService.getSession(sessionId).catch(() => null),
   ])
   // closeSession/getSession no traen el nombre de quien cerró: el listado sí.
@@ -50,6 +55,7 @@ export async function loadCashSessionDetailData(
     products: products ?? [],
     methodLabel: formatPaymentMethodLabel,
     footer: `${TUKIFAC_APP_NAME} - Sistema POS`,
+    sections,
   }
 }
 
@@ -125,11 +131,11 @@ async function buildPdfFor(data: CashSessionDetailData): Promise<jsPDF> {
  */
 export async function printCashSessionDetail(
   sessionId: number,
-  opts?: { sessionRow?: CashSession | null; quiet?: boolean },
+  opts?: { sessionRow?: CashSession | null; quiet?: boolean; sections?: Partial<CashDetailSections> },
 ): Promise<boolean> {
   const toastId = opts?.quiet ? undefined : toast.loading('Preparando detalle de caja…')
   try {
-    const data = await loadCashSessionDetailData(sessionId, opts?.sessionRow)
+    const data = await loadCashSessionDetailData(sessionId, opts?.sessionRow, opts?.sections)
     const cfg = isNativePrintAvailable() ? getConfiguredPrinter('documentos') : null
     if (cfg) {
       const cols = escposColumnsForPaper(cfg.paperWidthMm)
@@ -154,14 +160,14 @@ export async function printCashSessionDetail(
 }
 
 /** Descarga el mismo detalle como PDF de ticket (ancho de rollo configurado). */
-export async function downloadCashSessionDetailPdf(sessionId: number, opts?: { sessionRow?: CashSession | null }): Promise<void> {
-  const data = await loadCashSessionDetailData(sessionId, opts?.sessionRow)
+export async function downloadCashSessionDetailPdf(sessionId: number, opts?: { sessionRow?: CashSession | null; sections?: Partial<CashDetailSections> }): Promise<void> {
+  const data = await loadCashSessionDetailData(sessionId, opts?.sessionRow, opts?.sections)
   await downloadJsPdf(await buildPdfFor(data), `detalle-caja-${sessionId}.pdf`)
 }
 
 /** Muestra el PDF ticket en el visor global de la app. */
-export async function openCashSessionDetailPdfViewer(sessionId: number, opts?: { sessionRow?: CashSession | null }): Promise<void> {
-  const data = await loadCashSessionDetailData(sessionId, opts?.sessionRow)
+export async function openCashSessionDetailPdfViewer(sessionId: number, opts?: { sessionRow?: CashSession | null; sections?: Partial<CashDetailSections> }): Promise<void> {
+  const data = await loadCashSessionDetailData(sessionId, opts?.sessionRow, opts?.sections)
   const url = URL.createObjectURL((await buildPdfFor(data)).output('blob'))
   openPdfViewer({
     url,

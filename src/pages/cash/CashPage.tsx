@@ -5,6 +5,8 @@ import { TrendingUp, TrendingDown, Wallet, History, Pencil, Trash2, Unlock, Eye,
 import { cashbankService, type CashSession, type SessionBalanceSummary } from '@/services/cashbank.service'
 import { openCashDrawer } from '@/services/printers.service'
 import { printCashSessionDetail } from '@/utils/cashSessionDetailPrint'
+import type { CashDetailSections } from '@/utils/cashSessionDetailLines'
+import { CashDetailSectionsModal } from '@/components/cash/CashDetailSectionsModal'
 import { useBranch } from '@/contexts/BranchContext'
 import { useAuth } from '@/contexts/AuthContext'
 import RequireModule from '@/components/ui/RequireModule'
@@ -88,11 +90,12 @@ function CashContent() {
 
   // Detalle de caja (ticket): imprimir desde el historial y, al cerrar caja, preguntar si imprimir.
   const [printingDetailId, setPrintingDetailId] = useState<number | null>(null)
-  const [printDetailPrompt, setPrintDetailPrompt] = useState<CashSession | null>(null)
-  const handlePrintDetail = async (target: CashSession) => {
+  // Modal de secciones del ticket; afterClose = viene de la pregunta posterior al cierre de caja.
+  const [printDetailPrompt, setPrintDetailPrompt] = useState<{ session: CashSession; afterClose: boolean } | null>(null)
+  const handlePrintDetail = async (target: CashSession, sections: CashDetailSections) => {
     setPrintingDetailId(target.id)
     try {
-      await printCashSessionDetail(target.id, { sessionRow: target })
+      await printCashSessionDetail(target.id, { sessionRow: target, sections })
     } finally {
       setPrintingDetailId(null)
     }
@@ -171,7 +174,7 @@ function CashContent() {
       }
       const closed = await cashbankService.closeSession(session.id, payload)
       toast.success('Caja cerrada')
-      if (canViewReports) setPrintDetailPrompt({ ...session, ...closed, id: session.id })
+      if (canViewReports) setPrintDetailPrompt({ session: { ...session, ...closed, id: session.id }, afterClose: true })
       setShowClose(false)
       setCloseWithArqueo(false)
       setCloseArqueo(emptyArqueo())
@@ -399,7 +402,7 @@ function CashContent() {
                               icon: <Printer size={14} className="text-gray-600" />,
                               label: s.status === 'open' ? 'Imprimir detalle (parcial)' : 'Imprimir detalle',
                               disabled: printingDetailId === s.id,
-                              onClick: () => void handlePrintDetail(s),
+                              onClick: () => setPrintDetailPrompt({ session: s, afterClose: false }),
                             },
                             {
                               hidden: !canAdjustOpening,
@@ -726,31 +729,26 @@ function CashContent() {
       </Modal>
 
       {/* Tras cerrar caja: ¿imprimir el detalle? */}
-      <Modal open={!!printDetailPrompt} onClose={() => setPrintDetailPrompt(null)} contentClassName="max-w-md w-full mx-2 sm:mx-0">
-        <div className="flex items-center gap-2">
-          <Printer size={20} className="text-gray-700" />
-          <h3 className="font-bold text-gray-800 text-base sm:text-lg">¿Imprimir el detalle de caja?</h3>
-        </div>
-        <p className="text-sm text-gray-600">
-          Ticket con el resumen, ventas por método de pago, comprobantes, anulados, movimientos y productos vendidos de la caja que acaba de cerrar.
-        </p>
-        <div className="flex flex-col-reverse sm:flex-row gap-2">
-          <button type="button" onClick={() => setPrintDetailPrompt(null)} className="flex-1 py-2.5 sm:py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50">No</button>
-          <button
-            type="button"
-            disabled={printingDetailId != null}
-            onClick={() => {
-              const target = printDetailPrompt
-              if (!target) return
-              setPrintDetailPrompt(null)
-              void handlePrintDetail(target)
-            }}
-            className="flex-1 py-2.5 sm:py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50"
-          >
-            Sí, imprimir
-          </button>
-        </div>
-      </Modal>
+      <CashDetailSectionsModal
+        open={!!printDetailPrompt}
+        onClose={() => setPrintDetailPrompt(null)}
+        busy={printingDetailId != null}
+        title={printDetailPrompt?.afterClose ? '¿Imprimir el detalle de caja?' : 'Imprimir detalle de caja'}
+        description={
+          printDetailPrompt?.afterClose
+            ? 'Caja cerrada. Elige qué secciones llevará el ticket del detalle.'
+            : printDetailPrompt?.session.status === 'open'
+              ? 'Reporte parcial: la caja sigue abierta. Elige qué secciones incluir en el ticket.'
+              : 'Elige qué secciones incluir en el ticket.'
+        }
+        cancelLabel={printDetailPrompt?.afterClose ? 'No' : 'Cancelar'}
+        onConfirm={(sections) => {
+          const target = printDetailPrompt?.session
+          if (!target) return
+          setPrintDetailPrompt(null)
+          void handlePrintDetail(target, sections)
+        }}
+      />
 
       {/* Modal arqueo de la caja actual (solo cuando hay sesión abierta) */}
       <Modal open={showArqueoModal && !!session} onClose={() => setShowArqueoModal(false)} contentClassName="max-w-xl w-full mx-2 sm:mx-0 max-h-[90vh] overflow-y-auto">

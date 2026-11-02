@@ -9,6 +9,9 @@ import {
   sortProductsSold,
   salesByMethodRows,
   ticketMoney,
+  allCashDetailSections,
+  resolveCashDetailSections,
+  CASH_DETAIL_SECTION_OPTIONS,
 } from './cashSessionDetailLines.ts'
 
 const doc = (o) => ({
@@ -98,4 +101,33 @@ test('helpers: pair, wrap, dinero, orden y métodos', () => {
   assert.equal(ticketMoney(3, 'USD'), 'US$3.00')
   assert.equal(sortProductsSold([{ description: 'x', quantity: 1, total: 1 }, { description: 'y', quantity: 1, total: 9 }])[0].description, 'y')
   assert.equal(salesByMethodRows(base().report)[0].method, 'efectivo')
+})
+
+test('secciones opcionales: cada una desmarcada desaparece sin dejar título', () => {
+  const lines = (sections) => buildCashSessionDetailLines(base({ sections }), 48).map((l) => l.text).join('\n')
+  const titles = { documents: 'COMPROBANTES', cancelled: 'VENTAS ANULADAS', movements: 'MOVIMIENTOS DE CAJA', products: 'PRODUCTOS VENDIDOS' }
+  const extra = { documents: ['B001-1', 'F001-1', 'Subtotal facturas'], cancelled: ['Error de cliente', 'TOTAL ANULADO'], movements: ['Sencillo', 'Ingresos en efectivo'], products: ['Gaseosa', 'Productos distintos'] }
+  for (const key of Object.keys(titles)) {
+    const txt = lines({ [key]: false })
+    assert.ok(!txt.includes(titles[key]), `${key}: título`)
+    for (const x of extra[key]) assert.ok(!txt.includes(x), `${key}: ${x}`)
+    for (const [k, t] of Object.entries(titles)) if (k !== key) assert.ok(txt.includes(t), `${key} off: debe seguir ${t}`)
+    assert.ok(txt.includes('RESUMEN') && txt.includes('VENTAS POR METODO DE PAGO'))
+  }
+})
+
+test('todas las secciones opcionales desmarcadas: queda solo la base', () => {
+  const none = { documents: false, cancelled: false, movements: false, products: false }
+  const txt = buildCashSessionDetailLines(base({ sections: none }), 32).map((l) => l.text).join('\n')
+  for (const t of ['COMPROBANTES', 'VENTAS ANULADAS', 'MOVIMIENTOS DE CAJA', 'PRODUCTOS VENDIDOS']) assert.ok(!txt.includes(t), t)
+  for (const t of ['DETALLE DE CAJA', 'RESUMEN', 'Saldo esperado', 'VENTAS POR METODO DE PAGO', 'Impreso:']) assert.ok(txt.includes(t), t)
+  assert.ok(!/={32}\n={32}/.test(txt), 'sin títulos vacíos consecutivos')
+  for (const l of buildCashSessionDetailLines(base({ sections: none }), 32)) assert.ok(l.text.length <= 32)
+})
+
+test('selección por defecto: todo marcado y los faltantes se incluyen', () => {
+  assert.deepEqual(allCashDetailSections(), { documents: true, cancelled: true, movements: true, products: true })
+  assert.deepEqual(resolveCashDetailSections({ products: false }), { documents: true, cancelled: true, movements: true, products: false })
+  assert.deepEqual(resolveCashDetailSections(null), allCashDetailSections())
+  assert.deepEqual(CASH_DETAIL_SECTION_OPTIONS.map((o) => o.key), ['documents', 'cancelled', 'movements', 'products'])
 })
