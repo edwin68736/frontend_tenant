@@ -477,6 +477,10 @@ function SalesRegisterContent({
     () => prepaymentDeductionRows.reduce((s, r) => s + (r.amount > 0 ? r.amount : 0), 0),
     [prepaymentDeductionRows],
   )
+  const prepaymentDeductionRowsTotal = useMemo(
+    () => prepaymentDeductionRows.reduce((s, r) => s + (r.amount > 0 && r.total > 0 ? r.total : 0), 0),
+    [prepaymentDeductionRows],
+  )
   const isPrepaymentDeduct =
     deductPrepayment && prepaymentDeductionRows.some((r) => r.source_sale_id && r.amount > 0)
   const prepaymentConfigQuery = usePrepaymentConfig(!isNotaVenta && !isQuotation)
@@ -1135,11 +1139,13 @@ function SalesRegisterContent({
       taxAmount: taxGlobal,
       total: totalGlobal,
       deductionBase: prepaymentDeductionBase,
+      deductionTotal: prepaymentDeductionRowsTotal,
       taxRate,
     })
   }, [
     isPrepaymentDeduct,
     prepaymentDeductionBase,
+    prepaymentDeductionRowsTotal,
     prepaymentAffectationGroup,
     totalsByAfectacion,
     subtotalGlobal,

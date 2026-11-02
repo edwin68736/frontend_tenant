@@ -180,6 +180,8 @@ export function applyPrepaymentDeductionToTotals(input: {
   taxAmount: number
   total: number
   deductionBase: number
+  /** Total (con IGV) que cubren los anticipos; con él el total sale exacto (130 − 30 = 100.00). */
+  deductionTotal?: number
   taxRate: number
 }) {
   const amount = round2(input.deductionBase)
@@ -188,11 +190,18 @@ export function applyPrepaymentDeductionToTotals(input: {
   }
   if (input.group === 'gravado') {
     const newGravadoSub = round2(input.gravadoSubtotal - amount)
-    const newTax = round2(newGravadoSub * (input.taxRate / 100))
-    const newTotal = round2(newGravadoSub + newTax + input.exoneradoSubtotal + input.inafectoSubtotal)
-    const deductionTotal = round2(
-      input.total - newTotal,
-    )
+    const given = input.deductionTotal
+    // Con el total del anticipo conocido, el IGV es la diferencia (no se recalcula sobre una base
+    // redondeada: daba 100.01 donde el servidor guarda 100.00).
+    const newTotal =
+      given != null && given > 0
+        ? round2(input.total - given)
+        : round2(newGravadoSub + round2(newGravadoSub * (input.taxRate / 100)) + input.exoneradoSubtotal + input.inafectoSubtotal)
+    const newTax =
+      given != null && given > 0
+        ? round2(newTotal - newGravadoSub - input.exoneradoSubtotal - input.inafectoSubtotal)
+        : round2(newGravadoSub * (input.taxRate / 100))
+    const deductionTotal = round2(input.total - newTotal)
     return {
       subtotal: round2(newGravadoSub + input.exoneradoSubtotal + input.inafectoSubtotal),
       taxAmount: newTax,
