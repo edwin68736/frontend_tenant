@@ -75,6 +75,8 @@ export type BuildSalePreviewPrintDataInput = {
   companyDraft?: SalePreviewCompanyDraft
   branchName: string
   branchAddress?: string
+  /** Logo ya resuelto de la sucursal activa (useBranchIdentity().logo); null/omitido = el de la empresa. */
+  branchLogo?: string | null
   payments: Array<{ method: string; amount: string | number; reference?: string }>
   fiscalForm: SaleFiscalFormState
   isNotaVenta: boolean
@@ -342,6 +344,7 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
     companyDraft,
     branchName,
     branchAddress,
+    branchLogo,
     payments,
     fiscalForm,
     isNotaVenta,
@@ -485,9 +488,9 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
       phone: companyPhone || undefined,
       email: companyEmail || undefined,
       website: companyConfig?.website?.trim() || undefined,
-      // getCompanyLogoForPrint es la fuente canónica: incluye el logo_data_url que embebe el
-      // backend. Mirar solo companyConfig.logo_url dejaba la previsualización sin logo.
-      logo_url: getCompanyLogoForPrint() ?? resolveLogoUrl(companyConfig?.logo_url),
+      // Logo de la sucursal activa (mismo criterio que el backend en el ticket final); si no tiene,
+      // getCompanyLogoForPrint da el de la empresa, que incluye el logo_data_url embebido.
+      logo_url: branchLogo || getCompanyLogoForPrint() || resolveLogoUrl(companyConfig?.logo_url),
       additional_notes: companyConfig?.additional_notes?.trim() || undefined,
       // Nuevo RUS: no discriminar IGV en el impreso (solo el total). El XML sí lo lleva.
       show_igv_breakdown: String(companyConfig?.taxpayer_regime ?? '').toLowerCase() !== 'nrus',

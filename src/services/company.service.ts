@@ -93,6 +93,12 @@ export interface InvoicingSettings {
   connection_status?: string
 }
 
+/** Avisa (identidad de sucursal cacheada, vistas previas) que las sucursales cambiaron. */
+function notifyBranchesUpdated<T>(value: T): T {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('branches-updated'))
+  return value
+}
+
 export interface BranchRow {
   id: number
   name: string
@@ -283,10 +289,10 @@ export const companyService = {
     phone: string
     fiscal_domicile_code?: string
     is_main: boolean
-  }) => api.post('/api/company/branches', data).then((r) => r.data),
+  }) => api.post('/api/company/branches', data).then((r) => notifyBranchesUpdated(r.data)),
   updateBranch: (id: number, data: Partial<BranchRow>) =>
-    api.put(`/api/company/branches/${id}`, data).then((r) => r.data),
-  deleteBranch: (id: number) => api.delete(`/api/company/branches/${id}`).then((r) => r.data),
+    api.put(`/api/company/branches/${id}`, data).then((r) => notifyBranchesUpdated(r.data)),
+  deleteBranch: (id: number) => api.delete(`/api/company/branches/${id}`).then((r) => notifyBranchesUpdated(r.data)),
   /** Sube el logo propio de una sucursal. Devuelve URL /uploads/tenants/{RUC}/company/branches/{id}/logo.* */
   uploadBranchLogo: (branchId: number, file: File) => {
     const fd = new FormData()
@@ -299,13 +305,13 @@ export const companyService = {
       )
       .then((r) => {
         clearEscPosImageRasterCache() // logo nuevo en URL estable: invalidar raster cacheado
-        return r.data
+        return notifyBranchesUpdated(r.data)
       })
   },
   deleteBranchLogo: (branchId: number) =>
     api.delete<{ success: boolean; data: BranchRow }>(`/api/company/branches/${branchId}/logo`).then((r) => {
       clearEscPosImageRasterCache()
-      return r.data
+      return notifyBranchesUpdated(r.data)
     }),
   /**
    * Series del tenant. Devuelve SOLO las activas: una serie desactivada no debe poder

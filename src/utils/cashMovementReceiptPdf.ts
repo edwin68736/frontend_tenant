@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf'
-import { getCompanyConfigCache, getCompanyLogoForPrint } from '@/lib/companyConfig/store'
+import { getCompanyConfigCache } from '@/lib/companyConfig/store'
+import { loadBranchPrintIdentity } from '@/lib/branchIdentity/store'
 import { fitReceiptLogoMm, resolveReceiptLogoForPdf } from '@/utils/receiptLogoPdf'
 import { readLogoPrintSize, scaleLogoDimension } from '@/services/printers/logoPrintSize'
 import {
@@ -42,6 +43,8 @@ export interface CashMovementReceiptContext {
   sessionId: number
   cashierName?: string
   branchName?: string
+  /** Sucursal de la sesión de caja (si se conoce); sin id se busca por `branchName`. */
+  branchId?: number
 }
 
 function money(n: number): string {
@@ -134,7 +137,9 @@ export async function generateCashMovementReceiptPdf(
   space(3)
 
   const cfg = getCompanyConfigCache()
-  const companyLogo = getCompanyLogoForPrint()
+  // La sesión de caja pertenece a una sucursal: su logo y dirección (con respaldo a la empresa).
+  const issuer = await loadBranchPrintIdentity({ id: ctx.branchId, name: ctx.branchName })
+  const companyLogo = issuer.logo
   if (companyLogo) {
     try {
       const logo = await resolveReceiptLogoForPdf(companyLogo)
@@ -162,7 +167,7 @@ export async function generateCashMovementReceiptPdf(
     center(businessName, 11, true)
   }
   if (cfg?.ruc) center(`RUC ${cfg.ruc}`, 8)
-  if (cfg?.address) center(cfg.address, 7.5)
+  if (issuer.address) center(issuer.address, 7.5)
   space(2)
 
   const isIncome = movement.type === 'income'

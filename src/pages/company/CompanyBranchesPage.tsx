@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Pencil, Trash2, MapPin, ImagePlus, X } from 'lucide-react'
+import { Plus, Pencil, Trash2, MapPin, ImagePlus, X, AlertTriangle } from 'lucide-react'
 import { companyService, type BranchRow } from '@/services/company.service'
 import { resolveCompanyLogoDisplayUrl } from '@/config/apiBaseUrl'
 import { PlanLimitBanner } from '@/components/ui/PlanLimitBanner'
 import { Modal } from '@/components/ui/Modal'
+import { branchMissingIdentity } from '@/lib/branchIdentity/resolve'
 
 const empty = (): Partial<BranchRow> => ({
   name: '',
@@ -161,6 +162,23 @@ export default function CompanyBranchesPage() {
         </button>
       </div>
 
+      {branches.some((b) => branchMissingIdentity(b).length > 0) && (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+          <p>
+            Estas sucursales no tienen dirección o logo propios: sus comprobantes y documentos saldrán con la dirección o
+            el logo de la <strong>empresa</strong> (Ajustes → Empresa), que puede ser el de otra sucursal. Complételos
+            editando cada sucursal si quiere que cada una salga con sus propios datos:{' '}
+            {branches
+              .map((b) => ({ b, missing: branchMissingIdentity(b) }))
+              .filter((x) => x.missing.length > 0)
+              .map((x) => `${x.b.name} (sin ${x.missing.join(' ni ')})`)
+              .join(', ')}
+            .
+          </p>
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
         <div className="w-full overflow-x-auto">
           <table className="w-full text-sm min-w-[720px]">
@@ -184,7 +202,9 @@ export default function CompanyBranchesPage() {
                         className="h-8 w-8 rounded-lg object-contain border border-gray-200 bg-white"
                       />
                     ) : (
-                      <span className="text-gray-300 text-xs">—</span>
+                      <span className="text-amber-600 text-xs leading-tight block w-16" title="Sin logo propio: se usa el de la empresa">
+                        Usa el de la empresa
+                      </span>
                     )}
                   </td>
                   <td className="px-4 py-3 font-medium text-gray-800">
@@ -193,7 +213,13 @@ export default function CompanyBranchesPage() {
                       {b.name}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{b.address || '—'}</td>
+                  <td className="px-4 py-3 text-gray-600">
+                    {b.address?.trim() ? (
+                      b.address
+                    ) : (
+                      <span className="text-amber-600 text-xs">Sin dirección: se usará la de la empresa</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-gray-600">{b.phone || '—'}</td>
                   <td className="px-4 py-3 font-mono text-gray-600">{b.fiscal_domicile_code?.trim() || '—'}</td>
                   <td className="px-4 py-3">

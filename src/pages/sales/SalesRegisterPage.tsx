@@ -12,6 +12,7 @@ import { BRAND_APP_LOGO } from '@/config/branding'
 import { resolveCompanyLogoDisplayUrl } from '@/config/apiBaseUrl'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
+import { useBranchIdentity } from '@/lib/branchIdentity/store'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { SearchableSelect } from '@/components/SearchableSelect'
@@ -317,26 +318,8 @@ function SalesRegisterContent({
   const canOpenCash = hasPermission('cashbank.open')
   const canEditPrice = hasPermission('sales.override_price')
   const { activeBranchId, activeBranch } = useBranch()
-  // Dirección de la sucursal activa para la previsualización del comprobante (BranchBrief no la trae).
-  const [activeBranchAddress, setActiveBranchAddress] = useState('')
-  useEffect(() => {
-    if (!activeBranchId) {
-      setActiveBranchAddress('')
-      return
-    }
-    let cancelled = false
-    companyService
-      .listBranches()
-      .then((rows) => {
-        if (!cancelled) setActiveBranchAddress(rows.find((b) => b.id === activeBranchId)?.address?.trim() ?? '')
-      })
-      .catch(() => {
-        if (!cancelled) setActiveBranchAddress('')
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [activeBranchId])
+  // Identidad impresa de la sucursal activa (dirección, logo) con respaldo a la empresa; BranchBrief no la trae.
+  const branchIdentity = useBranchIdentity()
   const [series, setSeries] = useState<SeriesRow[]>([])
   const [customers, setCustomers] = useState<Contact[]>([])
   const [taxRate, setTaxRate] = useState(18)
@@ -1423,7 +1406,8 @@ function SalesRegisterContent({
     selectedContact: selectedContact ?? null,
     companyConfig,
     branchName: activeBranch?.name ?? 'Principal',
-    branchAddress: activeBranchAddress,
+    branchAddress: branchIdentity.hasOwnAddress ? branchIdentity.address : '',
+    branchLogo: branchIdentity.logo,
     payments,
     fiscalForm,
     isNotaVenta,
@@ -2154,8 +2138,8 @@ function SalesRegisterContent({
               {companyDisplayName ? (
                 <p className="text-sm font-bold text-gray-900 uppercase leading-snug">{companyDisplayName}</p>
               ) : null}
-              {companyConfig?.address?.trim() ? (
-                <p className="text-xs text-gray-600 mt-0.5 leading-snug">{companyConfig.address.trim()}</p>
+              {branchIdentity.address ? (
+                <p className="text-xs text-gray-600 mt-0.5 leading-snug">{branchIdentity.address}</p>
               ) : null}
               <div className="mt-0.5 flex items-center gap-1 min-w-0">
                 {companyContactLine ? (

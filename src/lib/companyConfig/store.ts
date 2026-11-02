@@ -22,6 +22,23 @@ let configCache: CompanyConfig | null = null
 let logoDataUrl: string | null = null
 let logoSrcKey = ''
 let logoSeeded = false
+/**
+ * Logos ya convertidos en esta sesión, por ruta. El slot persistido es único (el último logo
+ * descargado), pero con varias sucursales con logo propio alternar entre ellas no debe volver a
+ * descargar y sobrescribir el slot cada vez: la memoria conserva los más recientes.
+ */
+const MEM_LOGO_MAX = 12
+const memLogos = new Map<string, string>()
+
+function rememberLogo(srcKey: string, dataUrl: string): void {
+  memLogos.delete(srcKey)
+  memLogos.set(srcKey, dataUrl)
+  while (memLogos.size > MEM_LOGO_MAX) {
+    const oldest = memLogos.keys().next().value
+    if (oldest === undefined) break
+    memLogos.delete(oldest)
+  }
+}
 
 function tenantKey(base: string): string {
   return `${base}::${getTenantSlug() || 'default'}`
@@ -98,6 +115,7 @@ function persistLogo(srcKey: string, dataUrl: string): void {
   logoDataUrl = dataUrl
   logoSrcKey = srcKey
   logoSeeded = true
+  rememberLogo(srcKey, dataUrl)
   safeSet(tenantKey(LOGO_KEY), JSON.stringify({ srcKey, dataUrl }))
 }
 
@@ -121,8 +139,9 @@ export function getCompanyLogoDataUrlSync(logoUrl?: string | null): string | nul
   if (!raw) return null
   if (raw.startsWith('data:')) return raw
   seedLogoFromStorage()
-  if (logoDataUrl && logoSrcKey === srcKeyFor(raw)) return logoDataUrl
-  return null
+  const key = srcKeyFor(raw)
+  if (logoDataUrl && logoSrcKey === key) return logoDataUrl
+  return memLogos.get(key) ?? null
 }
 
 /**
@@ -172,6 +191,8 @@ export async function ensureCompanyLogoDataUrl(logoUrl?: string | null): Promise
   const key = srcKeyFor(raw)
   seedLogoFromStorage()
   if (logoDataUrl && logoSrcKey === key) return logoDataUrl
+  const mem = memLogos.get(key)
+  if (mem) return mem
 
   const asset = await resolveReceiptLogoForPdf(raw)
   if (asset?.dataUrl) {
@@ -200,6 +221,7 @@ export async function setCompanyLogoFromFile(file: File, logoUrl: string): Promi
 }
 
 export function clearCompanyLogoCache(): void {
+  memLogos.clear()
   logoDataUrl = null
   logoSrcKey = ''
   logoSeeded = true
@@ -208,6 +230,7 @@ export function clearCompanyLogoCache(): void {
 
 /** Limpia todo (p. ej. al cerrar sesión). */
 export function clearCompanyCaches(): void {
+  memLogos.clear()
   configCache = null
   logoDataUrl = null
   logoSrcKey = ''

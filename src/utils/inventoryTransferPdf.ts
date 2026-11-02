@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf'
-import { getCompanyConfigCache, getCompanyLogoForPrint } from '@/lib/companyConfig/store'
+import { getCompanyConfigCache } from '@/lib/companyConfig/store'
+import { loadBranchPrintIdentity } from '@/lib/branchIdentity/store'
 import { fitReceiptLogoMm, resolveReceiptLogoForPdf } from '@/utils/receiptLogoPdf'
 import { readLogoPrintSize, scaleLogoDimension } from '@/services/printers/logoPrintSize'
 import {
@@ -93,7 +94,9 @@ async function generateA4(t: TransferListItem): Promise<jsPDF> {
   const boxX = PAGE_W - MARGIN - boxW
 
   let logo: { dataUrl: string; format: string; w: number; h: number } | null = null
-  const companyLogo = getCompanyLogoForPrint()
+  // El traslado lo emite la sucursal de ORIGEN: su logo y dirección (con respaldo a la empresa).
+  const issuer = await loadBranchPrintIdentity({ id: t.from_branch_id, name: t.from_branch_name })
+  const companyLogo = issuer.logo
   if (companyLogo) {
     try {
       const resolved = await resolveReceiptLogoForPdf(companyLogo)
@@ -124,7 +127,7 @@ async function generateA4(t: TransferListItem): Promise<jsPDF> {
   }
   if (secondary) info(secondary.toUpperCase())
   if (cfg?.ruc) info(`RUC ${cfg.ruc}`)
-  if (cfg?.address?.trim()) info(cfg.address.trim())
+  if (issuer.address) info(issuer.address)
   if (cfg?.phone?.trim()) info(`Teléfono: ${cfg.phone.trim()}`)
   if (cfg?.email?.trim()) info(`Email: ${cfg.email.trim()}`)
 
@@ -379,7 +382,8 @@ async function generateTicket(t: TransferListItem, paperWidthMm?: TicketPaperWid
   y += 3
 
   const { cfg, primary, secondary } = companyNames()
-  const companyLogo = getCompanyLogoForPrint()
+  const issuer = await loadBranchPrintIdentity({ id: t.from_branch_id, name: t.from_branch_name })
+  const companyLogo = issuer.logo
   if (companyLogo) {
     try {
       const logo = await resolveReceiptLogoForPdf(companyLogo)
@@ -399,7 +403,7 @@ async function generateTicket(t: TransferListItem, paperWidthMm?: TicketPaperWid
   if (primary) center(primary, 11, true)
   if (secondary) center(secondary, 7.5)
   if (cfg?.ruc) center(`RUC ${cfg.ruc}`, 8)
-  if (cfg?.address) center(cfg.address, 7)
+  if (issuer.address) center(issuer.address, 7)
   y += 2
 
   center('TRANSFERENCIA DE STOCK', 9.5, true)
