@@ -146,12 +146,8 @@ function peruIssueTime(): string {
   }
 }
 
-function previewDocumentNumber(series: SalePreviewSeries | null): string {
-  if (!series?.series) return 'PREVIEW-00000001'
-  // `correlative` de la serie ya es el PRÓXIMO número a emitir (el backend lo reserva y recién ahí lo incrementa).
-  const next = Math.max(1, series.correlative ?? series.current_number ?? 1)
-  return `${series.series}-${String(next).padStart(8, '0')}`
-}
+/** Texto que reemplaza al número de comprobante en la previsualización (con guion para que no se le anteponga la serie). */
+const PREVIEW_DOCUMENT_NUMBER = 'PREVIA-SIN-VALIDEZ'
 
 /** Pipe SUNAT para QR (igual que backend); hash "0" porque aún no hay comprobante emitido. */
 export function buildPreviewQrData(params: {
@@ -436,21 +432,11 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
   const walletQr = companyConfig?.wallet_qr_url?.trim()
 
   const seriesCode = selectedSeries?.series ?? 'PREVIEW'
-  const documentNumber = previewDocumentNumber(selectedSeries)
+  // El número real todavía no existe: mostrar el correlativo siguiente hacía que un ticket de
+  // previsualización impreso pareciera una boleta emitida (y chocara con la que sí se emite después).
+  // La marca de agua sola no basta: en impresoras térmicas el gris claro no se imprime.
+  const documentNumber = PREVIEW_DOCUMENT_NUMBER
   const issueDateReceipt = isoDateToReceiptDate(form.issue_date)
-  const qr_data = buildPreviewQrData({
-    sunatCode: sunatCode,
-    series: seriesCode,
-    documentNumber,
-    taxAmount: taxGlobal,
-    total: totalGlobal,
-    issueDate: issueDateReceipt,
-    ruc: companyConfig?.ruc ?? '',
-    client: selectedContact
-      ? { doc_type: selectedContact.doc_type, doc_number: selectedContact.doc_number }
-      : null,
-  })
-
   return {
     doc_type: selectedSeries?.doc_type ?? (mode === 'quotation' ? 'COTIZACION' : 'BOLETA'),
     sunat_code: sunatCode,
@@ -463,7 +449,8 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
     operation_type_code: input.isPrepaymentEmit && input.prepaymentConfig
       ? input.prepaymentConfig.emit_operation_type
       : form.operation_type_code,
-    qr_data,
+    // Sin QR: la previsualización no es un comprobante.
+    qr_data: '',
     legend_text: amountInWords(totalGlobal, form.currency),
     valid_until: mode === 'quotation' ? isoDateToReceiptDate(form.due_date) : undefined,
     notes:
