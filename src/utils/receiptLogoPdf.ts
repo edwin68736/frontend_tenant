@@ -1,4 +1,4 @@
-import { getApiBaseUrl } from '@/config/apiBaseUrl'
+import { getApiBaseUrl, resolvePublicAssetUrl } from '@/config/apiBaseUrl'
 import { isNativeShell } from '@/lib/platform/detect'
 import { RECEIPT_LOGO_MIN_PX } from '@/utils/receiptPdfRaster'
 
@@ -20,6 +20,10 @@ function resolveAssetUrl(url: string): string {
   if (!u) return ''
   if (/^data:/i.test(u) || /^https?:\/\//i.test(u)) return u
   if (u.startsWith('//')) return `${window.location.protocol}${u}`
+  // Ruta relativa de /uploads: vive en el servidor de assets (el mismo que usa el <img> de la pantalla), no
+  // en el origen del tenant, que en producción sirve el SPA y devolvería HTML en vez de la imagen.
+  const publicUrl = resolvePublicAssetUrl(u)
+  if (publicUrl) return publicUrl
   const base = getApiBaseUrl() || window.location.origin
   return u.startsWith('/') ? `${base}${u}` : `${base}/${u}`
 }
@@ -90,10 +94,11 @@ async function fetchImageAsDataUrl(url: string): Promise<{ dataUrl: string; type
 
 /**
  * Candidatos de URL para el logo, en orden de preferencia.
- * 1) API del tenant (getApiBaseUrl): la app ya hace peticiones ahí, así que su
- *    CORS ya permite este origen → es la vía más fiable para leer los bytes.
- * 2) Same-origin del SPA en web (por si el host del tenant sirve /uploads).
- * 3) La URL absoluta original (servidor central de assets), como último recurso.
+ * 1) Servidor de assets público (el que sirve /uploads y ya usa el <img> de la pantalla). En
+ *    producción el origen del tenant sirve el SPA: pedirle /uploads devuelve HTML, no la imagen.
+ * 2) API del tenant (getApiBaseUrl): su CORS ya permite este origen (desarrollo / proxy).
+ * 3) Same-origin del SPA en web (por si el host del tenant sirve /uploads).
+ * 4) La URL absoluta original, como último recurso.
  */
 function logoUrlCandidates(absolute: string): string[] {
   const out: string[] = []
@@ -104,6 +109,7 @@ function logoUrlCandidates(absolute: string): string[] {
   try {
     const parsed = new URL(absolute)
     const pathAndQuery = `${parsed.pathname}${parsed.search}`
+    add(resolvePublicAssetUrl(pathAndQuery))
     const apiBase = getApiBaseUrl()
     if (apiBase) add(`${apiBase.replace(/\/$/, '')}${pathAndQuery}`)
     if (!isNativeShell() && typeof window !== 'undefined') {
