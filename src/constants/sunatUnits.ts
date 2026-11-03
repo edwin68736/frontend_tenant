@@ -60,7 +60,24 @@ const VALID_SUNAT_UNIT_CODES = new Set([
   'MWH', 'MTR', 'MTK', 'MTQ', 'MGM', 'MLT', 'MMT', 'MMK', 'MMQ', 'MLL', 'MU', 'ONZ', 'PF', 'PK',
   'PR', 'FOT', 'FTK', 'FTQ', 'C62', 'PG', 'ST', 'INH', 'RM', 'DR', 'STN', 'LTN', 'TNE', 'TU',
   'NIU', 'ZZ', 'GLL', 'YRD', 'YDK',
+  // Resto del catálogo sembrado por tenant (units_catalog_seed.go): sin esto Millar, Hora, Saco…
+  // se degradaban a NIU al agregar el producto a una venta o cotización.
+  'AV', 'BT', 'CH', 'HD', 'HT', 'HUR', 'JG', 'JR', 'MIL', 'QD', 'RD', 'RL', 'SA', 'SEC', 'U2', 'UM',
 ])
+
+/** Nombre visible de las unidades del catálogo que no están en SUNAT_UNITS (espejo del seed). */
+const CATALOG_UNIT_NAMES: Record<string, string> = {
+  AV: 'Cápsula', BE: 'Fardo', BJ: 'Balde', BLL: 'Barril', BT: 'Tornillo', CA: 'Latas',
+  CEN: 'Centenar o ciento', CH: 'Envase', CMK: 'Centímetro cuadrado', CMQ: 'Centímetro cúbico',
+  CMT: 'Centímetro', CT: 'Cartón', CY: 'Cilindro', DZP: 'Docena de paquetes', FOT: 'Pies',
+  FTK: 'Pies cuadrados', FTQ: 'Pies cúbicos', GLI: 'Galón inglés', HD: 'Media docena',
+  HT: 'Media hora', HUR: 'Hora', INH: 'Pulgadas', JG: 'Jarra', JR: 'Frasco', KTM: 'Kilómetro',
+  KWH: 'Kilovatio hora', LBR: 'Libras', LEF: 'Hoja', MGM: 'Miligramos', MIL: 'Millar',
+  MLT: 'Mililitro', MMK: 'Milímetro cuadrado', MMQ: 'Milímetro cúbico', MMT: 'Milímetro',
+  MWH: 'Megavatio hora', ONZ: 'Onzas', PF: 'Paletas', PG: 'Placas', PR: 'Par',
+  QD: 'Cuarto de docena', RD: 'Varilla', RL: 'Carrete', RM: 'Resma', SA: 'Saco', SEC: 'Segundo',
+  ST: 'Pliego', TU: 'Tubos', U2: 'Tableta o blister', UM: 'Millón', YRD: 'Yardas',
+}
 
 /** Alias comercial / códigos legacy incorrectos → código SUNAT 03. */
 const UNIT_ALIASES: Record<string, string> = {
@@ -214,6 +231,7 @@ export function sunatUnitDisplayName(code: string): string {
   const row = SUNAT_UNITS.find((u) => u.code === aliased)
   if (row) return row.label
   if (LEGACY_DISPLAY[c]) return LEGACY_DISPLAY[c]
+  if (CATALOG_UNIT_NAMES[aliased]) return CATALOG_UNIT_NAMES[aliased]
   return c
 }
 
@@ -228,10 +246,13 @@ export function sunatUnitLabel(code: string): string {
 
 /** Opciones para selects de unidad: value = código SUNAT, label = nombre visible. */
 export function sunatUnitSelectOptions(): { value: string; label: string }[] {
-  return SUNAT_UNITS.map((u) => ({
-    value: u.code,
-    label: u.label,
-  }))
+  const base = SUNAT_UNITS.map((u) => ({ value: u.code, label: u.label }))
+  const known = new Set(SUNAT_UNITS.map((u) => u.code))
+  const rest = Object.entries(CATALOG_UNIT_NAMES)
+    .filter(([code]) => !known.has(code))
+    .map(([code, label]) => ({ value: code, label }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'es'))
+  return [...base, ...rest]
 }
 
 export function isSunatUnitCode(code: string): boolean {
