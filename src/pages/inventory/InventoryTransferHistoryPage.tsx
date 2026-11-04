@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { RotateCcw, Plus, Eye, Download, Ticket, RefreshCw } from 'lucide-react'
 import RequireModule from '@/components/ui/RequireModule'
+import { useAuth } from '@/contexts/AuthContext'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { inventoryService, type TransferListItem } from '@/services/inventory.service'
 import {
@@ -21,6 +22,10 @@ export default function InventoryTransferHistoryPage() {
 }
 
 function InventoryTransferHistoryContent() {
+  const { hasPermission } = useAuth()
+  const canTransfer = hasPermission('inventory.transfer')
+  const canConfirmTransfer = hasPermission('inventory.confirm_transfer')
+  const canCancelTransfer = hasPermission('inventory.cancel_transfer')
   const [transfers, setTransfers] = useState<TransferListItem[]>([])
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'cancelled'>('all')
   const [loading, setLoading] = useState(true)
@@ -105,12 +110,14 @@ function InventoryTransferHistoryContent() {
             Enviado = stock reservado en origen. Al confirmar en destino se suma el stock allí y ya no se puede cancelar.
           </p>
         </div>
+        {canTransfer && (
         <Link
           to="/inventory/transfers"
           className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
         >
           <Plus size={14} /> Nueva transferencia
         </Link>
+        )}
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm p-4">
@@ -192,24 +199,24 @@ function InventoryTransferHistoryContent() {
                     </span>
                   </td>
                   <td className="py-2 px-2 text-right">
-                    {t.status === 'pending' && (
+                    {t.status === 'pending' && (canConfirmTransfer || canCancelTransfer) && (
                       <span className="flex gap-1 justify-end">
-                        <button
+                        {canConfirmTransfer && <button
                           type="button"
                           onClick={() => setConfirmDialogTransferId(t.id)}
                           disabled={confirmingId !== null}
                           className="px-2 py-1 rounded-lg bg-emerald-100 text-emerald-700 text-xs font-medium hover:bg-emerald-200 disabled:opacity-50"
                         >
                           {confirmingId === t.id ? '...' : 'Confirmar'}
-                        </button>
-                        <button
+                        </button>}
+                        {canCancelTransfer && <button
                           type="button"
                           onClick={() => setCancelDialogTransferId(t.id)}
                           disabled={cancellingId !== null}
                           className="px-2 py-1 rounded-lg border border-red-200 text-red-600 text-xs font-medium hover:bg-red-50 disabled:opacity-50"
                         >
                           {cancellingId === t.id ? '...' : 'Cancelar'}
-                        </button>
+                        </button>}
                       </span>
                     )}
                   </td>

@@ -18,6 +18,7 @@ import {
   productUnitFormDisplayName,
   unitAllowsDecimals,
 } from '@/constants/sunatUnits'
+import { weightKindOfUnit } from '@/components/pos/WeightQuantityModal'
 import { inventoryService, type StockByBranch } from '@/services/inventory.service'
 import { StockAdjustmentModal } from '@/components/inventory/StockAdjustmentModal'
 import { companyService } from '@/services/company.service'
@@ -123,6 +124,12 @@ function emptyForm(pageMode: ProductCatalogType, units: Unit[] = []): CreateProd
 
 const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
 
+/** "kg" / "L" cuando la unidad base es KGM / LTR (venta por peso/volumen en el POS); null en el resto. */
+function weightUnitShort(unit: string | undefined | null): string | null {
+  const k = weightKindOfUnit(unit)
+  return k === 'mass' ? 'kg' : k === 'volume' ? 'L' : null
+}
+
 /** Layout del modal crear/editar producto: siempre 2 columnas (Unidad/Categoría, Precio venta/
  * compra, etc.), incluso en pantallas angostas — a pedido del usuario (14-sep-2026), no debe
  * colapsar a una sola columna en móvil. */
@@ -158,6 +165,10 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const { activeBranchId, activeBranch } = useBranch()
   const { hasPermission } = useAuth()
   const canDeleteProducts = hasPermission('products.delete')
+  // Mismos permisos que exige el servidor: crear/importar = products.create; editar, activar, precios y acciones masivas = products.edit.
+  const canCreateProducts = hasPermission('products.create')
+  const canEditProducts = hasPermission('products.edit')
+  const canSelectRows = canDeleteProducts || canEditProducts
   const canAdjustStock = hasPermission('inventory.adjust')
   // Sin products.view_cost el servidor omite el costo y no deja pisarlo al guardar: no se muestra el campo.
   const canViewCost = hasPermission('products.view_cost')
@@ -1103,7 +1114,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     <div className="min-w-0">
       <div className="flex items-center justify-between gap-2 mb-1">
         <label className="text-xs font-medium text-gray-600">Categoría</label>
-        <button type="button" onClick={() => { setAddingCat(true); setTimeout(() => catInputRef.current?.focus(), 50) }} className="text-xs text-[rgb(var(--p600))] hover:underline shrink-0">+ Nueva</button>
+        {canCreateProducts && <button type="button" onClick={() => { setAddingCat(true); setTimeout(() => catInputRef.current?.focus(), 50) }} className="text-xs text-[rgb(var(--p600))] hover:underline shrink-0">+ Nueva</button>}
       </div>
       {addingCat ? (
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-1">
@@ -1130,7 +1141,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     <div className="min-w-0">
       <div className="flex items-center justify-between gap-2 mb-1">
         <label className="text-xs font-medium text-gray-600">Marca</label>
-        <button type="button" onClick={() => { setAddingBrand(true); setTimeout(() => brandInputRef.current?.focus(), 50) }} className="text-xs text-[rgb(var(--p600))] hover:underline shrink-0">+ Nueva</button>
+        {canCreateProducts && <button type="button" onClick={() => { setAddingBrand(true); setTimeout(() => brandInputRef.current?.focus(), 50) }} className="text-xs text-[rgb(var(--p600))] hover:underline shrink-0">+ Nueva</button>}
       </div>
       {addingBrand ? (
         <div className="flex flex-col sm:flex-row gap-2 sm:gap-1">
@@ -1177,13 +1188,13 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         <div className="hidden md:flex items-center gap-2 flex-wrap">
           {pageMode === 'product' && (
             <>
-              <button
+              {canCreateProducts && <button
                 type="button"
                 onClick={() => setImportModalOpen(true)}
                 className="touch-target sm:min-h-0 flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50"
               >
                 <FileSpreadsheet size={15} /> Importar Excel
-              </button>
+              </button>}
               <button
                 type="button"
                 onClick={() => void handleExport()}
@@ -1192,13 +1203,13 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               >
                 {exporting ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Exportar Excel
               </button>
-              <button
+              {canEditProducts && <button
                 type="button"
                 onClick={() => setPriceUpdateModalOpen(true)}
                 className="touch-target sm:min-h-0 flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50"
               >
                 <Tag size={15} /> Actualizar precio
-              </button>
+              </button>}
               <button
                 type="button"
                 onClick={() => setShowModifierGroups(true)}
@@ -1208,12 +1219,12 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               </button>
             </>
           )}
-          <button
+          {canCreateProducts && <button
             onClick={openNew}
             className="flex items-center gap-1.5 px-4 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90"
           >
             <Plus size={15} /> {pageMode === 'service' ? 'Nuevo servicio' : 'Nuevo producto'}
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -1222,12 +1233,12 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           categoría, marca, solo inactivos, por página) va al modal de "Filtros" para no ocupar
           toda la pantalla antes de ver un solo producto. */}
       <div className="md:hidden space-y-2">
-        <button
+        {canCreateProducts && <button
           onClick={openNew}
           className="touch-target flex w-full items-center justify-center gap-1.5 px-4 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90"
         >
           <Plus size={15} /> {pageMode === 'service' ? 'Nuevo servicio' : 'Nuevo producto'}
-        </button>
+        </button>}
         <div className="flex gap-2">
           <div className="relative flex-1 min-w-0">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -1325,13 +1336,13 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         </div>
         {pageMode === 'product' && (
           <div className="grid grid-cols-2 gap-2">
-            <button
+            {canCreateProducts && <button
               type="button"
               onClick={() => { setFiltersModalOpen(false); setImportModalOpen(true) }}
               className="touch-target flex items-center justify-center gap-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50"
             >
               <FileSpreadsheet size={15} /> Importar Excel
-            </button>
+            </button>}
             <button
               type="button"
               onClick={() => void handleExport()}
@@ -1340,13 +1351,13 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
             >
               {exporting ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Exportar Excel
             </button>
-            <button
+            {canEditProducts && <button
               type="button"
               onClick={() => { setFiltersModalOpen(false); setPriceUpdateModalOpen(true) }}
               className="touch-target flex items-center justify-center gap-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50"
             >
               <Tag size={15} /> Actualizar precio
-            </button>
+            </button>}
             <button
               type="button"
               onClick={() => { setFiltersModalOpen(false); setShowModifierGroups(true) }}
@@ -1424,7 +1435,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         </button>
       </Modal>
 
-      {canDeleteProducts && selectedCount > 0 && (
+      {canSelectRows && selectedCount > 0 && (
         <div className="space-y-2 px-1 py-2 rounded-xl border border-blue-200 bg-blue-50/80">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium text-blue-900">
@@ -1439,6 +1450,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
             </button>
           </div>
           <div className="flex flex-wrap gap-2">
+            {canEditProducts && <>
             <button
               type="button"
               disabled={bulkActionInProgress}
@@ -1492,6 +1504,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 Controlar stock
               </button>
             )}
+            </>}
             <button
               type="button"
               disabled={bulkActionInProgress}
@@ -1501,14 +1514,14 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               <Barcode size={14} />
               Código de barras
             </button>
-            <button
+            {canDeleteProducts && <button
               type="button"
               onClick={() => setBulkDeleteOpen(true)}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-700"
             >
               <Trash2 size={14} />
               Eliminar
-            </button>
+            </button>}
           </div>
         </div>
       )}
@@ -1527,7 +1540,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           <table className="w-full min-w-[720px] text-xs sm:text-sm">
           <thead className="bg-gray-50 border-b border-gray-100">
             <tr>
-              {canDeleteProducts && (
+              {canSelectRows && (
                 <th className="text-left px-2 py-3 w-9">
                   <input
                     type="checkbox"
@@ -1555,7 +1568,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           <tbody>
             {products.map(p => (
               <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-50">
-                {canDeleteProducts && (
+                {canSelectRows && (
                   <td className="px-2 py-3">
                     <input
                       type="checkbox"
@@ -1574,8 +1587,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                       <button
                         type="button"
                         onClick={() => openListImagePicker(p.id)}
-                        disabled={listUploadingImageId === p.id}
-                        title="Cambiar imagen"
+                        disabled={listUploadingImageId === p.id || !canEditProducts}
+                        title={canEditProducts ? 'Cambiar imagen' : undefined}
                         aria-label={`Cambiar imagen de ${p.name}`}
                         className="group relative w-10 h-10 rounded-xl bg-[rgb(var(--p50))] flex items-center justify-center overflow-hidden flex-shrink-0 border border-transparent hover:border-[rgb(var(--p300))] focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(var(--p400))] disabled:opacity-60"
                       >
@@ -1695,10 +1708,10 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{p.active ? 'Activo' : 'Inactivo'}</span></td>
                 <td className="px-4 py-3">
                   <div className="flex gap-1 justify-end">
-                    <button onClick={() => handleToggle(p)} className="p-1.5 rounded-lg" title="Activar/Desactivar">
+                    {canEditProducts && <button onClick={() => handleToggle(p)} className="p-1.5 rounded-lg" title="Activar/Desactivar">
                       {p.active ? <ToggleRight size={16} className="text-green-600 hover:bg-green-50" /> : <ToggleLeft size={16} className="text-gray-400 hover:text-gray-600 hover:bg-gray-100" />}
-                    </button>
-                    <button onClick={() => openEdit(p)} className="p-1.5 text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] rounded-lg" title="Editar"><Pencil size={14} /></button>
+                    </button>}
+                    {canEditProducts && <button onClick={() => openEdit(p)} className="p-1.5 text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] rounded-lg" title="Editar"><Pencil size={14} /></button>}
                     {canDeleteProducts && (
                       <button
                         type="button"
@@ -1975,7 +1988,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         <div className={PRODUCT_FORM_GRID}>
           <div className="min-w-0">
             <div className="flex items-center justify-between gap-2 mb-1">
-              <label className="block text-xs font-medium text-gray-600">Precio venta *</label>
+              <label className="block text-xs font-medium text-gray-600">Precio venta *{weightUnitShort(form.unit) ? ` (S/ por ${weightUnitShort(form.unit)})` : ''}</label>
               <button
                 type="button"
                 onClick={() => void openBranchPrices()}
@@ -2010,7 +2023,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           </div>
           {pageMode === 'product' && canViewCost && (
             <div className="min-w-0">
-              <label className="block text-xs font-medium text-gray-600 mb-1">Precio compra</label>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Precio compra{weightUnitShort(form.unit) ? ` (S/ por ${weightUnitShort(form.unit)})` : ''}</label>
               <MoneyAmountInput
                 className={PRODUCT_FORM_INPUT}
                 value={form.purchase_price ?? 0}
@@ -2053,14 +2066,20 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               }} className="rounded w-4 h-4 shrink-0" />
               <span className="text-sm text-gray-700">Control stock</span>
             </label>
+            {weightUnitShort(form.unit) && (
+              <p className="text-xs text-gray-500 sm:col-span-2">
+                Producto por {weightUnitShort(form.unit) === 'kg' ? 'kilo' : 'litro'}: registra el precio y el stock de UN {weightUnitShort(form.unit) === 'kg' ? 'kilo' : 'litro'}. En el punto de venta se elige cuánto lleva el cliente ({weightUnitShort(form.unit) === 'kg' ? 'gramos, kilos o un monto en soles' : 'mililitros, litros o un monto en soles'}) y el precio se calcula solo.
+              </p>
+            )}
             {form.manage_stock && (
               <div className="flex flex-row flex-wrap items-center gap-x-4 gap-y-2 sm:col-span-2">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="text-xs text-gray-600 shrink-0 whitespace-nowrap">Stock mín:</span>
+                  <span className="text-xs text-gray-600 shrink-0 whitespace-nowrap">Stock mín{weightUnitShort(form.unit) ? ` (${weightUnitShort(form.unit)})` : ''}:</span>
                   <input
                     type="number"
                     min={0}
-                    inputMode="numeric"
+                    step={unitAllowsDecimals(form.unit ?? '') ? 'any' : 1}
+                    inputMode={unitAllowsDecimals(form.unit ?? '') ? 'decimal' : 'numeric'}
                     className="w-20 sm:w-24 border border-gray-200 rounded-lg px-2 py-2 sm:py-1 text-base sm:text-sm"
                     value={form.min_stock ?? 0}
                     onChange={(e) => setF('min_stock', Number(e.target.value))}
@@ -2068,7 +2087,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 </div>
                 {!editing && (
                   <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-xs text-gray-600 shrink-0 whitespace-nowrap">Stock inicial:</span>
+                    <span className="text-xs text-gray-600 shrink-0 whitespace-nowrap">Stock inicial{weightUnitShort(form.unit) ? ` (${weightUnitShort(form.unit)})` : ''}:</span>
                     {/* La divisibilidad sigue a la unidad elegida: Kilos admite 2.5; Unidades solo enteros. */}
                     <input
                       type="number"

@@ -11,6 +11,7 @@ import { ProductTransferModal } from '@/components/inventory/ProductTransferModa
 import { productsService, type ProductReportRow } from '@/services/products.service'
 import { companyService } from '@/services/company.service'
 import { useBranch } from '@/contexts/BranchContext'
+import { useAuth } from '@/contexts/AuthContext'
 import {
   getProductExpiryStatus,
   formatExpiryDisplay,
@@ -73,6 +74,11 @@ export default function InventoryPage() {
 
 function InventoryContent() {
   const { activeBranchId } = useBranch()
+  const { hasPermission } = useAuth()
+  // Mismos permisos que exige el servidor (inventory.manage implica los finos). Ingreso/Egreso/Conteo son rutas inventory.manage.
+  const canManageInventory = hasPermission('inventory.manage')
+  const canAdjust = hasPermission('inventory.adjust')
+  const canTransfer = hasPermission('inventory.transfer')
   const [branches, setBranches] = useState<Branch[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [qInput, setQInput] = useState('')
@@ -195,24 +201,30 @@ function InventoryContent() {
           <p className="text-sm text-gray-500">Stock actual por producto, con acciones rápidas de ajuste, kardex y transferencia.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {canManageInventory && (
           <Link
             to="/inventory/ingress"
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             <PackagePlus size={14} /> Ingreso
           </Link>
+          )}
+          {canManageInventory && (
           <Link
             to="/inventory/egress"
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             <PackageMinus size={14} /> Egreso
           </Link>
+          )}
+          {canManageInventory && (
           <Link
             to="/inventory/import-adjustment"
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             <FileSpreadsheet size={14} /> Conteo físico
           </Link>
+          )}
         </div>
       </div>
 
@@ -345,13 +357,13 @@ function InventoryContent() {
                           </td>
                           <td className="px-4 py-2">
                             <div className="flex flex-wrap items-center justify-end gap-1.5">
-                              <button
+                              {canAdjust && <button
                                 type="button"
                                 onClick={() => setAdjustmentProduct(row)}
                                 className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-amber-300 bg-amber-50 text-amber-800 text-xs font-medium hover:bg-amber-100"
                               >
                                 <SlidersHorizontal size={13} /> Ajustar
-                              </button>
+                              </button>}
                               <button
                                 type="button"
                                 onClick={() => setKardexProduct(row)}
@@ -359,13 +371,13 @@ function InventoryContent() {
                               >
                                 <History size={13} /> Kardex
                               </button>
-                              <button
+                              {canTransfer && <button
                                 type="button"
                                 onClick={() => setTransferProduct(row)}
                                 className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 text-xs font-medium hover:bg-emerald-100"
                               >
                                 <ArrowRightLeft size={13} /> Transferir
-                              </button>
+                              </button>}
                             </div>
                           </td>
                         </tr>
