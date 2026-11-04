@@ -672,6 +672,14 @@ export async function buildSaleDocumentEscPos(
   if (printData.legend_text) {
     wrapText(`Son: ${printData.legend_text}`, cols).forEach((x) => legendLines.push(x))
   }
+  // Notas/observaciones de la venta: el PDF A4 y el PDF ticket ya las imprimen; la impresión directa
+  // ESC/POS no. Si coinciden con las observaciones fiscales (ya impresas arriba) no se repiten.
+  const docNotes = normalizeTextForTicketPrint((printData.notes ?? '').trim())
+  if (docNotes && docNotes !== (printData.fiscal?.fiscal_observations ?? '').trim()) {
+    if (legendLines.length) legendLines.push('')
+    legendLines.push('Observaciones:')
+    wrapText(docNotes, cols).forEach((x) => legendLines.push(x))
+  }
 
   const tailLines: string[] = []
   if (printData.seller_name) {
