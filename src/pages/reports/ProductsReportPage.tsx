@@ -28,15 +28,29 @@ function formatSerials(row: ProductReportRow): string {
   return preview || '0'
 }
 
+const money = (n: number) => `S/ ${n.toFixed(2)}`
+
+/** Ganancia por unidad = precio de venta − costo unitario (tal como están registrados en el producto). */
+const unitProfit = (r: ProductReportRow) => Number(r.sale_price) - Number(r.purchase_price)
+/** Los totales solo tienen sentido si el producto lleva inventario; stock negativo no suma valor. */
+const stockQty = (r: ProductReportRow) => Math.max(0, Number(r.stock_total ?? 0))
+const totalCost = (r: ProductReportRow) => Number(r.purchase_price) * stockQty(r)
+const totalProfit = (r: ProductReportRow) => unitProfit(r) * stockQty(r)
+const isBelowMin = (r: ProductReportRow) => r.manage_stock && Number(r.min_stock) > 0 && Number(r.stock_total ?? 0) < Number(r.min_stock)
+
 const COLS: ExportColumn<ProductReportRow>[] = [
   { key: 'code', label: 'Código' },
   { key: 'name', label: 'Nombre' },
   { key: 'category_name', label: 'Categoría', format: (v: unknown) => String(v || '—') },
   { key: 'unit', label: 'Unidad' },
-  { key: 'sale_price', label: 'Precio venta', format: (v: unknown) => `S/ ${Number(v).toFixed(2)}` },
-  { key: 'purchase_price', label: 'Precio compra', format: (v: unknown) => `S/ ${Number(v).toFixed(2)}` },
+  { key: 'sale_price', label: 'Precio venta', format: (v: unknown) => money(Number(v)) },
+  { key: 'purchase_price', label: 'Costo unitario', format: (v: unknown) => money(Number(v)) },
+  { key: 'profit_unit', label: 'Ganancia/unidad', format: (_v: unknown, r) => money(unitProfit(r as ProductReportRow)) },
   { key: 'manage_stock', label: 'Control stock', format: (v: unknown) => (v ? 'Sí' : 'No') },
   { key: 'stock_total', label: 'Stock total', format: (v: unknown, r) => (r.manage_stock ? String(v ?? 0) : '—') },
+  { key: 'min_stock', label: 'Stock mínimo', format: (v: unknown, r) => (r.manage_stock ? String(v ?? 0) : '—') },
+  { key: 'cost_total', label: 'Costo total', format: (_v: unknown, r) => ((r as ProductReportRow).manage_stock ? money(totalCost(r as ProductReportRow)) : '—') },
+  { key: 'profit_total', label: 'Ganancia total', format: (_v: unknown, r) => ((r as ProductReportRow).manage_stock ? money(totalProfit(r as ProductReportRow)) : '—') },
   {
     key: 'stock_by_branch',
     label: 'Stock por sucursal',
@@ -55,7 +69,9 @@ type Branch = { id: number; name: string }
 export default function ProductsReportPage() {
   const { hasPermission } = useAuth()
   const canViewCost = hasPermission('products.view_cost')
-  const cols = canViewCost ? COLS : COLS.filter((c) => c.key !== 'purchase_price')
+  // Costo y ganancia se derivan del costo: sin el permiso de ver costos no se muestran ni se exportan.
+  const COST_KEYS = ['purchase_price', 'profit_unit', 'cost_total', 'profit_total']
+  const cols = canViewCost ? COLS : COLS.filter((c) => !COST_KEYS.includes(String(c.key)))
   const [branches, setBranches] = useState<Branch[]>([])
   const [data, setData] = useState<ProductReportRow[]>([])
   const [loading, setLoading] = useState(false)
@@ -246,10 +262,14 @@ export default function ProductsReportPage() {
                   <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Categoría</th>
                   <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Unidad</th>
                   <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">P. venta</th>
-                  {canViewCost && <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">P. compra</th>}
+                  {canViewCost && <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Costo unit.</th>}
+                  {canViewCost && <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Ganancia/unid.</th>}
                   <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">
                     {branchId ? 'Stock (sucursal)' : 'Stock total'}
                   </th>
+                  <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Stock mín.</th>
+                  {canViewCost && <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Costo total</th>}
+                  {canViewCost && <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Ganancia total</th>}
                   <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Por sucursal</th>
                   <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Series</th>
                   <th className="text-left px-4 py-2 text-xs font-semibold text-gray-500">Activo</th>
@@ -264,10 +284,24 @@ export default function ProductsReportPage() {
                       <td className="px-4 py-2 text-gray-600">{row.category_name || '—'}</td>
                       <td className="px-4 py-2">{row.unit}</td>
                       <td className="px-4 py-2 whitespace-nowrap">S/ {Number(row.sale_price).toFixed(2)}</td>
-                      {canViewCost && <td className="px-4 py-2 whitespace-nowrap">S/ {Number(row.purchase_price).toFixed(2)}</td>}
-                      <td className="px-4 py-2 whitespace-nowrap">
+                      {canViewCost && <td className="px-4 py-2 whitespace-nowrap">{money(Number(row.purchase_price))}</td>}
+                      {canViewCost && (
+                        <td className={`px-4 py-2 whitespace-nowrap ${unitProfit(row) < 0 ? 'text-red-600' : ''}`}>
+                          {money(unitProfit(row))}
+                        </td>
+                      )}
+                      <td className={`px-4 py-2 whitespace-nowrap ${isBelowMin(row) ? 'text-red-600 font-semibold' : ''}`}>
                         {row.manage_stock ? String(row.stock_total ?? 0) : '—'}
                       </td>
+                      <td className="px-4 py-2 whitespace-nowrap">{row.manage_stock ? String(row.min_stock ?? 0) : '—'}</td>
+                      {canViewCost && (
+                        <td className="px-4 py-2 whitespace-nowrap">{row.manage_stock ? money(totalCost(row)) : '—'}</td>
+                      )}
+                      {canViewCost && (
+                        <td className={`px-4 py-2 whitespace-nowrap ${totalProfit(row) < 0 ? 'text-red-600' : ''}`}>
+                          {row.manage_stock ? money(totalProfit(row)) : '—'}
+                        </td>
+                      )}
                       <td className="px-4 py-2 text-xs text-gray-700 max-w-[220px]">
                         {row.manage_stock ? (
                           (row.stock_by_branch ?? []).length ? (
@@ -311,7 +345,7 @@ export default function ProductsReportPage() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={10} className="px-4 py-8 text-center text-gray-400">
+                    <td colSpan={15}className="px-4 py-8 text-center text-gray-400">
                       Sin productos para los filtros seleccionados
                     </td>
                   </tr>
