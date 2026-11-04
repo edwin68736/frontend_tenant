@@ -120,6 +120,9 @@ function BillingContent() {
   // billing.debit_note respectivamente (antes bastaba billing.send, el mismo permiso con el que
   // se abre esta pantalla) — sin esto, un rol sin esos permisos veía el botón y solo se enteraba
   // al hacer clic y recibir el 403.
+  // Enviar/reenviar a SUNAT y crear resúmenes/bajas exigen billing.send; con solo billing.view la pantalla
+  // es de consulta (lista, detalle y descargas) y esos botones no se ofrecen.
+  const canSend = hasPermission('billing.send')
   const canVoidCreditNote = hasPermission('billing.credit_note')
   const canDebitNote = hasPermission('billing.debit_note')
   // POST /sales/:id/void-rejected exige sales.void_rejected; el botón solo se ofrece a quien lo tiene.
@@ -720,7 +723,7 @@ function BillingContent() {
             <h3 className="font-semibold text-gray-800">Resumen diario de boletas</h3>
             <div className="flex items-center gap-2">
               <input type="date" value={summaryDate} onChange={e => setSummaryDate(e.target.value)} className="border border-gray-200 rounded-xl px-3 py-2 text-sm" />
-              <button onClick={() => { setCreatingSummary(true); billingService.createSummary(summaryDate).then(({ summary }) => { toast.success('Resumen enviado'); setSummaries(s => [summary, ...s]); }).catch((e: any) => toast.error(e.response?.data?.error ?? 'Error')).finally(() => setCreatingSummary(false)) }} disabled={creatingSummary} className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-50">{creatingSummary ? <RefreshCw size={14} className="animate-spin" /> : <FileBarChart size={14} />} Generar resumen</button>
+              {canSend && <button onClick={() => { setCreatingSummary(true); billingService.createSummary(summaryDate).then(({ summary }) => { toast.success('Resumen enviado'); setSummaries(s => [summary, ...s]); }).catch((e: any) => toast.error(e.response?.data?.error ?? 'Error')).finally(() => setCreatingSummary(false)) }} disabled={creatingSummary} className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 disabled:opacity-50">{creatingSummary ? <RefreshCw size={14} className="animate-spin" /> : <FileBarChart size={14} />} Generar resumen</button>}
               <button onClick={loadSummaries} disabled={summariesLoading} className="p-2 text-gray-500 hover:text-gray-700"><RefreshCw size={16} className={summariesLoading ? 'animate-spin' : ''} /></button>
             </div>
           </div>
@@ -744,7 +747,7 @@ function BillingContent() {
           <div className="px-4 py-3 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
             <h3 className="font-semibold text-gray-800">Comunicaciones de baja</h3>
             <div className="flex items-center gap-2">
-              <button onClick={openVoidedModal} className="flex items-center gap-1.5 px-4 py-2 bg-orange-600 text-white rounded-xl text-sm font-medium hover:bg-orange-700"><Ban size={14} /> Nueva comunicación de baja</button>
+              {canSend && <button onClick={openVoidedModal} className="flex items-center gap-1.5 px-4 py-2 bg-orange-600 text-white rounded-xl text-sm font-medium hover:bg-orange-700"><Ban size={14} /> Nueva comunicación de baja</button>}
               <button onClick={loadVoided} disabled={voidedLoading} className="p-2 text-gray-500 hover:text-gray-700"><RefreshCw size={16} className={voidedLoading ? 'animate-spin' : ''} /></button>
             </div>
           </div>
@@ -1297,7 +1300,7 @@ function BillingContent() {
                       triggerClassName="inline-flex items-center gap-0.5 p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg ring-1 ring-gray-200 disabled:opacity-40"
                       items={[
                         {
-                          hidden: !(viewMode === 'invoices' && s.billing_status === 'pending' && !isSaleCancelled(s)),
+                          hidden: !(canSend && viewMode === 'invoices' && s.billing_status === 'pending' && !isSaleCancelled(s)),
                           icon: <Send size={14} className="text-blue-600" />,
                           label: 'Enviar a SUNAT',
                           disabled: sending === s.id,
@@ -1333,7 +1336,7 @@ function BillingContent() {
                           onClick: () => void openGuiaFromSale(s.id),
                         },
                         {
-                          hidden: !(s.billing_status === 'error' && !isSaleCancelled(s)),
+                          hidden: !(canSend && s.billing_status === 'error' && !isSaleCancelled(s)),
                           icon: <RefreshCw size={14} className="text-amber-600" />,
                           label: 'Reenviar a SUNAT',
                           disabled: resending === s.id,
@@ -1501,7 +1504,7 @@ function BillingContent() {
                   statusLabel={billingStatusLabel(detail.sale.billing_status)}
                   statusColorClass={billingStatusColor(detail.sale.billing_status)}
                 />
-                {detail.sale.billing_status === 'error' && (
+                {canSend && detail.sale.billing_status === 'error' && (
                   <button onClick={() => { handleResend(detail.sale.id); setDetail(null) }} disabled={resending === detail.sale.id}
                     className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-xl text-sm font-medium hover:bg-amber-700 disabled:opacity-50">
                     {resending === detail.sale.id ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
@@ -1644,13 +1647,13 @@ function BillingContent() {
             ) : (
               <div className="text-center py-6">
                 <p className="text-gray-400 text-sm">Sin respuesta SUNAT disponible</p>
-                {detail.sale.billing_status === 'pending' && (
+                {canSend && detail.sale.billing_status === 'pending' && (
                   <button onClick={() => { handleSend(detail.sale.id); setDetail(null) }}
                     className="mt-3 flex items-center gap-2 mx-auto px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700">
                     <Send size={14} /> Enviar a SUNAT
                   </button>
                 )}
-                {detail.sale.billing_status === 'error' && (
+                {canSend && detail.sale.billing_status === 'error' && (
                   <button onClick={() => { handleResend(detail.sale.id); setDetail(null) }}
                     className="mt-3 flex items-center gap-2 mx-auto px-4 py-2 bg-amber-600 text-white rounded-xl text-sm font-medium hover:bg-amber-700"
                     title="Reenviar el mismo comprobante">

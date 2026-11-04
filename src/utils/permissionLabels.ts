@@ -82,6 +82,7 @@ const PERMISSION_FALLBACK_LABELS: Record<string, string> = {
   'cashbank.movements': 'Movimientos de caja (incluye ver estado de caja)',
   'cashbank.arqueo': 'Registrar arqueo de caja',
   'billing.manage': 'Gestionar facturación electrónica (todo lo de abajo)',
+  'billing.view': 'Ver consulta de comprobantes (solo lectura)',
   'billing.send': 'Enviar/consultar comprobantes en SUNAT',
   'billing.credit_note': 'Anular venta con nota de crédito',
   'billing.debit_note': 'Emitir nota de débito',

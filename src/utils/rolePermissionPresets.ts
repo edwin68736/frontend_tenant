@@ -42,6 +42,7 @@ export const ROLE_PRESETS: RolePreset[] = [
       'suppliers.view',
       // Ventas y comprobantes
       'sales.view',
+      'billing.view',
       'billing.send',
       'billing.credit_note',
       'billing.debit_note',
