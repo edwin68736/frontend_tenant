@@ -52,6 +52,7 @@ import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { isTabletCapacitorDevice } from '@/lib/platform/detect'
 import { PosCartLineRow } from '@/components/pos/PosCartLineRow'
 import { ProductConfigureModal } from '@/components/pos/ProductConfigureModal'
+import { WeightQuantityModal, weightKindOfUnit } from '@/components/pos/WeightQuantityModal'
 import { ComboConfigureModal } from '@/components/pos/ComboConfigureModal'
 import { roundMoney } from '@/utils/checkoutDiscount'
 import {
@@ -157,6 +158,7 @@ function POSContent() {
   const [receiptModalOpen, setReceiptModalOpen] = useState(false)
   const [cartModalOpen, setCartModalOpen] = useState(false)
   const [productToConfigure, setProductToConfigure] = useState<Product | null>(null)
+  const [productToWeigh, setProductToWeigh] = useState<Product | null>(null)
   const [comboToConfigure, setComboToConfigure] = useState<Product | null>(null)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
   const checkoutPaymentMethods = useMemo(() => filterOperationalPaymentMethods(paymentMethods), [paymentMethods])
@@ -433,6 +435,20 @@ function POSContent() {
     [flyToCart],
   )
 
+  // Productos por kilo/litro sin unidades de venta: en vez de sumar 1 kg, se pregunta cuánto lleva el cliente.
+  const addSimpleLine = useCallback(
+    (product: Product, sourceEl?: HTMLElement) => {
+      if (weightKindOfUnit(product.unit) && !product.manage_series) {
+        configureFlySourceRef.current = sourceEl
+        cancelFlyAnimations()
+        setProductToWeigh(product)
+        return
+      }
+      directAddToCart(product, sourceEl)
+    },
+    [cancelFlyAnimations, directAddToCart],
+  )
+
   const openConfigureModal = useCallback(
     (product: Product, sourceEl?: HTMLElement) => {
       configureFlySourceRef.current = sourceEl
@@ -467,7 +483,7 @@ function POSContent() {
         return
       }
       if (product.has_sale_units === false) {
-        directAddToCart(product, sourceEl)
+        addSimpleLine(product, sourceEl)
         return
       }
       const hasSaleUnits = saleUnitsCacheRef.current.get(product.id)
@@ -476,7 +492,7 @@ function POSContent() {
         return
       }
       if (hasSaleUnits === false) {
-        directAddToCart(product, sourceEl)
+        addSimpleLine(product, sourceEl)
         return
       }
       let pending = saleUnitsInFlightRef.current.get(product.id)
@@ -493,10 +509,10 @@ function POSContent() {
       void pending.then((found) => {
         saleUnitsCacheRef.current.set(product.id, found)
         if (found) openConfigureModal(product, sourceEl)
-        else directAddToCart(product, sourceEl)
+        else addSimpleLine(product, sourceEl)
       })
     },
-    [cancelFlyAnimations, directAddToCart, openConfigureModal],
+    [cancelFlyAnimations, addSimpleLine, openConfigureModal],
   )
 
   const barcodeScan = useBarcodeProductScanner({
@@ -1462,6 +1478,14 @@ function POSContent() {
         branchId={session?.branch_id ?? activeBranchId}
         enableSaleUnits
         onClose={() => setProductToConfigure(null)}
+        onConfirm={handleConfigureConfirm}
+      />
+
+      <WeightQuantityModal
+        product={productToWeigh}
+        branchId={session?.branch_id ?? activeBranchId}
+        canViewStock={canViewStockInfo}
+        onClose={() => setProductToWeigh(null)}
         onConfirm={handleConfigureConfirm}
       />
 
