@@ -179,6 +179,8 @@ const COLS: ExcelExportColumn<ReportSaleRow>[] = [
   { key: 'doc_sunat_code', label: 'Tipo CP/Doc' },
   { key: 'doc_type_effective', label: 'Comprobante' },
   { key: 'serie_sin_ceros', label: 'Serie' },
+  // Solo notas de crédito/débito: la factura o boleta que modifican (siempre existe). Vacío en el resto.
+  { key: 'affected_doc_number', label: 'Doc. relacionado', format: (v: unknown) => String(v ?? '').trim() || '—' },
   { key: 'contact_doc_number', label: 'N° documento', format: (v: unknown) => String(v ?? '') || '—' },
   { key: 'contact_name', label: 'Cliente' },
   { key: 'currency', label: 'Moneda', format: (v: unknown) => currencyCode(v as string) },
@@ -223,6 +225,7 @@ const PDF_LAYOUT: Record<string, { weight: number; align?: 'right' | 'center' }>
   due_date: { weight: 20 },
   doc_type_effective: { weight: 23 },
   serie_sin_ceros: { weight: 18 },
+  affected_doc_number: { weight: 19 },
   contact_doc_number: { weight: 21 },
   contact_name: { weight: 24 },
   currency: { weight: 15, align: 'center' },
