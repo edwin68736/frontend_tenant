@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
-import { Plus, Pencil, Trash2, ToggleLeft, ToggleRight, Search } from 'lucide-react'
-import { usersService, type TenantUser, type Role } from '@/services/users.service'
+import { Plus, Pencil, Trash2, ToggleLeft, ToggleRight, Search, RotateCcw } from 'lucide-react'
+import { usersService, type TenantUser, type Role, type DeletedUserInfo } from '@/services/users.service'
 import { restaurantService } from '@/services/restaurant.service'
 import { useAuth } from '@/contexts/AuthContext'
 import { useModules } from '@/contexts/ModulesContext'
@@ -40,10 +40,15 @@ export default function UsersPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
   const [deleting, setDeleting] = useState(false)
   const [restaurantModalUser, setRestaurantModalUser] = useState<TenantUser | null>(null)
+  // Vista de usuarios eliminados (para restaurarlos) y usuario que se está restaurando en el formulario.
+  const [showDeleted, setShowDeleted] = useState(false)
+  const [restoring, setRestoring] = useState<TenantUser | null>(null)
+  // El correo del alta ya pertenece a un usuario eliminado: se pregunta si restaurarlo o crear uno nuevo.
+  const [deletedConflict, setDeletedConflict] = useState<DeletedUserInfo | null>(null)
 
   const load = () => {
     const promises: Promise<unknown>[] = [
-      usersService.listUsers(q).then(u => setUsers(u ?? [])),
+      usersService.listUsers(q, undefined, showDeleted).then(u => setUsers(u ?? [])),
       usersService.listRoles().then(r => setRoles(r ?? [])),
     ]
     if (hasRestaurant) {
@@ -67,7 +72,7 @@ export default function UsersPage() {
 
   useEffect(() => {
     load()
-  }, [q, hasRestaurant])
+  }, [q, hasRestaurant, showDeleted])
 
   const openNew = () => {
     if (atSeatLimit) {
@@ -75,11 +80,25 @@ export default function UsersPage() {
       return
     }
     setEditing(null)
+    setRestoring(null)
     setForm(empty())
+    setShow(true)
+  }
+  const openRestore = (u: TenantUser) => {
+    if (atSeatLimit) {
+      toast.error('Llegaste al límite de usuarios de tu plan. Actualiza tu plan para agregar más.')
+      return
+    }
+    setEditing(null)
+    setRestoring(u)
+    const ids =
+      u.branch_ids?.length ? [...u.branch_ids] : u.branch_id != null && u.branch_id > 0 ? [u.branch_id] : []
+    setForm({ name: u.name, email: u.email, password: '', role_id: u.role_id ?? 0, branchIds: ids })
     setShow(true)
   }
   const openEdit = (u: TenantUser) => {
     setEditing(u)
+    setRestoring(null)
     const ids =
       u.branch_ids?.length ? [...u.branch_ids] : u.branch_id != null && u.branch_id > 0 ? [u.branch_id] : []
     setForm({
@@ -93,6 +112,37 @@ export default function UsersPage() {
   }
 
   const roleLocked = editing?.role_edit_locked === true
+
+  const createPayload = () => ({
+    name: form.name,
+    email: form.email,
+    password: form.password,
+    role_id: form.role_id,
+    ...(form.branchIds.length > 0 ? { branch_ids: form.branchIds, branch_id: form.branchIds[0] } : {}),
+  })
+
+  // Resolución del conflicto "correo de un usuario eliminado": restaurar al anterior o crear uno nuevo.
+  const resolveDeletedConflict = async (action: 'restore' | 'replace') => {
+    if (!deletedConflict) return
+    setSaving(true)
+    try {
+      if (action === 'restore') {
+        await usersService.restoreUser(deletedConflict.id, createPayload())
+        toast.success('Usuario restaurado')
+      } else {
+        await usersService.createUser({ ...createPayload(), replace_deleted: true })
+        toast.success('Usuario creado')
+      }
+      setDeletedConflict(null)
+      setShow(false)
+      load()
+      void refreshLimits()
+    } catch (e: any) {
+      toast.error(e.response?.data?.error ?? e.response?.data?.message ?? 'Error')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const handleSave = async () => {
     const needsRole = !editing || !roleLocked
@@ -126,23 +176,23 @@ export default function UsersPage() {
         if (form.password.trim()) payload.password = form.password
         await usersService.updateUser(editing.id, payload)
         toast.success('Usuario actualizado')
+      } else if (restoring) {
+        await usersService.restoreUser(restoring.id, createPayload())
+        toast.success('Usuario restaurado')
+        setRestoring(null)
       } else {
-        await usersService.createUser({
-          name: form.name,
-          email: form.email,
-          password: form.password,
-          role_id: form.role_id,
-          ...(form.branchIds.length > 0
-            ? { branch_ids: form.branchIds, branch_id: form.branchIds[0] }
-            : {}),
-        })
+        await usersService.createUser(createPayload())
         toast.success('Usuario creado')
       }
       setShow(false)
       load()
       void refreshLimits()
     } catch (e: any) {
-      toast.error(e.response?.data?.error ?? e.response?.data?.message ?? 'Error')
+      if (e.response?.status === 409 && e.response?.data?.code === 'user_deleted_exists') {
+        setDeletedConflict(e.response.data.deleted_user as DeletedUserInfo)
+      } else {
+        toast.error(e.response?.data?.error ?? e.response?.data?.message ?? 'Error')
+      }
     } finally {
       setSaving(false)
     }
@@ -229,6 +279,17 @@ export default function UsersPage() {
             )}
           </p>
         </div>
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+        <button
+          onClick={() => setShowDeleted(v => !v)}
+          className={`flex items-center justify-center gap-1.5 w-full sm:w-auto px-4 py-2.5 rounded-xl text-sm font-medium border flex-shrink-0 ${
+            showDeleted
+              ? 'bg-gray-800 text-white border-gray-800'
+              : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+          }`}
+        >
+          <RotateCcw size={15} /> {showDeleted ? 'Ver activos' : 'Ver eliminados'}
+        </button>
         <button
           onClick={openNew}
           disabled={atSeatLimit}
@@ -237,6 +298,7 @@ export default function UsersPage() {
         >
           <Plus size={15} /> Nuevo usuario
         </button>
+        </div>
       </div>
 
       <div className="relative w-full max-w-sm">
@@ -286,10 +348,18 @@ export default function UsersPage() {
                   <td className="px-3 sm:px-4 py-3">
                     <span
                       className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${
-                        u.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
+                        showDeleted
+                          ? 'bg-red-100 text-red-700'
+                          : u.active
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-gray-100 text-gray-500'
                       }`}
                     >
-                      {u.active ? 'Activo' : 'Inactivo'}
+                      {showDeleted
+                        ? `Eliminado${u.deleted_at ? ` ${new Date(u.deleted_at).toLocaleDateString()}` : ''}`
+                        : u.active
+                          ? 'Activo'
+                          : 'Inactivo'}
                     </span>
                   </td>
                   {moduleColumns.map(col => (
@@ -299,6 +369,17 @@ export default function UsersPage() {
                   ))}
                   <td className="px-3 sm:px-4 py-3 whitespace-nowrap">
                     <div className="flex gap-1 justify-end">
+                    {showDeleted ? (
+                      <button
+                        onClick={() => openRestore(u)}
+                        className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] rounded-lg"
+                        title="Restaurar usuario"
+                      >
+                        <RotateCcw size={14} /> Restaurar
+                      </button>
+                    ) : (
+                    <>
+
                       <button
                         onClick={() => handleToggle(u)}
                         disabled={u.is_owner && u.active}
@@ -331,6 +412,8 @@ export default function UsersPage() {
                       >
                         <Trash2 size={14} />
                       </button>
+                    </>
+                    )}
                     </div>
                   </td>
                 </tr>
@@ -339,13 +422,13 @@ export default function UsersPage() {
           </table>
         </div>
         {users.length === 0 && (
-          <div className="text-center py-10 text-gray-400 text-sm">No se encontraron usuarios</div>
+          <div className="text-center py-10 text-gray-400 text-sm">{showDeleted ? 'No hay usuarios eliminados' : 'No se encontraron usuarios'}</div>
         )}
       </div>
 
       <Modal open={show} onClose={() => setShow(false)} contentClassName="max-w-md w-full mx-2 sm:mx-0">
         <h3 className="font-bold text-gray-800 text-base sm:text-lg">
-          {editing ? 'Editar usuario' : 'Nuevo usuario'}
+          {editing ? 'Editar usuario' : restoring ? 'Restaurar usuario' : 'Nuevo usuario'}
         </h3>
         <div className="space-y-4">
           {(['name', 'email'] as const).map((k) => (
@@ -357,13 +440,14 @@ export default function UsersPage() {
                 type={k === 'email' ? 'email' : 'text'}
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
                 value={form[k]}
+                disabled={restoring != null && k === 'email'}
                 onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))}
               />
             </div>
           ))}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">
-              Contraseña {editing && '(dejar vacío para no cambiar)'}
+              Contraseña {editing ? '(dejar vacío para no cambiar)' : restoring ? '* (nueva, la anterior no se recupera)' : ''}
             </label>
             <input
               type="password"
@@ -431,6 +515,56 @@ export default function UsersPage() {
         </div>
       </Modal>
 
+      <Modal
+        open={deletedConflict != null}
+        onClose={() => setDeletedConflict(null)}
+        contentClassName="max-w-md w-full mx-2 sm:mx-0"
+      >
+        <h3 className="font-bold text-gray-800 text-base sm:text-lg">Ese correo ya fue usado</h3>
+        {deletedConflict && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              El correo <b>{deletedConflict.email}</b> pertenece a un usuario eliminado
+              {deletedConflict.name ? <> (<b>{deletedConflict.name}</b>{deletedConflict.role_name ? `, ${deletedConflict.role_name}` : ''})</> : null}
+              {deletedConflict.deleted_at ? <> el {new Date(deletedConflict.deleted_at).toLocaleDateString()}</> : null}.
+            </p>
+            <div className="text-xs text-gray-600 space-y-2 bg-gray-50 border border-gray-100 rounded-xl p-3">
+              <p>
+                <b>Restaurar:</b> vuelve el mismo usuario con su historial de ventas y cajas. Usará los datos y la
+                contraseña que acabas de escribir.
+              </p>
+              <p>
+                <b>Crear nuevo:</b> otra persona usará este correo con un usuario limpio; el anterior queda eliminado y
+                conserva su historial.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                onClick={() => setDeletedConflict(null)}
+                disabled={saving}
+                className="flex-1 py-2.5 sm:py-2 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => void resolveDeletedConflict('replace')}
+                disabled={saving}
+                className="flex-1 py-2.5 sm:py-2 border border-[rgb(var(--p600))] text-[rgb(var(--p600))] rounded-xl text-sm font-medium disabled:opacity-50"
+              >
+                Crear nuevo
+              </button>
+              <button
+                onClick={() => void resolveDeletedConflict('restore')}
+                disabled={saving}
+                className="flex-1 py-2.5 sm:py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50"
+              >
+                Restaurar anterior
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       <RestaurantUserProfileModal
         user={restaurantModalUser}
         open={restaurantModalUser != null}
@@ -450,7 +584,7 @@ export default function UsersPage() {
           if (confirmDeleteId != null) await handleDelete(confirmDeleteId)
         }}
         title="Eliminar usuario"
-        message="¿Está seguro de eliminar este usuario? Esta acción no se puede deshacer."
+        message="¿Está seguro de eliminar este usuario? Perderá el acceso, pero podrá restaurarlo desde «Ver eliminados»."
         confirmLabel="Eliminar"
         variant="danger"
         loading={deleting}

@@ -16,6 +16,17 @@ export interface TenantUser {
    * UserService.Update/ToggleActive en el backend) — sin él, el acceso maestro de soporte
    * (MasterAccess) queda sin destinatario. */
   is_owner?: boolean
+  /** Solo en el listado de eliminados (`listUsers(..., true)`). */
+  deleted_at?: string
+}
+
+/** Usuario eliminado que ocupa el correo (respuesta 409 `user_deleted_exists`). */
+export interface DeletedUserInfo {
+  id: number
+  name: string
+  email: string
+  role_name?: string
+  deleted_at?: string
 }
 
 export interface Role {
@@ -37,8 +48,10 @@ export interface Permission {
 }
 
 export const usersService = {
-  listUsers: (q = '', role_id?: number): Promise<TenantUser[]> =>
-    api.get('/api/users', { params: { q, role_id } }).then(r => r.data.data ?? []),
+  listUsers: (q = '', role_id?: number, deleted = false): Promise<TenantUser[]> =>
+    api
+      .get('/api/users', { params: { q, role_id, ...(deleted ? { deleted: 1 } : {}) } })
+      .then(r => r.data.data ?? []),
 
   getUser: (id: number) =>
     api.get(`/api/users/${id}`).then(r => r.data.data ?? r.data),
@@ -50,7 +63,21 @@ export const usersService = {
     role_id: number
     branch_id?: number
     branch_ids?: number[]
+    /** El correo es de un usuario eliminado: liberarlo y crear uno nuevo (el eliminado conserva su historial). */
+    replace_deleted?: boolean
   }) => api.post('/api/users', data).then(r => r.data.data ?? r.data),
+
+  /** Reactiva a un usuario eliminado (mismo id e historial). Exige contraseña nueva. */
+  restoreUser: (
+    id: number,
+    data: {
+      name: string
+      password: string
+      role_id: number
+      branch_id?: number
+      branch_ids?: number[]
+    },
+  ) => api.post(`/api/users/${id}/restore`, data).then(r => r.data.data ?? r.data),
 
   updateUser: (
     id: number,
