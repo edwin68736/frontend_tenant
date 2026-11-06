@@ -325,7 +325,9 @@ export default function UsersPage() {
                       </button>
                       <button
                         onClick={() => setConfirmDeleteId(u.id)}
-                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"
+                        disabled={u.is_owner}
+                        title={u.is_owner ? 'El usuario principal del sistema no puede eliminarse' : 'Eliminar'}
+                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-gray-400"
                       >
                         <Trash2 size={14} />
                       </button>
