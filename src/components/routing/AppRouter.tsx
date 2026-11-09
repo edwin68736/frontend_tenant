@@ -8,6 +8,7 @@ import LoginPage from '@/pages/auth/LoginPage'
 import SsoPage from '@/pages/auth/SsoPage'
 import RucPage from '@/pages/auth/RucPage'
 import { isNativeShell } from '@/lib/platform/detect'
+import RequireModule from '@/components/ui/RequireModule'
 
 const EcommerceStorePage = lazy(() => import('@/pages/ecommerce/store/EcommerceStorePage'))
 
@@ -45,6 +46,13 @@ const ReceivablesPage = lazy(() => import('@/pages/receivables/ReceivablesPage')
 const PayablesPage = lazy(() => import('@/pages/payables/PayablesPage'))
 const BankPage = lazy(() => import('@/pages/bank/BankPage'))
 const PaymentMethodsPage = lazy(() => import('@/pages/cashbank/PaymentMethodsPage'))
+// Módulo Contabilidad (plan con «accounting»): cada pantalla exige el módulo y su permiso propio.
+const AcctRegistersPage = lazy(() => import('@/pages/accounting/RegistersPage'))
+const AcctFormatsPage = lazy(() => import('@/pages/accounting/FormatsPage'))
+const AcctSummaryPage = lazy(() => import('@/pages/accounting/SummaryPage'))
+const AcctLedgerPage = lazy(() => import('@/pages/accounting/LedgerPage'))
+const AcctSirePage = lazy(() => import('@/pages/accounting/SirePage'))
+const AcctSettingsPage = lazy(() => import('@/pages/accounting/SettingsPage'))
 const UsersPage = lazy(() => import('@/pages/users/UsersPage'))
 const RolesPage = lazy(() => import('@/pages/users/RolesPage'))
 const CompanyConfigPage = lazy(() => import('@/pages/company/CompanyConfigPage'))
@@ -129,6 +137,15 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
  * mismo criterio que el Sidebar usa para decidir qué mostrar, para que "ocultar" y "bloquear"
  * nunca queden desincronizados.
  */
+/** Contabilidad: sin el módulo en el plan se muestra «Mejorar mi plan»; con él, exige el permiso propio. */
+function AcctRoute({ perm, children }: { perm: string | string[]; children: ReactNode }) {
+  return (
+    <RequireModule moduleKey="accounting">
+      <Protected perm={perm}>{children}</Protected>
+    </RequireModule>
+  )
+}
+
 function Protected({ perm, children }: { perm: string | string[]; children: ReactNode }) {
   const { hasPermission } = useAuth()
   // Un array exige CUALQUIERA de los permisos (ej. nota independiente: crédito O débito según
@@ -202,6 +219,12 @@ function AppRoutes() {
         <Route path="cashbank/cash/:id" element={<Lazy><Protected perm="cashbank.view"><CashSessionDetailPage /></Protected></Lazy>} />
         <Route path="cashbank/reports" element={<Lazy><Protected perm="cashbank.report_view"><CashReportsPage /></Protected></Lazy>} />
         <Route path="cashbank/receivables" element={<Navigate to="/sales/receivables" replace />} />
+        <Route path="accounting/registers" element={<Lazy><AcctRoute perm={['accounting.sales_register', 'accounting.purchases_register']}><AcctRegistersPage /></AcctRoute></Lazy>} />
+        <Route path="accounting/formats" element={<Lazy><AcctRoute perm="accounting.export_formats"><AcctFormatsPage /></AcctRoute></Lazy>} />
+        <Route path="accounting/summary" element={<Lazy><AcctRoute perm="accounting.summary_report"><AcctSummaryPage /></AcctRoute></Lazy>} />
+        <Route path="accounting/ledger" element={<Lazy><AcctRoute perm="accounting.ledger"><AcctLedgerPage /></AcctRoute></Lazy>} />
+        <Route path="accounting/sire/:book" element={<Lazy><AcctRoute perm="accounting.sire_view"><AcctSirePage /></AcctRoute></Lazy>} />
+        <Route path="accounting/settings" element={<Lazy><AcctRoute perm="accounting.settings"><AcctSettingsPage /></AcctRoute></Lazy>} />
         <Route path="cashbank/bank" element={<Lazy><Protected perm="cashbank.bank_view"><BankPage /></Protected></Lazy>} />
         <Route path="cashbank/payment-methods" element={<Lazy><Protected perm="cashbank.payment_methods_manage"><PaymentMethodsPage /></Protected></Lazy>} />
         <Route path="billing" element={<Lazy><Protected perm={['billing.view', 'billing.send']}><BillingPage /></Protected></Lazy>} />

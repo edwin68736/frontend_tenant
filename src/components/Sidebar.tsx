@@ -9,7 +9,7 @@ import {
   Utensils, FileText, X, Grid3x3, Layers, ChefHat, UserCog,
   Shield, MapPin, FileCode, ShieldCheck, ArrowRightLeft, ListOrdered, LayoutGrid, RotateCcw, ShoppingBag,
   ChevronLeft, ChevronRight, BarChart3, CreditCard, Briefcase, UserCircle, Car, Lock, Send, FileSignature,
-  Ruler, TrendingUp, TrendingDown, Settings2, Image as ImageIcon,
+  Ruler, TrendingUp, TrendingDown, Settings2, Image as ImageIcon, Calculator,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -303,6 +303,21 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    id: 'contabilidad',
+    label: 'Contabilidad',
+    icon: <Calculator size={16} />,
+    children: [
+      { id: 'acc-registros', to: '/accounting/registers', label: 'Exportar reporte', icon: <FileText size={14} />, module: 'accounting', hideIfLocked: true, permission: 'accounting.sales_register' },
+      { id: 'acc-registros-compras', to: '/accounting/registers?kind=purchases', label: 'Registro de compras', icon: <Truck size={14} />, module: 'accounting', hideIfLocked: true, permission: 'accounting.purchases_register' },
+      { id: 'acc-formatos', to: '/accounting/formats', label: 'Exportar formatos - Sis. Contables', icon: <FileSignature size={14} />, module: 'accounting', hideIfLocked: true, permission: 'accounting.export_formats' },
+      { id: 'acc-resumen', to: '/accounting/summary', label: 'Reporte resumido - Ventas', icon: <BarChart3 size={14} />, module: 'accounting', hideIfLocked: true, permission: 'accounting.summary_report' },
+      { id: 'acc-mayor', to: '/accounting/ledger', label: 'Libro Mayor', icon: <ListOrdered size={14} />, module: 'accounting', hideIfLocked: true, permission: 'accounting.ledger' },
+      { id: 'acc-sire-ventas', to: '/accounting/sire/sale', label: 'SIRE - Ventas', icon: <Send size={14} />, module: 'accounting', hideIfLocked: true, permission: 'accounting.sire_view' },
+      { id: 'acc-sire-compras', to: '/accounting/sire/purchase', label: 'SIRE - Compras', icon: <Send size={14} />, module: 'accounting', hideIfLocked: true, permission: 'accounting.sire_view' },
+      { id: 'acc-config', to: '/accounting/settings', label: 'Configuración', icon: <Settings2 size={14} />, module: 'accounting', hideIfLocked: true, permission: 'accounting.settings' },
+    ],
+  },
+  {
     id: 'guias-remision',
     label: 'Guías de remisión',
     icon: <Send size={16} />,
@@ -570,7 +585,7 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
       <nav className="flex-1 px-2 py-3 overflow-y-auto overflow-x-visible space-y-2">
         <SidebarTutorialsLink collapsed={isCollapsed} onNavigate={onClose} />
 
-        {['home', 'dashboard', 'preventa', 'ventas', 'tienda-virtual', 'compras', 'contacts', 'productos', 'inventario', 'finanzas', 'guias-remision', 'doc-avanzados', 'reportes', 'administracion', 'empresa', 'modules'].map(
+        {['home', 'dashboard', 'preventa', 'ventas', 'tienda-virtual', 'compras', 'contacts', 'productos', 'inventario', 'finanzas', 'contabilidad', 'guias-remision', 'doc-avanzados', 'reportes', 'administracion', 'empresa', 'modules'].map(
           (entryId) => {
             const item = visibleSimpleItems.find(i => i.id === entryId)
             if (item) {
