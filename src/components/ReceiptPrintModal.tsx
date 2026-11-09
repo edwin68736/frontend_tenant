@@ -103,10 +103,13 @@ export function ReceiptPrintModal({
   const displayNumber = saleNumber || printData?.number || '—'
   const displayTotal = total ?? printData?.total ?? 0
   const emailDocumentId = documentKind === 'quotation' ? quotationId : saleId
-  const resolvedDefaultEmail =
-    defaultEmail.trim() ||
-    printData?.client?.email?.trim() ||
-    ''
+  // "Clientes Varios" (doc. 99999999) es el público en general: no tiene correo propio. Los tenants creados antes
+  // arrastran el correo de la empresa en ese contacto; sugerirlo enviaría el comprobante a la empresa en vez de al
+  // cliente, así que en ese caso el campo queda vacío para que se escriba el correo real.
+  const isWalkInClient = String(printData?.client?.doc_number ?? '').trim() === '99999999'
+  const resolvedDefaultEmail = isWalkInClient
+    ? ''
+    : defaultEmail.trim() || printData?.client?.email?.trim() || ''
 
   const paidTotal = useMemo(() => {
     if (!printData) return displayTotal
