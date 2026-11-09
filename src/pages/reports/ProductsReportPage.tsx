@@ -64,6 +64,31 @@ const COLS: ExportColumn<ProductReportRow>[] = [
   { key: 'active', label: 'Activo', format: (v: unknown) => (v ? 'Sí' : 'No') },
 ]
 
+/**
+ * Fila de totales del export (Excel y PDF): una celda por columna, con la etiqueta en su columna.
+ * Costo total y ganancia total suman solo productos que llevan inventario (igual que cada fila);
+ * el resto de columnas queda vacío porque sumar precios o stocks de unidades distintas no tiene sentido.
+ */
+function buildFooterRow(columns: ExportColumn<ProductReportRow>[], rows: ProductReportRow[]): string[] {
+  const stocked = rows.filter((r) => r.manage_stock)
+  const sumCost = stocked.reduce((acc, r) => acc + totalCost(r), 0)
+  const sumProfit = stocked.reduce((acc, r) => acc + totalProfit(r), 0)
+  return columns.map((c) => {
+    switch (String(c.key)) {
+      case 'code':
+        return 'TOTALES'
+      case 'name':
+        return `${rows.length} producto(s)`
+      case 'cost_total':
+        return money(sumCost)
+      case 'profit_total':
+        return money(sumProfit)
+      default:
+        return ''
+    }
+  })
+}
+
 type Branch = { id: number; name: string }
 
 export default function ProductsReportPage() {
@@ -140,7 +165,9 @@ export default function ProductsReportPage() {
         toast.error('No hay datos para exportar')
         return
       }
-      exportTableToPdf<ProductReportRow>('Reporte de productos', cols, rows, 'reporte-productos.pdf')
+      exportTableToPdf<ProductReportRow>('Reporte de productos', cols, rows, 'reporte-productos.pdf', {
+        footerRow: buildFooterRow(cols, rows),
+      })
       toast.success('PDF descargado')
     } catch {
       toast.error('Error al exportar')
@@ -154,7 +181,7 @@ export default function ProductsReportPage() {
         toast.error('No hay datos para exportar')
         return
       }
-      await exportTableToExcel<ProductReportRow>('Productos', cols, rows, 'reporte-productos.xlsx')
+      await exportTableToExcel<ProductReportRow>('Productos', cols, rows, 'reporte-productos.xlsx', buildFooterRow(cols, rows))
       toast.success('Excel descargado')
     } catch {
       toast.error('Error al exportar')
