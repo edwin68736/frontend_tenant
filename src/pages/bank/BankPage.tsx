@@ -36,7 +36,7 @@ export default function BankPage() {
 
 function BankContent() {
   // Crear/editar cuentas y registrar movimientos exige cashbank.manage (ver es cashbank.view).
-  const canManageBank = useAuth().hasPermission('cashbank.manage')
+  const canManageBank = useAuth().hasPermission('cashbank.bank_manage')
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [selected, setSelected] = useState<BankAccount | null>(null)
   const [movements, setMovements] = useState<BankMovement[]>([])

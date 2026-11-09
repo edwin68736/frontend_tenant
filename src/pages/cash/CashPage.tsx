@@ -85,7 +85,7 @@ function CashContent() {
   const canMovements = hasPermission('cashbank.movements')
   const canArqueo = hasPermission('cashbank.arqueo')
   const canAdjustOpening = hasPermission('cashbank.open')
-  const canDeleteSession = hasPermission('cashbank.manage')
+  const canDeleteSession = hasPermission('cashbank.delete_session')
   const canViewReports = hasPermission('cashbank.view')
 
   // Detalle de caja (ticket): imprimir desde el historial y, al cerrar caja, preguntar si imprimir.

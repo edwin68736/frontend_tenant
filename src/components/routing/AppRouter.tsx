@@ -197,13 +197,13 @@ function AppRoutes() {
         <Route path="inventory/kardex" element={<Lazy><Protected perm="inventory.view"><InventoryKardexPage /></Protected></Lazy>} />
         <Route path="inventory/import-adjustment" element={<Lazy><Protected perm="inventory.manage"><InventoryImportAdjustmentPage /></Protected></Lazy>} />
         <Route path="cashbank/cash" element={<Lazy><Protected perm="cashbank.view"><CashPage /></Protected></Lazy>} />
-        <Route path="cashbank/income" element={<Lazy><Protected perm="cashbank.view"><CashIncomePage /></Protected></Lazy>} />
-        <Route path="cashbank/expenses" element={<Lazy><Protected perm="cashbank.view"><CashExpensePage /></Protected></Lazy>} />
+        <Route path="cashbank/income" element={<Lazy><Protected perm="cashbank.income_view"><CashIncomePage /></Protected></Lazy>} />
+        <Route path="cashbank/expenses" element={<Lazy><Protected perm="cashbank.expense_view"><CashExpensePage /></Protected></Lazy>} />
         <Route path="cashbank/cash/:id" element={<Lazy><Protected perm="cashbank.view"><CashSessionDetailPage /></Protected></Lazy>} />
-        <Route path="cashbank/reports" element={<Lazy><Protected perm="cashbank.view"><CashReportsPage /></Protected></Lazy>} />
+        <Route path="cashbank/reports" element={<Lazy><Protected perm="cashbank.report_view"><CashReportsPage /></Protected></Lazy>} />
         <Route path="cashbank/receivables" element={<Navigate to="/sales/receivables" replace />} />
-        <Route path="cashbank/bank" element={<Lazy><Protected perm="cashbank.view"><BankPage /></Protected></Lazy>} />
-        <Route path="cashbank/payment-methods" element={<Lazy><Protected perm="cashbank.manage"><PaymentMethodsPage /></Protected></Lazy>} />
+        <Route path="cashbank/bank" element={<Lazy><Protected perm="cashbank.bank_view"><BankPage /></Protected></Lazy>} />
+        <Route path="cashbank/payment-methods" element={<Lazy><Protected perm="cashbank.payment_methods_manage"><PaymentMethodsPage /></Protected></Lazy>} />
         <Route path="billing" element={<Lazy><Protected perm={['billing.view', 'billing.send']}><BillingPage /></Protected></Lazy>} />
         {/* Nota de crédito/débito independiente (Fase 3): sin venta local, documento afectado a mano.
             Un solo formulario sirve ambos tipos según lo que elija el usuario — exige cualquiera

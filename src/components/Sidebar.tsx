@@ -279,10 +279,10 @@ const NAV_GROUPS: NavGroup[] = [
     icon: <Wallet size={16} />,
     children: [
       { id: 'fin-caja', to: '/cashbank/cash', label: 'Caja', icon: <Wallet size={14} />, module: 'cashbank', permission: 'cashbank.view' },
-      { id: 'fin-ingresos', to: '/cashbank/income', label: 'Ingresos', icon: <TrendingUp size={14} />, module: 'cashbank', permission: 'cashbank.view' },
-      { id: 'fin-egresos', to: '/cashbank/expenses', label: 'Egresos', icon: <TrendingDown size={14} />, module: 'cashbank', permission: 'cashbank.view' },
-      { id: 'fin-bancos', to: '/cashbank/bank', label: 'Cuentas / Bancos', icon: <Building2 size={14} />, module: 'cashbank', permission: 'cashbank.view' },
-      { id: 'fin-metodos', to: '/cashbank/payment-methods', label: 'Métodos de pago', icon: <Wallet size={14} />, module: 'cashbank', permission: 'cashbank.manage' },
+      { id: 'fin-ingresos', to: '/cashbank/income', label: 'Ingresos', icon: <TrendingUp size={14} />, module: 'cashbank', permission: 'cashbank.income_view' },
+      { id: 'fin-egresos', to: '/cashbank/expenses', label: 'Egresos', icon: <TrendingDown size={14} />, module: 'cashbank', permission: 'cashbank.expense_view' },
+      { id: 'fin-bancos', to: '/cashbank/bank', label: 'Cuentas / Bancos', icon: <Building2 size={14} />, module: 'cashbank', permission: 'cashbank.bank_view' },
+      { id: 'fin-metodos', to: '/cashbank/payment-methods', label: 'Métodos de pago', icon: <Wallet size={14} />, module: 'cashbank', permission: 'cashbank.payment_methods_manage' },
       {
         id: 'fin-cxc',
         to: '/sales/receivables',
@@ -299,7 +299,7 @@ const NAV_GROUPS: NavGroup[] = [
         module: 'purchases',
         permission: 'payables.view',
       },
-      { id: 'fin-reporte-caja', to: '/cashbank/reports', label: 'Reporte de caja', icon: <FileText size={14} />, module: 'cashbank', permission: 'cashbank.view' },
+      { id: 'fin-reporte-caja', to: '/cashbank/reports', label: 'Reporte de caja', icon: <FileText size={14} />, module: 'cashbank', permission: 'cashbank.report_view' },
     ],
   },
   {
