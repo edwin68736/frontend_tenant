@@ -51,6 +51,7 @@ export const CATALOG_IMPORT_COLUMNS = [
   'tipo',
   'fecha_vencimiento',
   'sucursales',
+  'stock_minimo',
 ] as const
 
 const HEADER_ALIASES: Record<string, (typeof CATALOG_IMPORT_COLUMNS)[number]> = {
@@ -125,6 +126,10 @@ const HEADER_ALIASES: Record<string, (typeof CATALOG_IMPORT_COLUMNS)[number]> = 
   sucursal: 'sucursales',
   branches: 'sucursales',
   disponible_en: 'sucursales',
+  stock_minimo: 'stock_minimo',
+  stock_min: 'stock_minimo',
+  minimo: 'stock_minimo',
+  min_stock: 'stock_minimo',
 }
 
 function normalizeOptionalPreparationArea(value: unknown): string {
@@ -220,6 +225,13 @@ export const CATALOG_PRODUCT_IMPORT_SCHEMA: SchemaDefinition = {
     default: 0,
     min: 0,
   },
+  /** Opcional: vacío = no cambia el stock mínimo actual (producto nuevo queda en 0). */
+  stock_minimo: {
+    column: 'stock_minimo',
+    type: 'string',
+    max: 32,
+    transform: (v) => String(v ?? '').trim(),
+  },
   es_restaurante: {
     column: 'es_restaurante',
     type: 'string',
@@ -268,6 +280,8 @@ export type ParsedCatalogImportRow = {
   precio_incluye_igv: boolean
   control_stock: boolean
   stock_inicial: number
+  /** undefined = celda vacía / columna ausente: no cambia el valor actual. */
+  stock_minimo?: number
   es_restaurante: boolean
   area_preparacion: string
   tipo: string
@@ -291,7 +305,7 @@ export type ImportValidationResult = {
   hasExpiryColumn: boolean
 }
 
-function normalizeHeader(raw: string): string {
+export function normalizeHeader(raw: string): string {
   const key = raw
     .trim()
     .toLowerCase()
@@ -301,7 +315,7 @@ function normalizeHeader(raw: string): string {
   return HEADER_ALIASES[key] ?? key
 }
 
-function parseExcelBoolean(value: unknown): boolean {
+export function parseExcelBoolean(value: unknown): boolean {
   if (typeof value === 'boolean') return value
   if (typeof value === 'number') return value !== 0
   const s = String(value ?? '')
@@ -390,6 +404,7 @@ export async function downloadCatalogProductTemplate(): Promise<void> {
     'product',
     '2026-12-31',
     '', // sucursales: vacío = todas (o p. ej. «Principal, Norte»)
+    '', // stock_minimo: opcional; vacío = no cambia el valor actual
   ]
   const bytes = await writeXlsx({
     sheets: [{ name: 'Productos', rows: [headerRow, exampleRow] }],
@@ -448,6 +463,7 @@ export async function exportCatalogProductsToExcel(
     r.type === 'service' ? 'service' : 'product',
     r.expiry_date ?? '',
     '', // sucursales: vacío = al reimportar no cambia la asignación
+    '', // stock_minimo: vacío = al reimportar no cambia
   ])
   const bytes = await writeXlsx({
     sheets: [{ name: 'Productos', rows: [headerRow, ...dataRows] }],
@@ -484,7 +500,7 @@ function normalizeDecimalCommaCells(rows: CellValue[][], headers: string[]): Cel
   })
 }
 
-function normalizeDecimalComma(value: CellValue): CellValue {
+export function normalizeDecimalComma(value: CellValue): CellValue {
   if (typeof value !== 'string') return value
   const raw = value.trim()
   if (raw === '' || !raw.includes(',')) return value
@@ -507,8 +523,15 @@ export async function validateCatalogProductExcel(file: File): Promise<ImportVal
   if (!sheet?.rows?.length) {
     return { rows: [], errors: [{ row: 0, column: '', field: '', message: 'El archivo está vacío', value: null }], totalRows: 0, hasExpiryColumn: false }
   }
+  return validateCatalogProductRows(sheet.rows as CellValue[][])
+}
 
-  const rawRows = sheet.rows as CellValue[][]
+/** Valida las filas de la hoja «Productos» (fila 1 = encabezados). Compartido con la importación avanzada. */
+export function validateCatalogProductRows(
+  rawRows: CellValue[][],
+  /** Opcional: número de fila real de Excel de cada fila de datos no vacía (la básica asume index+2). */
+  dataRowNumbers?: number[],
+): ImportValidationResult {
   const headerCells = rawRows[0] ?? []
   const normalizedHeaders = headerCells.map((c) => normalizeHeader(String(c ?? '')))
   const hasExpiryColumn = normalizedHeaders.includes('fecha_vencimiento')
@@ -540,7 +563,7 @@ export async function validateCatalogProductExcel(file: File): Promise<ImportVal
 
   const parsed: ParsedCatalogImportRow[] = []
   const extraErrors: ImportRowIssue[] = (schemaErrors as HucreRowError[])
-    .filter((e) => e.field !== 'area_preparacion' && e.field !== 'precio_compra' && e.field !== 'afectacion_igv' && e.field !== 'fecha_vencimiento')
+    .filter((e) => e.field !== 'area_preparacion' && e.field !== 'precio_compra' && e.field !== 'stock_minimo' && e.field !== 'afectacion_igv' && e.field !== 'fecha_vencimiento')
     .map((e) => ({
     row: e.row,
     column: e.column,
@@ -551,7 +574,7 @@ export async function validateCatalogProductExcel(file: File): Promise<ImportVal
   const codesInFile = new Map<string, number>()
 
   data.forEach((row, index) => {
-    const rowNumber = index + 2
+    const rowNumber = dataRowNumbers?.[index] ?? index + 2
     const codigo = String(row.codigo ?? '').trim()
     if (codigo) {
       // El backend usa el código como clave: dos filas con el mismo código se pisan y queda solo
@@ -596,6 +619,22 @@ export async function validateCatalogProductExcel(file: File): Promise<ImportVal
         return
       }
       precioCompra = n
+    }
+    const minRaw = String(row.stock_minimo ?? '').trim()
+    let stockMinimo: number | undefined
+    if (minRaw !== '') {
+      const n = Number(minRaw.replace(',', '.'))
+      if (Number.isNaN(n) || n < 0) {
+        extraErrors.push({
+          row: rowNumber,
+          column: 'stock_minimo',
+          field: 'stock_minimo',
+          message: 'stock_minimo debe ser un número mayor o igual a 0 (o vacío)',
+          value: minRaw,
+        })
+        return
+      }
+      stockMinimo = n
     }
     const afectacionIgv = normalizeIgvAffectationCode(row.afectacion_igv)
     if (afectacionIgv == null) {
@@ -650,6 +689,7 @@ export async function validateCatalogProductExcel(file: File): Promise<ImportVal
       precio_incluye_igv: parseExcelBoolean(row.precio_incluye_igv),
       control_stock: controlStock,
       stock_inicial: stockInicial,
+      ...(stockMinimo != null ? { stock_minimo: stockMinimo } : {}),
       es_restaurante: esRestaurante,
       area_preparacion: normalizeOptionalPreparationArea(row.area_preparacion),
       tipo,
@@ -662,7 +702,7 @@ export async function validateCatalogProductExcel(file: File): Promise<ImportVal
 
 const BULK_CHUNK_SIZE = 500
 
-function rowToBulkPayload(row: ParsedCatalogImportRow, hasExpiryColumn: boolean): BulkImportItemPayload {
+export function rowToBulkPayload(row: ParsedCatalogImportRow, hasExpiryColumn: boolean): BulkImportItemPayload {
   return {
     row_number: row.rowNumber,
     name: row.nombre,
@@ -678,6 +718,7 @@ function rowToBulkPayload(row: ParsedCatalogImportRow, hasExpiryColumn: boolean)
     price_includes_igv: row.precio_incluye_igv,
     manage_stock: row.control_stock,
     initial_stock: row.stock_inicial > 0 ? row.stock_inicial : undefined,
+    ...(row.stock_minimo != null ? { min_stock: row.stock_minimo } : {}),
     is_restaurant: row.es_restaurante,
     preparation_area: row.es_restaurante && row.area_preparacion ? row.area_preparacion : undefined,
     type: row.tipo,

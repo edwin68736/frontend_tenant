@@ -355,11 +355,45 @@ export interface BulkImportItemPayload {
   price_includes_igv?: boolean
   manage_stock?: boolean
   initial_stock?: number
+  /** Opcional: stock mínimo. Omitir = no cambia el actual. */
+  min_stock?: number
   is_restaurant?: boolean
   preparation_area?: string
   type?: string
   /** YYYY-MM-DD; cadena vacía = sin vencimiento. Omitir si la columna no está en el Excel (update conserva el actual). */
   expiry_date?: string
+}
+
+/** Importación avanzada: producto + hijos (hojas Presentaciones / Unidades de venta / Precios y Stock por sucursal). */
+export interface BulkImportAdvancedItemPayload extends BulkImportItemPayload {
+  presentations?: { row_number: number; name: string; sale_price: number; initial_stock?: number; sort_order?: number }[]
+  sale_units?: {
+    row_number: number
+    name: string
+    unit: string
+    conversion_factor: number
+    allow_fraction: boolean
+    is_base: boolean
+    price1: number
+    price2?: number
+    price3?: number
+    sort_order?: number
+  }[]
+  branch_prices?: { row_number: number; branch_name: string; sale_unit_name?: string; sale_price: number }[]
+  branch_stocks?: { row_number: number; branch_name: string; quantity: number }[]
+}
+
+export interface BulkImportAdvancedResultPayload extends BulkImportResultPayload {
+  presentations_created: number
+  presentations_updated: number
+  presentations_deactivated: number
+  sale_units_created: number
+  sale_units_updated: number
+  sale_units_deactivated: number
+  branch_prices_created: number
+  branch_prices_updated: number
+  branch_prices_deactivated: number
+  branch_stocks_set: number
 }
 
 export interface BulkImportResultPayload {
@@ -541,6 +575,15 @@ export const productsService = {
       .post<{ success: boolean; data: BulkImportResultPayload }>(
         '/api/products/bulk-import/catalog',
         { branch_id: branchId && branchId > 0 ? branchId : undefined, items },
+      )
+      .then((r) => r.data.data),
+
+  /** dryRun=true: simula todo en una transacción que se revierte (resumen previo + errores del servidor). */
+  bulkImportAdvanced: (items: BulkImportAdvancedItemPayload[], branchId?: number, dryRun = false) =>
+    api
+      .post<{ success: boolean; data: BulkImportAdvancedResultPayload }>(
+        '/api/products/bulk-import/advanced',
+        { branch_id: branchId && branchId > 0 ? branchId : undefined, items, dry_run: dryRun || undefined },
       )
       .then((r) => r.data.data),
 
