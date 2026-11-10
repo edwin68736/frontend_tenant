@@ -4,7 +4,10 @@ import { hasTenantPermission } from '@/lib/permissions'
 import {
   buildUserFromMasterToken,
   clearMasterSsoFromUrl,
+  exchangeMasterCode,
+  hasMasterSsoInUrl,
   persistMasterSsoSession,
+  readMasterCodeFromUrl,
   readMasterSsoTokenFromUrl,
 } from '@/lib/masterSso'
 import { toast } from 'sonner'
@@ -72,7 +75,7 @@ function extractImpersonatedFromToken(token: string): boolean {
  */
 function readStoredSession(): AuthState | null {
   try {
-    if (readMasterSsoTokenFromUrl()) return null
+    if (hasMasterSsoInUrl()) return null
     const token = localStorage.getItem('token')
     const userStr = localStorage.getItem('user')
     if (!token || !userStr) return null
@@ -112,6 +115,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Restaurar sesión o acceso maestro (/?master_sso=...) — sin recarga de página
   useEffect(() => {
+    // Acceso maestro con código de UN SOLO USO: se quita de la URL de inmediato (no queda en el historial) y se canjea por
+    // POST; el JWT nunca viaja en una URL. El enlace heredado ?master_sso=<jwt> sigue funcionando como puente.
+    const masterCode = readMasterCodeFromUrl()
+    if (masterCode) {
+      clearMasterSsoFromUrl()
+      void exchangeMasterCode(masterCode).then((tok) => {
+        const user = tok ? buildUserFromMasterToken(tok) : null
+        if (tok && user) {
+          persistMasterSsoSession(tok, user)
+          markIdleActivity()
+          setState({
+            user,
+            token: tok,
+            modules: extractModulesFromToken(tok),
+            permissions: extractPermissionsFromToken(tok),
+            tenantStatus: extractStatusFromToken(tok),
+            isImpersonated: extractImpersonatedFromToken(tok),
+            isAuthenticated: true,
+            isLoading: false,
+          })
+          return
+        }
+        toast.error('Enlace de acceso maestro inválido o expirado')
+        setState((prev) => ({ ...prev, isLoading: false }))
+      })
+      return
+    }
+
     const masterToken = readMasterSsoTokenFromUrl()
     if (masterToken) {
       const user = buildUserFromMasterToken(masterToken)
