@@ -69,7 +69,9 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
   // Los contadores de la campana no son necesarios para pintar la vista: se piden cuando el navegador
   // está ocioso (≥1 s después de montar) para no competir con los datos de la primera pantalla.
   useEffect(() => {
-    if (!hasModule('billing')) {
+    // El endpoint exige billing.view (o billing.send): sin ese permiso ni se consulta (antes daba 403 en cada
+    // pantalla a los roles con el módulo pero sin permiso de comprobantes).
+    if (!hasModule('billing') || !(hasPermission('billing.view') || hasPermission('billing.send'))) {
       setBillingCounts(null)
       return
     }
@@ -79,7 +81,7 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
       },
       { minDelayMs: 1000, maxWaitMs: 3000 },
     )
-  }, [hasModule])
+  }, [hasModule, hasPermission])
 
   useEffect(() => {
     if (!hasModule('memberships')) {
