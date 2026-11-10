@@ -28,6 +28,15 @@ const SALES_ROWS: Row[] = [
   { key: 'subdiario_sales', label: 'Subdiario de ventas (Concar)', def: 'SubdiarioSales' },
 ]
 
+/** Cuentas de ventas con su valor por defecto en los campos vacíos (son las mismas en todo el Perú: nunca se muestran vacías). */
+function withDefaults(st: AccountingSettings, d: AccountingDefaults): AccountingSettings {
+  const out = { ...st }
+  for (const r of SALES_ROWS) {
+    if (r.def && !String(out[r.key] ?? '').trim()) out[r.key] = d[r.def]
+  }
+  return out
+}
+
 /** Configuración: cuentas contables de los formatos y credenciales SIRE. */
 export default function SettingsPage() {
   const [form, setForm] = useState<AccountingSettings>(EMPTY)
@@ -40,7 +49,7 @@ export default function SettingsPage() {
   useEffect(() => {
     Promise.all([accountingService.getSettings(), accountingService.sireSettings()])
       .then(([s, sr]) => {
-        setForm({ ...EMPTY, ...s.settings })
+        setForm(withDefaults({ ...EMPTY, ...s.settings }, s.defaults))
         setDefaults(s.defaults)
         setSire(sr)
         setSireForm((f) => ({ ...f, client_id: sr.client_id, sol_username: sr.sol_username }))
@@ -52,7 +61,8 @@ export default function SettingsPage() {
   const saveAccounts = async () => {
     setSaving(true)
     try {
-      setForm({ ...EMPTY, ...(await accountingService.saveSettings(form)) })
+      const saved = await accountingService.saveSettings(form)
+      setForm(defaults ? withDefaults({ ...EMPTY, ...saved }, defaults) : { ...EMPTY, ...saved })
       toast.success('Cuentas contables guardadas')
     } catch (e) {
       toast.error(errMessage(e))
@@ -81,7 +91,7 @@ export default function SettingsPage() {
       <Card>
         <h2 className="font-semibold text-gray-800 mb-1">Cuentas contables (ventas)</h2>
         <p className="text-xs text-gray-500 mb-3">
-          Si dejas una cuenta vacía se usa el valor por defecto que se muestra como ayuda. Se guardan como texto (no pierden el cero inicial).
+          Vienen con las cuentas del PCGE, que son las mismas para todo el Perú; edítalas solo si tu contador usa otras. Si borras una, se restaura la de por defecto. Se guardan como texto (no pierden el cero inicial).
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {SALES_ROWS.map((r) => (
@@ -100,6 +110,16 @@ export default function SettingsPage() {
           <button type="button" className={btnPrimary} disabled={saving} onClick={() => void saveAccounts()}>
             <Save size={16} /> Guardar cuentas
           </button>
+          {defaults && (
+            <button
+              type="button"
+              className="ml-2 px-3 py-2 text-sm rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-50"
+              disabled={saving}
+              onClick={() => setForm((f) => withDefaults({ ...f, ...Object.fromEntries(SALES_ROWS.map((r) => [r.key, ''])) }, defaults))}
+            >
+              Restaurar valores por defecto
+            </button>
+          )}
         </div>
       </Card>
 
