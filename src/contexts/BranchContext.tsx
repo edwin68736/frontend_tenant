@@ -11,7 +11,12 @@ import {
 import { toast } from 'sonner'
 import { sessionService, type BranchBrief } from '@/services/session.service'
 import { useAuth } from '@/contexts/AuthContext'
-import { BRANCH_INVALID_EVENT, BRANCH_READ_ONLY_EVENT, SESSION_REFRESHED_EVENT } from '@/services/api'
+import {
+  BRANCH_INVALID_EVENT,
+  BRANCH_READ_ONLY_EVENT,
+  SESSION_CONTEXT_STALE_EVENT,
+  SESSION_REFRESHED_EVENT,
+} from '@/services/api'
 import { BRANCH_READ_ONLY_MESSAGE, getViewMode, setViewMode } from '@/lib/branchScope/viewMode'
 import { clearAllCaches, resetBranchCaches } from '@/lib/branchScope/caches'
 import { clearPendingWork, getPendingWork } from '@/lib/branchScope/pendingWork'
@@ -284,6 +289,19 @@ export function BranchProvider({ children }: { children: ReactNode }) {
     window.addEventListener(BRANCH_INVALID_EVENT, onInvalid)
     return () => window.removeEventListener(BRANCH_INVALID_EVENT, onInvalid)
   }, [isAuthenticated, applyContext])
+
+  // Refresh provocado por un 409 SESSION_UPDATED (cambió rol/permisos/sucursales del usuario): se relee el
+  // contexto; applyContext remonta solo si la sucursal activa cambió. Silencioso (sin toasts) y sin pisar un
+  // cambio de sucursal propio en curso.
+  useEffect(() => {
+    if (!isAuthenticated) return
+    const onStale = () => {
+      if (switchLockRef.current) return
+      void refreshContext().catch(() => {})
+    }
+    window.addEventListener(SESSION_CONTEXT_STALE_EVENT, onStale)
+    return () => window.removeEventListener(SESSION_CONTEXT_STALE_EVENT, onStale)
+  }, [isAuthenticated, refreshContext])
 
   useEffect(() => {
     if (!isAuthenticated) {

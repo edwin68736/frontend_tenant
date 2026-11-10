@@ -80,6 +80,8 @@ function SunatDocsContent() {
       }
     },
     sunatEnabled === true && (subMode === 'retentions' || subMode === 'perceptions'),
+    // Al reconectar el stream se vuelve a pedir la lista para no perder cambios del corte.
+    () => (subMode === 'retentions' ? loadRetentions() : loadPerceptions()),
   )
 
   const loadRetentions = () => {

@@ -339,7 +339,8 @@ function BillingContent() {
       : d))
   }, [])
 
-  useBillingEvents(applyBillingEvent, sunatEnabled === true && viewMode === 'invoices')
+  // Al reconectar el stream (sin Last-Event-ID) se vuelve a pedir la lista para no perder cambios del corte.
+  useBillingEvents(applyBillingEvent, sunatEnabled === true && viewMode === 'invoices', () => void load())
 
   useEffect(() => {
     if (sunatEnabled !== true) return

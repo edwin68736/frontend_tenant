@@ -47,6 +47,8 @@ type BranchAwareConfig = InternalAxiosRequestConfig & {
   __global?: boolean
   __retryCount?: number
   __retriedAfterRefresh?: boolean
+  /** Marca de "ya se reintentó tras un 409 SESSION_UPDATED": garantiza UN solo reintento (sin bucle). */
+  __retriedAfterSessionUpdate?: boolean
   __skipAuthRefresh?: boolean
 }
 
@@ -217,7 +219,7 @@ function storedActiveBranchId(): number | undefined {
   }
 }
 
-async function refreshAccessToken(): Promise<string | null> {
+async function doRefreshAccessToken(): Promise<string | null> {
   const refreshToken = localStorage.getItem('refresh_token')
   if (!refreshToken) return null
   try {
@@ -234,6 +236,45 @@ async function refreshAccessToken(): Promise<string | null> {
     return newToken
   } catch {
     return null
+  }
+}
+
+/**
+ * Renueva el access token con el refresh token. Un solo refresh en vuelo: la comparten el flujo 401, el
+ * flujo 409 SESSION_UPDATED y el stream SSE. Devuelve el token nuevo o null si no se pudo (sin cerrar sesión:
+ * eso lo decide el llamador).
+ */
+export function refreshAccessToken(): Promise<string | null> {
+  if (!refreshPromise) {
+    refreshPromise = doRefreshAccessToken().finally(() => {
+      refreshPromise = null
+    })
+  }
+  return refreshPromise
+}
+
+/**
+ * Emitido tras un refresh provocado por un 409 SESSION_UPDATED (el servidor cambió permisos/rol/sucursales):
+ * BranchContext vuelve a pedir el contexto de sucursal (y remonta solo si la sucursal activa cambió).
+ */
+export const SESSION_CONTEXT_STALE_EVENT = 'tukifac:session-context-stale'
+
+/** Sucursal activa que lleva el claim `active_branch_id` de un JWT (undefined si no se puede leer). */
+function tokenBranchId(token: string | null | undefined): number | undefined {
+  try {
+    const part = String(token ?? '').split('.')[1]
+    if (!part) return undefined
+    const b64 = part.replace(/-/g, '+').replace(/_/g, '/')
+    const json = decodeURIComponent(
+      atob(b64.padEnd(b64.length + ((4 - (b64.length % 4)) % 4), '='))
+        .split('')
+        .map((c) => '%' + c.charCodeAt(0).toString(16).padStart(2, '0'))
+        .join(''),
+    )
+    const id = Number(JSON.parse(json)?.active_branch_id)
+    return id > 0 ? id : undefined
+  } catch {
+    return undefined
   }
 }
 
@@ -341,6 +382,33 @@ api.interceptors.response.use(
       if (isWithinSwitchGrace()) {
         return isReadMethod(eCfg?.method) ? neverSettles() : Promise.reject(error)
       }
+      // Acceso revocado/actualizado de verdad (rol, permisos, sucursales): se intenta UN refresh (el token nuevo
+      // ya lleva la versión de sesión vigente) y se reintenta la petición una vez. Se cierra sesión solo si el
+      // refresh falla. Seguro también para escrituras: el 409 sale del middleware ANTES de ejecutar el handler,
+      // así que la petición original no se procesó; el reintento reutiliza el mismo body (idempotency_key
+      // incluida), por lo que un cobro nunca se duplica.
+      const sUrl = String(eCfg?.url ?? '')
+      if (
+        eCfg &&
+        !eCfg.__retriedAfterSessionUpdate &&
+        !eCfg.__skipAuthRefresh &&
+        !sUrl.includes('/api/session/refresh') &&
+        !sUrl.includes('/api/login') &&
+        localStorage.getItem('refresh_token')
+      ) {
+        eCfg.__retriedAfterSessionUpdate = true
+        const oldBranch = tokenBranchId(String(eCfg.headers?.Authorization ?? '').replace(/^Bearer\s+/i, ''))
+        const newToken = await refreshAccessToken()
+        if (newToken) {
+          // Permisos/sucursales pudieron cambiar: BranchContext vuelve a leer el contexto.
+          window.dispatchEvent(new Event(SESSION_CONTEXT_STALE_EVENT))
+          const newBranch = tokenBranchId(newToken)
+          const branchChanged = oldBranch !== undefined && newBranch !== undefined && oldBranch !== newBranch
+          // Una escritura pensada para la sucursal A nunca se reenvía si el token nuevo apunta a la B.
+          if (branchChanged && !isReadMethod(eCfg.method)) return Promise.reject(error)
+          return api(eCfg)
+        }
+      }
       redirectToLogin('Tu acceso fue actualizado. Vuelve a iniciar sesión.')
       return Promise.reject(error)
     }
@@ -369,12 +437,7 @@ api.interceptors.response.use(
       // Access token expirado: intentar renovarlo UNA vez con el refresh token y reintentar la
       // petición original. Solo si no hay refresh token (o el refresh falla) se cierra la sesión.
       if (!error.config?.__retriedAfterRefresh && localStorage.getItem('refresh_token')) {
-        if (!refreshPromise) {
-          refreshPromise = refreshAccessToken().finally(() => {
-            refreshPromise = null
-          })
-        }
-        const newToken = await refreshPromise
+        const newToken = await refreshAccessToken()
         if (newToken && error.config) {
           error.config.__retriedAfterRefresh = true
           return api(error.config)

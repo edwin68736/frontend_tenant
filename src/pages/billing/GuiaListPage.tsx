@@ -53,6 +53,7 @@ function GuiaListContent() {
         .catch(() => {})
     },
     sunatEnabled === true,
+    loadDespatches, // al reconectar el stream se vuelve a pedir la lista
   )
 
   useEffect(() => {
