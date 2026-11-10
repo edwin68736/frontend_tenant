@@ -9,6 +9,7 @@ import { UnitQuantityInput } from '@/components/ui/UnitQuantityInput'
 import { companyService } from '@/services/company.service'
 import { productsService, type Product, type ProductPresentation } from '@/services/products.service'
 import { inventoryService, type TransferInput } from '@/services/inventory.service'
+import { useBranch } from '@/contexts/BranchContext'
 import { usePendingWork } from '@/lib/branchScope/pendingWork'
 
 const PER_PAGE = 10
@@ -39,7 +40,9 @@ export default function InventoryTransfersPage() {
 
 function InventoryTransfersContent() {
   const [branches, setBranches] = useState<Branch[]>([])
-  const [fromBranchId, setFromBranchId] = useState<number | undefined>()
+  // Origen = sucursal ACTIVA (fija); solo el destino se elige.
+  const { activeBranchId } = useBranch()
+  const fromBranchId: number | undefined = activeBranchId || undefined
   const [toBranchId, setToBranchId] = useState<number | undefined>()
   const [items, setItems] = useState<TransferItem[]>([])
   usePendingWork('transferencia en edición', items.length > 0)
@@ -65,7 +68,6 @@ function InventoryTransfersContent() {
       .then(b => {
         const brs = (b ?? []) as Branch[]
         setBranches(brs)
-        if (!fromBranchId && brs.length > 0) setFromBranchId(brs[0].id)
       })
       .catch(() => toast.error('Error cargando sucursales'))
       .finally(() => setLoading(false))
@@ -263,16 +265,12 @@ function InventoryTransfersContent() {
         <div className="flex flex-wrap gap-3 items-start">
           <div className="w-full sm:w-auto sm:min-w-[220px]">
             <label className="block text-xs font-medium text-gray-500 mb-1">Desde sucursal</label>
-            <SearchSelect
-              options={branches.filter(b => b.id !== toBranchId).map(b => ({ value: String(b.id), label: b.name }))}
-              value={fromBranchId ? String(fromBranchId) : ''}
-              onChange={v => {
-                const val = v ? Number(v) : undefined
-                setFromBranchId(val)
-                if (val === toBranchId) setToBranchId(undefined)
-              }}
-              placeholder="Selecciona origen"
-            />
+            <div
+              data-testid="locked-branch"
+              className="w-full rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 text-sm text-gray-700"
+            >
+              {branches.find(b => b.id === fromBranchId)?.name ?? 'Sucursal activa'}
+            </div>
           </div>
           <div className="w-full sm:w-auto sm:min-w-[220px]">
             <label className="block text-xs font-medium text-gray-500 mb-1">Hacia sucursal</label>
@@ -282,7 +280,6 @@ function InventoryTransfersContent() {
               onChange={v => {
                 const val = v ? Number(v) : undefined
                 setToBranchId(val)
-                if (val === fromBranchId) setFromBranchId(undefined)
               }}
               placeholder="Selecciona destino"
             />

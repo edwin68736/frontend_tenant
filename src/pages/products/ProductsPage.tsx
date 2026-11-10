@@ -32,6 +32,8 @@ import { BarcodeScannerModal } from '@/components/barcode/BarcodeScannerModal'
 import { ScannerModeControl } from '@/components/barcode/ScannerModeControl'
 import { useBranch } from '@/contexts/BranchContext'
 import { useAuth } from '@/contexts/AuthContext'
+import { useCatalogAccess } from '@/hooks/useCatalogAccess'
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 import { clsx } from 'clsx'
 import ProductGalleryEditor from '@/components/products/ProductGalleryEditor'
 import {
@@ -162,14 +164,19 @@ export default function ProductsPage() {
 }
 
 export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) {
-  const { activeBranchId, activeBranch } = useBranch()
+  const { activeBranchId, activeBranch, isAllBranches } = useBranch()
   const { hasPermission } = useAuth()
-  const canDeleteProducts = hasPermission('products.delete')
-  // Mismos permisos que exige el servidor: crear/importar = products.create; editar, activar, precios y acciones masivas = products.edit.
-  const canCreateProducts = hasPermission('products.create')
-  const canEditProducts = hasPermission('products.edit')
-  const canSelectRows = canDeleteProducts || canEditProducts
-  const canAdjustStock = hasPermission('inventory.adjust')
+  // Mismos permisos que exige el servidor. Catálogo GLOBAL (crear, importar, editar datos, activar, eliminar, imágenes,
+  // acciones masivas globales) = products.create/edit/delete + products.manage_global. Lo comercial POR SUCURSAL
+  // (precio por sucursal, asignar a sucursal, actualizar precios de la sucursal) = products.edit a secas.
+  const catalog = useCatalogAccess()
+  const { canWrite: canWriteNow } = useBranchWriteGuard()
+  const canDeleteProducts = catalog.canDeleteGlobal
+  const canCreateProducts = catalog.canCreateGlobal
+  const canEditProducts = catalog.canEditGlobal
+  const canEditBranchData = catalog.canEditBranchData
+  const canSelectRows = canDeleteProducts || canEditProducts || canEditBranchData
+  const canAdjustStock = canWriteNow && hasPermission('inventory.adjust')
   // Sin products.view_cost el servidor omite el costo y no deja pisarlo al guardar: no se muestra el campo.
   const canViewCost = hasPermission('products.view_cost')
   const [products, setProducts] = useState<Product[]>([])
@@ -239,6 +246,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const [presentations, setPresentations] = useState<ProductPresentation[]>([])
   const [showPresentationsModal, setShowPresentationsModal] = useState(false)
   const [branchPricesOpen, setBranchPricesOpen] = useState(false)
+  /** Producto cuyo precio por sucursal se abre desde la lista (sin pasar por el formulario global de edición). */
+  const [branchPricesTarget, setBranchPricesTarget] = useState<Product | null>(null)
   /** Alta en curso + clic en "Precio por sucursal": confirmar antes de registrar el producto. */
   const [confirmRegisterForBranchPrices, setConfirmRegisterForBranchPrices] = useState(false)
 
@@ -312,7 +321,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     // Los servicios/productos sin control de stock (manage_stock=false) siguen viéndose en todas.
     // Productos y servicios con sucursales asignadas ("Disponible en") también se filtran aquí; con
     // "Ver todas las sucursales" se lista el catálogo completo.
-    const stockBranchId = activeBranchId > 0 && !showAllBranches ? activeBranchId : undefined
+    const stockBranchId = activeBranchId > 0 && !showAllBranches && !isAllBranches ? activeBranchId : undefined
     return productsService
       // Los combos se administran en /products/combos: aquí solo el catálogo suelto.
       .list(listSearchQuery, catFilter, undefined, !onlyInactive, page, perPage, undefined, pageMode, stockBranchId, true, brandFilter, onlyInactive)
@@ -361,7 +370,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   useEffect(() => {
     void load()
     setSelectedIds(new Set())
-  }, [listSearchQuery, catFilter, brandFilter, onlyInactive, page, perPage, pageMode, activeBranchId, showAllBranches])
+  }, [listSearchQuery, catFilter, brandFilter, onlyInactive, page, perPage, pageMode, activeBranchId, showAllBranches, isAllBranches])
 
   // Todas las sucursales del tenant (no solo las del usuario): las usan "Disponible en" del
   // formulario —también al crear— y la acción masiva "Asignar a sucursal…".
@@ -381,7 +390,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
   const handleExport = async () => {
     setExporting(true)
     try {
-      const stockBranchId = activeBranchId > 0 && !showAllBranches ? activeBranchId : undefined
+      const stockBranchId = activeBranchId > 0 && !showAllBranches && !isAllBranches ? activeBranchId : undefined
       const all: Product[] = []
       let p = 1
       const per = 100
@@ -1203,7 +1212,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               >
                 {exporting ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Exportar Excel
               </button>
-              {canEditProducts && <button
+              {canEditBranchData && <button
                 type="button"
                 onClick={() => setPriceUpdateModalOpen(true)}
                 className="touch-target sm:min-h-0 flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50"
@@ -1351,7 +1360,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
             >
               {exporting ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Exportar Excel
             </button>
-            {canEditProducts && <button
+            {canEditBranchData && <button
               type="button"
               onClick={() => { setFiltersModalOpen(false); setPriceUpdateModalOpen(true) }}
               className="touch-target flex items-center justify-center gap-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50"
@@ -1478,7 +1487,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               <Eye size={14} />
               Mostrar en catálogo
             </button>
-            {branches.length > 1 && (
+            </>}
+            {canEditBranchData && branches.length > 1 && (
               <button
                 type="button"
                 disabled={bulkActionInProgress}
@@ -1493,7 +1503,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 Asignar a sucursal…
               </button>
             )}
-            {pageMode === 'product' && (
+            {canEditProducts && pageMode === 'product' && (
               <button
                 type="button"
                 disabled={bulkActionInProgress}
@@ -1504,7 +1514,6 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 Controlar stock
               </button>
             )}
-            </>}
             <button
               type="button"
               disabled={bulkActionInProgress}
@@ -1708,6 +1717,19 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
                 <td className="px-4 py-3"><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{p.active ? 'Activo' : 'Inactivo'}</span></td>
                 <td className="px-4 py-3">
                   <div className="flex gap-1 justify-end">
+                    {canEditBranchData && pageMode === 'product' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBranchPricesTarget(p)
+                          setBranchPricesOpen(true)
+                        }}
+                        className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg"
+                        title="Precio por sucursal"
+                      >
+                        <Tag size={14} />
+                      </button>
+                    )}
                     {canEditProducts && <button onClick={() => handleToggle(p)} className="p-1.5 rounded-lg" title="Activar/Desactivar">
                       {p.active ? <ToggleRight size={16} className="text-green-600 hover:bg-green-50" /> : <ToggleLeft size={16} className="text-gray-400 hover:text-gray-600 hover:bg-gray-100" />}
                     </button>}
@@ -2504,10 +2526,13 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
 
       <ProductBranchPricesPanel
         open={branchPricesOpen}
-        productId={editing?.id ?? 0}
-        productName={editing?.name}
-        globalSalePrice={form.sale_price}
-        onClose={() => setBranchPricesOpen(false)}
+        productId={branchPricesTarget?.id ?? editing?.id ?? 0}
+        productName={branchPricesTarget?.name ?? editing?.name}
+        globalSalePrice={branchPricesTarget ? Number(branchPricesTarget.sale_price ?? 0) : form.sale_price}
+        onClose={() => {
+          setBranchPricesOpen(false)
+          setBranchPricesTarget(null)
+        }}
       />
 
       <ProductPriceUpdateModal

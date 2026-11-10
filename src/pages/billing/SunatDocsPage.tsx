@@ -8,6 +8,7 @@ import { FiscalAuxDocListSection } from '@/components/billing/FiscalAuxDocListSe
 import { ReversionCreateModal } from '@/components/billing/ReversionCreateModal'
 import { companyService } from '@/services/company.service'
 import RequireModule from '@/components/ui/RequireModule'
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 import SunatRequiredMessage from '@/components/ui/SunatRequiredMessage'
 import { useBillingEvents } from '@/hooks/useBillingEvents'
 
@@ -207,13 +208,14 @@ function ReversionsSection({
   onStatusUpdated?: (r: SunatReversion) => void
 }) {
   const [modalOpen, setModalOpen] = useState(false)
+  const { canWrite } = useBranchWriteGuard()
   return (
     <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
       <div className="px-4 py-3 border-b flex justify-between">
         <h3 className="font-semibold">Comunicaciones de reversión</h3>
         <div className="flex gap-2">
           <button onClick={onRefresh} disabled={loading} className="p-2"><RefreshCw size={16} className={loading ? 'animate-spin' : ''} /></button>
-          <button onClick={() => setModalOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-orange-600 text-white rounded-xl text-sm font-medium"><Plus size={14} /> Nueva reversión</button>
+          {canWrite && <button onClick={() => setModalOpen(true)} className="flex items-center gap-1.5 px-4 py-2 bg-orange-600 text-white rounded-xl text-sm font-medium"><Plus size={14} /> Nueva reversión</button>}
         </div>
       </div>
       <table className="w-full text-sm min-w-[720px]">

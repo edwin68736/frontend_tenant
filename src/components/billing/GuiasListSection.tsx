@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 import { toast } from 'sonner'
 import { RefreshCw, Download, Eye, X, FileCode, Archive, Search } from 'lucide-react'
 import {
@@ -49,6 +50,7 @@ export function GuiasListSection({
   setStatusLoading: (id: number | null) => void
   onStatusUpdated?: (d: SunatDespatch) => void
 }) {
+  const { canWrite } = useBranchWriteGuard()
   const [statusFilter, setStatusFilter] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [dateFrom, setDateFrom] = useState('')
@@ -325,14 +327,16 @@ export function GuiasListSection({
                       >
                         <Search size={12} /> Detalle
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => refreshStatus(d)}
-                        disabled={statusLoading === d.id}
-                        className="text-xs px-2 py-1 rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200"
-                      >
-                        {statusLoading === d.id ? '…' : 'Estado'}
-                      </button>
+                      {canWrite && (
+                        <button
+                          type="button"
+                          onClick={() => refreshStatus(d)}
+                          disabled={statusLoading === d.id}
+                          className="text-xs px-2 py-1 rounded-lg bg-blue-100 text-blue-800 hover:bg-blue-200"
+                        >
+                          {statusLoading === d.id ? '…' : 'Estado'}
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

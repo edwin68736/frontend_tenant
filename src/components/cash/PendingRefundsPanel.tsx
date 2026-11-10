@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { Undo2, Loader2 } from 'lucide-react'
 import { salesService, type PendingRefund } from '@/services/sales.service'
 import { useAuth } from '@/contexts/AuthContext'
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 
 /** Carga las devoluciones que siguen esperando una caja abierta en la sucursal. */
 function usePendingRefunds(branchId?: number | null) {
@@ -82,7 +83,8 @@ export function PendingRefundsPanel({ sessionId, branchId, onApplied }: Props) {
   // nada — quien podía "ver" la devolución también podía aplicarla). Sin este permiso, la fila
   // sigue mostrando el monto pendiente (informativo) pero sin el botón de acción.
   const { hasPermission } = useAuth()
-  const canApply = hasPermission('sales.cancel')
+  const { canWrite: writeOk } = useBranchWriteGuard()
+  const canApply = (writeOk && hasPermission('sales.cancel'))
 
   const apply = async (row: PendingRefund) => {
     setApplyingKey(rowKey(row))

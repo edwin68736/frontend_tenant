@@ -15,6 +15,7 @@ import { formatDisplayDatePeru } from '@/utils/datesPeru'
 import { formatSaleMoney } from '@/utils/formatMoney'
 import { exportReceivablesExcel, exportReceivablesPdf } from '@/utils/receivablesExport'
 import { CollectPaymentModal } from '@/components/receivables/CollectPaymentModal'
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 
 export default function ReceivablesPage() {
   return (
@@ -26,8 +27,9 @@ export default function ReceivablesPage() {
 
 function ReceivablesContent() {
   const { hasPermission } = useAuth()
-  const canCollect = hasPermission('receivables.collect')
-  const canConfirmBn = hasPermission('receivables.confirm_bn')
+  const { canWrite: writeOk } = useBranchWriteGuard()
+  const canCollect = (writeOk && hasPermission('receivables.collect'))
+  const canConfirmBn = (writeOk && hasPermission('receivables.confirm_bn'))
   const [rows, setRows] = useState<ReceivableRow[]>([])
   const [summary, setSummary] = useState<ReceivablesSummary | null>(null)
   const [loading, setLoading] = useState(true)

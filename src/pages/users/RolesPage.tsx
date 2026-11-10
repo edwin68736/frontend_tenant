@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import WriteOnly from '@/components/branch/WriteOnly'
 import { toast } from 'sonner'
 import { Plus, Pencil, Trash2, ChevronDown, Wand2 } from 'lucide-react'
 import { usersService, type Role, type Permission } from '@/services/users.service'
@@ -91,9 +92,11 @@ export default function RolesPage() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div><h2 className="text-lg font-bold text-gray-800">Roles y Permisos</h2><p className="text-sm text-gray-500">Control de acceso por perfil</p></div>
+        <WriteOnly>
         <button onClick={openNew} className="flex items-center gap-1.5 px-4 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90">
           <Plus size={15} /> Nuevo rol
         </button>
+        </WriteOnly>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">

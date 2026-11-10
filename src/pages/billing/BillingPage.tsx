@@ -77,6 +77,7 @@ import {
   canShowXmlSent,
 } from '@/constants/billingStatus'
 import { CREDIT_NOTE_REASONS, DEBIT_NOTE_REASONS, CREDIT_NOTE_PARTIAL_REASON_CODES } from '@/constants/sunatnote'
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 
 const STATUS_COLORS = BILLING_STATUS_COLORS
 const STATUS_LABELS = BILLING_STATUS_LABELS
@@ -114,7 +115,8 @@ function BillingContent() {
   // vuelve a exigirlo: ocultar el botón no es la barrera, solo evita mostrar
   // una acción que el tenant no puede ejecutar.
   const { isImpersonated, hasPermission, hasModule } = useAuth()
-  const canGuia = hasModule('despatch')
+  const { canWrite: writeOk } = useBranchWriteGuard()
+  const canGuia = hasModule('despatch') && writeOk
   const canAdvancedDocs = hasModule('advanced_docs')
   // POST /billing/void-with-credit-note y /billing/debit-notes ahora exigen billing.credit_note/
   // billing.debit_note respectivamente (antes bastaba billing.send, el mismo permiso con el que
@@ -122,11 +124,11 @@ function BillingContent() {
   // al hacer clic y recibir el 403.
   // Enviar/reenviar a SUNAT y crear resúmenes/bajas exigen billing.send; con solo billing.view la pantalla
   // es de consulta (lista, detalle y descargas) y esos botones no se ofrecen.
-  const canSend = hasPermission('billing.send')
-  const canVoidCreditNote = hasPermission('billing.credit_note')
-  const canDebitNote = hasPermission('billing.debit_note')
+  const canSend = (writeOk && hasPermission('billing.send'))
+  const canVoidCreditNote = (writeOk && hasPermission('billing.credit_note'))
+  const canDebitNote = (writeOk && hasPermission('billing.debit_note'))
   // POST /sales/:id/void-rejected exige sales.void_rejected; el botón solo se ofrece a quien lo tiene.
-  const canVoidRejected = hasPermission('sales.void_rejected')
+  const canVoidRejected = (writeOk && hasPermission('sales.void_rejected'))
   const [voidRejTarget, setVoidRejTarget] = useState<{ id: number; number: string } | null>(null)
   const [voidRejReason, setVoidRejReason] = useState('')
   const [voidRejSubmitting, setVoidRejSubmitting] = useState(false)
@@ -982,14 +984,14 @@ function BillingContent() {
               Débito
             </button>
           </div>
-          <button
+          {writeOk && <button
             type="button"
             onClick={() => navigate('/billing/notes/new')}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium border border-dashed border-gray-300 text-gray-600 hover:border-[rgb(var(--p300))] hover:text-[rgb(var(--p600))]"
             title="Para un comprobante que no está registrado como venta en Tukifac"
           >
             <Plus size={14} /> Nota independiente
-          </button>
+          </button>}
         </div>
       )}
 

@@ -27,6 +27,8 @@ import {
   type BillingCycle,
 } from '@/services/memberships.service'
 import { getTodayPeru } from '@/utils/datesPeru'
+import { useBranch } from '@/contexts/BranchContext'
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 import {
   buildMembershipWhatsAppUrl,
   daysUntilNextPayment,
@@ -115,6 +117,8 @@ function MembershipsContent() {
       ? dueParamRaw
       : ''
 
+  const { activeBranchId } = useBranch()
+  const { canWrite } = useBranchWriteGuard()
   const [rows, setRows] = useState<Membership[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -479,10 +483,14 @@ function MembershipsContent() {
           >
             <RefreshCw size={14} /> Actualizar
           </button>
-          {hasPermission('memberships.create') && (
+          {hasPermission('memberships.create') && canWrite && (
             <button
               type="button"
-              onClick={() => setShowCreate(true)}
+              onClick={() => {
+                // La membresía se registra en la sucursal activa.
+                setCreateForm((f) => ({ ...f, branch_id: activeBranchId ? String(activeBranchId) : f.branch_id }))
+                setShowCreate(true)
+              }}
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[rgb(var(--p600))] text-white text-sm font-medium hover:opacity-95"
             >
               <Plus size={16} /> Nueva membresía
@@ -831,6 +839,8 @@ function MembershipsContent() {
               <select
                 className="w-full border border-gray-200 rounded-lg px-3 py-2"
                 value={createForm.branch_id}
+                disabled
+                title="La membresía se registra en la sucursal activa"
                 onChange={(e) => setCreateForm((f) => ({ ...f, branch_id: e.target.value }))}
               >
                 <option value="">—</option>
@@ -967,6 +977,8 @@ function MembershipsContent() {
               <select
                 className="w-full border border-gray-200 rounded-lg px-3 py-2"
                 value={editForm.branch_id}
+                disabled
+                title="La sucursal de la membresía no se cambia aquí"
                 onChange={(e) => setEditForm((f) => ({ ...f, branch_id: e.target.value }))}
               >
                 {branches.map((b) => (

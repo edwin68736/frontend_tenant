@@ -18,6 +18,7 @@ import {
   PRODUCT_EXPIRY_BADGE_CLASS,
   expiryStatusLabel,
 } from '@/utils/productExpiry'
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 
 const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
 /** Con filtros "solo cliente" (bajo mínimo / por vencer) se trae todo el catálogo filtrado por
@@ -76,9 +77,10 @@ function InventoryContent() {
   const { activeBranchId } = useBranch()
   const { hasPermission } = useAuth()
   // Mismos permisos que exige el servidor (inventory.manage implica los finos). Ingreso/Egreso/Conteo son rutas inventory.manage.
-  const canManageInventory = hasPermission('inventory.manage')
-  const canAdjust = hasPermission('inventory.adjust')
-  const canTransfer = hasPermission('inventory.transfer')
+  const { canWrite: writeOk } = useBranchWriteGuard()
+  const canManageInventory = (writeOk && hasPermission('inventory.manage'))
+  const canAdjust = (writeOk && hasPermission('inventory.adjust'))
+  const canTransfer = (writeOk && hasPermission('inventory.transfer'))
   const [branches, setBranches] = useState<Branch[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [qInput, setQInput] = useState('')

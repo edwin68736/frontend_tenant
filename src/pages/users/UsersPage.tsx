@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import WriteOnly from '@/components/branch/WriteOnly'
 import { toast } from 'sonner'
 import { Plus, Pencil, Trash2, ToggleLeft, ToggleRight, Search, RotateCcw } from 'lucide-react'
 import { usersService, type TenantUser, type Role, type DeletedUserInfo } from '@/services/users.service'
@@ -290,6 +291,7 @@ export default function UsersPage() {
         >
           <RotateCcw size={15} /> {showDeleted ? 'Ver activos' : 'Ver eliminados'}
         </button>
+        <WriteOnly>
         <button
           onClick={openNew}
           disabled={atSeatLimit}
@@ -298,6 +300,7 @@ export default function UsersPage() {
         >
           <Plus size={15} /> Nuevo usuario
         </button>
+        </WriteOnly>
         </div>
       </div>
 

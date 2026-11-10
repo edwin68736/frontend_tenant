@@ -42,6 +42,7 @@ import { TransportPicker } from './TransportPicker'
 import { ItemsTable } from './CargoSection'
 import { MoreOptions } from './MoreOptions'
 import { Section, inputCls } from './ui'
+import { useBranch } from '@/contexts/BranchContext'
 
 export interface DespatchFormProps {
   /** Tipo de guía ya elegido (por la ruta o por venir de un comprobante). Sin valor = se pregunta primero. */
@@ -71,9 +72,11 @@ export function DespatchForm({
   title,
   layout = 'page',
 }: DespatchFormProps) {
+  // La guía se emite SIEMPRE desde la sucursal activa (el servidor rechaza otra con BRANCH_FORBIDDEN).
+  const { activeBranchId } = useBranch()
   const [kind, setKind] = useState<GreKind | null>(prefill ? '09' : (initialKind ?? null))
   const [draft, setDraft] = useState<DespatchDraft>(() => {
-    const d = emptyDraft(prefill ? '09' : (initialKind ?? '09'), prefill?.branchId ?? mainBranchId)
+    const d = emptyDraft(prefill ? '09' : (initialKind ?? '09'), activeBranchId || (prefill?.branchId ?? mainBranchId))
     if (prefill) {
       d.party = prefill.party
       d.items = prefill.items
@@ -264,7 +267,7 @@ export function DespatchForm({
       const pre = buildDespatchPrefillFromSaleDetail(await salesService.get(sale.id))
       setDraft((d) => ({
         ...d,
-        branchId: pre.branchId,
+        branchId: activeBranchId || pre.branchId,
         party: pre.party,
         items: pre.items,
         sourceSaleId: pre.sourceSaleId,
@@ -518,7 +521,8 @@ export function DespatchForm({
           <select
             className={inputCls}
             value={draft.branchId}
-            disabled={sourceLocked}
+            disabled
+            title="La guía se emite desde la sucursal activa"
             onChange={(e) => patch({ branchId: Number(e.target.value), partidaTouched: false, llegadaTouched: false })}
           >
             {(branchOptions.length ? branchOptions : branches).map((b) => (
@@ -661,7 +665,7 @@ export function DespatchForm({
             title={partidaTitle}
             caption={is09 ? (draft.motivo === 'compra' ? draft.party.rzn_social : fromBranchName) : draft.party.rzn_social}
             place={draft.partida}
-            branches={is09 && draft.motivo !== 'compra' ? branchRows : undefined}
+            branches={is09 && draft.motivo !== 'compra' ? branchRows.filter((b) => b.id === draft.branchId) : undefined}
             onChange={(p) => {
               const next: Partial<DespatchDraft> = { partida: p, partidaTouched: true }
               if (is09 && draft.motivo !== 'compra' && p.branchId) next.branchId = p.branchId
@@ -680,7 +684,13 @@ export function DespatchForm({
                 : draft.receiver.rzn_social
             }
             place={draft.llegada}
-            branches={is09 && (draft.motivo === 'compra' || draft.motivo === 'traslado') ? branchRows : undefined}
+            branches={
+              is09 && draft.motivo === 'compra'
+                ? branchRows.filter((b) => b.id === draft.branchId)
+                : is09 && draft.motivo === 'traslado'
+                  ? branchRows
+                  : undefined
+            }
             lockedBranchId={is09 && draft.motivo === 'traslado' ? draft.branchId : undefined}
             onChange={(p) => {
               const next: Partial<DespatchDraft> = { llegada: p, llegadaTouched: true }

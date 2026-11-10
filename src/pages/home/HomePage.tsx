@@ -1,3 +1,4 @@
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   ShoppingCart,
@@ -18,6 +19,7 @@ import { useDesktopViewport, useTabletViewport } from '@/hooks/useMediaQuery'
 
 export default function HomePage() {
   const { modules, hasPermission } = useAuth()
+  const { canWrite } = useBranchWriteGuard()
 
   // El hook va primero y sin condiciones: dentro de un `||` el short-circuit podría saltárselo.
   const isDesktop = useDesktopViewport()
@@ -35,7 +37,7 @@ export default function HomePage() {
   // visible igual), y el resto solo chequeaba el módulo, no si el rol puede usarlos. Mismo
   // permiso que exige cada ruta real.
   const quickLinks: QuickLink[] = [
-    hasModule('sales') && hasPermission('sales.pos') && {
+    canWrite && hasModule('sales') && hasPermission('sales.pos') && {
       to: '/sales/pos',
       icon: ShoppingCart,
       label: 'Punto de venta',
@@ -46,21 +48,21 @@ export default function HomePage() {
       icon: Receipt,
       label: 'Notas de venta',
       description: 'Notas de venta internas (SUNAT 00), sin envío obligatorio',
-      newTo: hasPermission('sales.create') ? '/sales/nota-venta' : undefined,
+      newTo: canWrite && hasPermission('sales.create') ? '/sales/nota-venta' : undefined,
     },
     hasModule('sales') && hasPermission('sales.view') && {
       to: '/quotations',
       icon: FileText,
       label: 'Cotizaciones',
       description: 'Cotiza precios antes de emitir el comprobante',
-      newTo: hasPermission('sales.create') ? '/quotations/new' : undefined,
+      newTo: canWrite && hasPermission('sales.create') ? '/quotations/new' : undefined,
     },
     hasModule('purchases') && hasPermission('purchases.view') && {
       to: '/purchases',
       icon: Truck,
       label: 'Compras',
       description: 'Registra facturas y boletas de tus proveedores',
-      newTo: hasPermission('purchases.create') ? '/purchases/register' : undefined,
+      newTo: canWrite && hasPermission('purchases.create') ? '/purchases/register' : undefined,
     },
     hasModule('products') && hasPermission('products.view') && {
       to: '/products',

@@ -5,6 +5,7 @@ import { Modal } from '@/components/ui/Modal'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { companyService } from '@/services/company.service'
 import { inventoryService, type TransferListItem } from '@/services/inventory.service'
+import { useBranch } from '@/contexts/BranchContext'
 import { productsService, type Product, type ProductPresentation } from '@/services/products.service'
 
 type Branch = { id: number; name: string }
@@ -23,7 +24,9 @@ export function ProductTransferModal({
   onChanged: () => void
 }) {
   const [branches, setBranches] = useState<Branch[]>([])
-  const [fromBranchId, setFromBranchId] = useState<number | undefined>(defaultBranchId || undefined)
+  // Origen = sucursal ACTIVA (fija); solo el destino se elige libremente.
+  const { activeBranchId } = useBranch()
+  const fromBranchId: number | undefined = activeBranchId || defaultBranchId || undefined
   const [toBranchId, setToBranchId] = useState<number | undefined>()
   const [quantity, setQuantity] = useState(1)
   const [notes, setNotes] = useState('')
@@ -57,9 +60,8 @@ export function ProductTransferModal({
     companyService.listBranches().then((b) => {
       const list = (b ?? []) as Branch[]
       setBranches(list)
-      if (!defaultBranchId && list.length > 0) setFromBranchId(list[0].id)
     })
-  }, [defaultBranchId])
+  }, [])
 
   useEffect(() => { loadTransfers() }, [loadTransfers])
 
@@ -161,20 +163,12 @@ export function ProductTransferModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Desde sucursal</label>
-              <select
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-                value={fromBranchId ?? ''}
-                onChange={(e) => {
-                  const val = e.target.value ? Number(e.target.value) : undefined
-                  setFromBranchId(val)
-                  if (val === toBranchId) setToBranchId(undefined)
-                }}
+              <div
+                data-testid="locked-branch"
+                className="w-full rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 text-sm text-gray-700"
               >
-                <option value="">Selecciona origen</option>
-                {branches.filter((b) => b.id !== toBranchId).map((b) => (
-                  <option key={b.id} value={b.id}>{b.name}</option>
-                ))}
-              </select>
+                {branches.find((b) => b.id === fromBranchId)?.name ?? 'Sucursal activa'}
+              </div>
               {availableStock != null && (
                 <p className="text-xs text-gray-400 mt-1">Disponible: {availableStock}</p>
               )}
@@ -187,7 +181,6 @@ export function ProductTransferModal({
                 onChange={(e) => {
                   const val = e.target.value ? Number(e.target.value) : undefined
                   setToBranchId(val)
-                  if (val === fromBranchId) setFromBranchId(undefined)
                 }}
               >
                 <option value="">Selecciona destino</option>

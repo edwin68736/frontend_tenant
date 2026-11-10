@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import WriteOnly from '@/components/branch/WriteOnly'
 import { toast } from 'sonner'
 import { Plus, Pencil, Trash2, Search, ToggleLeft, ToggleRight, SearchCheck, Eye, Users, FileSpreadsheet } from 'lucide-react'
 import {
@@ -406,9 +407,9 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
             </button>
           )}
           {canCreate && (
-            <button onClick={openNew} className="flex items-center gap-1.5 px-4 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90">
+            <WriteOnly><button onClick={openNew} className="flex items-center gap-1.5 px-4 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90">
               <Plus size={15} /> Nuevo {entityLabel}
-            </button>
+            </button></WriteOnly>
           )}
         </div>
       </div>

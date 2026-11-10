@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useCatalogAccess } from '@/hooks/useCatalogAccess'
 import { toast } from 'sonner'
 import { Plus, Pencil, Trash2, Loader2, ImagePlus, UtensilsCrossed, Layers, RefreshCw } from 'lucide-react'
 import {
@@ -33,6 +34,8 @@ type Props = {
 }
 
 export function ProductCombosPanel({ branchId, categories = [] }: Props) {
+  // Los combos son catálogo global: exigen products.manage_global (además de create/edit/delete).
+  const access = useCatalogAccess()
   const [combos, setCombos] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
@@ -216,14 +219,16 @@ export function ProductCombosPanel({ branchId, categories = [] }: Props) {
           Un combo agrupa varios productos a un precio fijo. El stock se descuenta de cada
           componente que tenga control de inventario.
         </p>
-        <button
-          type="button"
-          onClick={openCreate}
-          className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-primary-600 text-white rounded-xl text-sm font-medium hover:bg-primary-700 shadow-sm shrink-0"
-        >
-          <Plus size={15} />
-          <span className="hidden sm:inline">Agregar combo</span>
-        </button>
+        {access.canCreateGlobal && (
+          <button
+            type="button"
+            onClick={openCreate}
+            className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-primary-600 text-white rounded-xl text-sm font-medium hover:bg-primary-700 shadow-sm shrink-0"
+          >
+            <Plus size={15} />
+            <span className="hidden sm:inline">Agregar combo</span>
+          </button>
+        )}
       </div>
 
       {loading ? (
@@ -262,22 +267,26 @@ export function ProductCombosPanel({ branchId, categories = [] }: Props) {
                   </p>
                 </div>
                 <div className="flex items-center gap-0.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => openEdit(combo)}
-                    className="p-2 rounded-lg text-stone-400 hover:text-primary-600 hover:bg-stone-50"
-                    aria-label="Editar combo"
-                  >
-                    <Pencil size={15} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDeleteTarget(combo)}
-                    className="p-2 rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50"
-                    aria-label="Eliminar combo"
-                  >
-                    <Trash2 size={15} />
-                  </button>
+                  {access.canEditGlobal && (
+                    <button
+                      type="button"
+                      onClick={() => openEdit(combo)}
+                      className="p-2 rounded-lg text-stone-400 hover:text-primary-600 hover:bg-stone-50"
+                      aria-label="Editar combo"
+                    >
+                      <Pencil size={15} />
+                    </button>
+                  )}
+                  {access.canDeleteGlobal && (
+                    <button
+                      type="button"
+                      onClick={() => setDeleteTarget(combo)}
+                      className="p-2 rounded-lg text-stone-400 hover:text-red-600 hover:bg-red-50"
+                      aria-label="Eliminar combo"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  )}
                 </div>
               </div>
             )

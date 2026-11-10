@@ -49,7 +49,9 @@ export function InventoryDocumentHeader({
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm disabled:bg-gray-50"
             value={values.branch_id || ''}
             onChange={e => onChange({ branch_id: Number(e.target.value) })}
-            disabled={disabled || branchDisabled}
+            // Siempre bloqueada: el documento se registra en la sucursal activa (el servidor rechaza otra).
+            disabled
+            title="El documento se registra en la sucursal activa"
           >
             <option value="">Seleccione</option>
             {branches.map(b => (

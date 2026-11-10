@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useCatalogAccess } from '@/hooks/useCatalogAccess'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
-import { useAuth } from '@/contexts/AuthContext'
 import { SaleUnitsEditor, type FractionalPreset } from '@/components/products/SaleUnitsEditor'
 import { formatUnitPrice, roundSunat } from '@/utils/money'
 import { SaleUnitBranchPricesPanel } from '@/components/products/SaleUnitBranchPricesPanel'
@@ -90,10 +90,10 @@ export function SaleUnitsModal({
   onChanged,
   embedded,
 }: Props) {
-  const { hasPermission } = useAuth()
-  const canCreate = hasPermission('products.create')
-  const canEdit = hasPermission('products.edit')
-  const canDelete = hasPermission('products.delete')
+  const access = useCatalogAccess()
+  const canCreate = access.canCreateGlobal
+  const canEdit = access.canEditGlobal
+  const canDelete = access.canDeleteGlobal
 
   const [units, setUnits] = useState<ProductSaleUnit[]>([])
   const [loading, setLoading] = useState(false)

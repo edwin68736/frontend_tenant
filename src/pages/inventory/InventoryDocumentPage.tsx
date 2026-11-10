@@ -40,6 +40,7 @@ import {
 import { companyService } from '@/services/company.service'
 import { productsService, type Product } from '@/services/products.service'
 import { formatDisplayDatePeru, getTodayPeru } from '@/utils/datesPeru'
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 
 interface Branch {
   id: number
@@ -86,9 +87,10 @@ export default function InventoryDocumentPage({ direction }: InventoryDocumentPa
   const isForm = isNew || isEdit
   // inventory.manage sigue concediendo todo (implica el resto vía "{modulo}.manage"), pero cada
   // botón ahora respeta su propio permiso fino en vez de uno solo para crear/confirmar/anular.
-  const canCreateDoc = hasPermission('inventory.create_document')
-  const canConfirmDoc = hasPermission('inventory.confirm_document')
-  const canVoidDoc = hasPermission('inventory.void_document')
+  const { canWrite: writeOk } = useBranchWriteGuard()
+  const canCreateDoc = (writeOk && hasPermission('inventory.create_document'))
+  const canConfirmDoc = (writeOk && hasPermission('inventory.confirm_document'))
+  const canVoidDoc = (writeOk && hasPermission('inventory.void_document'))
 
   const [branches, setBranches] = useState<Branch[]>([])
   const [operationTypes, setOperationTypes] = useState<InventoryOperationType[]>([])

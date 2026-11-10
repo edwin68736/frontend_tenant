@@ -10,6 +10,7 @@ import { downloadSimpleSheet, errMessage, money } from '@/utils/accountingExport
 import {
   AccountingPage, Card, Field, Spinner, Warnings, btnPrimary, btnSecondary, inputCls,
 } from '@/components/accounting/AccountingUi'
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 
 const MATCH_LABEL: Record<SireMatch, string> = {
   ok: 'Coincide',
@@ -29,7 +30,8 @@ export default function SirePage() {
   const { book: bookParam } = useParams()
   const book = bookParam === 'purchase' ? 'purchase' : 'sale'
   const { hasPermission } = useAuth()
-  const canManage = hasPermission('accounting.sire_manage')
+  const { canWrite: writeOk } = useBranchWriteGuard()
+  const canManage = (writeOk && hasPermission('accounting.sire_manage'))
   const [periods, setPeriods] = useState<SirePeriod[]>([])
   const [year, setYear] = useState('')
   const [period, setPeriod] = useState('')

@@ -11,7 +11,8 @@ import {
 import { toast } from 'sonner'
 import { sessionService, type BranchBrief } from '@/services/session.service'
 import { useAuth } from '@/contexts/AuthContext'
-import { BRANCH_INVALID_EVENT, SESSION_REFRESHED_EVENT } from '@/services/api'
+import { BRANCH_INVALID_EVENT, BRANCH_READ_ONLY_EVENT, SESSION_REFRESHED_EVENT } from '@/services/api'
+import { BRANCH_READ_ONLY_MESSAGE, getViewMode, setViewMode } from '@/lib/branchScope/viewMode'
 import { clearAllCaches, resetBranchCaches } from '@/lib/branchScope/caches'
 import { clearPendingWork, getPendingWork } from '@/lib/branchScope/pendingWork'
 import {
@@ -21,6 +22,7 @@ import {
 } from '@/lib/branchScope/requestEpoch'
 
 const ALLOWED_BRANCHES_KEY = 'allowed_branches'
+const CAN_VIEW_ALL_KEY = 'can_view_all'
 
 function readAllowedBranches(): BranchBrief[] {
   try {
@@ -49,6 +51,13 @@ type BranchContextValue = {
   canSwitchBranch: boolean
   /** El backend indica que el usuario puede consultar "todas las sucursales" (solo lectura). */
   canViewAll: boolean
+  /**
+   * Modo "Todas las sucursales" activo (solo si `canViewAll`): consulta consolidada de SOLO lectura.
+   * `activeBranch` sigue siendo la última sucursal activa del token (con la que se vuelve a operar).
+   */
+  isAllBranches: boolean
+  /** Entra/sale del modo "Todas las sucursales". Nunca reemite token. */
+  setAllBranchesMode: (on: boolean, opts?: { confirmed?: boolean }) => SwitchBranchResult
   /** true mientras se ejecuta un cambio de sucursal (el selector debe bloquearse). */
   switching: boolean
   resetEpoch: number
@@ -73,15 +82,37 @@ export function BranchProvider({ children }: { children: ReactNode }) {
   const [canSwitchBranch, setCanSwitchBranch] = useState(
     () => localStorage.getItem('can_switch_branch') === 'true',
   )
-  const [canViewAll, setCanViewAll] = useState(false)
+  const [canViewAll, setCanViewAll] = useState(() => localStorage.getItem(CAN_VIEW_ALL_KEY) === 'true')
+  // El modo vive en un módulo (lo lee el interceptor de axios); aquí solo se refleja para renderizar.
+  const [viewMode, setViewModeState] = useState(() => getViewMode())
   const [switching, setSwitching] = useState(false)
   const [resetEpoch, setResetEpoch] = useState(0)
 
   // Referencias para leer el valor vigente dentro de callbacks asíncronos sin re-crearlos.
   const activeIdRef = useRef<number>(activeBranch?.id ?? 0)
   activeIdRef.current = activeBranch?.id ?? 0
+  const canViewAllRef = useRef(canViewAll)
+  canViewAllRef.current = canViewAll
   const switchLockRef = useRef(false)
   const invalidHandlingRef = useRef(false)
+
+  /** Fija si el usuario puede ver todas las sucursales; si lo pierde, el modo consolidado se apaga. */
+  const applyCanViewAll = useCallback((v: boolean | undefined) => {
+    const can = Boolean(v)
+    setCanViewAll(can)
+    try {
+      if (can) localStorage.setItem(CAN_VIEW_ALL_KEY, 'true')
+      else localStorage.removeItem(CAN_VIEW_ALL_KEY)
+    } catch {
+      /* ignore */
+    }
+    if (!can && getViewMode() === 'all') {
+      setViewMode('single')
+      setViewModeState('single')
+      return true
+    }
+    return false
+  }, [])
 
   const persistBranch = useCallback((b: BranchBrief | null, canSwitch: boolean, allowed?: BranchBrief[]) => {
     if (b) localStorage.setItem('active_branch', JSON.stringify(b))
@@ -127,12 +158,12 @@ export function BranchProvider({ children }: { children: ReactNode }) {
       const changed = (branch?.id ?? 0) !== activeIdRef.current
       setActiveBranch(branch)
       setCanSwitchBranch(canSwitch)
-      setCanViewAll(Boolean(viewAll))
+      const modeDropped = applyCanViewAll(viewAll)
       persistBranch(branch, canSwitch, allowed ?? [])
-      if (changed) bumpReset()
+      if (changed || modeDropped) bumpReset()
       return changed
     },
-    [persistBranch, bumpReset],
+    [persistBranch, bumpReset, applyCanViewAll],
   )
 
   const refreshContext = useCallback(async () => {
@@ -140,12 +171,33 @@ export function BranchProvider({ children }: { children: ReactNode }) {
     applyContext(ctx.active_branch, ctx.can_switch_branch, ctx.allowed_branches, ctx.can_view_all)
   }, [applyContext])
 
+  const setAllBranchesMode = useCallback(
+    (on: boolean, opts?: { confirmed?: boolean }): SwitchBranchResult => {
+      if (switchLockRef.current) return { status: 'busy' }
+      const current = getViewMode() === 'all'
+      if (on === current) return { status: 'same' }
+      if (on && !canViewAllRef.current) return { status: 'error', error: new Error('Sin permiso para ver todas las sucursales') }
+      const pending = getPendingWork()
+      if (pending.length > 0 && !opts?.confirmed) return { status: 'pending', labels: pending }
+      clearPendingWork()
+      // Primero el modo (lo lee el interceptor), luego la época: las lecturas de la vista nueva ya salen con el modo nuevo.
+      setViewMode(on ? 'all' : 'single')
+      setViewModeState(on ? 'all' : 'single')
+      bumpReset()
+      return { status: 'ok' }
+    },
+    [bumpReset],
+  )
+
   const switchBranch = useCallback(
     async (branchId: number, opts?: { confirmed?: boolean }): Promise<SwitchBranchResult> => {
       // Serializado: un segundo clic/llamada mientras hay uno en curso se ignora (si no, "gana el último
       // en responder" y el token/estado podrían quedar de sucursales distintas).
       if (switchLockRef.current) return { status: 'busy' }
-      if (branchId === activeIdRef.current) return { status: 'same' }
+      if (branchId === activeIdRef.current) {
+        // En modo "todas", elegir la sucursal que el token ya tiene solo sale del modo (sin token nuevo).
+        return getViewMode() === 'all' ? setAllBranchesMode(false, opts) : { status: 'same' }
+      }
       const pending = getPendingWork()
       if (pending.length > 0 && !opts?.confirmed) return { status: 'pending', labels: pending }
 
@@ -168,7 +220,10 @@ export function BranchProvider({ children }: { children: ReactNode }) {
         clearPendingWork()
         setActiveBranch(res.active_branch)
         setCanSwitchBranch(res.can_switch_branch)
-        setCanViewAll(Boolean(res.can_view_all))
+        applyCanViewAll(res.can_view_all)
+        // Cambiar a una sucursal concreta siempre sale del modo consolidado.
+        setViewMode('single')
+        setViewModeState('single')
         persistBranch(res.active_branch, res.can_switch_branch, res.allowed_branches ?? [])
         bumpReset()
         toast.success(`Sucursal: ${res.active_branch.name}`)
@@ -183,8 +238,15 @@ export function BranchProvider({ children }: { children: ReactNode }) {
         setBranchSwitching(false)
       }
     },
-    [bumpReset, persistBranch],
+    [bumpReset, persistBranch, applyCanViewAll, setAllBranchesMode],
   )
+
+  // Escritura intentada en modo consulta (cortada en el cliente o 403 BRANCH_READ_ONLY del servidor).
+  useEffect(() => {
+    const onReadOnly = () => toast.error(BRANCH_READ_ONLY_MESSAGE, { id: 'branch-read-only' })
+    window.addEventListener(BRANCH_READ_ONLY_EVENT, onReadOnly)
+    return () => window.removeEventListener(BRANCH_READ_ONLY_EVENT, onReadOnly)
+  }, [])
 
   // BRANCH_REQUIRED / BRANCH_FORBIDDEN: la sucursal del token ya no sirve (desasignada, desactivada...).
   // Se pide el contexto real al servidor; si cambió se remonta, si no, se avisa. Con cooldown para no
@@ -229,6 +291,8 @@ export function BranchProvider({ children }: { children: ReactNode }) {
       setAllowedBranches([])
       setCanSwitchBranch(false)
       setCanViewAll(false)
+      setViewModeState('single')
+      localStorage.removeItem(CAN_VIEW_ALL_KEY)
       localStorage.removeItem('active_branch')
       localStorage.removeItem('can_switch_branch')
       localStorage.removeItem(ALLOWED_BRANCHES_KEY)
@@ -243,6 +307,14 @@ export function BranchProvider({ children }: { children: ReactNode }) {
     }
   }, [isAuthenticated, activeBranch, refreshContext])
 
+  // Tras recargar con el modo "todas" persistido: confirma con el servidor que el usuario aún tiene
+  // `branches.view_all` (si lo perdió, applyContext apaga el modo y remonta).
+  useEffect(() => {
+    if (isAuthenticated && getViewMode() === 'all') {
+      void refreshContext().catch(() => {})
+    }
+  }, [isAuthenticated, refreshContext])
+
   const value = useMemo(
     () => ({
       activeBranch,
@@ -250,6 +322,8 @@ export function BranchProvider({ children }: { children: ReactNode }) {
       allowedBranches,
       canSwitchBranch,
       canViewAll,
+      isAllBranches: canViewAll && viewMode === 'all',
+      setAllBranchesMode,
       switching,
       resetEpoch,
       setFromLogin,
@@ -261,6 +335,8 @@ export function BranchProvider({ children }: { children: ReactNode }) {
       allowedBranches,
       canSwitchBranch,
       canViewAll,
+      viewMode,
+      setAllBranchesMode,
       switching,
       resetEpoch,
       setFromLogin,

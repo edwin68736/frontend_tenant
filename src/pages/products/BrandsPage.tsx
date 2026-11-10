@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCatalogAccess } from '@/hooks/useCatalogAccess'
 import { toast } from 'sonner'
 import { Award, Plus, Pencil, Trash2, Search } from 'lucide-react'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
-import { useAuth } from '@/contexts/AuthContext'
 import {
   productsService,
   type Brand,
@@ -44,10 +44,10 @@ export default function BrandsPage() {
 }
 
 function BrandsContent() {
-  const { hasPermission } = useAuth()
-  const canCreate = hasPermission('products.create')
-  const canEdit = hasPermission('products.edit')
-  const canDelete = hasPermission('products.delete')
+  const access = useCatalogAccess()
+  const canCreate = access.canCreateGlobal
+  const canEdit = access.canEditGlobal
+  const canDelete = access.canDeleteGlobal
 
   const [brands, setBrands] = useState<Brand[]>([])
   const [loading, setLoading] = useState(true)

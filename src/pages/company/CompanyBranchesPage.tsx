@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import WriteOnly from '@/components/branch/WriteOnly'
 import { toast } from 'sonner'
 import { Plus, Pencil, Trash2, MapPin, ImagePlus, X, AlertTriangle } from 'lucide-react'
 import { companyService, type BranchRow } from '@/services/company.service'
@@ -153,6 +154,7 @@ export default function CompanyBranchesPage() {
           <h2 className="text-lg font-bold text-gray-800">Sucursales</h2>
           <p className="text-sm text-gray-500">Sedes y puntos de venta. Configure el domicilio fiscal por sucursal.</p>
         </div>
+        <WriteOnly>
         <button
           type="button"
           onClick={openNew}
@@ -160,6 +162,7 @@ export default function CompanyBranchesPage() {
         >
           <Plus size={15} /> Nueva sucursal
         </button>
+        </WriteOnly>
       </div>
 
       {branches.some((b) => branchMissingIdentity(b).length > 0) && (

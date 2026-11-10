@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useCatalogAccess } from '@/hooks/useCatalogAccess'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
-import { useAuth } from '@/contexts/AuthContext'
 import { ProductAttributesEditor } from '@/components/products/ProductAttributesEditor'
 import { productsService, type ProductAttribute } from '@/services/products.service'
 
@@ -55,10 +55,10 @@ function errorMessage(e: unknown, fallback: string): string {
  * (de cualquier forma la fila desaparece de la lista), pero no hay que asumir que es reversible.
  */
 export function ProductAttributesModal({ open, productId, productName, onClose, onChanged, embedded }: Props) {
-  const { hasPermission } = useAuth()
-  const canCreate = hasPermission('products.create')
-  const canEdit = hasPermission('products.edit')
-  const canDelete = hasPermission('products.delete')
+  const access = useCatalogAccess()
+  const canCreate = access.canCreateGlobal
+  const canEdit = access.canEditGlobal
+  const canDelete = access.canDeleteGlobal
 
   const [attributes, setAttributes] = useState<ProductAttribute[]>([])
   const [loading, setLoading] = useState(false)

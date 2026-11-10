@@ -22,6 +22,7 @@ import {
   parseArqueoJson,
 } from '@/components/cash/ArqueoTable'
 import { INCOME_CATEGORIES, EXPENSE_CATEGORIES } from '@/utils/cashMovementCategories'
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 
 const HISTORY_PER_PAGE_OPTIONS = [20, 50, 100] as const
 
@@ -31,7 +32,7 @@ export default function CashPage() {
 
 function CashContent() {
   const navigate = useNavigate()
-  const { activeBranchId } = useBranch()
+  const { activeBranchId, isAllBranches } = useBranch()
   const { hasPermission } = useAuth()
   const [session, setSession] = useState<CashSession | null | undefined>(undefined)
   // Fuente única de saldo (backend): totales por método + total + efectivo esperado — necesaria
@@ -80,12 +81,13 @@ function CashContent() {
   const [deleteTarget, setDeleteTarget] = useState<CashSession | null>(null)
   const [sessionAdminBusy, setSessionAdminBusy] = useState(false)
   // Corregir el monto de apertura es de quien abre la caja; borrarla, de quien la administra.
-  const canOpenCash = hasPermission('cashbank.open')
-  const canCloseCash = hasPermission('cashbank.close')
-  const canMovements = hasPermission('cashbank.movements')
-  const canArqueo = hasPermission('cashbank.arqueo')
-  const canAdjustOpening = hasPermission('cashbank.open')
-  const canDeleteSession = hasPermission('cashbank.delete_session')
+  const { canWrite: writeOk } = useBranchWriteGuard()
+  const canOpenCash = (writeOk && hasPermission('cashbank.open'))
+  const canCloseCash = (writeOk && hasPermission('cashbank.close'))
+  const canMovements = (writeOk && hasPermission('cashbank.movements'))
+  const canArqueo = (writeOk && hasPermission('cashbank.arqueo'))
+  const canAdjustOpening = (writeOk && hasPermission('cashbank.open'))
+  const canDeleteSession = (writeOk && hasPermission('cashbank.delete_session'))
   const canViewReports = hasPermission('cashbank.view')
 
   // Detalle de caja (ticket): imprimir desde el historial y, al cerrar caja, preguntar si imprimir.
@@ -103,9 +105,10 @@ function CashContent() {
 
   const load = async () => {
     try {
-      const branchId = activeBranchId || session?.branch_id
+      // Modo "Todas las sucursales": historial consolidado y sin caja abierta (la caja es de una sucursal).
+      const branchId = isAllBranches ? undefined : activeBranchId || session?.branch_id
       const [sess, hist] = await Promise.all([
-        cashbankService.getOpenSession(branchId || undefined),
+        branchId ? cashbankService.getOpenSession(branchId) : Promise.resolve(null),
         cashbankService.listSessionsPaged({ branch_id: branchId || undefined, page: historyPage, per_page: historyPerPage }),
       ])
       setSession(sess ?? null)

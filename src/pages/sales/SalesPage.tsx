@@ -38,6 +38,7 @@ import { filterRucContacts, contactOptionLabel, rucContactLabel } from '@/utils/
 import { DespatchForm } from '@/components/billing/despatch/DespatchForm'
 import { buildDespatchPrefillFromSaleDetail, type DespatchPrefill } from '@/components/billing/despatch/prefill'
 import { filterAllGuiaSeries, hasGuiaSeriesForCode, GUIA_SERIES_SETTINGS_PATH, guiaSeriesMissingMessage, type GuiaSeriesRow } from '@/utils/despatchSeries'
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 
 const PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
 const TABLE_SKELETON_ROWS = 6
@@ -79,11 +80,12 @@ type SeriesRow = {
 
 function SalesContent() {
   const { hasModule, hasPermission } = useAuth()
-  const canEmit = hasModule('billing') && hasPermission('sales.create')
+  const { canWrite: writeOk } = useBranchWriteGuard()
+  const canEmit = hasModule('billing') && (writeOk && hasPermission('sales.create'))
   // El backend solo exige el módulo, pero anular repone stock y revierte caja: se pide un
   // permiso explícito para no dejarlo al alcance de cualquiera con acceso a ventas.
-  const canCancel = hasModule('sales') && hasPermission('sales.cancel')
-  const canGuia = hasModule('despatch') && hasPermission('billing.despatch')
+  const canCancel = hasModule('sales') && (writeOk && hasPermission('sales.cancel'))
+  const canGuia = hasModule('despatch') && (writeOk && hasPermission('billing.despatch'))
   const [guiaPrefill, setGuiaPrefill] = useState<DespatchPrefill | null>(null)
   const [guiaSeries, setGuiaSeries] = useState<GuiaSeriesRow[]>([])
   const [guiaBranches, setGuiaBranches] = useState<{ id: number; name: string }[]>([])
@@ -496,12 +498,14 @@ function SalesContent() {
             Comprobantes internos.
           </p>
         </div>
-        <Link
-          to="/sales/nota-venta"
-          className="flex items-center gap-2 px-4 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90"
-        >
-          <Plus size={16} /> Nueva venta
-        </Link>
+        {writeOk && (
+          <Link
+            to="/sales/nota-venta"
+            className="flex items-center gap-2 px-4 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90"
+          >
+            <Plus size={16} /> Nueva venta
+          </Link>
+        )}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2 flex-1">

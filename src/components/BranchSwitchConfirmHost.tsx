@@ -5,6 +5,9 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 /** Evento que emite el selector de sucursal cuando hay trabajo sin guardar y falta confirmar. */
 export const BRANCH_SWITCH_CONFIRM_EVENT = 'tukifac:branch-switch-confirm'
 
+/** branchId especial: el usuario pidió entrar al modo "Todas las sucursales". */
+export const ALL_BRANCHES_ID = 0
+
 export type BranchSwitchConfirmDetail = { branchId: number; labels: string[] }
 
 /**
@@ -13,7 +16,7 @@ export type BranchSwitchConfirmDetail = { branchId: number; labels: string[] }
  * cierra al hacer clic fuera y se llevaría el diálogo consigo.
  */
 export default function BranchSwitchConfirmHost() {
-  const { switchBranch } = useBranch()
+  const { switchBranch, setAllBranchesMode } = useBranch()
   const [req, setReq] = useState<BranchSwitchConfirmDetail | null>(null)
 
   useEffect(() => {
@@ -36,7 +39,8 @@ export default function BranchSwitchConfirmHost() {
       variant="danger"
       onConfirm={async () => {
         if (!req) return
-        await switchBranch(req.branchId, { confirmed: true })
+        if (req.branchId === ALL_BRANCHES_ID) setAllBranchesMode(true, { confirmed: true })
+        else await switchBranch(req.branchId, { confirmed: true })
       }}
     />
   )

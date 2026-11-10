@@ -38,6 +38,7 @@ import { formatSaleDocumentNumber } from '@/utils/format'
 import { getTipoComprobanteLabel, SUNAT_RUC_LENGTH } from '@/constants/sunat'
 import { downloadReceiptPdf, openReceiptPdfInNewTab, printDataToPdfBlob } from '@/utils/receiptPdf'
 import type { PrintData } from '@/types/printData'
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 
 const PER_PAGE_OPTIONS = [10, 25, 50] as const
 
@@ -94,14 +95,17 @@ export default function QuotationsPage() {
 function QuotationsContent() {
   const navigate = useNavigate()
   const { hasModule, hasPermission } = useAuth()
-  const { activeBranchId } = useBranch()
-  const canCreate = hasPermission('quotations.create')
-  const canEdit = hasPermission('quotations.edit')
-  const canDelete = hasPermission('quotations.delete')
-  const canConvert = hasPermission('quotations.convert')
+  const { activeBranchId: activeBranchIdRaw, isAllBranches } = useBranch()
+  // Modo "Todas las sucursales": sin filtro de sucursal (consolidado).
+  const activeBranchId = isAllBranches ? 0 : activeBranchIdRaw
+  const { canWrite: writeOk } = useBranchWriteGuard()
+  const canCreate = (writeOk && hasPermission('quotations.create'))
+  const canEdit = (writeOk && hasPermission('quotations.edit'))
+  const canDelete = (writeOk && hasPermission('quotations.delete'))
+  const canConvert = (writeOk && hasPermission('quotations.convert'))
   // Emitir electrónico (boleta/factura) desde la conversión: mismo permiso que crear una venta
   // (POST /sales/:id/issue-electronic exige sales.create), no un permiso de cotizaciones.
-  const canEmit = hasModule('billing') && hasPermission('sales.create')
+  const canEmit = hasModule('billing') && (writeOk && hasPermission('sales.create'))
   const { sunat } = useBranchCheckoutSeries()
   const canFactura = tenantCanEmitFactura(sunat)
 

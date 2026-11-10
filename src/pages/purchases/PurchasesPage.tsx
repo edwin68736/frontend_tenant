@@ -16,6 +16,7 @@ import { LinkedFiscalDocPanel, type LinkedFiscalDoc } from '@/components/billing
 import { FiscalLinkedDocBadge } from '@/components/billing/FiscalLinkedDocBadge'
 import RequireModule from '@/components/ui/RequireModule'
 import { useAuth } from '@/contexts/AuthContext'
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 import { Modal } from '@/components/ui/Modal'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { formatDisplayDatePeru } from '@/utils/datesPeru'
@@ -35,6 +36,7 @@ const purchasePaymentLabel = (code?: string) => (code?.trim() ? formatPaymentMet
 
 function PurchasesContent() {
   const { hasPermission } = useAuth()
+  const { canWrite } = useBranchWriteGuard()
   const location = useLocation()
   const [purchases, setPurchases] = useState<Purchase[]>([])
   const [loading, setLoading] = useState(true)
@@ -139,7 +141,7 @@ function PurchasesContent() {
           <h2 className="text-lg font-bold text-gray-800">Compras</h2>
           <p className="text-sm text-gray-500">Listado de compras registradas</p>
         </div>
-        {hasPermission('purchases.create') && (
+        {canWrite && hasPermission('purchases.create') && (
           <Link
             to="/purchases/register"
             className="flex items-center gap-1.5 px-4 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90"
@@ -215,7 +217,7 @@ function PurchasesContent() {
                       >
                         <Eye size={14} />
                       </button>
-                      {p.status !== 'cancelled' && hasPermission('purchases.delete') && (
+                      {canWrite && p.status !== 'cancelled' && hasPermission('purchases.delete') && (
                         <button
                           type="button"
                           onClick={() => setConfirmVoidId(p.id)}
@@ -345,7 +347,7 @@ function PurchasesContent() {
                   }}
                 />
               )}
-              {detail.purchase.status !== 'cancelled' && hasPermission('billing.send') && !linkedRetention && (
+              {canWrite && detail.purchase.status !== 'cancelled' && hasPermission('billing.send') && !linkedRetention && (
                 <button
                   type="button"
                   onClick={openEmitCre}

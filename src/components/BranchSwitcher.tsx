@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import { Building2 } from 'lucide-react'
 import { useBranch } from '@/contexts/BranchContext'
 import { companyService } from '@/services/company.service'
-import { BRANCH_SWITCH_CONFIRM_EVENT, type BranchSwitchConfirmDetail } from '@/components/BranchSwitchConfirmHost'
+import { ALL_BRANCHES_ID, BRANCH_SWITCH_CONFIRM_EVENT, type BranchSwitchConfirmDetail } from '@/components/BranchSwitchConfirmHost'
+
+const ALL_VALUE = 'all'
 
 type Props = {
   onClose?: () => void
@@ -10,7 +12,8 @@ type Props = {
 
 /** Selector de sucursal dentro del menú de usuario del header */
 export function BranchSwitcherUserMenu({ onClose }: Props) {
-  const { activeBranch, allowedBranches, canSwitchBranch, switchBranch, switching } = useBranch()
+  const { activeBranch, allowedBranches, canSwitchBranch, canViewAll, isAllBranches, setAllBranchesMode, switchBranch, switching } =
+    useBranch()
   const [fetchedBranches, setFetchedBranches] = useState<{ id: number; name: string }[]>([])
 
   useEffect(() => {
@@ -29,8 +32,23 @@ export function BranchSwitcherUserMenu({ onClose }: Props) {
 
   if (!activeBranch) return null
 
-  const handleSwitch = async (branchId: number) => {
-    if (switching || branchId === activeBranch.id) return
+  const handleSwitch = async (value: string) => {
+    if (switching) return
+    if (value === ALL_VALUE) {
+      if (isAllBranches) return
+      const r = setAllBranchesMode(true)
+      if (r.status === 'pending') {
+        window.dispatchEvent(
+          new CustomEvent<BranchSwitchConfirmDetail>(BRANCH_SWITCH_CONFIRM_EVENT, {
+            detail: { branchId: ALL_BRANCHES_ID, labels: r.labels },
+          }),
+        )
+      }
+      onClose?.()
+      return
+    }
+    const branchId = Number(value)
+    if (branchId === activeBranch.id && !isAllBranches) return
     const res = await switchBranch(branchId)
     if (res.status === 'pending') {
       // Hay trabajo sin guardar: el diálogo de confirmación vive en el layout (este menú se cierra al hacer clic fuera).
@@ -48,7 +66,7 @@ export function BranchSwitcherUserMenu({ onClose }: Props) {
       <label htmlFor="header-branch-select" className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
         Sucursal
       </label>
-      {canSwitchBranch && branches.length > 0 ? (
+      {(canSwitchBranch || canViewAll) && branches.length > 0 ? (
         <div className="relative">
           <Building2
             size={15}
@@ -58,10 +76,11 @@ export function BranchSwitcherUserMenu({ onClose }: Props) {
           <select
             id="header-branch-select"
             className="w-full appearance-none border border-gray-200 rounded-xl pl-8 pr-8 py-2 text-sm text-gray-800 bg-white focus:outline-none focus:border-[rgb(var(--p400))] focus:ring-1 focus:ring-[rgb(var(--p200))] cursor-pointer disabled:opacity-60 disabled:cursor-wait"
-            value={activeBranch.id}
+            value={isAllBranches ? ALL_VALUE : activeBranch.id}
             disabled={switching}
-            onChange={(e) => void handleSwitch(Number(e.target.value))}
+            onChange={(e) => void handleSwitch(e.target.value)}
           >
+            {canViewAll ? <option value={ALL_VALUE}>Todas las sucursales</option> : null}
             {branches.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.name}

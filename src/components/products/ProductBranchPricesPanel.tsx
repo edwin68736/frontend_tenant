@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Save, X } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
-import { useAuth } from '@/contexts/AuthContext'
+import { useCatalogAccess } from '@/hooks/useCatalogAccess'
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { companyService, type BranchRow } from '@/services/company.service'
 import { productsService, type ProductBranchPrice } from '@/services/products.service'
@@ -47,9 +47,10 @@ export function ProductBranchPricesPanel({
   onClose,
   onChanged,
 }: Props) {
-  const { hasPermission } = useAuth()
-  const canEdit = hasPermission('products.create') || hasPermission('products.edit')
-  const canDelete = hasPermission('products.delete')
+  // Precio por sucursal = dato comercial: products.create/edit/delete (sin products.manage_global) y no en modo consulta.
+  const access = useCatalogAccess()
+  const canEdit = access.canCreateBranchData || access.canEditBranchData
+  const canDelete = access.canDeleteBranchData
 
   const [branches, setBranches] = useState<BranchRow[]>([])
   const [branchPrices, setBranchPrices] = useState<ProductBranchPrice[]>([])

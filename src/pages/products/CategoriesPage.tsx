@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCatalogAccess } from '@/hooks/useCatalogAccess'
 import { toast } from 'sonner'
 import { FolderTree, Plus, Pencil, Trash2, Search, ImagePlus } from 'lucide-react'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
-import { useAuth } from '@/contexts/AuthContext'
 import {
   productsService,
   getProductImageUrl,
@@ -45,10 +45,10 @@ export default function CategoriesPage() {
 }
 
 function CategoriesContent() {
-  const { hasPermission } = useAuth()
-  const canCreate = hasPermission('products.create')
-  const canEdit = hasPermission('products.edit')
-  const canDelete = hasPermission('products.delete')
+  const access = useCatalogAccess()
+  const canCreate = access.canCreateGlobal
+  const canEdit = access.canEditGlobal
+  const canDelete = access.canDeleteGlobal
 
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)

@@ -8,6 +8,7 @@ import LoginPage from '@/pages/auth/LoginPage'
 import SsoPage from '@/pages/auth/SsoPage'
 import RucPage from '@/pages/auth/RucPage'
 import { isNativeShell } from '@/lib/platform/detect'
+import RequireSingleBranch from '@/components/branch/RequireSingleBranch'
 import RequireModule from '@/components/ui/RequireModule'
 
 const EcommerceStorePage = lazy(() => import('@/pages/ecommerce/store/EcommerceStorePage'))
@@ -145,12 +146,14 @@ function AcctRoute({ perm, children }: { perm: string | string[]; children: Reac
   )
 }
 
-function Protected({ perm, children }: { perm: string | string[]; children: ReactNode }) {
+function Protected({ perm, write, children }: { perm: string | string[]; write?: boolean; children: ReactNode }) {
   const { hasPermission } = useAuth()
   // Un array exige CUALQUIERA de los permisos (ej. nota independiente: crédito O débito según
   // el body) — mismo criterio que RequireAnyPermission en el backend.
   const allowed = Array.isArray(perm) ? perm.some(hasPermission) : hasPermission(perm)
   if (!allowed) return <Navigate to="/home" replace />
+  // write: página de registro/operación; en modo "Todas las sucursales" muestra el aviso en vez del formulario.
+  if (write) return <RequireSingleBranch>{children}</RequireSingleBranch>
   return <>{children}</>
 }
 
@@ -183,13 +186,13 @@ function AppRoutes() {
         <Route path="dashboard" element={<Lazy><Protected perm="dashboard.view"><DashboardPage /></Protected></Lazy>} />
         <Route path="sales" element={<Lazy><Protected perm="sales.view"><SalesPage /></Protected></Lazy>} />
         <Route path="sales/register" element={<Lazy><Protected perm="sales.create"><SalesRegisterLegacyRedirect /></Protected></Lazy>} />
-        <Route path="sales/nota-venta" element={<Lazy><Protected perm="sales.create"><NotaVentaRegisterPage /></Protected></Lazy>} />
-        <Route path="sales/pos" element={<Lazy><Protected perm="sales.pos"><POSPage /></Protected></Lazy>} />
+        <Route path="sales/nota-venta" element={<Lazy><Protected perm="sales.create" write><NotaVentaRegisterPage /></Protected></Lazy>} />
+        <Route path="sales/pos" element={<Lazy><Protected perm="sales.pos" write><POSPage /></Protected></Lazy>} />
         <Route path="sales/receivables" element={<Lazy><Protected perm="receivables.view"><ReceivablesPage /></Protected></Lazy>} />
         <Route path="quotations" element={<Lazy><Protected perm="quotations.view"><QuotationsPage /></Protected></Lazy>} />
-        <Route path="quotations/new" element={<Lazy><Protected perm="quotations.create"><QuotationRegisterPage /></Protected></Lazy>} />
-        <Route path="quotations/:id/edit" element={<Lazy><Protected perm="quotations.edit"><QuotationRegisterPage /></Protected></Lazy>} />
-        <Route path="purchases/register" element={<Lazy><Protected perm="purchases.create"><PurchaseRegisterPage /></Protected></Lazy>} />
+        <Route path="quotations/new" element={<Lazy><Protected perm="quotations.create" write><QuotationRegisterPage /></Protected></Lazy>} />
+        <Route path="quotations/:id/edit" element={<Lazy><Protected perm="quotations.edit" write><QuotationRegisterPage /></Protected></Lazy>} />
+        <Route path="purchases/register" element={<Lazy><Protected perm="purchases.create" write><PurchaseRegisterPage /></Protected></Lazy>} />
         <Route path="purchases/suppliers" element={<Lazy><Protected perm="suppliers.view"><SuppliersPage /></Protected></Lazy>} />
         <Route path="purchases/payables" element={<Lazy><Protected perm="payables.view"><PayablesPage /></Protected></Lazy>} />
         <Route path="purchases" element={<Lazy><Protected perm="purchases.view"><PurchasesPage /></Protected></Lazy>} />
@@ -202,16 +205,16 @@ function AppRoutes() {
         <Route path="contacts" element={<Lazy><Protected perm="customers.view"><ContactsPage /></Protected></Lazy>} />
         <Route path="inventory" element={<Lazy><Protected perm="inventory.view"><InventoryPage /></Protected></Lazy>} />
         <Route path="inventory/services" element={<Navigate to="/products/services" replace />} />
-        <Route path="inventory/transfers" element={<Lazy><Protected perm="inventory.manage"><InventoryTransfersPage /></Protected></Lazy>} />
+        <Route path="inventory/transfers" element={<Lazy><Protected perm="inventory.manage" write><InventoryTransfersPage /></Protected></Lazy>} />
         <Route path="inventory/transfers/history" element={<Lazy><Protected perm="inventory.manage"><InventoryTransferHistoryPage /></Protected></Lazy>} />
         <Route path="inventory/ingress" element={<Lazy><Protected perm="inventory.manage"><InventoryIngressPage /></Protected></Lazy>} />
-        <Route path="inventory/ingress/new" element={<Lazy><Protected perm="inventory.manage"><InventoryIngressPage /></Protected></Lazy>} />
-        <Route path="inventory/ingress/:id/edit" element={<Lazy><Protected perm="inventory.manage"><InventoryIngressPage /></Protected></Lazy>} />
+        <Route path="inventory/ingress/new" element={<Lazy><Protected perm="inventory.manage" write><InventoryIngressPage /></Protected></Lazy>} />
+        <Route path="inventory/ingress/:id/edit" element={<Lazy><Protected perm="inventory.manage" write><InventoryIngressPage /></Protected></Lazy>} />
         <Route path="inventory/egress" element={<Lazy><Protected perm="inventory.manage"><InventoryEgressPage /></Protected></Lazy>} />
-        <Route path="inventory/egress/new" element={<Lazy><Protected perm="inventory.manage"><InventoryEgressPage /></Protected></Lazy>} />
-        <Route path="inventory/egress/:id/edit" element={<Lazy><Protected perm="inventory.manage"><InventoryEgressPage /></Protected></Lazy>} />
+        <Route path="inventory/egress/new" element={<Lazy><Protected perm="inventory.manage" write><InventoryEgressPage /></Protected></Lazy>} />
+        <Route path="inventory/egress/:id/edit" element={<Lazy><Protected perm="inventory.manage" write><InventoryEgressPage /></Protected></Lazy>} />
         <Route path="inventory/kardex" element={<Lazy><Protected perm="inventory.view"><InventoryKardexPage /></Protected></Lazy>} />
-        <Route path="inventory/import-adjustment" element={<Lazy><Protected perm="inventory.manage"><InventoryImportAdjustmentPage /></Protected></Lazy>} />
+        <Route path="inventory/import-adjustment" element={<Lazy><Protected perm="inventory.manage" write><InventoryImportAdjustmentPage /></Protected></Lazy>} />
         <Route path="cashbank/cash" element={<Lazy><Protected perm="cashbank.view"><CashPage /></Protected></Lazy>} />
         <Route path="cashbank/income" element={<Lazy><Protected perm="cashbank.income_view"><CashIncomePage /></Protected></Lazy>} />
         <Route path="cashbank/expenses" element={<Lazy><Protected perm="cashbank.expense_view"><CashExpensePage /></Protected></Lazy>} />
@@ -231,12 +234,12 @@ function AppRoutes() {
         {/* Nota de crédito/débito independiente (Fase 3): sin venta local, documento afectado a mano.
             Un solo formulario sirve ambos tipos según lo que elija el usuario — exige cualquiera
             de los dos permisos, igual que el backend (RequireAnyPermission). */}
-        <Route path="billing/notes/new" element={<Lazy><Protected perm={['billing.credit_note', 'billing.debit_note']}><IndependentNoteCreatePage /></Protected></Lazy>} />
+        <Route path="billing/notes/new" element={<Lazy><Protected perm={['billing.credit_note', 'billing.debit_note']} write><IndependentNoteCreatePage /></Protected></Lazy>} />
         {/* Guías de remisión: vistas independientes por tipo (remitente 09 / transportista 31). */}
-        <Route path="billing/docs/despatches/:guiaTipo/new" element={<Lazy><Protected perm="billing.despatch"><GuiaRemisionCreatePage /></Protected></Lazy>} />
+        <Route path="billing/docs/despatches/:guiaTipo/new" element={<Lazy><Protected perm="billing.despatch" write><GuiaRemisionCreatePage /></Protected></Lazy>} />
         <Route path="billing/docs/despatches/:guiaTipo" element={<Lazy><Protected perm="billing.despatch"><GuiaListPage /></Protected></Lazy>} />
         {/* Sin tipo en la ruta: el formulario pregunta primero qué guía se necesita. */}
-        <Route path="billing/docs/despatches/new" element={<Lazy><Protected perm="billing.despatch"><GuiaRemisionCreatePage /></Protected></Lazy>} />
+        <Route path="billing/docs/despatches/new" element={<Lazy><Protected perm="billing.despatch" write><GuiaRemisionCreatePage /></Protected></Lazy>} />
         <Route path="billing/docs/despatches" element={<Navigate to="/billing/docs/despatches/remitente" replace />} />
         <Route path="billing/docs" element={<Navigate to="/billing/docs/retentions" replace />} />
         <Route path="billing/docs/:docType" element={<Lazy><Protected perm="billing.advanced_docs"><SunatDocsPage /></Protected></Lazy>} />

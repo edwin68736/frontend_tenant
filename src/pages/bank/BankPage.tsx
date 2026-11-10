@@ -7,6 +7,7 @@ import RequireModule from '@/components/ui/RequireModule'
 import { useAuth } from '@/contexts/AuthContext'
 import { Modal } from '@/components/ui/Modal'
 import { getTodayPeru } from '@/utils/datesPeru'
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 
 const emptyAccount = () => ({ name: '', bank_name: '', account_number: '', cci: '', currency: 'PEN', type: 'bank', initial_balance: 0, active: true })
 const emptyMov = () => ({ type: 'credit' as 'credit' | 'debit', description: '', reference: '', amount: 0, date: getTodayPeru() })
@@ -36,7 +37,8 @@ export default function BankPage() {
 
 function BankContent() {
   // Crear/editar cuentas y registrar movimientos exige cashbank.manage (ver es cashbank.view).
-  const canManageBank = useAuth().hasPermission('cashbank.bank_manage')
+  const { canWrite: writeOk } = useBranchWriteGuard()
+  const canManageBank = (writeOk && useAuth().hasPermission('cashbank.bank_manage'))
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [selected, setSelected] = useState<BankAccount | null>(null)
   const [movements, setMovements] = useState<BankMovement[]>([])

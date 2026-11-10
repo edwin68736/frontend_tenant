@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import SupportModeBanner from '@/components/SupportModeBanner'
+import ReadOnlyModeBanner from '@/components/branch/ReadOnlyModeBanner'
 import PlanReminderModal from '@/components/PlanReminderModal'
 import SubscriptionBlockedScreen from '@/components/SubscriptionBlockedScreen'
 import { SubscriptionStatusProvider, useSubscriptionStatus } from '@/contexts/SubscriptionStatusContext'
@@ -146,6 +147,7 @@ function MainLayoutInner() {
               )}
             >
               <SupportModeBanner />
+              <ReadOnlyModeBanner />
               <div
                 className={clsx(
                   'relative z-10 shrink-0 overflow-visible bg-white shadow-md',

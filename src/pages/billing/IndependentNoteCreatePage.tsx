@@ -327,6 +327,8 @@ function IndependentNoteCreateContent() {
               <label className="block text-xs font-medium text-gray-600 mb-1">Sucursal *</label>
               <select
                 value={branchId}
+                disabled
+                title="La nota se emite en la sucursal activa"
                 onChange={(e) => setBranchId(Number(e.target.value))}
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
               >

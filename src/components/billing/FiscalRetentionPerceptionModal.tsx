@@ -28,6 +28,7 @@ import {
 import type { FiscalRetentionPerceptionPrefill } from '@/utils/fiscalRetentionPerceptionPrefill'
 import { calcObligationFromPayment, roundMoney, sumDetailPayments } from '@/utils/fiscalRetentionPerceptionCalc'
 import { useExchangeRate } from '@/hooks/useExchangeRate'
+import { useBranch } from '@/contexts/BranchContext'
 import { toISOStringPeru, toDateTimeLocalPeru, fromDateTimeLocalToISOPeru } from '@/utils/datesPeru'
 import { toTipoDocIdentidadCode } from '@/constants/sunat'
 
@@ -91,6 +92,8 @@ export function FiscalRetentionPerceptionModal({ mode, open, onClose, onCreated,
   const regimenCatalog = mode === 'retention' ? SUNAT_REGIMEN_RETENCION : SUNAT_REGIMEN_PERCEPCION
   const defaultRegimen = regimenCatalog[0].code
 
+  // El comprobante se emite SIEMPRE en la sucursal activa (el servidor rechaza otra con BRANCH_FORBIDDEN).
+  const { activeBranchId } = useBranch()
   const [branchId, setBranchId] = useState(0)
   const [seriesId, setSeriesId] = useState(0)
   const [seriesList, setSeriesList] = useState<SeriesRow[]>([])
@@ -135,7 +138,6 @@ export function FiscalRetentionPerceptionModal({ mode, open, onClose, onCreated,
       setRegimen(p.regimen ?? defaultRegimen)
       setDetails(p.details?.length ? p.details : [emptyDetail(p.fecha_emision ?? now)])
       if (p.contact_id) setContactId(p.contact_id)
-      if (p.branch_id) setBranchId(p.branch_id)
       if (p.source_purchase_id) setSourcePurchaseId(p.source_purchase_id)
       if (p.source_sale_id) setSourceSaleId(p.source_sale_id)
       if (p.source_doc_label) setSourceDocLabel(p.source_doc_label)
@@ -151,11 +153,10 @@ export function FiscalRetentionPerceptionModal({ mode, open, onClose, onCreated,
       setContactId(0)
     }
 
-    const branchForSeries = prefill?.branch_id
     companyService.listBranches().then((branches) => {
       const main = branches.find((b) => b.is_main) ?? branches[0]
-      const bid = branchForSeries ?? main?.id ?? 0
-      if (!prefill?.branch_id) setBranchId(bid)
+      const bid = activeBranchId || main?.id || 0
+      setBranchId(bid)
       return companyService.listSeries({ branch_id: bid || undefined })
     }).then((rows) => {
       setSeriesList(rows ?? [])

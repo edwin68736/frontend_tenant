@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { ArrowLeft, FileDown, FileSpreadsheet, Printer, Receipt } from 'lucide-react'
 import RequireModule from '@/components/ui/RequireModule'
 import { useAuth } from '@/contexts/AuthContext'
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 import { Modal } from '@/components/ui/Modal'
 import {
   cashbankService,
@@ -61,6 +62,7 @@ export default function CashSessionDetailPage() {
 
 function CashSessionDetailContent() {
   const { hasPermission } = useAuth()
+  const { canWrite } = useBranchWriteGuard()
   const { id } = useParams<{ id: string }>()
   const sessionId = Number(id)
 
@@ -444,7 +446,7 @@ function CashSessionDetailContent() {
         <MovementsList
           movements={movements}
           methodLabelFor={methodLabelFor}
-          onReverse={session.status === 'open' && hasPermission('cashbank.movements') ? setReverseTarget : undefined}
+          onReverse={canWrite && session.status === 'open' && hasPermission('cashbank.movements') ? setReverseTarget : undefined}
           reversingId={reversingId}
         />
       </div>

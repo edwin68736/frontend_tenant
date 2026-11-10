@@ -45,6 +45,7 @@ const PERMISSION_FALLBACK_LABELS: Record<string, string> = {
   'products.create': 'Crear productos',
   'products.edit': 'Editar productos',
   'products.delete': 'Eliminar productos',
+  'products.manage_global': 'Gestionar el catálogo global (crear/editar/eliminar productos, categorías, marcas, unidades, imágenes, atributos, importaciones, precio global y costo)',
   'inventory.view': 'Ver inventario',
   'inventory.manage': 'Gestionar inventario (todo lo de abajo)',
   'inventory.create_document': 'Crear documento de ingreso/egreso',

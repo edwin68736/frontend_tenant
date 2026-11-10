@@ -18,6 +18,7 @@ import {
   type CashMovementReceiptContext,
   type CashMovementReceiptInput,
 } from '@/utils/cashMovementReceiptPdf'
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 
 type MovementType = 'income' | 'expense'
 
@@ -50,9 +51,10 @@ const COPY: Record<MovementType, { title: string; subtitle: string; emptyLabel: 
  * (callerUserIDOrZero en cashbank_api.go) salvo que el usuario administre cualquier caja —
  * mismo criterio de alcance que usa el resto de Caja, sin filtro extra desde el frontend. */
 export function CashMovementTypeView({ type }: { type: MovementType }) {
-  const { activeBranchId } = useBranch()
+  const { activeBranchId, isAllBranches } = useBranch()
   const { user, hasPermission } = useAuth()
-  const canMovements = hasPermission('cashbank.movements')
+  const { canWrite: writeOk } = useBranchWriteGuard()
+  const canMovements = (writeOk && hasPermission('cashbank.movements'))
   const copy = COPY[type]
 
   const [rows, setRows] = useState<MovementReportRow[]>([])
@@ -99,12 +101,12 @@ export function CashMovementTypeView({ type }: { type: MovementType }) {
     try {
       const [res, sess] = await Promise.all([
         cashbankService.listMovementsReport({
-          branch_id: activeBranchId || undefined,
+          branch_id: isAllBranches ? undefined : activeBranchId || undefined,
           type,
           page,
           per_page: perPage,
         }),
-        cashbankService.getOpenSession(activeBranchId || undefined),
+        !isAllBranches && activeBranchId ? cashbankService.getOpenSession(activeBranchId) : Promise.resolve(null),
       ])
       setRows(res.data)
       setTotal(res.total)

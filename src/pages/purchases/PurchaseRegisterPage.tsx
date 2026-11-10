@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useCatalogAccess } from '@/hooks/useCatalogAccess'
 import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Plus, Trash2, ArrowLeft, X, UserPlus, PackagePlus } from 'lucide-react'
@@ -88,6 +89,8 @@ function PurchaseRegisterContent() {
   const [loadingSuppliers, setLoadingSuppliers] = useState(true)
   const [showProductPicker, setShowProductPicker] = useState(false)
   const [addQuickProductOpen, setAddQuickProductOpen] = useState(false)
+  // Crear un producto es catálogo global (products.manage_global): sin él no se ofrece el alta rápida.
+  const { canCreateGlobal: canCreateProduct } = useCatalogAccess()
   const [form, setForm] = useState<Partial<CreatePurchaseInput>>({
     doc_type: 'FACTURA',
     currency: 'PEN',
@@ -504,13 +507,15 @@ function PurchaseRegisterContent() {
             >
               <Plus size={14} /> Agregar producto
             </button>
-            <button
-              type="button"
-              onClick={openQuickProduct}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-gray-200 text-[rgb(var(--p600))] text-sm font-medium hover:bg-[rgb(var(--p50))] shrink-0"
-            >
-              <PackagePlus size={14} /> Nuevo producto
-            </button>
+            {canCreateProduct && (
+              <button
+                type="button"
+                onClick={openQuickProduct}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-gray-200 text-[rgb(var(--p600))] text-sm font-medium hover:bg-[rgb(var(--p50))] shrink-0"
+              >
+                <PackagePlus size={14} /> Nuevo producto
+              </button>
+            )}
             <p className="text-xs text-gray-500 ml-auto">Total de ítems: {items.length}</p>
           </div>
 
@@ -755,7 +760,7 @@ function PurchaseRegisterContent() {
             void addProductToItems(p)
           }}
           onClose={() => setShowProductPicker(false)}
-          onNewProduct={openQuickProduct}
+          onNewProduct={canCreateProduct ? openQuickProduct : undefined}
         />
       </Modal>
 

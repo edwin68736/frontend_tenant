@@ -30,7 +30,9 @@ type MotiveGroup = {
 }
 
 export default function NotesReportPage() {
-  const { activeBranchId } = useBranch()
+  const { activeBranchId: activeBranchIdRaw, isAllBranches } = useBranch()
+  // Modo "Todas las sucursales": el filtro arranca en "todas" (consolidado), no en la sucursal activa.
+  const activeBranchId = isAllBranches ? 0 : activeBranchIdRaw
   const [branches, setBranches] = useState<BranchRow[]>([])
   const [branchId, setBranchId] = useState<number | ''>('')
   const [kind, setKind] = useState<NoteKind>('all')

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useCatalogAccess } from '@/hooks/useCatalogAccess'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
-import { useAuth } from '@/contexts/AuthContext'
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
 import { companyService, type BranchRow } from '@/services/company.service'
 import { productsService, type SaleUnitBranchPrice } from '@/services/products.service'
@@ -74,10 +74,10 @@ export function SaleUnitBranchPricesPanel({
   onClose,
   onChanged,
 }: Props) {
-  const { hasPermission } = useAuth()
-  const canCreate = hasPermission('products.create')
-  const canEdit = hasPermission('products.edit')
-  const canDelete = hasPermission('products.delete')
+  const access = useCatalogAccess()
+  const canCreate = access.canCreateBranchData
+  const canEdit = access.canEditBranchData
+  const canDelete = access.canDeleteBranchData
 
   const [branches, setBranches] = useState<BranchRow[]>([])
   const [branchPrices, setBranchPrices] = useState<SaleUnitBranchPrice[]>([])

@@ -12,6 +12,7 @@ import {
   transferCode,
   type TransferPdfFormat,
 } from '@/utils/inventoryTransferPdf'
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 
 export default function InventoryTransferHistoryPage() {
   return (
@@ -23,9 +24,10 @@ export default function InventoryTransferHistoryPage() {
 
 function InventoryTransferHistoryContent() {
   const { hasPermission } = useAuth()
-  const canTransfer = hasPermission('inventory.transfer')
-  const canConfirmTransfer = hasPermission('inventory.confirm_transfer')
-  const canCancelTransfer = hasPermission('inventory.cancel_transfer')
+  const { canWrite: writeOk } = useBranchWriteGuard()
+  const canTransfer = (writeOk && hasPermission('inventory.transfer'))
+  const canConfirmTransfer = (writeOk && hasPermission('inventory.confirm_transfer'))
+  const canCancelTransfer = (writeOk && hasPermission('inventory.cancel_transfer'))
   const [transfers, setTransfers] = useState<TransferListItem[]>([])
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'confirmed' | 'cancelled'>('all')
   const [loading, setLoading] = useState(true)

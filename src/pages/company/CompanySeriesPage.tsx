@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import WriteOnly from '@/components/branch/WriteOnly'
 import { toast } from 'sonner'
 import { Plus, Pencil, Trash2, FileText, Lock, Star } from 'lucide-react'
 import { companyService, type SeriesDocumentType, type SeriesRow } from '@/services/company.service'
@@ -210,6 +211,7 @@ export default function CompanySeriesPage() {
             <p className="text-sm text-gray-500">Comprobantes por sucursal y tipo de documento.</p>
           </div>
         </div>
+        <WriteOnly>
         <button
           type="button"
           onClick={openNew}
@@ -218,6 +220,7 @@ export default function CompanySeriesPage() {
         >
           <Plus size={15} /> Nueva serie
         </button>
+        </WriteOnly>
       </div>
 
       {!sunatEnabled && (

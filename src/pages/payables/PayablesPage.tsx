@@ -7,6 +7,7 @@ import { payablesService, type PayableRow, type PayablesSummary } from '@/servic
 import { cashbankService, type PaymentMethodRecord } from '@/services/cashbank.service'
 import { formatDisplayDatePeru } from '@/utils/datesPeru'
 import { PayPayableModal } from '@/components/payables/PayPayableModal'
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 
 export default function PayablesPage() {
   return (
@@ -18,7 +19,8 @@ export default function PayablesPage() {
 
 function PayablesContent() {
   const { hasPermission } = useAuth()
-  const canPay = hasPermission('payables.pay')
+  const { canWrite: writeOk } = useBranchWriteGuard()
+  const canPay = (writeOk && hasPermission('payables.pay'))
   const [rows, setRows] = useState<PayableRow[]>([])
   const [summary, setSummary] = useState<PayablesSummary | null>(null)
   const [loading, setLoading] = useState(true)

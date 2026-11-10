@@ -268,6 +268,8 @@ function ImportAdjustmentContent() {
             <select
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
               value={branchId || ''}
+              disabled
+              title="El ajuste se registra en la sucursal activa"
               onChange={e => setBranchId(Number(e.target.value))}
             >
               {branches.map(b => (

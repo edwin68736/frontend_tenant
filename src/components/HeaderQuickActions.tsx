@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { FileText, Receipt, ShoppingCart, Volume2, VolumeX } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 import { setSoundEnabled, useSoundEnabled } from '@/utils/soundPrefs'
 
 type Action = {
@@ -15,8 +16,10 @@ type Action = {
 export default function HeaderQuickActions() {
   const { hasModule, hasPermission } = useAuth()
 
-  const canRegister = hasModule('sales') && hasPermission('sales.view')
-  const canPos = hasModule('sales') && hasPermission('sales.pos')
+  // En modo "Todas las sucursales" (solo consulta) no hay atajos de registro ni POS.
+  const { canWrite } = useBranchWriteGuard()
+  const canRegister = canWrite && hasModule('sales') && hasPermission('sales.view')
+  const canPos = canWrite && hasModule('sales') && hasPermission('sales.pos')
   const soundOn = useSoundEnabled()
 
   const actions: Action[] = [

@@ -1,10 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
-import { SearchSelect, MIN_OPTIONS_FOR_SEARCH } from '@/components/ui/SearchSelect'
-import { companyService } from '@/services/company.service'
 import { productsService, type Product, type ProductPresentation } from '@/services/products.service'
 import { inventoryService } from '@/services/inventory.service'
+import { useBranch } from '@/contexts/BranchContext'
 
 /** Ajuste manual de stock (entrada/salida) para un producto, con series si aplica. */
 export function StockAdjustmentModal({
@@ -18,8 +17,13 @@ export function StockAdjustmentModal({
   onClose: () => void
   onSaved: () => void
 }) {
-  const [branches, setBranches] = useState<{ id: number; name: string }[]>([])
-  const [branchId, setBranchId] = useState<number>(defaultBranchId)
+  // Un ajuste se registra SIEMPRE en la sucursal activa (el servidor rechaza otra con BRANCH_FORBIDDEN).
+  const { activeBranchId, activeBranch } = useBranch()
+  const branchId = activeBranchId || defaultBranchId
+  const branches = useMemo(
+    () => (activeBranch ? [{ id: activeBranch.id, name: activeBranch.name }] : []),
+    [activeBranch],
+  )
   const [type, setType] = useState<'in' | 'out'>('in')
   const [quantity, setQuantity] = useState(product.manage_series ? 1 : 1)
   const [notes, setNotes] = useState('')
@@ -36,19 +40,6 @@ export function StockAdjustmentModal({
       setPresentations(d.presentations ?? [])
     })
   }, [product.id, product.has_variants])
-
-  useEffect(() => {
-    companyService.listBranches().then(b => {
-      const list = (b ?? []) as { id: number; name: string }[]
-      setBranches(list)
-      if (defaultBranchId > 0) {
-        setBranchId(defaultBranchId)
-      } else if (list.length > 0 && branchId === 0) {
-        setBranchId(list[0].id)
-      }
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [defaultBranchId])
 
   useEffect(() => {
     if (!branchId || type !== 'out' || !product.manage_series) return
@@ -116,19 +107,13 @@ export function StockAdjustmentModal({
       <p className="text-sm text-gray-500">{product.name}</p>
       <div>
         <label className="block text-xs font-medium text-gray-600 mb-1">Sucursal</label>
-        {branches.length >= MIN_OPTIONS_FOR_SEARCH ? (
-          <SearchSelect
-            options={branches.map(b => ({ value: String(b.id), label: b.name }))}
-            value={String(branchId || '')}
-            onChange={v => setBranchId(v ? Number(v) : 0)}
-            placeholder="Selecciona sucursal"
-          />
-        ) : (
-          <select className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" value={branchId || ''} onChange={e => setBranchId(e.target.value ? Number(e.target.value) : 0)}>
-            <option value="">Selecciona sucursal</option>
-            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select>
-        )}
+        <div
+          data-testid="locked-branch"
+          className="w-full rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 text-sm text-gray-700"
+        >
+          {branches[0]?.name ?? 'Sucursal activa'}
+        </div>
+        <p className="mt-1 text-xs text-gray-400">El ajuste se registra en la sucursal activa.</p>
       </div>
       {product.has_variants && presentations.length > 0 && (
         <div>

@@ -1,4 +1,4 @@
-import axios, { type AxiosAdapter, type InternalAxiosRequestConfig } from 'axios'
+import axios, { AxiosError, type AxiosAdapter, type InternalAxiosRequestConfig } from 'axios'
 import {
   getApiBaseUrl,
   getTenantApiOriginForSlug,
@@ -10,6 +10,12 @@ import { normalizeBindingApiUrl } from '@/lib/tenantBinding/types'
 import { isNativeShell } from '@/lib/platform/detect'
 import { clearIdleActivity } from '@/lib/idleSession'
 import { clearAllCaches } from '@/lib/branchScope/caches'
+import {
+  BRANCH_MODE_HEADER,
+  BRANCH_READ_ONLY_CODE,
+  BRANCH_READ_ONLY_MESSAGE,
+  isAllBranchesMode,
+} from '@/lib/branchScope/viewMode'
 import {
   advanceEpoch,
   currentEpoch,
@@ -93,8 +99,35 @@ api.defaults.adapter = async (config) => {
   }
 }
 
+/** Evento para que la UI (toast) avise que se intentó escribir en modo consulta. */
+export const BRANCH_READ_ONLY_EVENT = 'tukifac:branch-read-only'
+
+/**
+ * Error equivalente al 403 BRANCH_READ_ONLY del servidor, pero generado en el cliente: en modo
+ * "todas las sucursales" la cabecera X-Branch-Mode solo viaja en lecturas, así que una escritura que
+ * se escapara de la UI iría al servidor SIN el modo y se ejecutaría en la sucursal activa. Se corta aquí.
+ */
+function readOnlyError(config: InternalAxiosRequestConfig): AxiosError {
+  return new AxiosError(BRANCH_READ_ONLY_MESSAGE, 'ERR_BAD_REQUEST', config, undefined, {
+    status: 403,
+    statusText: 'Forbidden',
+    headers: {},
+    config,
+    data: { code: BRANCH_READ_ONLY_CODE, error: BRANCH_READ_ONLY_MESSAGE },
+  })
+}
+
 api.interceptors.request.use((rawConfig) => {
   const config = rawConfig as BranchAwareConfig
+  // Modo "todas las sucursales": la cabecera viaja SOLO en lecturas; toda escritura se corta aquí
+  // (el toast lo emite el interceptor de respuesta al ver BRANCH_READ_ONLY).
+  if (isAllBranchesMode() && !isGlobalConfig(config)) {
+    if (isReadMethod(config.method)) {
+      config.headers[BRANCH_MODE_HEADER] = 'all'
+    } else {
+      throw readOnlyError(config)
+    }
+  }
   if (!isGlobalConfig(config)) {
     if (config.__epoch === undefined) {
       config.__epoch = currentEpoch()
@@ -309,6 +342,11 @@ api.interceptors.response.use(
         return isReadMethod(eCfg?.method) ? neverSettles() : Promise.reject(error)
       }
       redirectToLogin('Tu acceso fue actualizado. Vuelve a iniciar sesión.')
+      return Promise.reject(error)
+    }
+    if (error.response?.status === 403 && code === BRANCH_READ_ONLY_CODE) {
+      // Escritura rechazada por modo consulta (cortada en el cliente o respondida por el servidor).
+      window.dispatchEvent(new CustomEvent(BRANCH_READ_ONLY_EVENT))
       return Promise.reject(error)
     }
     if (code === 'BRANCH_REQUIRED' || code === 'BRANCH_FORBIDDEN') {

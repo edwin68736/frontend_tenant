@@ -8,6 +8,7 @@ import { companyService } from '@/services/company.service'
 import RequireModule from '@/components/ui/RequireModule'
 import SunatRequiredMessage from '@/components/ui/SunatRequiredMessage'
 import { useBillingEvents } from '@/hooks/useBillingEvents'
+import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 import type { GuiaSunatCode } from '@/utils/despatchSeries'
 
 /** Segmento de ruta (remitente/transportista) → código SUNAT de la guía. */
@@ -24,6 +25,7 @@ export default function GuiaListPage() {
 }
 
 function GuiaListContent() {
+  const { canWrite } = useBranchWriteGuard()
   const { guiaTipo } = useParams<{ guiaTipo: string }>()
   const navigate = useNavigate()
   const guiaSunatCode = guiaSunatCodeFromParam(guiaTipo)
@@ -83,12 +85,14 @@ function GuiaListContent() {
           <button onClick={loadDespatches} className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 border border-gray-200 rounded-xl hover:bg-gray-50 flex-shrink-0">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Actualizar
           </button>
-          <button
-            onClick={() => navigate(`/billing/docs/despatches/${guiaSunatCode === '31' ? 'transportista' : 'remitente'}/new`)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium bg-[rgb(var(--p600))] text-white hover:opacity-90"
-          >
-            <Plus size={14} /> Nueva guía
-          </button>
+          {canWrite && (
+            <button
+              onClick={() => navigate(`/billing/docs/despatches/${guiaSunatCode === '31' ? 'transportista' : 'remitente'}/new`)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium bg-[rgb(var(--p600))] text-white hover:opacity-90"
+            >
+              <Plus size={14} /> Nueva guía
+            </button>
+          )}
         </div>
       </div>
       <GuiasListSection
