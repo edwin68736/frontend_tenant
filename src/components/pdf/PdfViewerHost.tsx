@@ -18,6 +18,13 @@ export function PdfViewerHost() {
 
   useEffect(() => subscribePdfViewer(setReq), [])
 
+  // El visor vive fuera del <Outlet>: un PDF de un documento de la sucursal anterior no debe quedar abierto
+  // tras cambiar de sucursal.
+  useEffect(() => {
+    window.addEventListener('branch-changed', closePdfViewer)
+    return () => window.removeEventListener('branch-changed', closePdfViewer)
+  }, [])
+
   if (!req) return null
 
   const handleDownload = async () => {

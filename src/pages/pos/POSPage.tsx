@@ -76,6 +76,7 @@ import { useBarcodeProductScanner } from '@/hooks/useBarcodeProductScanner'
 import { BarcodeScannerModal } from '@/components/barcode/BarcodeScannerModal'
 import { ScannerModeControl } from '@/components/barcode/ScannerModeControl'
 import { playCartAddSound, playCartRemoveSound } from '@/utils/cartSounds'
+import { usePendingWork } from '@/lib/branchScope/pendingWork'
 import { descriptionWithPresentation, productConfigurationBadge, productNeedsSaleConfiguration, presentationIdFromSelection } from '@/utils/productModifiers'
 
 /** doc_type legacy → código SUNAT cuando sunat_code no viene en la serie */
@@ -135,6 +136,9 @@ function POSContent() {
 
   // Carrito
   const [cart, setCart] = useState<PosCartLine[]>([])
+  // El carrito es de la sucursal activa (precios, stock, series): cambiar de sucursal pide confirmar y lo descarta
+  // (el layout remonta la pantalla), así nunca se cobra con un carrito de otra sucursal.
+  usePendingWork('carrito del POS', cart.length > 0)
   const [productViewMode, setProductViewMode] = useState<PosProductViewMode>(readPosProductViewMode)
 
   const changeProductViewMode = useCallback((mode: PosProductViewMode) => {

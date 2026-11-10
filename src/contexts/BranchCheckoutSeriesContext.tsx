@@ -16,6 +16,7 @@ import {
 } from '@/utils/posCheckoutSeries'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch } from '@/contexts/BranchContext'
+import { registerBranchCache } from '@/lib/branchScope/caches'
 
 type CacheEntry = {
   series: PosSeriesRow[]
@@ -43,6 +44,17 @@ export function BranchCheckoutSeriesProvider({ children }: { children: ReactNode
   const [sunatConfig, setSunatConfig] = useState<SunatConfig | null>(null)
   const sunatRef = useRef<SunatConfig | null>(null)
   const [version, setVersion] = useState(0)
+
+  // Series y config SUNAT cacheadas por sucursal: se vacían al cambiar de sucursal y al cerrar sesión.
+  // Las promesas en vuelo se sueltan también: la petición de la época anterior queda abortada y su
+  // promesa no se resolvería nunca, así que no puede quedar esperándola quien vuelva a esa sucursal.
+  useEffect(() => {
+    registerBranchCache('checkoutSeries', () => {
+      cacheRef.current.clear()
+      inflightRef.current.clear()
+      sunatRef.current = null
+    })
+  }, [])
 
   const bump = useCallback(() => setVersion((v) => v + 1), [])
 

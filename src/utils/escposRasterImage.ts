@@ -1,5 +1,6 @@
 ﻿import QRCode from 'qrcode'
 import { readLogoPrintSize, scaleLogoDimension } from '@/services/printers/logoPrintSize'
+import { registerSessionCache } from '@/lib/branchScope/caches'
 
 /** Ancho imprimible en puntos (58 mm ≈ 384, 80 mm ≈ 576). */
 export function escposPrintWidthPx(paperWidthMm: 58 | 80): number {
@@ -16,6 +17,9 @@ const imageRasterCache = new Map<string, Uint8Array>()
 export function clearEscPosImageRasterCache(): void {
   imageRasterCache.clear()
 }
+
+// El logo/QR de un tenant no debe sobrevivir al cierre de sesión (también en Tauri/Capacitor, sin recarga).
+registerSessionCache('escposRaster', clearEscPosImageRasterCache)
 
 // Tamaño base = «mediano»; el ajuste local lo escala. El ancho se topa al imprimible del
 // papel (escposPrintWidthPx) para que «grande» nunca corte la imagen.

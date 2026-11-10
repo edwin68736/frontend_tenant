@@ -1,6 +1,7 @@
 import { productsService } from '@/services/products.service'
 import { sunatUnitDisplayName } from '@/constants/sunatUnits'
 import type { PrintData } from '@/types/printData'
+import { registerBranchCache } from '@/lib/branchScope/caches'
 
 /**
  * Caché de SaleUnits resueltas (Fase 7F: nombre comercial; Fase 7G: + allow_fraction), a nivel de
@@ -12,6 +13,7 @@ import type { PrintData } from '@/types/printData'
  */
 type ResolvedSaleUnit = { name: string; allow_fraction: boolean }
 const cache = new Map<string, ResolvedSaleUnit>()
+registerBranchCache('saleUnitNames', () => cache.clear())
 
 function cacheKey(productId: number, saleUnitId: number): string {
   return `${productId}:${saleUnitId}`

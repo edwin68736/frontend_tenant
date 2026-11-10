@@ -8,6 +8,7 @@ import {
   setCompanyLogoFromFile,
 } from '@/lib/companyConfig/store'
 import { clearEscPosImageRasterCache } from '@/utils/escposRasterImage'
+import { registerSessionCache } from '@/lib/branchScope/caches'
 
 export interface CompanyConfig {
   id?: number
@@ -164,6 +165,12 @@ let configInFlight: Promise<CompanyConfig> | null = null
 // desde caché pero sí llegar a ver cambios hechos en otro dispositivo, se revalida
 // una vez en segundo plano por carga de la app (stale-while-revalidate).
 let revalidatedThisLoad = false
+
+// Al cerrar sesión la config en vuelo y la marca de "ya revalidé" no deben pasar al siguiente usuario/empresa.
+registerSessionCache('companyServiceState', () => {
+  configInFlight = null
+  revalidatedThisLoad = false
+})
 
 export const companyService = {
   /**

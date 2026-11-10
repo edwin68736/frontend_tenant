@@ -13,12 +13,16 @@
  * venta —aunque sea idéntica— es una venta nueva.
  */
 
+import { registerBranchCache } from '@/lib/branchScope/caches'
+
 interface Slot {
   fingerprint: string
   key: string
 }
 
 const slots = new Map<string, Slot>()
+// Al cambiar de sucursal o cerrar sesión no debe sobrevivir una clave de un cobro de otra sucursal/usuario.
+registerBranchCache('idempotencyKeys', () => slots.clear())
 
 function newKey(): string {
   try {

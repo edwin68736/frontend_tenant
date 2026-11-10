@@ -35,6 +35,7 @@ import SubscriptionHeaderWidget from '@/components/SubscriptionHeaderWidget'
 import SubscriptionUserMenuItem from '@/components/SubscriptionUserMenuItem'
 import HeaderQuickActions from '@/components/HeaderQuickActions'
 import { BranchSwitcherUserMenu } from '@/components/BranchSwitcher'
+import { useBranch } from '@/contexts/BranchContext'
 import { AppVersionBadge } from '@/components/AppVersionBadge'
 import { canAccessErpSettings } from '@/utils/erpSettingsAccess'
 import { runWhenIdle } from '@/utils/runWhenIdle'
@@ -49,6 +50,8 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
   const { user, logout, hasModule, hasPermission } = useAuth()
   const { hub } = useSubscriptionStatus()
   const { limits } = useModules()
+  // El Header vive fuera del <Outlet> (no se remonta): sus contadores se piden de nuevo al cambiar de sucursal.
+  const { resetEpoch } = useBranch()
   const showSettings = canAccessErpSettings(hasPermission, hasModule)
 
   const [userMenuOpen, setUserMenuOpen] = useState(false)
@@ -81,7 +84,7 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
       },
       { minDelayMs: 1000, maxWaitMs: 3000 },
     )
-  }, [hasModule, hasPermission])
+  }, [hasModule, hasPermission, resetEpoch])
 
   useEffect(() => {
     if (!hasModule('memberships')) {
@@ -97,7 +100,7 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
       },
       { minDelayMs: 1000, maxWaitMs: 3000 },
     )
-  }, [hasModule])
+  }, [hasModule, resetEpoch])
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {

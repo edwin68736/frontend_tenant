@@ -21,6 +21,7 @@ import { companyService, type SunatConfig } from '@/services/company.service'
 import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
 import { buildTaxConfigFromSunat } from '@/constants/tax'
 import { calcItem } from '@/utils/taxCalc'
+import { usePendingWork } from '@/lib/branchScope/pendingWork'
 
 const DOC_TYPES = ['FACTURA', 'BOLETA', 'NOTA DE CRÉDITO', 'TICKET']
 
@@ -93,6 +94,7 @@ function PurchaseRegisterContent() {
     issue_date: getTodayPeru(),
   })
   const [items, setItems] = useState<PurchaseLineItem[]>([])
+  usePendingWork('compra en edición', items.length > 0)
   const [saving, setSaving] = useState(false)
   const [addSupplierOpen, setAddSupplierOpen] = useState(false)
   const [seriesModalItemIdx, setSeriesModalItemIdx] = useState<number | null>(null)

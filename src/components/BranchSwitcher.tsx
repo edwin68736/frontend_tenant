@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Building2 } from 'lucide-react'
 import { useBranch } from '@/contexts/BranchContext'
 import { companyService } from '@/services/company.service'
+import { BRANCH_SWITCH_CONFIRM_EVENT, type BranchSwitchConfirmDetail } from '@/components/BranchSwitchConfirmHost'
 
 type Props = {
   onClose?: () => void
@@ -9,7 +10,7 @@ type Props = {
 
 /** Selector de sucursal dentro del menú de usuario del header */
 export function BranchSwitcherUserMenu({ onClose }: Props) {
-  const { activeBranch, allowedBranches, canSwitchBranch, switchBranch } = useBranch()
+  const { activeBranch, allowedBranches, canSwitchBranch, switchBranch, switching } = useBranch()
   const [fetchedBranches, setFetchedBranches] = useState<{ id: number; name: string }[]>([])
 
   useEffect(() => {
@@ -28,8 +29,17 @@ export function BranchSwitcherUserMenu({ onClose }: Props) {
 
   if (!activeBranch) return null
 
-  const handleSwitch = (branchId: number) => {
-    if (branchId !== activeBranch.id) void switchBranch(branchId)
+  const handleSwitch = async (branchId: number) => {
+    if (switching || branchId === activeBranch.id) return
+    const res = await switchBranch(branchId)
+    if (res.status === 'pending') {
+      // Hay trabajo sin guardar: el diálogo de confirmación vive en el layout (este menú se cierra al hacer clic fuera).
+      window.dispatchEvent(
+        new CustomEvent<BranchSwitchConfirmDetail>(BRANCH_SWITCH_CONFIRM_EVENT, {
+          detail: { branchId, labels: res.labels },
+        }),
+      )
+    }
     onClose?.()
   }
 
@@ -47,9 +57,10 @@ export function BranchSwitcherUserMenu({ onClose }: Props) {
           />
           <select
             id="header-branch-select"
-            className="w-full appearance-none border border-gray-200 rounded-xl pl-8 pr-8 py-2 text-sm text-gray-800 bg-white focus:outline-none focus:border-[rgb(var(--p400))] focus:ring-1 focus:ring-[rgb(var(--p200))] cursor-pointer"
+            className="w-full appearance-none border border-gray-200 rounded-xl pl-8 pr-8 py-2 text-sm text-gray-800 bg-white focus:outline-none focus:border-[rgb(var(--p400))] focus:ring-1 focus:ring-[rgb(var(--p200))] cursor-pointer disabled:opacity-60 disabled:cursor-wait"
             value={activeBranch.id}
-            onChange={(e) => handleSwitch(Number(e.target.value))}
+            disabled={switching}
+            onChange={(e) => void handleSwitch(Number(e.target.value))}
           >
             {branches.map((b) => (
               <option key={b.id} value={b.id}>

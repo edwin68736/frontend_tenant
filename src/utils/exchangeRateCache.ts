@@ -1,5 +1,6 @@
 import type { TipoCambioResult } from '@/services/consulta.service'
 import { getTodayPlusDaysPeru } from '@/utils/datesPeru'
+import { registerSessionCache } from '@/lib/branchScope/caches'
 
 const STORAGE_KEY = 'tukifac_exchange_rates_v1'
 
@@ -151,6 +152,8 @@ export function clearLocalExchangeRateCache() {
     /* ignore */
   }
 }
+
+registerSessionCache('exchangeRates', clearLocalExchangeRateCache)
 
 /** Indica si el registro local debe revalidarse en segundo plano (solo fallback). */
 export function shouldSilentlyRefreshLocalRate(entry: CachedExchangeRateEntry | null): boolean {

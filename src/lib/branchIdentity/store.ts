@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { companyService, type BranchRow } from '@/services/company.service'
 import { getCompanyConfigCache, getCompanyLogoForPrint } from '@/lib/companyConfig/store'
 import { useBranch } from '@/contexts/BranchContext'
+import { registerBranchCache } from '@/lib/branchScope/caches'
 import { findBranch, resolveBranchIdentity, type BranchIdentity } from './resolve'
 
 /** Evento que company.service dispara al crear/editar/borrar una sucursal o su logo. */
@@ -18,10 +19,11 @@ export function invalidateBranchIdentityCache(): void {
   inflight = null
 }
 
+// Cambiar de sucursal (resetBranchCaches) o cerrar sesión (clearAllCaches, también en Tauri/Android donde
+// no hay recarga) invalida lo cacheado: el logo/dirección de la sucursal destino no debe salir de una
+// lectura anterior.
+registerBranchCache('branchIdentity', invalidateBranchIdentityCache)
 if (typeof window !== 'undefined') {
-  // Cambiar de sucursal o editar sucursales invalida lo cacheado: el logo/dirección de la
-  // sucursal destino no debe salir de una lectura anterior.
-  window.addEventListener('branch-changed', invalidateBranchIdentityCache)
   window.addEventListener(BRANCHES_UPDATED_EVENT, invalidateBranchIdentityCache)
 }
 

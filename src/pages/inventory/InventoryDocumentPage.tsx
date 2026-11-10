@@ -10,6 +10,7 @@ import {
   X,
 } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
+import { usePendingWork } from '@/lib/branchScope/pendingWork'
 import { useBranch } from '@/contexts/BranchContext'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { Modal } from '@/components/ui/Modal'
@@ -124,6 +125,7 @@ export default function InventoryDocumentPage({ direction }: InventoryDocumentPa
     notes: '',
   })
   const [lines, setLines] = useState<InventoryDocumentLineRow[]>([])
+  usePendingWork('documento de inventario en edición', lines.length > 0)
   const [nextTempId, setNextTempId] = useState(1)
   const [pickerOpen, setPickerOpen] = useState(false)
 

@@ -13,6 +13,7 @@ import { resolveCompanyLogoDisplayUrl } from '@/config/apiBaseUrl'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch, useOnBranchChange } from '@/contexts/BranchContext'
 import { useBranchIdentity } from '@/lib/branchIdentity/store'
+import { usePendingWork } from '@/lib/branchScope/pendingWork'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { SearchableSelect } from '@/components/SearchableSelect'
@@ -361,6 +362,10 @@ function SalesRegisterContent({
     notes: '',
   })
   const [items, setItems] = useState<SaleFormItem[]>([])
+  usePendingWork(
+    isQuotation ? 'cotización en edición' : isNotaVenta ? 'nota de venta en edición' : 'venta en edición',
+    items.length > 0,
+  )
   const [lastAddedProductId, setLastAddedProductId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)

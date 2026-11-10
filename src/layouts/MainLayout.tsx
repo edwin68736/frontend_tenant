@@ -1,11 +1,13 @@
 import { PdfViewerHostLazy } from '@/components/pdf/PdfViewerHostLazy'
-import { Outlet, useLocation } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import SupportModeBanner from '@/components/SupportModeBanner'
 import PlanReminderModal from '@/components/PlanReminderModal'
 import SubscriptionBlockedScreen from '@/components/SubscriptionBlockedScreen'
 import { SubscriptionStatusProvider, useSubscriptionStatus } from '@/contexts/SubscriptionStatusContext'
+import BranchKeyedOutlet from '@/layouts/BranchKeyedOutlet'
+import BranchSwitchConfirmHost from '@/components/BranchSwitchConfirmHost'
 import { BRAND_TOP_BAR } from '@/config/branding'
 import { isCapacitorNative } from '@/lib/platform/detect'
 import {
@@ -58,6 +60,7 @@ function MainLayoutInner() {
           una vez para todo el ERP. Los tiers que sí bloquean el acceso usan
           SubscriptionBlockedScreen más abajo, no este modal. */}
       <PlanReminderModal />
+      <BranchSwitchConfirmHost />
       <div
         className={clsx(
           'relative flex h-[100dvh] min-h-screen-safe w-full max-w-[100vw] flex-col overflow-hidden',
@@ -162,7 +165,7 @@ function MainLayoutInner() {
                   mobileFlush ? 'rounded-none lg:rounded-2xl' : 'rounded-2xl',
                 )}
               >
-                {showBlockedScreen ? <SubscriptionBlockedScreen /> : <Outlet />}
+                {showBlockedScreen ? <SubscriptionBlockedScreen /> : <BranchKeyedOutlet />}
                 {/* Visor de PDF: montado una vez, se abre desde cualquier página. */}
                 <PdfViewerHostLazy />
               </main>

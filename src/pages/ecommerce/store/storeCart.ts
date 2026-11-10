@@ -1,4 +1,33 @@
-const CART_KEY = 'tukifac_ecommerce_cart'
+import { getTenantSlug } from '@/config/apiBaseUrl'
+
+const LEGACY_CART_KEY = 'tukifac_ecommerce_cart'
+
+/** Clave por tenant: el carrito de la tienda de una empresa no debe aparecer en la de otra. */
+export function cartStorageKey(): string {
+  return `${LEGACY_CART_KEY}::${getTenantSlug() || 'default'}`
+}
+
+function removeLegacyCart(): void {
+  try {
+    localStorage.removeItem(LEGACY_CART_KEY)
+  } catch {
+    /* ignorar */
+  }
+}
+
+/** Vacía el carrito de la tienda del tenant actual (y el formato antiguo sin tenant). */
+export function clearStoredCart(): void {
+  try {
+    localStorage.removeItem(cartStorageKey())
+  } catch {
+    /* ignorar */
+  }
+  removeLegacyCart()
+}
+
+// El carrito público es del visitante de la tienda, no de la sucursal ni de la sesión ERP: no se registra en
+// el registro de cachés (una pantalla pública sin sesión dispararía clearAllCaches y lo vaciaría). Su
+// aislamiento es la clave por tenant.
 
 /** Elección del cliente para un producto con opciones (el servidor recalcula nombre y precio). */
 export interface StoreLineSelection {
@@ -26,7 +55,8 @@ export function lineKey(productId: number, sel?: StoreLineSelection): string {
 
 export function readCart(): StoreCartLine[] {
   try {
-    const raw = localStorage.getItem(CART_KEY)
+    removeLegacyCart()
+    const raw = localStorage.getItem(cartStorageKey())
     const parsed = raw ? JSON.parse(raw) : []
     if (!Array.isArray(parsed)) return []
     // Carritos guardados antes de las opciones no traen line_key.
@@ -37,7 +67,7 @@ export function readCart(): StoreCartLine[] {
 }
 
 function writeCart(lines: StoreCartLine[]): void {
-  localStorage.setItem(CART_KEY, JSON.stringify(lines))
+  localStorage.setItem(cartStorageKey(), JSON.stringify(lines))
 }
 
 export function addToCart(

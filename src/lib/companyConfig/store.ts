@@ -1,6 +1,7 @@
 import { getTenantSlug } from '@/config/apiBaseUrl'
 import { resolveReceiptLogoForPdf } from '@/utils/receiptLogoPdf'
 import type { CompanyConfig } from '@/services/company.service'
+import { registerSessionCache } from '@/lib/branchScope/caches'
 
 /**
  * Caché de datos del tenant (config de empresa + logo como data URL).
@@ -238,3 +239,5 @@ export function clearCompanyCaches(): void {
   safeRemove(tenantKey(CONFIG_KEY))
   safeRemove(tenantKey(LOGO_KEY))
 }
+
+registerSessionCache('companyConfig', clearCompanyCaches)

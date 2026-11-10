@@ -1,4 +1,4 @@
-import axios from 'axios'
+import axios, { type AxiosAdapter, type InternalAxiosRequestConfig } from 'axios'
 import {
   getApiBaseUrl,
   getTenantApiOriginForSlug,
@@ -9,6 +9,17 @@ import { getResolvedTenantApiUrl, getTenantBinding } from '@/lib/tenantBinding/s
 import { normalizeBindingApiUrl } from '@/lib/tenantBinding/types'
 import { isNativeShell } from '@/lib/platform/detect'
 import { clearIdleActivity } from '@/lib/idleSession'
+import { clearAllCaches } from '@/lib/branchScope/caches'
+import {
+  advanceEpoch,
+  currentEpoch,
+  currentEpochSignal,
+  isEpochStale,
+  isGlobalRequestUrl,
+  isWithinSwitchGrace,
+  trackMutationEnd,
+  trackMutationStart,
+} from '@/lib/branchScope/requestEpoch'
 
 const api = axios.create({
   baseURL: 'http://localhost:3000',
@@ -20,7 +31,85 @@ const api = axios.create({
   timeout: 120000,
 })
 
-api.interceptors.request.use((config) => {
+/**
+ * Campos propios que viajan en el config de axios:
+ *  - __epoch: época de sucursal con la que nació la petición (ver lib/branchScope/requestEpoch).
+ *  - __global: true para llamadas que no dependen de la sucursal (nunca se abortan por cambio de sucursal).
+ */
+type BranchAwareConfig = InternalAxiosRequestConfig & {
+  __epoch?: number
+  __global?: boolean
+  __retryCount?: number
+  __retriedAfterRefresh?: boolean
+  __skipAuthRefresh?: boolean
+}
+
+/** Respuesta que NUNCA se resuelve: la pantalla que la pidió ya se desmontó con el cambio de sucursal,
+ * y así ninguno de sus `catch` (toast de error) ni `then` (datos de otra sucursal) llega a ejecutarse. */
+function neverSettles<T = never>(): Promise<T> {
+  return new Promise<T>(() => {})
+}
+
+export const EPOCH_CANCEL_MESSAGE = 'branch-epoch-changed'
+
+function isReadMethod(method: string | undefined): boolean {
+  const m = String(method ?? 'get').toLowerCase()
+  return m === 'get' || m === 'head'
+}
+
+function isGlobalConfig(cfg: BranchAwareConfig | undefined): boolean {
+  return Boolean(cfg?.__global) || isGlobalRequestUrl(cfg?.url)
+}
+
+/** Une la señal del llamador (si trae una) con la de la época vigente. */
+function mergeSignals(own: AbortSignal | null | undefined, epochSignal: AbortSignal): AbortSignal {
+  if (!own || own === epochSignal) return epochSignal
+  const ctrl = new AbortController()
+  const abort = () => ctrl.abort()
+  if (own.aborted || epochSignal.aborted) {
+    ctrl.abort()
+    return ctrl.signal
+  }
+  own.addEventListener('abort', abort, { once: true })
+  epochSignal.addEventListener('abort', abort, { once: true })
+  return ctrl.signal
+}
+
+/** Adaptador real (xhr/http/fetch de axios); sustituible en tests. */
+let baseAdapter: AxiosAdapter | null = null
+export function __setBaseAdapterForTests(adapter: AxiosAdapter | null): void {
+  baseAdapter = adapter
+}
+
+/** Cuenta las escrituras en vuelo (POST/PUT/PATCH/DELETE): el cambio de sucursal espera a que terminen. */
+api.defaults.adapter = async (config) => {
+  const adapter = baseAdapter ?? axios.getAdapter(axios.defaults.adapter)
+  const write = !isReadMethod(config.method)
+  if (write) trackMutationStart()
+  try {
+    return await adapter(config)
+  } finally {
+    if (write) trackMutationEnd()
+  }
+}
+
+api.interceptors.request.use((rawConfig) => {
+  const config = rawConfig as BranchAwareConfig
+  if (!isGlobalConfig(config)) {
+    if (config.__epoch === undefined) {
+      config.__epoch = currentEpoch()
+    } else if (isEpochStale(config.__epoch) && isReadMethod(config.method)) {
+      // Reintento de una lectura de la sucursal anterior: no debe viajar con el token nuevo.
+      // Constructor real de axios: (message, config, request); los typings heredan el de AxiosError.
+      const CanceledCtor = axios.CanceledError as unknown as new (m: string, c: unknown) => Error
+      throw new CanceledCtor(EPOCH_CANCEL_MESSAGE, config)
+    }
+    // Solo las lecturas se abortan: una escritura ya enviada la procesa el servidor igual y el usuario
+    // debe ver su resultado (el cambio de sucursal espera a que terminen, ver waitForMutationsIdle).
+    if (isReadMethod(config.method)) {
+      config.signal = mergeSignals(config.signal as AbortSignal | undefined, currentEpochSignal())
+    }
+  }
   if (shouldUseDevApiProxy()) {
     config.baseURL = ''
     let tenantOrigin = ''
@@ -85,13 +174,23 @@ export const SUBSCRIPTION_BLOCKED_EVENT = 'tukifac:subscription-blocked'
  */
 let refreshPromise: Promise<string | null> | null = null
 
+/** Sucursal con la que el usuario viene operando: el servidor la conserva al renovar el token si le corresponde. */
+function storedActiveBranchId(): number | undefined {
+  try {
+    const id = Number(JSON.parse(localStorage.getItem('active_branch') || 'null')?.id)
+    return id > 0 ? id : undefined
+  } catch {
+    return undefined
+  }
+}
+
 async function refreshAccessToken(): Promise<string | null> {
   const refreshToken = localStorage.getItem('refresh_token')
   if (!refreshToken) return null
   try {
     const resp = await api.post<{ token?: string }>(
       '/api/session/refresh',
-      { refresh_token: refreshToken },
+      { refresh_token: refreshToken, active_branch_id: storedActiveBranchId() },
       // __skipAuthRefresh: que un 401 de este mismo endpoint NO dispare otro refresh (evita bucle).
       { __skipAuthRefresh: true } as import('axios').AxiosRequestConfig & { __skipAuthRefresh?: boolean },
     )
@@ -129,7 +228,12 @@ export function redirectToLogin(message?: string) {
   localStorage.removeItem('user')
   localStorage.removeItem('active_branch')
   localStorage.removeItem('can_switch_branch')
+  localStorage.removeItem('allowed_branches')
   clearIdleActivity()
+  // Cachés de módulo (identidad de sucursal, unidades, claves de idempotencia, logo...) y peticiones en
+  // vuelo: en Tauri/Capacitor no hay recarga de página, así que deben vaciarse aquí.
+  clearAllCaches()
+  advanceEpoch()
   import('sonner').then(({ toast }) => {
     // id fijo: si por cualquier motivo se dispara otra vez, sonner REEMPLAZA el toast en
     // lugar de apilar varios (mismo patrón que el front de restaurante).
@@ -149,9 +253,25 @@ export function redirectToLogin(message?: string) {
   }
 }
 
+/** Emitido ante BRANCH_REQUIRED / BRANCH_FORBIDDEN: BranchContext refresca el contexto de sucursal. */
+export const BRANCH_INVALID_EVENT = 'tukifac:branch-invalid'
+
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Una lectura de otra época que igual alcanzó a completarse: se descarta.
+    const cfg = response.config as BranchAwareConfig
+    if (!isGlobalConfig(cfg) && isReadMethod(cfg.method) && isEpochStale(cfg.__epoch)) {
+      return neverSettles()
+    }
+    return response
+  },
   async (error) => {
+    const eCfg = error?.config as BranchAwareConfig | undefined
+    // Lecturas de la sucursal anterior (abortadas, con error de red/5xx/401/409 tardío...): se ignoran en
+    // silencio. Nunca se reintentan (viajarían con el token nuevo) ni se muestran como error.
+    if (eCfg && !isGlobalConfig(eCfg) && isReadMethod(eCfg.method) && isEpochStale(eCfg.__epoch)) {
+      return neverSettles()
+    }
     // Reintento de fallos transitorios SOLO en peticiones idempotentes (GET/HEAD): red caída o
     // 502/503/504 (incluye el 503 DB_TRANSIENT del backend cuando el pool del tenant está saturado).
     // Así un tropiezo momentáneo de la BD se reintenta en vez de expulsar al login. El timeout del
@@ -161,8 +281,9 @@ api.interceptors.response.use(
     const rMethod = String(rConfig?.method ?? 'get').toLowerCase()
     const rIdempotent = rMethod === 'get' || rMethod === 'head'
     const rIsTimeout = error.code === 'ECONNABORTED'
+    // Una petición cancelada a propósito (AbortController del llamador) nunca se reintenta.
     const rTransient =
-      (!error.response && !rIsTimeout) || rStatus === 502 || rStatus === 503 || rStatus === 504
+      (!error.response && !rIsTimeout && !axios.isCancel(error)) || rStatus === 502 || rStatus === 503 || rStatus === 504
     if (rConfig && rIdempotent && rTransient) {
       const rAttempt = (rConfig.__retryCount ?? 0) + 1
       if (rAttempt <= 2) {
@@ -182,7 +303,16 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
     if (error.response?.status === 409 && error.response?.data?.code === 'SESSION_UPDATED') {
+      // El propio cambio de sucursal sube la versión de sesión: una petición que iba en vuelo con el token
+      // anterior recibe este 409. No es una sesión caída: no se cierra sesión.
+      if (isWithinSwitchGrace()) {
+        return isReadMethod(eCfg?.method) ? neverSettles() : Promise.reject(error)
+      }
       redirectToLogin('Tu acceso fue actualizado. Vuelve a iniciar sesión.')
+      return Promise.reject(error)
+    }
+    if (code === 'BRANCH_REQUIRED' || code === 'BRANCH_FORBIDDEN') {
+      window.dispatchEvent(new CustomEvent(BRANCH_INVALID_EVENT, { detail: { code } }))
       return Promise.reject(error)
     }
     if (error.response?.status === 402 && (code === 'SUBSCRIPTION_REQUIRED' || code === 'TENANT_BLOCKED')) {

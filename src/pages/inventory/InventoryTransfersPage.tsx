@@ -9,6 +9,7 @@ import { UnitQuantityInput } from '@/components/ui/UnitQuantityInput'
 import { companyService } from '@/services/company.service'
 import { productsService, type Product, type ProductPresentation } from '@/services/products.service'
 import { inventoryService, type TransferInput } from '@/services/inventory.service'
+import { usePendingWork } from '@/lib/branchScope/pendingWork'
 
 const PER_PAGE = 10
 
@@ -41,6 +42,7 @@ function InventoryTransfersContent() {
   const [fromBranchId, setFromBranchId] = useState<number | undefined>()
   const [toBranchId, setToBranchId] = useState<number | undefined>()
   const [items, setItems] = useState<TransferItem[]>([])
+  usePendingWork('transferencia en edición', items.length > 0)
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)

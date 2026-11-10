@@ -13,6 +13,8 @@ import { clearCompanyCaches } from '@/lib/companyConfig/store'
 import { SESSION_EXPIRED_EVENT, SESSION_REFRESHED_EVENT } from '@/services/api'
 import { useIdleLogout } from '@/hooks/useIdleLogout'
 import { markIdleActivity, clearIdleActivity } from '@/lib/idleSession'
+import { clearAllCaches } from '@/lib/branchScope/caches'
+import { advanceEpoch } from '@/lib/branchScope/requestEpoch'
 
 interface AuthState {
   user: AuthUser | null
@@ -240,6 +242,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     authService.logout()
+    // Registro único de cachés (identidad de sucursal, unidades, claves de idempotencia, logo, tipo de
+    // cambio...) + aborta lo que siga en vuelo. Imprescindible en Tauri/Capacitor, donde no hay recarga.
+    clearAllCaches()
+    advanceEpoch()
     clearCompanyCaches()
     localStorage.removeItem('active_branch')
     localStorage.removeItem('can_switch_branch')
