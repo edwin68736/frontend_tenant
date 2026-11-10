@@ -482,7 +482,8 @@ function itemDetailRows(
 ): string[] {
   const { wCant, wMoney, wDesc } = itemDetailColWidths(cols, narrow)
   const rows: string[] = []
-  const descLines = wrapText(desc, wDesc)
+  // La descripción trae renglones (nombre, precio base, extras, nota): cada uno se ajusta por separado.
+  const descLines = String(desc ?? '').split('\n').flatMap((part) => wrapText(part, wDesc))
   for (let i = 0; i < descLines.length; i++) {
     const c = i === 0 ? cant.padEnd(wCant) : ' '.repeat(wCant)
     const d = (descLines[i] ?? '').padEnd(wDesc).slice(0, wDesc)

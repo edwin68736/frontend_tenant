@@ -193,11 +193,10 @@ export function buildPreviewQrData(params: {
 
 // La nota NO se incrusta aquí a propósito: la agrega receiptItemDisplayDescription, que es
 // el punto único de impresión. Si se hiciera en ambos sitios saldría duplicada en el preview.
+// Tampoco los extras/presentación: modifiers_json viaja en el PrintItem y receiptItemDisplayDescription los
+// desglosa (con "Precio base" y el precio de cada uno), igual que en el comprobante emitido.
 function itemDescriptionForPrint(it: SalePreviewFormItem): string {
-  const base = it.description.trim()
-  const mods = formatModifierLines(parseStoredModifiers(it.modifiers_json), { skipVariantsIn: base })
-  if (!mods.length) return base || '—'
-  return `${base}\n${mods.join('\n')}`
+  return it.description.trim() || '—'
 }
 
 function resolveLogoUrl(logoUrl?: string): string | undefined {

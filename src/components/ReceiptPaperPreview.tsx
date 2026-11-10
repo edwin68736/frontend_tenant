@@ -127,7 +127,7 @@ export function ReceiptPaperPreview({
             {printData.items.map((it, i) => (
               <tr key={i} className="align-top">
                 <td className="py-0.5 pr-1">{it.quantity}</td>
-                <td className="py-0.5 pr-1">{receiptItemDisplayDescription(it)}</td>
+                <td className="py-0.5 pr-1 whitespace-pre-line">{receiptItemDisplayDescription(it)}</td>
                 <td className="py-0.5 text-right">{receiptItemDisplayUnitPrice(it, money)}</td>
                 <td className="py-0.5 pl-1 text-right">{receiptItemDisplayTotal(it, money)}</td>
               </tr>
