@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { PosPrintersSettings } from '@/components/settings/PosPrintersSettings'
@@ -10,18 +10,23 @@ import { isDevelopmentMode } from '@/lib/runtime/environment'
 import {
   canAccessErpSettings,
   canConfigureErpDevicePrinters,
+  canManageErpAccounting,
   canManageErpCompany,
   canManageErpUsers,
   type ErpSettingsLocationState,
   type ErpSettingsMainTab,
 } from '@/utils/erpSettingsAccess'
 
+// Contabilidad es un módulo opcional del plan: su configuración se carga solo al abrir esa pestaña.
+const AccountingSettingsPanel = lazy(() => import('@/pages/accounting/SettingsPage'))
+
 export default function AjustesPage() {
-  const { hasPermission } = useAuth()
+  const { hasPermission, hasModule } = useAuth()
   const location = useLocation()
   const canCompany = canManageErpCompany(hasPermission)
   const canUsers = canManageErpUsers(hasPermission)
   const canPrinters = canConfigureErpDevicePrinters(hasPermission)
+  const canAccounting = canManageErpAccounting(hasPermission, hasModule)
 
   const availableTabs = useMemo(
     () =>
@@ -29,10 +34,11 @@ export default function AjustesPage() {
         [
           { id: 'empresa', label: 'Empresa', show: canCompany },
           { id: 'usuarios', label: 'Usuarios', show: canUsers },
+          { id: 'contabilidad', label: 'Contabilidad', show: canAccounting },
           { id: 'impresoras', label: 'Equipo', show: canPrinters },
         ] as { id: ErpSettingsMainTab; label: string; show: boolean }[]
       ).filter((t) => t.show),
-    [canCompany, canUsers, canPrinters],
+    [canCompany, canUsers, canPrinters, canAccounting],
   )
 
   const navState = location.state as ErpSettingsLocationState | null
@@ -47,13 +53,13 @@ export default function AjustesPage() {
   const activeTab: ErpSettingsMainTab = availableTabs.some((t) => t.id === tab)
     ? tab
     : (availableTabs[0]?.id ?? 'empresa')
-  const printersOnly = canPrinters && !canCompany && !canUsers
+  const printersOnly = canPrinters && !canCompany && !canUsers && !canAccounting
 
   useEffect(() => {
     if (navState?.erpSettingsTab) setTab(defaultTab)
   }, [defaultTab, navState?.erpSettingsTab])
 
-  if (!canAccessErpSettings(hasPermission)) {
+  if (!canAccessErpSettings(hasPermission, hasModule)) {
     return <Navigate to="/home" replace />
   }
 
@@ -68,7 +74,7 @@ export default function AjustesPage() {
             <p className="mt-0.5 sm:mt-1 text-xs sm:text-sm text-gray-600 hidden sm:block">
               {printersOnly
                 ? 'Configure la impresora de comprobantes en este dispositivo (Windows o Android).'
-                : 'Configuración de la empresa, usuarios y del equipo local.'}
+                : 'Configuración de la empresa, usuarios, contabilidad y del equipo local.'}
             </p>
           </div>
         </div>
@@ -101,6 +107,11 @@ export default function AjustesPage() {
         <div className="mt-3 sm:mt-5">
           {activeTab === 'empresa' && canCompany && <ErpSettingsTab />}
           {activeTab === 'usuarios' && canUsers && <UsersPage />}
+          {activeTab === 'contabilidad' && canAccounting && (
+            <Suspense fallback={<p className="text-sm text-gray-500 py-4">Cargando configuración…</p>}>
+              <AccountingSettingsPanel />
+            </Suspense>
+          )}
           {activeTab === 'impresoras' && canPrinters && (
             <div className="space-y-4">
               <PosPrintersSettings />

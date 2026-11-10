@@ -314,7 +314,6 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'acc-mayor', to: '/accounting/ledger', label: 'Libro Mayor', icon: <ListOrdered size={14} />, module: 'accounting', hideIfLocked: true, permission: 'accounting.ledger' },
       { id: 'acc-sire-ventas', to: '/accounting/sire/sale', label: 'SIRE - Ventas', icon: <Send size={14} />, module: 'accounting', hideIfLocked: true, permission: 'accounting.sire_view' },
       { id: 'acc-sire-compras', to: '/accounting/sire/purchase', label: 'SIRE - Compras', icon: <Send size={14} />, module: 'accounting', hideIfLocked: true, permission: 'accounting.sire_view' },
-      { id: 'acc-config', to: '/accounting/settings', label: 'Configuración', icon: <Settings2 size={14} />, module: 'accounting', hideIfLocked: true, permission: 'accounting.settings' },
     ],
   },
   {

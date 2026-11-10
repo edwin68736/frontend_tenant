@@ -55,7 +55,7 @@ export default function FormatsPage() {
   return (
     <AccountingPage
       title="Exportar formatos – Sistemas contables"
-      subtitle="Asientos de venta del mes para importar en tu sistema contable. Las cuentas se configuran en Contabilidad → Configuración."
+      subtitle="Asientos de venta del mes para importar en tu sistema contable. Las cuentas se configuran en Ajustes → Contabilidad."
     >
       <Card>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">

@@ -52,7 +52,6 @@ const AcctFormatsPage = lazy(() => import('@/pages/accounting/FormatsPage'))
 const AcctSummaryPage = lazy(() => import('@/pages/accounting/SummaryPage'))
 const AcctLedgerPage = lazy(() => import('@/pages/accounting/LedgerPage'))
 const AcctSirePage = lazy(() => import('@/pages/accounting/SirePage'))
-const AcctSettingsPage = lazy(() => import('@/pages/accounting/SettingsPage'))
 const UsersPage = lazy(() => import('@/pages/users/UsersPage'))
 const RolesPage = lazy(() => import('@/pages/users/RolesPage'))
 const CompanyConfigPage = lazy(() => import('@/pages/company/CompanyConfigPage'))
@@ -224,7 +223,8 @@ function AppRoutes() {
         <Route path="accounting/summary" element={<Lazy><AcctRoute perm="accounting.summary_report"><AcctSummaryPage /></AcctRoute></Lazy>} />
         <Route path="accounting/ledger" element={<Lazy><AcctRoute perm="accounting.ledger"><AcctLedgerPage /></AcctRoute></Lazy>} />
         <Route path="accounting/sire/:book" element={<Lazy><AcctRoute perm="accounting.sire_view"><AcctSirePage /></AcctRoute></Lazy>} />
-        <Route path="accounting/settings" element={<Lazy><AcctRoute perm="accounting.settings"><AcctSettingsPage /></AcctRoute></Lazy>} />
+        {/* La configuración de contabilidad vive en Ajustes → Contabilidad; la ruta anterior se conserva como redirección. */}
+        <Route path="accounting/settings" element={<Lazy><ErpSettingsRedirect settingsTab="contabilidad" /></Lazy>} />
         <Route path="cashbank/bank" element={<Lazy><Protected perm="cashbank.bank_view"><BankPage /></Protected></Lazy>} />
         <Route path="cashbank/payment-methods" element={<Lazy><Protected perm="cashbank.payment_methods_manage"><PaymentMethodsPage /></Protected></Lazy>} />
         <Route path="billing" element={<Lazy><Protected perm={['billing.view', 'billing.send']}><BillingPage /></Protected></Lazy>} />

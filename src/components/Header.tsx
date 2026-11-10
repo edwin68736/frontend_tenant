@@ -49,7 +49,7 @@ export default function Header({ onMenuClick, sidebarCollapsed, onToggleSidebar 
   const { user, logout, hasModule, hasPermission } = useAuth()
   const { hub } = useSubscriptionStatus()
   const { limits } = useModules()
-  const showSettings = canAccessErpSettings(hasPermission)
+  const showSettings = canAccessErpSettings(hasPermission, hasModule)
 
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)

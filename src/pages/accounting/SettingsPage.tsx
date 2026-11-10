@@ -37,7 +37,10 @@ function withDefaults(st: AccountingSettings, d: AccountingDefaults): Accounting
   return out
 }
 
-/** Configuración: cuentas contables de los formatos y credenciales SIRE. */
+/**
+ * Configuración de Contabilidad: cuentas contables de los formatos y credenciales SIRE. Ya no es una pantalla del
+ * módulo: vive en Ajustes → Contabilidad (junto al resto de ajustes) y se muestra dentro de esa pestaña.
+ */
 export default function SettingsPage() {
   const [form, setForm] = useState<AccountingSettings>(EMPTY)
   const [defaults, setDefaults] = useState<AccountingDefaults | null>(null)
@@ -87,7 +90,7 @@ export default function SettingsPage() {
 
   if (loading) return <Spinner text="Cargando configuración…" />
   return (
-    <AccountingPage title="Configuración de Contabilidad" subtitle="Cuentas de los formatos de exportación y credenciales de SUNAT SIRE.">
+    <div className="space-y-4">
       <Card>
         <h2 className="font-semibold text-gray-800 mb-1">Cuentas contables (ventas)</h2>
         <p className="text-xs text-gray-500 mb-3">
@@ -168,6 +171,6 @@ export default function SettingsPage() {
           </button>
         </div>
       </Card>
-    </AccountingPage>
+    </div>
   )
 }
