@@ -40,10 +40,13 @@ export default function SirePage() {
   const [loading, setLoading] = useState(false)
   const [needsConfig, setNeedsConfig] = useState(false)
 
-  const handleErr = useCallback((e: unknown) => {
+  // quiet: en la carga inicial, la falta de credenciales ya se explica con el aviso amarillo (con su enlace); un toast
+  // rojo además de ese aviso era un error duplicado nada más abrir la página.
+  const handleErr = useCallback((e: unknown, quiet = false) => {
     const msg = errMessage(e)
-    setNeedsConfig(msg.includes('credenciales SIRE'))
-    toast.error(msg)
+    const missingConfig = msg.includes('credenciales SIRE')
+    setNeedsConfig(missingConfig)
+    if (!(quiet && missingConfig)) toast.error(msg)
   }, [])
 
   const loadTickets = useCallback(async () => {
@@ -62,13 +65,23 @@ export default function SirePage() {
     setResult(null)
     setNeedsConfig(false)
     setLoading(true)
+    // Sin credenciales no se pide nada a SUNAT: el servidor respondería 400 (error en consola) y el aviso con el
+    // enlace a Ajustes ya lo explica. sireSettings nunca devuelve los secretos, solo si están guardados.
     accountingService
-      .sirePeriods(book)
-      .then((p) => {
-        setPeriods(p ?? [])
-        if (p?.length) setYear(p[0].year)
+      .sireSettings()
+      .then((cfg) => {
+        if (!(cfg.client_id && cfg.sol_username && cfg.has_client_secret && cfg.has_sol_password)) {
+          setNeedsConfig(true)
+          return null
+        }
+        return accountingService.sirePeriods(book)
       })
-      .catch(handleErr)
+      .then((p) => {
+        if (!p) return
+        setPeriods(p)
+        if (p.length) setYear(p[0].year)
+      })
+      .catch((e) => handleErr(e, true))
       .finally(() => setLoading(false))
     void loadTickets()
   }, [book, handleErr, loadTickets])

@@ -374,6 +374,29 @@ interface Props {
   onToggleCollapsed?: () => void
 }
 
+/**
+ * NavLink marca activo por ruta e ignora el query: dos ítems con la misma ruta y distinto "?kind=" (p. ej. Exportar
+ * reporte y Registro de compras) salían resaltados a la vez. Con query, se exige que coincida; sin query, no se resalta
+ * si otro ítem de la misma ruta reclama el query actual.
+ */
+function childIsActive(
+  loc: { search: string },
+  child: { id: string; to: string },
+  siblings: { id: string; to: string }[],
+  routerActive: boolean,
+): boolean {
+  if (!routerActive) return false
+  const search = new URLSearchParams(loc.search)
+  const claims = (to: string) => {
+    const q = to.split('?')[1]
+    if (!q) return false
+    return [...new URLSearchParams(q)].every(([k, v]) => search.get(k) === v)
+  }
+  if (child.to.includes('?')) return claims(child.to)
+  const pathOnly = child.to.split('?')[0]
+  return !siblings.some((x) => x.id !== child.id && x.to.split('?')[0] === pathOnly && claims(x.to))
+}
+
 function pathMatches(currentPath: string, to: string, exact?: boolean): boolean {
   const [pathOnly] = to.split('?')
   if (exact) return currentPath === pathOnly
@@ -518,7 +541,7 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
                     className={({ isActive }) =>
                       clsx(
                         'flex items-center gap-2 px-3 py-1.5 text-xs min-w-0 overflow-hidden',
-                        isActive
+                        childIsActive(location, child, group.children, isActive)
                           ? 'bg-[rgb(var(--p600))] text-white'
                           : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900',
                       )
@@ -682,7 +705,7 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
                       className={({ isActive }) =>
                         clsx(
                           'flex items-center gap-2 rounded-xl px-9 py-1.5 text-[12px] font-medium transition-colors min-w-0 overflow-hidden',
-                          isActive
+                          childIsActive(location, child, group.children, isActive)
                             ? 'bg-[rgb(var(--p600))] text-white shadow-sm'
                             : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50',
                         )

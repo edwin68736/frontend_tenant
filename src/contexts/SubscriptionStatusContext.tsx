@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { subscriptionService, type BillingHub } from '@/services/subscription.service'
 import { SUBSCRIPTION_BLOCKED_EVENT } from '@/services/api'
+import { useAuth } from '@/contexts/AuthContext'
 
 type Ctx = {
   hub: BillingHub | null
@@ -22,8 +23,17 @@ export function SubscriptionStatusProvider({ children }: { children: ReactNode }
   const [hub, setHub] = useState<BillingHub | null>(null)
   const [loading, setLoading] = useState(true)
   const lastRefreshAtRef = useRef(0)
+  const { hasPermission } = useAuth()
+  // El resumen de suscripción incluye montos, pagos y facturas: el servidor lo reserva a subscription.view. Los
+  // demás roles no deben pedirlo (daba un 403 en cada pantalla); para ellos el hub queda vacío, como ya pasaba.
+  const canViewHub = hasPermission('subscription.view')
 
   const refresh = useCallback(async () => {
+    if (!canViewHub) {
+      setHub(null)
+      setLoading(false)
+      return
+    }
     try {
       const data = await subscriptionService.getHub()
       setHub(data)
@@ -32,7 +42,7 @@ export function SubscriptionStatusProvider({ children }: { children: ReactNode }
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [canViewHub])
 
   useEffect(() => {
     void refresh()
