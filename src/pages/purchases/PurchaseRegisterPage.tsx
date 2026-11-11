@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useCatalogAccess } from '@/hooks/useCatalogAccess'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { purchaseOrdersService } from '@/services/purchaseOrders.service'
 import { toast } from 'sonner'
 import { Plus, Trash2, ArrowLeft, X, UserPlus, PackagePlus } from 'lucide-react'
 import {
@@ -85,6 +86,10 @@ export default function PurchaseRegisterPage() {
 
 function PurchaseRegisterContent() {
   const navigate = useNavigate()
+  // Orden de compra de origen (?order=ID): precarga proveedor, criterio de IGV y detalle; 1 orden → 1 compra.
+  const [searchParams] = useSearchParams()
+  const orderParam = Number(searchParams.get('order')) || null
+  const [orderNumber, setOrderNumber] = useState<string | null>(null)
   const [suppliers, setSuppliers] = useState<Contact[]>([])
   const [loadingSuppliers, setLoadingSuppliers] = useState(true)
   const [showProductPicker, setShowProductPicker] = useState(false)
@@ -131,6 +136,68 @@ function PurchaseRegisterContent() {
       .catch(() => toast.error('Error al cargar proveedores'))
       .finally(() => setLoadingSuppliers(false))
   }, [])
+
+  useEffect(() => {
+    if (!orderParam) return
+    let cancelled = false
+    purchaseOrdersService
+      .get(orderParam)
+      .then(async ({ order, items: orderItems }) => {
+        if (cancelled) return
+        if (order.status === 'received' || order.status === 'cancelled') {
+          toast.error('La orden ya fue recibida o está anulada')
+          return
+        }
+        if (order.currency !== 'PEN') {
+          toast.error('Las órdenes en dólares aún no se pueden convertir en compra (próxima fase).')
+          navigate('/purchases/orders', { replace: true })
+          return
+        }
+        // manage_series/presentaciones no viajan en la orden: se consultan por producto.
+        const lines: PurchaseLineItem[] = await Promise.all(
+          orderItems.map(async oi => {
+            let manageSeries = false
+            let presentations: { id: number; name: string; sale_price: number }[] = []
+            if (oi.product_id) {
+              try {
+                const detail = await productsService.get(oi.product_id)
+                manageSeries = detail.data.manage_series === true
+                presentations = (detail.presentations ?? [])
+                  .filter(pr => pr.id && pr.name.trim() && (pr as { active?: boolean }).active !== false)
+                  .map(pr => ({ id: pr.id as number, name: pr.name.trim(), sale_price: Number(pr.sale_price) || 0 }))
+              } catch {
+                // si falla, la línea queda sin series/presentación y el usuario las completa
+              }
+            }
+            return {
+              product_id: oi.product_id as number,
+              code: oi.code,
+              description: oi.description,
+              unit: oi.unit,
+              quantity: manageSeries ? 0 : oi.quantity,
+              unit_cost: oi.unit_cost,
+              igv_affectation_type: oi.igv_affectation_type,
+              price_includes_igv: oi.price_includes_igv,
+              sale_unit_id: oi.sale_unit_id ?? undefined,
+              presentation_id: oi.presentation_id ?? undefined,
+              presentation_options: presentations.length > 0 && !oi.presentation_id ? presentations : undefined,
+              manage_series: manageSeries,
+              serials: [],
+              update_sale_price: false,
+            }
+          }),
+        )
+        if (cancelled) return
+        setForm(f => ({ ...f, contact_id: order.contact_id ?? undefined, notes: order.notes || f.notes }))
+        setPriceIncludesIgv(order.price_includes_igv)
+        setItems(lines)
+        setOrderNumber(order.number)
+      })
+      .catch(() => toast.error('No se pudo cargar la orden de compra'))
+    return () => {
+      cancelled = true
+    }
+  }, [orderParam, navigate])
 
   const addProductToItems = async (p: Product, opts?: { isNewlyCreated?: boolean }) => {
     let hasPresentations = false
@@ -338,6 +405,7 @@ function PurchaseRegisterContent() {
         series,
         number,
         price_includes_igv: priceIncludesIgv,
+        purchase_order_id: orderNumber ? (orderParam ?? undefined) : undefined,
         items: payloadItems,
       } as CreatePurchaseInput)
       toast.success('Compra registrada')
@@ -367,6 +435,11 @@ function PurchaseRegisterContent() {
           <p className="text-sm text-gray-500 mt-0.5">
             Registre el comprobante del proveedor y el detalle de productos recibidos
           </p>
+          {orderNumber && (
+            <p className="text-sm text-blue-700 mt-1">
+              Generada desde la orden de compra <strong className="font-mono">{orderNumber}</strong>. Ingrese serie y número del comprobante del proveedor.
+            </p>
+          )}
         </header>
 
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

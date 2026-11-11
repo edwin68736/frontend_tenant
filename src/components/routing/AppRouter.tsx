@@ -30,6 +30,8 @@ const QuotationRegisterPage = lazy(() => import('@/pages/quotations/QuotationReg
 const POSPage = lazy(() => import('@/pages/pos/POSPage'))
 const PurchasesPage = lazy(() => import('@/pages/purchases/PurchasesPage'))
 const PurchaseRegisterPage = lazy(() => import('@/pages/purchases/PurchaseRegisterPage'))
+const PurchaseOrdersPage = lazy(() => import('@/pages/purchases/PurchaseOrdersPage'))
+const PurchaseOrderFormPage = lazy(() => import('@/pages/purchases/PurchaseOrderFormPage'))
 const SuppliersPage = lazy(() => import('@/pages/contacts/SuppliersPage'))
 const InventoryPage = lazy(() => import('@/pages/inventory/InventoryPage'))
 const InventoryTransfersPage = lazy(() => import('@/pages/inventory/InventoryTransfersPage'))
@@ -192,6 +194,9 @@ function AppRoutes() {
         <Route path="quotations" element={<Lazy><Protected perm="quotations.view"><QuotationsPage /></Protected></Lazy>} />
         <Route path="quotations/new" element={<Lazy><Protected perm="quotations.create" write><QuotationRegisterPage /></Protected></Lazy>} />
         <Route path="quotations/:id/edit" element={<Lazy><Protected perm="quotations.edit" write><QuotationRegisterPage /></Protected></Lazy>} />
+        <Route path="purchases/orders" element={<Lazy><Protected perm="purchases.view"><PurchaseOrdersPage /></Protected></Lazy>} />
+        <Route path="purchases/orders/new" element={<Lazy><Protected perm="purchases.create" write><PurchaseOrderFormPage /></Protected></Lazy>} />
+        <Route path="purchases/orders/:id/edit" element={<Lazy><Protected perm="purchases.create" write><PurchaseOrderFormPage /></Protected></Lazy>} />
         <Route path="purchases/register" element={<Lazy><Protected perm="purchases.create" write><PurchaseRegisterPage /></Protected></Lazy>} />
         <Route path="purchases/suppliers" element={<Lazy><Protected perm="suppliers.view"><SuppliersPage /></Protected></Lazy>} />
         <Route path="purchases/payables" element={<Lazy><Protected perm="payables.view"><PayablesPage /></Protected></Lazy>} />
