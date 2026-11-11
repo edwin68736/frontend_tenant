@@ -145,15 +145,15 @@ export function inferPrepaymentRelatedDocType(documentNumber: string): '02' | '0
   return '02'
 }
 
-/** Título del comprobante en PDF local (emisión de anticipo vs factura/boleta normal). */
+/**
+ * Título del comprobante en PDF local. Un comprobante que emite un anticipo es una FACTURA (o BOLETA) como cualquier otra: el
+ * anticipo se indica aparte (fila «ANTICIPO» y «Pago Anticipado» en el detalle), nunca reemplaza el nombre del documento.
+ */
 export function receiptDocTypeTitle(
   sunatCode: string,
-  fiscal?: PrintFiscalContext | null,
+  _fiscal?: PrintFiscalContext | null,
   docType?: string | null,
 ): string {
-  if (fiscal?.has_prepayment_emit) {
-    return (fiscal.prepayment_label ?? 'COMPROBANTE DE ANTICIPO').toUpperCase()
-  }
   // El pedido web reusa el código QT (no fiscal, sin QR) de las cotizaciones, pero se titula aparte.
   if (String(sunatCode ?? '').trim() === 'QT' && /pedido/i.test(docType ?? '')) return 'PEDIDO WEB'
   const map: Record<string, string> = {
