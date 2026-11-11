@@ -5,14 +5,14 @@ import { Plus, X, ArrowUpRight, ArrowDownLeft, ArrowLeftRight, Banknote, Pencil,
 import { TransferModal } from '@/components/bank/TransferModal'
 import { TransfersPanel } from '@/components/bank/TransfersPanel'
 import { formatSaleMoney } from '@/utils/formatMoney'
-import { cashbankService, type BankAccount, type BankMovement } from '@/services/cashbank.service'
+import { cashbankService, type Bank, type BankAccount, type BankMovement } from '@/services/cashbank.service'
 import RequireModule from '@/components/ui/RequireModule'
 import { useAuth } from '@/contexts/AuthContext'
 import { Modal } from '@/components/ui/Modal'
 import { getTodayPeru } from '@/utils/datesPeru'
 import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 
-const emptyAccount = () => ({ name: '', bank_name: '', account_number: '', cci: '', currency: 'PEN', type: 'bank', initial_balance: 0, active: true })
+const emptyAccount = () => ({ bank_id: null as number | null, name: '', bank_name: '', account_number: '', cci: '', currency: 'PEN', type: 'bank', initial_balance: 0, active: true })
 const emptyMov = () => ({ type: 'credit' as 'credit' | 'debit', description: '', reference: '', amount: 0, date: getTodayPeru() })
 const MOV_PER_PAGE_OPTIONS = [10, 25, 50, 100] as const
 
@@ -64,6 +64,22 @@ function BankContent() {
   const [saving, setSaving] = useState(false)
   const [showTransfer, setShowTransfer] = useState(false)
   const [transfersKey, setTransfersKey] = useState(0)
+
+  const [banks, setBanks] = useState<Bank[]>([])
+  const [newBankName, setNewBankName] = useState('')
+  const [addingBank, setAddingBank] = useState(false)
+  useEffect(() => { cashbankService.listBanks().then(setBanks).catch(() => setBanks([])) }, [])
+  const addBank = async () => {
+    const name = newBankName.trim()
+    if (!name) return
+    try {
+      const b = await cashbankService.createBank(name)
+      setBanks(prev => [...prev, b].sort((a, c) => a.name.localeCompare(c.name)))
+      setAccountForm(f => ({ ...f, bank_id: b.id, bank_name: b.name }))
+      setNewBankName('')
+      setAddingBank(false)
+    } catch (e: any) { toast.error(e.response?.data?.error ?? 'No se pudo agregar el banco') }
+  }
 
   const load = () => cashbankService.listBankAccounts(true)
     .then(d => setAccounts(d ?? []))
@@ -127,6 +143,7 @@ function BankContent() {
       await cashbankService.updateBankAccount(editingAccount.id, {
         name: accountForm.name,
         bank_name: accountForm.bank_name,
+        bank_id: accountForm.bank_id,
         account_number: accountForm.account_number,
         cci: accountForm.cci,
         type: accountForm.type,
@@ -146,6 +163,7 @@ function BankContent() {
     e.stopPropagation()
     setEditingAccount(acc)
     setAccountForm({
+      bank_id: acc.bank_id ?? null,
       name: acc.name,
       bank_name: acc.bank_name,
       account_number: acc.account_number || '',
@@ -428,12 +446,32 @@ function BankContent() {
           </p>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Banco / Entidad</label>
-            <input
+            <select
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-              value={accountForm.bank_name}
-              onChange={e => setAccountForm(f => ({ ...f, bank_name: e.target.value }))}
-              placeholder="Ej. BCP, Yape, Caja"
-            />
+              value={accountForm.bank_id ?? ''}
+              onChange={e => {
+                const id = e.target.value ? Number(e.target.value) : null
+                const b = banks.find(x => x.id === id)
+                setAccountForm(f => ({ ...f, bank_id: id, bank_name: b ? b.name : f.bank_name }))
+              }}
+            >
+              <option value="">{accountForm.bank_id ? 'Sin banco del catálogo' : accountForm.bank_name ? `Otro: ${accountForm.bank_name}` : 'Seleccionar banco…'}</option>
+              {banks.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+            {addingBank ? (
+              <div className="flex gap-2 mt-2">
+                <input
+                  className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                  placeholder="Nombre del banco o entidad"
+                  value={newBankName}
+                  onChange={e => setNewBankName(e.target.value)}
+                />
+                <button type="button" onClick={addBank} className="px-3 py-2 bg-[rgb(var(--p600))] text-white rounded-xl text-sm">Agregar</button>
+                <button type="button" onClick={() => setAddingBank(false)} className="px-3 py-2 border border-gray-200 rounded-xl text-sm text-gray-600">Cancelar</button>
+              </div>
+            ) : (
+              <button type="button" onClick={() => setAddingBank(true)} className="mt-1 text-xs text-[rgb(var(--p600))] hover:underline">+ Agregar banco al catálogo</button>
+            )}
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">N° Cuenta / Referencia</label>

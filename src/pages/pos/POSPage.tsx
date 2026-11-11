@@ -41,7 +41,7 @@ import { paidCoversTotal, roundDisplay, roundSunat, sumMoney, nonCashOverpay } f
 import type { CheckoutDiscountMode } from '@/utils/checkoutDiscount'
 import { buildTaxConfigFromSunat } from '@/constants/tax'
 import { findPaymentMethodRecord, isPaymentMethodLinkedForSale } from '@/utils/paymentMethodCheckout'
-import { defaultOperationalPaymentCode, filterOperationalPaymentMethods } from '@/utils/operationalPaymentMethods'
+import { defaultOperationalPaymentCode, filterOperationalPaymentMethods, missingRequiredReference } from '@/utils/operationalPaymentMethods'
 import { BILLING_NOT_ENABLED_MESSAGE, isElectronicBillingSunatCode } from '@/utils/posCheckoutSeries'
 import { PosMobileCartDrawer } from '@/components/pos/PosMobileCartDrawer'
 import { ManualProductModal } from '@/components/pos/ManualProductModal'
@@ -165,7 +165,7 @@ function POSContent() {
   const [productToWeigh, setProductToWeigh] = useState<Product | null>(null)
   const [comboToConfigure, setComboToConfigure] = useState<Product | null>(null)
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
-  const checkoutPaymentMethods = useMemo(() => filterOperationalPaymentMethods(paymentMethods), [paymentMethods])
+  const checkoutPaymentMethods = useMemo(() => filterOperationalPaymentMethods(paymentMethods, 'income'), [paymentMethods])
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [checkoutDiscountMode, setCheckoutDiscountMode] = useState<CheckoutDiscountMode>('percent')
   const [checkoutDiscountValue, setCheckoutDiscountValue] = useState(0)
@@ -836,6 +836,11 @@ function POSContent() {
     }
 
     const validPayments = payments.filter((p) => Number(p.amount) > 0)
+    const noRef = missingRequiredReference(paymentMethods, validPayments)
+    if (noRef) {
+      toast.error(`El método «${noRef.name}» exige el N° de operación o referencia`)
+      return
+    }
     // Ventas con total 0 (p. ej. solo bonificaciones/gratuitas) no requieren pago.
     const requiresPayment = roundSunat(payableTotal) > 0.009
     if (requiresPayment && validPayments.length === 0) { toast.error('Ingresa al menos un pago'); return }
@@ -862,6 +867,7 @@ function POSContent() {
           method: p.method,
           amount: roundSunat(Number(p.amount)),
           destination_account_id: p.destination_account_id,
+          reference: p.reference?.trim() || undefined,
         })),
         global_discount_mode: checkoutDiscountValue > 0 ? checkoutDiscountMode : undefined,
         global_discount_value: checkoutDiscountValue > 0 ? saleCalc.globalPayloadValue : undefined,

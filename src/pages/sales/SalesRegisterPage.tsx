@@ -53,7 +53,7 @@ import { useExchangeRate } from '@/hooks/useExchangeRate'
 import { catalogsService, type DetraccionGood } from '@/services/catalogs.service'
 import { UbigeoCascadeSelect } from '@/components/UbigeoCascadeSelect'
 import { previewDetraccion, DETRACCION_PAYMENT_METHOD_CODE, DETRACCION_PAYMENT_METHOD_NAME } from '@/utils/fiscalDetraction'
-import { filterOperationalPaymentMethods, findOperationalPaymentMethod } from '@/utils/operationalPaymentMethods'
+import { filterOperationalPaymentMethods, findOperationalPaymentMethod, missingRequiredReference } from '@/utils/operationalPaymentMethods'
 import {
   formatTipoDocIdentidadDisplay,
   SALES_OPERATION_TYPE_OPTIONS,
@@ -1336,7 +1336,7 @@ function SalesRegisterContent({
     }))
   }
 
-  const directPaymentMethods = useMemo(() => filterOperationalPaymentMethods(paymentMethods), [paymentMethods])
+  const directPaymentMethods = useMemo(() => filterOperationalPaymentMethods(paymentMethods, 'income'), [paymentMethods])
 
   // Autodetracción: se cobra el TOTAL (neto + detracción); sin ella, solo el neto (la detracción la deposita el cliente en el BN).
   const detractionCollectible =
@@ -1745,6 +1745,11 @@ function SalesRegisterContent({
     }
 
     const validPayments = payments.filter(p => Number(p.amount) > 0)
+    const noRef = missingRequiredReference(paymentMethods, validPayments)
+    if (noRef) {
+      toast.error(`El método «${noRef.name}» exige el N° de operación o referencia`)
+      return
+    }
     const totalPaid = validPayments.reduce((s, p) => s + Number(p.amount), 0)
     const requiredDirect =
       isDetraccion && detractionPreview.applicable

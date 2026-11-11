@@ -9,8 +9,29 @@ export function isOperationalPaymentMethod(pm: Pick<PaymentMethodRecord, 'code' 
   return true
 }
 
-export function filterOperationalPaymentMethods(list: PaymentMethodRecord[]): PaymentMethodRecord[] {
-  return (list ?? []).filter(isOperationalPaymentMethod)
+/** Sentido en que se usa el método: cobros (ventas, CxC) o pagos (compras, CxP). Sin sentido no se filtra. */
+export type PaymentDirection = 'income' | 'expense'
+
+export function methodAppliesTo(pm: Pick<PaymentMethodRecord, 'applies_to'>, direction: PaymentDirection): boolean {
+  const a = pm.applies_to
+  return !a || a === 'both' || a === direction
+}
+
+export function filterOperationalPaymentMethods(list: PaymentMethodRecord[], direction?: PaymentDirection): PaymentMethodRecord[] {
+  return (list ?? []).filter((pm) => isOperationalPaymentMethod(pm) && (!direction || methodAppliesTo(pm, direction)))
+}
+
+/** Primera línea que usa un método que exige referencia y no la trae (null = todo en orden). */
+export function missingRequiredReference(
+  methods: PaymentMethodRecord[],
+  lines: { method: string; reference?: string }[],
+): PaymentMethodRecord | null {
+  for (const l of lines) {
+    if ((l.reference ?? '').trim()) continue
+    const pm = findOperationalPaymentMethod(methods, l.method)
+    if (pm?.requires_reference) return pm
+  }
+  return null
 }
 
 /** Preferir efectivo; nunca devolver internos como fallback. */

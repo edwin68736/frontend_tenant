@@ -78,6 +78,8 @@ export interface BankAccount {
   type: string
   payment_method: string
   active: boolean
+  /** Banco del catálogo (bank_name conserva su nombre). */
+  bank_id?: number | null
 }
 
 export interface BankMovement {
@@ -521,10 +523,16 @@ export const cashbankService = {
   getBankAccount: (id: number): Promise<BankAccount> =>
     api.get(`/api/cashbank/bank-accounts/${id}`).then(r => r.data.data ?? r.data),
 
-  createBankAccount: (data: { name: string; bank_name: string; account_number: string; cci?: string; currency: string; type?: string; payment_method?: string; initial_balance: number }): Promise<BankAccount> =>
+  listBanks: (all?: boolean): Promise<Bank[]> =>
+    api.get('/api/cashbank/banks', { params: all ? { all: '1' } : {} }).then(r => r.data.data ?? []),
+
+  createBank: (name: string): Promise<Bank> =>
+    api.post('/api/cashbank/banks', { name }).then(r => r.data.data ?? r.data),
+
+  createBankAccount: (data: { bank_id?: number | null; name: string; bank_name: string; account_number: string; cci?: string; currency: string; type?: string; payment_method?: string; initial_balance: number }): Promise<BankAccount> =>
     api.post('/api/cashbank/bank-accounts', { ...data, type: data.type ?? 'bank', payment_method: data.payment_method ?? '' }).then(r => r.data.data ?? r.data),
 
-  updateBankAccount: (id: number, data: Partial<{ name: string; bank_name: string; account_number: string; cci: string; type: string; payment_method: string; active: boolean }>): Promise<void> =>
+  updateBankAccount: (id: number, data: Partial<{ bank_id: number | null; name: string; bank_name: string; account_number: string; cci: string; type: string; payment_method: string; active: boolean }>): Promise<void> =>
     api.put(`/api/cashbank/bank-accounts/${id}`, data).then(r => r.data),
 
   /** Movimientos paginados/filtrados de una cuenta bancaria (from/to YYYY-MM-DD, type credit|debit). */
@@ -581,10 +589,10 @@ export const cashbankService = {
   getPaymentMethod: (id: number): Promise<PaymentMethodRecord> =>
     api.get(`/api/cashbank/payment-methods/${id}`).then(r => r.data.data ?? r.data),
 
-  createPaymentMethod: (data: { name: string; code: string; destination_type: string; bank_account_id?: number }): Promise<PaymentMethodRecord> =>
+  createPaymentMethod: (data: { name: string; code: string; destination_type: string; bank_account_id?: number; applies_to?: string; requires_reference?: boolean }): Promise<PaymentMethodRecord> =>
     api.post('/api/cashbank/payment-methods', data).then(r => r.data.data ?? r.data),
 
-  updatePaymentMethod: (id: number, data: Partial<{ name: string; code: string; destination_type: string; bank_account_id?: number; active: boolean }>): Promise<void> =>
+  updatePaymentMethod: (id: number, data: Partial<{ name: string; code: string; destination_type: string; bank_account_id?: number; active: boolean; applies_to: string; requires_reference: boolean }>): Promise<void> =>
     api.put(`/api/cashbank/payment-methods/${id}`, data).then(r => r.data),
 
   deletePaymentMethod: (id: number): Promise<void> =>
@@ -601,5 +609,15 @@ export interface PaymentMethodRecord {
   bank_account_id: number | null
   is_system: boolean
   sort_order: number
+  active: boolean
+  /** En qué sentido sirve el método: cobros, pagos o ambos (ausente = ambos). */
+  applies_to?: 'income' | 'expense' | 'both'
+  /** Exige N° de operación / referencia al cobrar o pagar. */
+  requires_reference?: boolean
+}
+
+export interface Bank {
+  id: number
+  name: string
   active: boolean
 }

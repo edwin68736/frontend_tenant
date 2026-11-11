@@ -18,7 +18,7 @@ type Props = {
 // Mismo patrón que CollectPaymentModal.tsx (CxC), sin cuotas: una compra solo tiene un saldo
 // corriente (original/pagado/saldo) — ver PayableService.Pay en el backend.
 export function PayPayableModal({ row, paymentMethods, onClose, onSuccess }: Props) {
-  const directMethods = filterOperationalPaymentMethods(paymentMethods).filter((pm) => pm.active)
+  const directMethods = filterOperationalPaymentMethods(paymentMethods, 'expense').filter((pm) => pm.active)
   const [method, setMethod] = useState(defaultOperationalPaymentCode(directMethods))
   const [amount, setAmount] = useState(row.due)
   const [reference, setReference] = useState('')

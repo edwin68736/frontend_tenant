@@ -5,6 +5,8 @@ import { useCatalogAccess } from '@/hooks/useCatalogAccess'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { purchaseOrdersService } from '@/services/purchaseOrders.service'
 import { toast } from 'sonner'
+import { cashbankService, type PaymentMethodRecord } from '@/services/cashbank.service'
+import { filterOperationalPaymentMethods } from '@/utils/operationalPaymentMethods'
 import { Plus, Trash2, ArrowLeft, X, UserPlus, PackagePlus } from 'lucide-react'
 import {
   purchasesService,
@@ -120,6 +122,11 @@ function PurchaseRegisterContent() {
   // (costo × TC) en el backend.
   const currency: 'PEN' | 'USD' = form.currency === 'USD' ? 'USD' : 'PEN'
   const sym = saleCurrencySymbol(currency)
+  // Métodos de pago del catálogo que sirven para PAGOS (los de solo cobros no se ofrecen en una compra).
+  const [purchaseMethods, setPurchaseMethods] = useState<PaymentMethodRecord[]>([])
+  useEffect(() => {
+    cashbankService.listPaymentMethods().then(m => setPurchaseMethods(filterOperationalPaymentMethods(Array.isArray(m) ? m : [], 'expense'))).catch(() => setPurchaseMethods([]))
+  }, [])
   const [rate, setRate] = useState('')
   const [rateTouched, setRateTouched] = useState(false)
   const rateNum = parseFloat(rate.replace(',', '.'))
@@ -571,11 +578,17 @@ function PurchaseRegisterContent() {
               onChange={e => setForm(f => ({ ...f, payment_method: e.target.value || undefined }))}
             >
               <option value="">Crédito (sin pago inmediato)</option>
-              <option value="efectivo">Efectivo</option>
-              <option value="yape">Yape</option>
-              <option value="plin">Plin</option>
-              <option value="transferencia">Transferencia</option>
-              <option value="tarjeta">Tarjeta</option>
+              {purchaseMethods.length > 0 ? (
+                purchaseMethods.filter(pm => pm.active).map(pm => <option key={pm.id} value={pm.code}>{pm.name}</option>)
+              ) : (
+                <>
+                  <option value="efectivo">Efectivo</option>
+                  <option value="yape">Yape</option>
+                  <option value="plin">Plin</option>
+                  <option value="transferencia">Transferencia</option>
+                  <option value="tarjeta">Tarjeta</option>
+                </>
+              )}
             </select>
             <p className="text-xs text-gray-400 mt-0.5">
               {form.payment_method

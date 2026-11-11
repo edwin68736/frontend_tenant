@@ -102,6 +102,8 @@ export interface CollectPaymentLine {
   amount: number
   /** Cuenta bancaria que recibe este cobro (omitido = la vinculada al método). */
   destination_account_id?: number
+  /** N° de operación / referencia del cobro. */
+  reference?: string
 }
 
 export interface ListReceivablesParams {

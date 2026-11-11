@@ -28,7 +28,7 @@ function installmentStatusLabel(status: string): string {
 }
 
 export function CollectPaymentModal({ row, paymentMethods, onClose, onSuccess }: Props) {
-  const directMethods = filterOperationalPaymentMethods(paymentMethods).filter((pm) => pm.active)
+  const directMethods = filterOperationalPaymentMethods(paymentMethods, 'income').filter((pm) => pm.active)
   const openInstallments = useMemo(
     () => (row.installments ?? []).filter((i) => i.due_amount > 0.009),
     [row.installments],
@@ -37,6 +37,7 @@ export function CollectPaymentModal({ row, paymentMethods, onClose, onSuccess }:
   const [method, setMethod] = useState(defaultOperationalPaymentCode(directMethods))
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   const [destinationId, setDestinationId] = useState('')
+  const [reference, setReference] = useState('')
   useEffect(() => {
     cashbankService.listBankAccounts().then(setAccounts).catch(() => setAccounts([]))
   }, [])
@@ -65,9 +66,14 @@ export function CollectPaymentModal({ row, paymentMethods, onClose, onSuccess }:
       toast.error(`El monto no puede superar el saldo ${formatSaleMoney(row.direct_due, row.currency)}`)
       return
     }
+    const pmSel = findOperationalPaymentMethod(directMethods, method)
+    if (pmSel?.requires_reference && !reference.trim()) {
+      toast.error(`El método «${pmSel.name}» exige el N° de operación o referencia`)
+      return
+    }
     setLoading(true)
     try {
-      await receivablesService.collect(row.sale_id, [{ method, amount, destination_account_id: destinationId ? Number(destinationId) : undefined }], {
+      await receivablesService.collect(row.sale_id, [{ method, amount, reference: reference.trim() || undefined, destination_account_id: destinationId ? Number(destinationId) : undefined }], {
         preferInstallmentId: preferInstallmentId || undefined,
       })
       const fullyPaid = amount >= row.direct_due - 0.01
@@ -178,6 +184,14 @@ export function CollectPaymentModal({ row, paymentMethods, onClose, onSuccess }:
             onChange={setDestinationId}
             className="w-full border rounded-lg px-3 py-2 text-sm mt-2"
           />
+          {findOperationalPaymentMethod(directMethods, method)?.destination_type !== 'cash' && (
+            <input
+              className="w-full border rounded-lg px-3 py-2 text-sm mt-2"
+              placeholder={findOperationalPaymentMethod(directMethods, method)?.requires_reference ? 'N° de operación *' : 'N° de operación (opcional)'}
+              value={reference}
+              onChange={(e) => setReference(e.target.value)}
+            />
+          )}
         </div>
         <div>
           <label className="text-xs text-gray-500">Monto</label>

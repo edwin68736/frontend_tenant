@@ -27,6 +27,8 @@ function PaymentMethodsContent() {
     destination_type: 'cash' as 'cash' | 'bank_account',
     bank_account_id: null as number | null,
     active: true,
+    applies_to: 'both' as 'income' | 'expense' | 'both',
+    requires_reference: false,
   })
   const [saving, setSaving] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<PaymentMethodRecord | null>(null)
@@ -48,7 +50,7 @@ function PaymentMethodsContent() {
 
   const openCreate = () => {
     setEditing(null)
-    setForm({ name: '', code: '', destination_type: 'cash', bank_account_id: null, active: true })
+    setForm({ name: '', code: '', destination_type: 'cash', bank_account_id: null, active: true, applies_to: 'both', requires_reference: false })
     setShowModal(true)
   }
 
@@ -60,6 +62,8 @@ function PaymentMethodsContent() {
       destination_type: pm.destination_type as 'cash' | 'bank_account',
       bank_account_id: pm.bank_account_id ?? null,
       active: pm.active,
+      applies_to: pm.applies_to ?? 'both',
+      requires_reference: !!pm.requires_reference,
     })
     setShowModal(true)
   }
@@ -80,6 +84,8 @@ function PaymentMethodsContent() {
           destination_type: form.destination_type,
           bank_account_id: form.bank_account_id ?? undefined,
           active: form.active,
+          applies_to: form.applies_to,
+          requires_reference: form.requires_reference,
         })
         toast.success('Método actualizado')
       } else {
@@ -88,6 +94,8 @@ function PaymentMethodsContent() {
           code: form.code,
           destination_type: form.destination_type,
           bank_account_id: form.bank_account_id ?? undefined,
+          applies_to: form.applies_to,
+          requires_reference: form.requires_reference,
         })
         toast.success('Método creado')
       }
@@ -145,6 +153,7 @@ function PaymentMethodsContent() {
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Nombre</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Código</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Destino</th>
+                <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Se usa en</th>
                 <th className="text-left px-4 py-3 font-semibold text-gray-600 whitespace-nowrap">Estado</th>
                 <th className="w-24 px-4 py-3" />
               </tr>
@@ -169,6 +178,10 @@ function PaymentMethodsContent() {
                         )}
                       </span>
                     )}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">
+                    {pm.applies_to === 'income' ? 'Cobros' : pm.applies_to === 'expense' ? 'Pagos' : 'Cobros y pagos'}
+                    {pm.requires_reference ? <span className="ml-1 text-amber-700">· exige referencia</span> : null}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${pm.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
@@ -253,6 +266,29 @@ function PaymentMethodsContent() {
               </select>
             </div>
           )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Se usa en</label>
+              <select
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                value={form.applies_to}
+                disabled={editing?.is_system}
+                onChange={e => setForm(f => ({ ...f, applies_to: e.target.value as 'income' | 'expense' | 'both' }))}
+              >
+                <option value="both">Cobros y pagos</option>
+                <option value="income">Solo cobros (ventas, cuentas por cobrar)</option>
+                <option value="expense">Solo pagos (compras, cuentas por pagar)</option>
+              </select>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-gray-700 pb-2">
+              <input
+                type="checkbox"
+                checked={form.requires_reference}
+                onChange={e => setForm(f => ({ ...f, requires_reference: e.target.checked }))}
+              />
+              Exigir N° de operación / referencia
+            </label>
+          </div>
           {editing && (
             <div className="flex items-center gap-2">
               <input
