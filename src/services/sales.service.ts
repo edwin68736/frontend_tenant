@@ -159,6 +159,8 @@ export interface PaymentInput {
   method: string
   amount: number
   reference?: string
+  /** Cuenta bancaria que recibe ESTE pago (omitido = la cuenta vinculada al método). No aplica al efectivo. */
+  destination_account_id?: number
 }
 
 export interface SaleFiscalReferenceInput {

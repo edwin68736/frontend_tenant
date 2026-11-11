@@ -858,7 +858,11 @@ function POSContent() {
         cash_session_id: session?.id ?? null,
         issue_date: today,
         due_date: today,
-        payments: validPayments.map((p) => ({ method: p.method, amount: roundSunat(Number(p.amount)) })),
+        payments: validPayments.map((p) => ({
+          method: p.method,
+          amount: roundSunat(Number(p.amount)),
+          destination_account_id: p.destination_account_id,
+        })),
         global_discount_mode: checkoutDiscountValue > 0 ? checkoutDiscountMode : undefined,
         global_discount_value: checkoutDiscountValue > 0 ? saleCalc.globalPayloadValue : undefined,
         items: cart.map((i) => {

@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { receivablesService, type ReceivableRow } from '@/services/receivables.service'
-import type { PaymentMethodRecord } from '@/services/cashbank.service'
+import { cashbankService, type BankAccount, type PaymentMethodRecord } from '@/services/cashbank.service'
+import { PaymentDestinationSelect } from '@/components/sales/PaymentDestinationSelect'
 import { formatPaymentMethodLabel } from '@/utils/paymentMethodLabel'
-import { defaultOperationalPaymentCode, filterOperationalPaymentMethods } from '@/utils/operationalPaymentMethods'
+import { defaultOperationalPaymentCode, filterOperationalPaymentMethods, findOperationalPaymentMethod } from '@/utils/operationalPaymentMethods'
 import { formatDisplayDatePeru } from '@/utils/datesPeru'
 import { formatSaleMoney } from '@/utils/formatMoney'
 
@@ -34,6 +35,11 @@ export function CollectPaymentModal({ row, paymentMethods, onClose, onSuccess }:
   )
   const firstOpenId = openInstallments[0]?.id ?? 0
   const [method, setMethod] = useState(defaultOperationalPaymentCode(directMethods))
+  const [accounts, setAccounts] = useState<BankAccount[]>([])
+  const [destinationId, setDestinationId] = useState('')
+  useEffect(() => {
+    cashbankService.listBankAccounts().then(setAccounts).catch(() => setAccounts([]))
+  }, [])
   const [preferInstallmentId, setPreferInstallmentId] = useState<number>(firstOpenId)
   const [amount, setAmount] = useState(() => {
     const first = openInstallments[0]
@@ -61,7 +67,7 @@ export function CollectPaymentModal({ row, paymentMethods, onClose, onSuccess }:
     }
     setLoading(true)
     try {
-      await receivablesService.collect(row.sale_id, [{ method, amount }], {
+      await receivablesService.collect(row.sale_id, [{ method, amount, destination_account_id: destinationId ? Number(destinationId) : undefined }], {
         preferInstallmentId: preferInstallmentId || undefined,
       })
       const fullyPaid = amount >= row.direct_due - 0.01
@@ -153,7 +159,10 @@ export function CollectPaymentModal({ row, paymentMethods, onClose, onSuccess }:
           <label className="text-xs text-gray-500">Método de pago</label>
           <select
             value={method}
-            onChange={(e) => setMethod(e.target.value)}
+            onChange={(e) => {
+              setMethod(e.target.value)
+              setDestinationId('')
+            }}
             className="w-full border rounded-lg px-3 py-2 text-sm mt-1"
           >
             {directMethods.map((pm) => (
@@ -162,6 +171,13 @@ export function CollectPaymentModal({ row, paymentMethods, onClose, onSuccess }:
               </option>
             ))}
           </select>
+          <PaymentDestinationSelect
+            method={findOperationalPaymentMethod(directMethods, method)}
+            accounts={accounts}
+            value={destinationId}
+            onChange={setDestinationId}
+            className="w-full border rounded-lg px-3 py-2 text-sm mt-2"
+          />
         </div>
         <div>
           <label className="text-xs text-gray-500">Monto</label>

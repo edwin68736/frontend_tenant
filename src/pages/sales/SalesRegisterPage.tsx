@@ -21,6 +21,7 @@ import { ReceiptPrintModal } from '@/components/ui/ReceiptPrintModal'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
 import { ProductPickerModal } from '@/components/sales/ProductPickerModal'
 import { PaymentMethodSelect } from '@/components/sales/PaymentMethodSelect'
+import { PaymentDestinationSelect } from '@/components/sales/PaymentDestinationSelect'
 import { SalePaymentConditionSection } from '@/components/sales/SalePaymentConditionSection'
 import { ProductConfigureModal, productNeedsSaleConfiguration } from '@/components/pos/ProductConfigureModal'
 import { ComboConfigureModal } from '@/components/pos/ComboConfigureModal'
@@ -52,7 +53,7 @@ import { useExchangeRate } from '@/hooks/useExchangeRate'
 import { catalogsService, type DetraccionGood } from '@/services/catalogs.service'
 import { UbigeoCascadeSelect } from '@/components/UbigeoCascadeSelect'
 import { previewDetraccion, DETRACCION_PAYMENT_METHOD_CODE, DETRACCION_PAYMENT_METHOD_NAME } from '@/utils/fiscalDetraction'
-import { filterOperationalPaymentMethods } from '@/utils/operationalPaymentMethods'
+import { filterOperationalPaymentMethods, findOperationalPaymentMethod } from '@/utils/operationalPaymentMethods'
 import {
   formatTipoDocIdentidadDisplay,
   SALES_OPERATION_TYPE_OPTIONS,
@@ -381,7 +382,7 @@ function SalesRegisterContent({
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRecord[]>([])
   /** Cotización: métodos de pago de REFERENCIA (cómo piensa pagar el cliente). No registran cobro. */
   const [refPayments, setRefPayments] = useState<{ method: string; amount: string; reference: string }[]>([])
-  const [payments, setPayments] = useState<{ method: string; amount: string; reference: string }[]>([
+  const [payments, setPayments] = useState<{ method: string; amount: string; reference: string; destination_account_id?: string }[]>([
     { method: 'cash', amount: '0.00', reference: '' },
   ])
   const [paymentConditionCode, setPaymentConditionCode] = useState<PaymentConditionCode>('cash')
@@ -1917,6 +1918,7 @@ function SalesRegisterContent({
           method: p.method,
           amount: Number(p.amount),
           reference: p.reference.trim() || undefined,
+          destination_account_id: p.destination_account_id ? Number(p.destination_account_id) : undefined,
         })),
         notes: notes || undefined,
         from_quotation_id: linkQuotationId ?? undefined,
@@ -3045,12 +3047,20 @@ function SalesRegisterContent({
                     <PaymentMethodSelect
                       methods={directPaymentMethods}
                       value={p.method}
-                      onChange={(code) =>
+onChange={(code) =>
                         setPayments((prev) =>
-                          prev.map((x, i) => (i === idx ? { ...x, method: code } : x)),
+                          prev.map((x, i) => (i === idx ? { ...x, method: code, destination_account_id: '' } : x)),
                         )
                       }
                       className="relative flex-1 min-w-[8rem]"
+                    />
+                    <PaymentDestinationSelect
+                      method={findOperationalPaymentMethod(paymentMethods, p.method)}
+                      accounts={bankAccounts}
+                      value={p.destination_account_id ?? ''}
+                      onChange={(v) =>
+                        setPayments((prev) => prev.map((x, i) => (i === idx ? { ...x, destination_account_id: v } : x)))
+                      }
                     />
                     <input
                       type="text"

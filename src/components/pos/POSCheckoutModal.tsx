@@ -3,7 +3,8 @@ import { X, Wallet, Loader2 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { PortalModal } from '@/components/ui/PortalModal'
 import { PaymentMethodIcon } from '@/components/pos/PaymentMethodIcon'
-import type { PaymentMethodRecord } from '@/services/cashbank.service'
+import { cashbankService, type BankAccount, type PaymentMethodRecord } from '@/services/cashbank.service'
+import { PaymentDestinationSelect } from '@/components/sales/PaymentDestinationSelect'
 import type { CheckoutDiscountMode } from '@/utils/checkoutDiscount'
 import { calcCheckoutDiscountAmount } from '@/utils/checkoutDiscount'
 import type { PosSeriesRow } from '@/utils/posCheckoutSeries'
@@ -28,6 +29,8 @@ export type CheckoutPaymentLine = {
   method: string
   amount: number
   reference?: string
+  /** Cuenta bancaria que recibe este pago (omitido = la vinculada al método). */
+  destination_account_id?: number
 }
 
 type MethodOption = {
@@ -150,6 +153,12 @@ export function POSCheckoutModal({
     setIsEditingDiscount(false)
     setDiscountDraft('0')
     discountPrevRef.current = 0
+  }, [open])
+
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
+  useEffect(() => {
+    if (!open) return
+    cashbankService.listBankAccounts().then(setBankAccounts).catch(() => setBankAccounts([]))
   }, [open])
 
   const methodOptions: MethodOption[] = useMemo(() => {
@@ -432,7 +441,7 @@ export function POSCheckoutModal({
                       <button
                         key={opt.code}
                         type="button"
-                        onClick={() => updateLine(0, { method: opt.code })}
+                        onClick={() => updateLine(0, { method: opt.code, destination_account_id: undefined })}
                         className={methodCardClass(payments[0]?.method === opt.code)}
                       >
                         <PaymentMethodIcon code={opt.code} name={opt.name} className="h-7 w-7 object-contain" />
@@ -457,6 +466,13 @@ export function POSCheckoutModal({
                       value={payments[0]?.reference ?? ''}
                       onChange={(e) => updateLine(0, { reference: e.target.value })}
                       placeholder="N° Op / Ref."
+                    />
+                    <PaymentDestinationSelect
+                      method={paymentMethods.find((m) => m.code === payments[0]?.method)}
+                      accounts={bankAccounts}
+                      value={payments[0]?.destination_account_id ? String(payments[0].destination_account_id) : ''}
+                      onChange={(v) => updateLine(0, { destination_account_id: v ? Number(v) : undefined })}
+                      className={clsx(INPUT)}
                     />
                   </div>
                 </>
@@ -495,6 +511,13 @@ export function POSCheckoutModal({
                           value={p.reference ?? ''}
                           onChange={(e) => updateLine(idx, { reference: e.target.value })}
                           placeholder="N° Op / Ref."
+                        />
+                        <PaymentDestinationSelect
+                          method={paymentMethods.find((m) => m.code === p.method)}
+                          accounts={bankAccounts}
+                          value={p.destination_account_id ? String(p.destination_account_id) : ''}
+                          onChange={(v) => updateLine(idx, { destination_account_id: v ? Number(v) : undefined })}
+                          className={clsx(INPUT, 'min-w-0 py-1.5')}
                         />
                       </div>
                     )
@@ -621,7 +644,7 @@ export function POSCheckoutModal({
                 type="button"
                 onClick={() => {
                   if (methodPickerIndex !== null) {
-                    updateLine(methodPickerIndex, { method: opt.code })
+                    updateLine(methodPickerIndex, { method: opt.code, destination_account_id: undefined })
                     setMethodPickerIndex(null)
                   }
                 }}
