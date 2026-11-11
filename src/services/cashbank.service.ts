@@ -96,6 +96,42 @@ export interface BankMovement {
   reversal_of_id?: number | null
   /** true si ALGÚN OTRO movimiento revierte a este (anulación de venta o devolución de NC parcial). */
   is_reversed?: boolean
+  /** Moneda del documento de origen (amount viene en ella) y equivalente en soles. */
+  currency?: string
+  exchange_rate?: number | null
+  amount_pen?: number | null
+  /** Importe que sumó/restó al saldo de ESTA cuenta, en la moneda de la cuenta (ausente en filas antiguas). */
+  account_amount?: number | null
+  /** Transferencia de la que forma parte (caja ↔ cuentas). */
+  transfer_id?: number | null
+  category?: string
+}
+
+export interface AccountTransfer {
+  id: number
+  from_kind: 'cash' | 'bank'
+  from_account_id?: number | null
+  to_kind: 'cash' | 'bank'
+  to_account_id?: number | null
+  from_name: string
+  to_name: string
+  amount_from: number
+  currency_from: string
+  amount_to: number
+  currency_to: string
+  exchange_rate?: number | null
+  date: string
+  notes: string
+  status: 'active' | 'voided'
+}
+
+export interface TransferInput {
+  from: { kind: 'cash' | 'bank'; account_id: number }
+  to: { kind: 'cash' | 'bank'; account_id: number }
+  amount: number
+  exchange_rate?: number
+  date?: string
+  notes?: string
 }
 
 /** Totales del período/filtros aplicados (no solo la página actual). */
@@ -501,6 +537,15 @@ export const cashbankService = {
       total: r.data.total ?? 0,
       summary: r.data.summary ?? { sum_credit: 0, sum_debit: 0 },
     })),
+
+  createTransfer: (data: TransferInput): Promise<AccountTransfer> =>
+    api.post('/api/cashbank/transfers', data).then(r => r.data.data ?? r.data),
+
+  listTransfers: (limit = 20): Promise<AccountTransfer[]> =>
+    api.get('/api/cashbank/transfers', { params: { limit } }).then(r => r.data.data ?? []),
+
+  voidTransfer: (id: number, reason: string): Promise<void> =>
+    api.post(`/api/cashbank/transfers/${id}/void`, { reason }).then(r => r.data),
 
   addBankMovement: (id: number, data: { type: 'credit' | 'debit'; description: string; reference?: string; amount: number; date: string }): Promise<BankMovement> =>
     api.post(`/api/cashbank/bank-accounts/${id}/movements`, data).then(r => r.data.data ?? r.data),

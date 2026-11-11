@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Link } from 'react-router-dom'
-import { Plus, X, ArrowUpRight, ArrowDownLeft, Banknote, Pencil, Undo2, ChevronRight } from 'lucide-react'
+import { Plus, X, ArrowUpRight, ArrowDownLeft, ArrowLeftRight, Banknote, Pencil, Undo2, ChevronRight } from 'lucide-react'
+import { TransferModal } from '@/components/bank/TransferModal'
+import { TransfersPanel } from '@/components/bank/TransfersPanel'
+import { formatSaleMoney } from '@/utils/formatMoney'
 import { cashbankService, type BankAccount, type BankMovement } from '@/services/cashbank.service'
 import RequireModule from '@/components/ui/RequireModule'
 import { useAuth } from '@/contexts/AuthContext'
@@ -23,6 +26,7 @@ const emptyMovFilters = (): MovFilters => ({ from: '', to: '', type: '' })
  * que ESTE movimiento es la contrapartida de otro, no la venta en sí.
  */
 function movementOrigin(m: BankMovement): { label: string; className: string } {
+  if (m.transfer_id) return { label: (m.category || '').startsWith('Anulación') ? 'Anul. transferencia' : 'Transferencia', className: 'bg-indigo-100 text-indigo-700' }
   if (m.reversal_of_id) return { label: 'Reversión', className: 'bg-orange-100 text-orange-700' }
   const ref = (m.reference || '').toUpperCase()
   if (ref.startsWith('NC/')) return { label: 'Nota de crédito', className: 'bg-violet-100 text-violet-700' }
@@ -58,6 +62,8 @@ function BankContent() {
   const [showMov, setShowMov] = useState(false)
   const [movForm, setMovForm] = useState(emptyMov())
   const [saving, setSaving] = useState(false)
+  const [showTransfer, setShowTransfer] = useState(false)
+  const [transfersKey, setTransfersKey] = useState(0)
 
   const load = () => cashbankService.listBankAccounts(true)
     .then(d => setAccounts(d ?? []))
@@ -175,12 +181,20 @@ function BankContent() {
           <p className="text-sm text-gray-500">Gestión de cuentas y movimientos</p>
         </div>
         {canManageBank && (
+        <div className="flex flex-col sm:flex-row gap-2">
+        <button
+          onClick={() => setShowTransfer(true)}
+          className="flex items-center justify-center gap-1.5 w-full sm:w-auto px-4 py-2.5 border border-gray-200 bg-white text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-50 flex-shrink-0"
+        >
+          <ArrowLeftRight size={15} /> Transferir
+        </button>
         <button
           onClick={() => { setEditingAccount(null); setAccountForm(emptyAccount()); setShowAccount(true) }}
           className="flex items-center justify-center gap-1.5 w-full sm:w-auto px-4 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium hover:opacity-90 flex-shrink-0"
         >
           <Plus size={15} /> Nueva cuenta
         </button>
+        </div>
         )}
       </div>
 
@@ -224,6 +238,12 @@ function BankContent() {
           </div>
         )}
       </div>
+
+      <TransfersPanel
+        canManage={canManageBank}
+        refreshKey={transfersKey}
+        onChanged={() => { load(); if (selected) loadMovements(selected.id, movPage, movFilters, movPerPage) }}
+      />
 
       {/* Movimientos de la cuenta seleccionada */}
       {selected && (
@@ -285,8 +305,8 @@ function BankContent() {
               </button>
             )}
             <div className="ml-auto flex items-center gap-3 text-xs pb-1">
-              <span className="text-green-700 font-semibold">+ S/ {movSummary.sum_credit.toFixed(2)}</span>
-              <span className="text-red-600 font-semibold">- S/ {movSummary.sum_debit.toFixed(2)}</span>
+              <span className="text-green-700 font-semibold">+ {formatSaleMoney(movSummary.sum_credit, selected.currency)}</span>
+              <span className="text-red-600 font-semibold">- {formatSaleMoney(movSummary.sum_debit, selected.currency)}</span>
             </div>
           </div>
 
@@ -316,7 +336,12 @@ function BankContent() {
                       </div>
                     </div>
                     <p className={`font-bold text-sm flex-shrink-0 ${m.is_reversed ? 'text-gray-400 line-through' : m.type === 'credit' ? 'text-green-600' : 'text-red-500'}`}>
-                      {m.type === 'credit' ? '+' : '-'} S/ {Number(m.amount).toFixed(2)}
+                      {m.type === 'credit' ? '+' : '-'} {formatSaleMoney(Number(m.account_amount ?? m.amount_pen ?? m.amount), selected.currency)}
+                      {m.currency && m.currency !== (selected.currency || 'PEN') ? (
+                        <span className="block text-[10px] font-normal text-gray-400">
+                          {formatSaleMoney(Number(m.amount), m.currency)} del documento
+                        </span>
+                      ) : null}
                     </p>
                   </div>
                 )
@@ -436,10 +461,12 @@ function BankContent() {
               <select
                 className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
                 value={accountForm.currency}
+                disabled={!!editingAccount}
+                title={editingAccount ? 'La moneda no se puede cambiar: el saldo ya está expresado en ella' : undefined}
                 onChange={e => setAccountForm(f => ({ ...f, currency: e.target.value }))}
               >
-                {['PEN', 'USD', 'EUR'].map(c => (
-                  <option key={c} value={c}>{c}</option>
+                {['PEN', 'USD'].map(c => (
+                  <option key={c} value={c}>{c === 'PEN' ? 'Soles (PEN)' : 'Dólares (USD)'}</option>
                 ))}
               </select>
             </div>
@@ -491,6 +518,14 @@ function BankContent() {
           </div>
         </div>
       </Modal>
+
+      <TransferModal
+        open={showTransfer}
+        onClose={() => setShowTransfer(false)}
+        accounts={accounts}
+        defaultFromId={selected?.id}
+        onDone={() => { setTransfersKey(k => k + 1); load(); if (selected) loadMovements(selected.id, movPage, movFilters, movPerPage) }}
+      />
 
       {/* Modal nuevo movimiento */}
       <Modal open={showMov} onClose={() => setShowMov(false)} contentClassName="max-w-md w-full mx-2 sm:mx-0">
