@@ -9,7 +9,7 @@ import {
   Utensils, FileText, X, Grid3x3, Layers, ChefHat, UserCog,
   Shield, MapPin, FileCode, ShieldCheck, ArrowRightLeft, ListOrdered, LayoutGrid, RotateCcw, ShoppingBag,
   ChevronLeft, ChevronRight, BarChart3, CreditCard, Briefcase, UserCircle, Car, Lock, Send, FileSignature,
-  Ruler, TrendingUp, TrendingDown, Settings2, Image as ImageIcon, Calculator,
+  Ruler, TrendingUp, TrendingDown, Settings2, Image as ImageIcon, Calculator, ClipboardList,
 } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -176,6 +176,14 @@ const NAV_GROUPS: NavGroup[] = [
         icon: <FileText size={14} />,
         module: 'purchases',
         permission: 'purchases.create',
+      },
+      {
+        id: 'compras-ordenes',
+        to: '/purchases/orders',
+        label: 'Órdenes de compra',
+        icon: <ClipboardList size={14} />,
+        module: 'purchases',
+        permission: 'purchases.view',
       },
       {
         id: 'compras-lista',

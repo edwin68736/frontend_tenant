@@ -93,7 +93,7 @@ export function categoryLabel(categoryLabels: Record<string, string>, category: 
 export function isInternalDocumentOnlySeries(row: Pick<SeriesRow, 'sunat_code' | 'category'>): boolean {
   const code = (row.sunat_code ?? '').trim()
   const category = (row.category ?? '').trim().toLowerCase()
-  return code === '00' || code === 'QT' || category === 'cotizacion'
+  return code === '00' || code === 'QT' || code === 'OC' || category === 'cotizacion' || category === 'orden_compra'
 }
 
 /** Solo nota de venta/boleta/factura (category=venta) pueden marcarse como comprobante por defecto. */

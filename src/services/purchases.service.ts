@@ -96,6 +96,8 @@ export interface CreatePurchaseInput {
   notes?: string
   /** Criterio global: el costo unitario tecleado ya incluye IGV (se desagrega en el backend). */
   price_includes_igv?: boolean
+  /** Orden de compra de origen (1 orden → 1 compra); la marca como recibida. */
+  purchase_order_id?: number
   items: PurchaseItem[]
 }
 
