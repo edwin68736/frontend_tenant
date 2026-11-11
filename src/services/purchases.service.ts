@@ -19,6 +19,8 @@ export interface Purchase {
   status: string
   /** Código del método con el que se pagó al registrar; vacío = compra a crédito (cuenta por pagar). */
   payment_method?: string
+  /** Pago mixto al registrar: los pagos por método (vacío en el resto). */
+  payments_upfront?: { method: string; amount: number; reference?: string }[]
   branch_id?: number
   notes?: string
   created_at?: string
@@ -107,6 +109,8 @@ export interface CreatePurchaseInput {
   /** TC venta; obligatorio si currency = USD. */
   exchange_rate?: number
   payment_method?: string
+  /** Pago mixto (2 o más métodos): debe sumar exactamente el total; no se envía junto con payment_method. */
+  payments?: { method: string; amount: number; reference?: string }[]
   notes?: string
   /** Criterio global: el costo unitario tecleado ya incluye IGV (se desagrega en el backend). */
   price_includes_igv?: boolean

@@ -33,7 +33,10 @@ export default function PurchasesPage() {
 }
 
 /** Compra sin método de pago = a crédito (queda como cuenta por pagar). */
-const purchasePaymentLabel = (code?: string) => (code?.trim() ? formatPaymentMethodLabel(code) : 'Crédito')
+const purchasePaymentLabel = (code?: string, upfront?: { method: string }[]) =>
+  upfront && upfront.length > 1
+    ? `Mixto (${upfront.map(u => formatPaymentMethodLabel(u.method)).join(' + ')})`
+    : code?.trim() ? formatPaymentMethodLabel(code) : 'Crédito'
 
 function PurchasesContent() {
   const { hasPermission } = useAuth()
@@ -194,7 +197,7 @@ function PurchasesContent() {
                       </span>
                     ) : null}
                   </td>
-                  <td className="px-4 py-3 text-gray-600 text-xs">{purchasePaymentLabel(p.payment_method)}</td>
+                  <td className="px-4 py-3 text-gray-600 text-xs">{purchasePaymentLabel(p.payment_method, p.payments_upfront)}</td>
                   <td className="px-4 py-3">
                     {p.linked_retention ? (
                       <FiscalLinkedDocBadge
@@ -282,7 +285,7 @@ function PurchasesContent() {
                 </div>
                 <div>
                   <p className="text-xs text-gray-400">Método de pago</p>
-                  <p>{purchasePaymentLabel(detail.purchase.payment_method)}</p>
+                  <p>{purchasePaymentLabel(detail.purchase.payment_method, detail.purchase.payments_upfront)}</p>
                 </div>
                 <div>
                   <p className="text-xs text-gray-400">Estado</p>

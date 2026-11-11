@@ -127,6 +127,9 @@ function PurchaseRegisterContent() {
   useEffect(() => {
     cashbankService.listPaymentMethods().then(m => setPurchaseMethods(filterOperationalPaymentMethods(Array.isArray(m) ? m : [], 'expense'))).catch(() => setPurchaseMethods([]))
   }, [])
+  // Pago mixto: líneas método + monto (+ referencia). Se activa con la opción «Pago mixto» del método de pago.
+  const [mixedPayments, setMixedPayments] = useState<{ method: string; amount: string; reference: string }[]>([])
+  const isMixed = mixedPayments.length > 0
   const [rate, setRate] = useState('')
   const [rateTouched, setRateTouched] = useState(false)
   const rateNum = parseFloat(rate.replace(',', '.'))
@@ -432,6 +435,23 @@ function PurchaseRegisterContent() {
       toast.error('Ingrese el tipo de cambio para compras en dólares')
       return
     }
+    if (isMixed) {
+      const lines = mixedPayments.filter(l => l.method && Number(l.amount) > 0)
+      if (lines.length < 2) {
+        toast.error('El pago mixto necesita al menos dos métodos con monto')
+        return
+      }
+      const paid = lines.reduce((s, l) => s + Number(l.amount), 0)
+      if (Math.abs(paid - total) > 0.01) {
+        toast.error(`Los pagos suman ${paid.toFixed(2)} y el total de la compra es ${total.toFixed(2)}: deben coincidir`)
+        return
+      }
+      const noRef = lines.find(l => purchaseMethods.find(pm => pm.code === l.method)?.requires_reference && !l.reference.trim())
+      if (noRef) {
+        toast.error(`El método «${purchaseMethods.find(pm => pm.code === noRef.method)?.name}» exige el N° de operación o referencia`)
+        return
+      }
+    }
     setSaving(true)
     try {
       const payloadItems = items.map(
@@ -455,6 +475,12 @@ function PurchaseRegisterContent() {
       )
       await purchasesService.create({
         ...form,
+        payment_method: isMixed ? undefined : form.payment_method,
+        payments: isMixed
+          ? mixedPayments
+              .filter(l => l.method && Number(l.amount) > 0)
+              .map(l => ({ method: l.method, amount: Number(l.amount), reference: l.reference.trim() || undefined }))
+          : undefined,
         series,
         number,
         price_includes_igv: priceIncludesIgv,
@@ -574,10 +600,20 @@ function PurchaseRegisterContent() {
             <label className="block text-xs font-medium text-gray-600 mb-1">Método de pago</label>
             <select
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-              value={form.payment_method ?? ''}
-              onChange={e => setForm(f => ({ ...f, payment_method: e.target.value || undefined }))}
+              value={isMixed ? '__mixed' : (form.payment_method ?? '')}
+              onChange={e => {
+                if (e.target.value === '__mixed') {
+                  const first = purchaseMethods.filter(pm => pm.active)[0]?.code ?? 'cash'
+                  setMixedPayments([{ method: first, amount: '', reference: '' }, { method: first, amount: '', reference: '' }])
+                  setForm(f => ({ ...f, payment_method: undefined }))
+                } else {
+                  setMixedPayments([])
+                  setForm(f => ({ ...f, payment_method: e.target.value || undefined }))
+                }
+              }}
             >
               <option value="">Crédito (sin pago inmediato)</option>
+              {purchaseMethods.length > 0 && <option value="__mixed">Pago mixto (varios métodos)</option>}
               {purchaseMethods.length > 0 ? (
                 purchaseMethods.filter(pm => pm.active).map(pm => <option key={pm.id} value={pm.code}>{pm.name}</option>)
               ) : (
@@ -590,8 +626,60 @@ function PurchaseRegisterContent() {
                 </>
               )}
             </select>
+            {isMixed && (
+              <div className="mt-2 space-y-2 rounded-xl border border-gray-200 p-2">
+                {mixedPayments.map((l, idx) => (
+                  <div key={idx} className="flex flex-wrap gap-2 items-center">
+                    <select
+                      className="flex-1 min-w-[7rem] border border-gray-200 rounded-lg px-2 py-1.5 text-sm bg-white"
+                      value={l.method}
+                      onChange={e => setMixedPayments(prev => prev.map((x, i) => (i === idx ? { ...x, method: e.target.value } : x)))}
+                    >
+                      {purchaseMethods.filter(pm => pm.active).map(pm => <option key={pm.id} value={pm.code}>{pm.name}</option>)}
+                    </select>
+                    <input
+                      type="number" min={0} step={0.01} placeholder="Monto"
+                      className="w-24 border border-gray-200 rounded-lg px-2 py-1.5 text-sm tabular-nums"
+                      value={l.amount}
+                      onChange={e => setMixedPayments(prev => prev.map((x, i) => (i === idx ? { ...x, amount: e.target.value } : x)))}
+                    />
+                    <input
+                      placeholder="N° operación"
+                      className="flex-1 min-w-[6rem] border border-gray-200 rounded-lg px-2 py-1.5 text-sm"
+                      value={l.reference}
+                      onChange={e => setMixedPayments(prev => prev.map((x, i) => (i === idx ? { ...x, reference: e.target.value } : x)))}
+                    />
+                    {mixedPayments.length > 2 && (
+                      <button type="button" onClick={() => setMixedPayments(prev => prev.filter((_, i) => i !== idx))} className="text-red-500 p-1" aria-label="Quitar pago">
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <div className="flex items-center justify-between text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setMixedPayments(prev => [...prev, { method: prev[0]?.method ?? 'cash', amount: '', reference: '' }])}
+                    className="text-[rgb(var(--p600))] hover:underline"
+                  >
+                    + Agregar método
+                  </button>
+                  {(() => {
+                    const paid = mixedPayments.reduce((s, l) => s + (Number(l.amount) || 0), 0)
+                    const diff = Math.round((total - paid) * 100) / 100
+                    return (
+                      <span className={Math.abs(diff) < 0.01 ? 'text-green-700' : 'text-amber-700'}>
+                        {Math.abs(diff) < 0.01 ? 'Pagos completos' : diff > 0 ? `Faltan ${sym} ${diff.toFixed(2)}` : `Sobran ${sym} ${(-diff).toFixed(2)}`}
+                      </span>
+                    )
+                  })()}
+                </div>
+              </div>
+            )}
             <p className="text-xs text-gray-400 mt-0.5">
-              {form.payment_method
+              {isMixed
+                ? 'Cada método descuenta de su cuenta asociada; la suma debe ser igual al total de la compra.'
+                : form.payment_method
                 ? 'El monto se descontará de la cuenta asociada.'
                 : 'Se registrará como cuenta por pagar al proveedor (CxP): no se descuenta nada ahora, se paga después desde Cuentas por pagar.'}
             </p>
