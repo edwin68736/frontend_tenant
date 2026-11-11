@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { payablesService, type PayableRow } from '@/services/payables.service'
-import type { PaymentMethodRecord } from '@/services/cashbank.service'
+import { cashbankService, type BankAccount, type PaymentMethodRecord } from '@/services/cashbank.service'
 import { formatSaleMoney } from '@/utils/formatMoney'
 import { formatPaymentMethodLabel } from '@/utils/paymentMethodLabel'
 import { defaultOperationalPaymentCode, filterOperationalPaymentMethods } from '@/utils/operationalPaymentMethods'
@@ -23,6 +23,23 @@ export function PayPayableModal({ row, paymentMethods, onClose, onSuccess }: Pro
   const [amount, setAmount] = useState(row.due)
   const [reference, setReference] = useState('')
   const [loading, setLoading] = useState(false)
+
+  // Aviso (no bloquea, igual que el sistema anterior): el pago se registra en la moneda del documento y la caja es única
+  // y sin moneda; una cuenta bancaria con otra moneda mezclaría dólares y soles en su saldo.
+  const [accounts, setAccounts] = useState<BankAccount[]>([])
+  useEffect(() => {
+    cashbankService.listBankAccounts().then(setAccounts).catch(() => setAccounts([]))
+  }, [])
+  const selected = directMethods.find((pm) => pm.code === method)
+  const account = selected?.destination_type === 'bank_account' ? accounts.find((a) => a.id === selected.bank_account_id) : undefined
+  const docCur = row.currency === 'USD' ? 'USD' : 'PEN'
+  const curName = (c: string) => (c === 'USD' ? 'dólares' : 'soles')
+  let currencyWarning = ''
+  if (account && (account.currency || 'PEN') !== docCur) {
+    currencyWarning = `La cuenta "${account.name}" es en ${curName(account.currency || 'PEN')} y esta compra es en ${curName(docCur)}: el importe se descontará tal cual y mezclará monedas en el saldo de la cuenta. Elija una cuenta en ${curName(docCur)}.`
+  } else if (docCur === 'USD' && selected?.destination_type === 'cash') {
+    currencyWarning = 'Esta compra es en dólares y la caja es única (sin moneda): el efectivo se descontará en dólares de la caja. Si paga en soles, use una cuenta o método en soles con el equivalente.'
+  }
 
   const submit = async () => {
     if (amount <= 0) {
@@ -77,6 +94,9 @@ export function PayPayableModal({ row, paymentMethods, onClose, onSuccess }: Pro
               </option>
             ))}
           </select>
+          {currencyWarning && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 mt-1.5">{currencyWarning}</p>
+          )}
         </div>
         <div>
           <label className="text-xs text-gray-500">Monto</label>

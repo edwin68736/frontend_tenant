@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Plus, Trash2, ArrowLeft, UserPlus } from 'lucide-react'
@@ -138,7 +138,7 @@ function PurchaseOrderFormContent() {
           description: p.name,
           unit: p.unit ?? 'NIU',
           quantity: 1,
-          unit_cost: p.purchase_price ?? 0,
+          unit_cost: toDocCost(p.purchase_price ?? 0),
           igv_affectation_type: p.igv_affectation_type ?? '10',
           price_includes_igv: priceIncludesIgv,
         },
@@ -174,6 +174,22 @@ function PurchaseOrderFormContent() {
 
   const rateNum = parseFloat(rate.replace(',', '.'))
   const sym = currencySymbol(currency)
+
+  // El costo de catálogo está en soles: en una orden en dólares se lleva a USD con el TC, y al cambiar de moneda se
+  // reconvierten los costos ya tecleados (PEN→USD divide, USD→PEN multiplica), igual que en el formulario de compra.
+  const toDocCost = (penCost: number) => (currency === 'USD' && rateNum > 0 ? Math.round((penCost / rateNum) * 10000) / 10000 : penCost)
+  const [pendingFrom, setPendingFrom] = useState<'PEN' | 'USD' | null>(null)
+  const itemsRef = useRef(items)
+  itemsRef.current = items
+  useEffect(() => {
+    if (!pendingFrom) return
+    if (itemsRef.current.length === 0) return setPendingFrom(null)
+    if (!(rateNum > 0)) return
+    const factor = pendingFrom === 'PEN' ? 1 / rateNum : rateNum
+    const scale = pendingFrom === 'USD' ? 100 : 10000
+    setItems(prev => prev.map(it => ({ ...it, unit_cost: Math.round(it.unit_cost * factor * scale) / scale })))
+    setPendingFrom(null)
+  }, [pendingFrom, rateNum])
 
   const save = async () => {
     if (!contactId) return toast.error('Seleccione un proveedor')
@@ -260,7 +276,7 @@ function PurchaseOrderFormContent() {
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Moneda</label>
-            <select className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" value={currency} onChange={e => { setCurrency(e.target.value as 'PEN' | 'USD'); setRateTouched(false) }}>
+            <select className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" value={currency} onChange={e => { const c = e.target.value as 'PEN' | 'USD'; if (c === currency) return; setPendingFrom(currency); setCurrency(c); setRateTouched(false) }}>
               <option value="PEN">Soles (PEN)</option>
               <option value="USD">Dólares (USD)</option>
             </select>
