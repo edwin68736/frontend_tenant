@@ -1625,6 +1625,12 @@ function SalesRegisterContent({
       }
     }
 
+    // Documento en dólares: sin un tipo de cambio válido los precios del catálogo (en soles) quedarían como dólares.
+    if (form.currency === 'USD' && !(parsedExchangeRate && parsedExchangeRate > 0)) {
+      toast.error('Ingrese un tipo de cambio válido para registrar el documento en dólares')
+      return
+    }
+
     if (!isQuotation && !isIssueDateAllowed(form.issue_date)) {
       toast.error('La fecha de emisión debe ser hoy o hasta 3 días anteriores (hora Perú).')
       return
@@ -1729,8 +1735,10 @@ function SalesRegisterContent({
     // Solo la boleta (03): es la que se declara. La nota de venta (00) es interna y no
     // hereda el tope de SUNAT.
     if (selectedContact?.doc_type === '0' && sunatCode === '03') {
-      if (totalGlobal > SUNAT_MAX_MONTO_CLIENTE_SIN_RUC) {
-        toast.error(`Con cliente sin RUC el monto máximo en boleta es S/ ${SUNAT_MAX_MONTO_CLIENTE_SIN_RUC}. Total: S/ ${totalGlobal.toFixed(2)}`)
+      // El tope es en soles: un documento en USD se compara con su equivalente (total × TC), igual que el servidor.
+      const totalPenForCap = form.currency === 'USD' && parsedExchangeRate ? totalGlobal * parsedExchangeRate : totalGlobal
+      if (totalPenForCap > SUNAT_MAX_MONTO_CLIENTE_SIN_RUC) {
+        toast.error(`Con cliente sin RUC el monto máximo en boleta es S/ ${SUNAT_MAX_MONTO_CLIENTE_SIN_RUC}. Total: S/ ${totalPenForCap.toFixed(2)}`)
         return
       }
     }

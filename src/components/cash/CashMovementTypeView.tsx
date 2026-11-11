@@ -110,7 +110,8 @@ export function CashMovementTypeView({ type }: { type: MovementType }) {
       ])
       setRows(res.data)
       setTotal(res.total)
-      setSummary({ sumIncome: res.summary.sum_income, sumExpense: res.summary.sum_expense })
+      // Totales en SOLES (cada movimiento en USD al TC de su documento); sin los _pen (servidor antiguo) queda el valor de siempre.
+      setSummary({ sumIncome: res.summary.sum_income_pen ?? res.summary.sum_income, sumExpense: res.summary.sum_expense_pen ?? res.summary.sum_expense })
       setSession(sess ?? null)
     } catch {
       toast.error('Error al cargar movimientos')
@@ -290,7 +291,10 @@ export function CashMovementTypeView({ type }: { type: MovementType }) {
                         <td className="px-3 sm:px-4 py-2 text-xs whitespace-nowrap">{m.user_name || '—'}</td>
                         <td className="px-3 sm:px-4 py-2 whitespace-nowrap">{formatPaymentMethodLabel(m.payment_method)}</td>
                         <td className={`px-3 sm:px-4 py-2 font-semibold whitespace-nowrap ${type === 'income' ? 'text-green-600' : 'text-red-500'}`}>
-                          {type === 'income' ? '+' : '-'} S/ {Math.abs(m.amount).toFixed(2)}
+                          {type === 'income' ? '+' : '-'} {m.currency === 'USD' ? `US$ ${Math.abs(m.amount).toFixed(2)}` : `S/ ${Math.abs(m.amount).toFixed(2)}`}
+                          {m.currency === 'USD' && m.amount_pen != null ? (
+                            <span className="block text-[10px] font-normal text-gray-400">≈ S/ {Math.abs(m.amount_pen).toFixed(2)}</span>
+                          ) : null}
                         </td>
                         <td className="px-3 sm:px-4 py-2">
                           <div className="flex items-center gap-2 whitespace-nowrap">

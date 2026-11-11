@@ -1165,7 +1165,7 @@ function BillingContent() {
                 )}
                 <td className="px-4 py-3 text-gray-600 text-sm">{s.contact_name ?? 'Sin cliente'}</td>
                 <td className="px-4 py-3 text-gray-600 text-xs">{s.user_name ?? '—'}</td>
-                <td className="px-4 py-3 font-semibold text-gray-800">S/ {Number(s.total).toFixed(2)}</td>
+                <td className="px-4 py-3 font-semibold text-gray-800">{formatSaleMoney(Number(s.total), s.currency)}</td>
                 <td className="px-4 py-3">
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${billingStatusColor(s.billing_status)}`}>
                     {billingStatusLabel(s.billing_status)}
@@ -1449,7 +1449,7 @@ function BillingContent() {
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div><p className="text-xs text-gray-400">Comprobante</p><p className="font-mono font-bold">{formatSaleDocumentNumber(detail.sale.series, detail.sale.number)}</p></div>
               <div><p className="text-xs text-gray-400">Estado</p><span className={`text-xs px-2 py-0.5 rounded-full font-medium ${billingStatusColor(detail.sale.billing_status)}`}>{billingStatusLabel(detail.sale.billing_status)}</span></div>
-              <div><p className="text-xs text-gray-400">Total</p><p className="font-bold">S/ {Number(detail.sale.total).toFixed(2)}</p></div>
+              <div><p className="text-xs text-gray-400">Total</p><p className="font-bold">{formatSaleMoney(Number(detail.sale.total), detail.sale.currency)}</p></div>
               <div><p className="text-xs text-gray-400">Fecha</p><p>{formatDisplayDatePeru(detail.sale.issue_date)}</p></div>
               {detail.sale.doc_type !== 'NOTA_CREDITO' && detail.sale.doc_type !== 'NOTA_DEBITO' && (
                 <div className="col-span-2">

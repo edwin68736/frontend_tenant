@@ -606,7 +606,7 @@ function SalesContent() {
                   </td>
                   <td className="px-4 py-3 text-gray-600">{s.contact_name ?? '—'}</td>
                   <td className="px-4 py-3 text-gray-600 text-xs">{s.user_name ?? '—'}</td>
-                  <td className="px-4 py-3 font-semibold text-gray-800">S/ {Number(s.total).toFixed(2)}</td>
+                  <td className="px-4 py-3 font-semibold text-gray-800">{formatSaleMoney(Number(s.total), s.currency)}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1">
                       <button
@@ -1235,22 +1235,22 @@ function SalesContent() {
                           {item.quantity} {saleLineUnitLabel(item, saleUnitNames)} × {formatSaleUnitPrice(Number(item.unit_price))}
                         </p>
                       </div>
-                      <p className="font-semibold text-gray-700">S/ {Number(item.total).toFixed(2)}</p>
+                      <p className="font-semibold text-gray-700">{formatSaleMoney(Number(item.total), detail.sale.currency)}</p>
                     </div>
                   ))}
                 </div>
                 <div className="pt-2 space-y-1">
                   <div className="flex justify-between text-gray-600">
                     <span>Subtotal</span>
-                    <span>S/ {Number(detail.sale.subtotal).toFixed(2)}</span>
+                    <span>{formatSaleMoney(Number(detail.sale.subtotal), detail.sale.currency)}</span>
                   </div>
                   <div className="flex justify-between text-gray-600">
                     <span>IGV</span>
-                    <span>S/ {Number(detail.sale.tax_amount).toFixed(2)}</span>
+                    <span>{formatSaleMoney(Number(detail.sale.tax_amount), detail.sale.currency)}</span>
                   </div>
                   <div className="flex justify-between font-bold text-gray-800">
                     <span>Total</span>
-                    <span>S/ {Number(detail.sale.total).toFixed(2)}</span>
+                    <span>{formatSaleMoney(Number(detail.sale.total), detail.sale.currency)}</span>
                   </div>
                 </div>
               </div>
