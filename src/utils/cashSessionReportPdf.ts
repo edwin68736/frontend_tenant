@@ -312,15 +312,59 @@ export function generateCashSessionReportPdf(report: CashSessionReport, opts?: {
     }
   }
 
+  // Con documentos en dólares, ingresos/egresos/saldo van EN SOLES (cada US$ al TC de su documento) y se detalla por moneda.
+  const fx = report.currency?.has_foreign ? report.currency : null
   drawSectionTitle(doc, y, 'Totales generales')
   drawSummaryBoxes(doc, y, [
     { label: 'Cobrado directo', value: money(directSalesTotal), tone: 'green' },
     { label: DETRACCION_PAYMENT_METHOD_NAME, value: money(spotTotal) },
     { label: 'Total comercial', value: money(commercialTotal), tone: 'strong' },
-    { label: 'Total ingresos caja', value: money(report.totals.total_income), tone: 'green' },
-    { label: 'Total egresos', value: money(report.totals.total_expense), tone: 'red' },
-    { label: 'Saldo final', value: money(report.totals.final_balance), tone: 'strong' },
+    { label: fx ? 'Ingresos caja (S/)' : 'Total ingresos caja', value: money(fx ? fx.cash_income_pen : report.totals.total_income), tone: 'green' },
+    { label: fx ? 'Egresos (S/)' : 'Total egresos', value: money(fx ? fx.cash_expense_pen : report.totals.total_expense), tone: 'red' },
+    { label: fx ? 'Saldo final (S/)' : 'Saldo final', value: money(fx ? fx.physical_balance_pen : report.totals.final_balance), tone: 'strong' },
   ])
+
+  if (fx) {
+    drawSectionTitle(doc, y, 'Documentos en dólares — resumen en soles')
+    ensureSpace(doc, y, 10)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7.5)
+    doc.setTextColor(...C_MUTED)
+    doc.text('Cada documento en dólares entra a los saldos con su equivalente en soles al tipo de cambio con el que se registró.', MARGIN, y.v)
+    y.v += 5
+    const sym = (c: string) => (c === 'USD' ? 'US$' : 'S/')
+    const amt = (n: number, c: string) => `${sym(c)} ${Number(n).toFixed(2)}`
+    const rows = (fx.by_currency ?? []).map((r) => [
+      r.currency,
+      amt(r.sum_income, r.currency),
+      amt(r.sum_expense, r.currency),
+      amt(r.net_movement, r.currency),
+      money(r.net_pen),
+    ])
+    rows.push(['TOTAL NETO EN SOLES', '', '', '', money(fx.total_income_pen - fx.total_expense_pen)])
+    drawDataTable(doc, y, ['Moneda', 'Ingresos', 'Egresos', 'Neto (original)', 'Equivalente S/'], rows, [46, 34, 34, 36, 36])
+    ensureSpace(doc, y, 8)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8)
+    doc.setTextColor(...C_TEXT)
+    doc.text(`Efectivo esperado para el arqueo (en soles): ${money(fx.physical_balance_pen)}`, MARGIN, y.v)
+    y.v += 5
+    if (fx.rate_estimated_count > 0 || fx.rate_missing_count > 0) {
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(7.2)
+      doc.setTextColor(...C_MUTED)
+      const note = [
+        fx.rate_estimated_count > 0 ? `${fx.rate_estimated_count} movimiento(s) con TC del día de emisión (el documento no guardó TC).` : '',
+        fx.rate_missing_count > 0 ? `${fx.rate_missing_count} sin ningún TC: no incluidos en los totales en soles.` : '',
+      ].filter(Boolean).join(' ')
+      for (const ln of doc.splitTextToSize(note, INNER_W)) {
+        ensureSpace(doc, y, 5)
+        doc.text(ln, MARGIN, y.v)
+        y.v += 4
+      }
+    }
+    y.v += 4
+  }
 
   if (spotTotal > 0) {
     drawSectionTitle(doc, y, `${DETRACCION_PAYMENT_METHOD_NAME} — trazabilidad`)
@@ -399,6 +443,9 @@ export function generateCashSessionReportPdf(report: CashSessionReport, opts?: {
   const ingEfe = report.cash_physical?.total_income ?? 0
   const egreEfe = report.cash_physical?.total_expense ?? 0
   const saldoEfe = report.cash_physical?.physical_balance ?? ingEfe - egreEfe
+  const ingEfeShown = report.currency?.has_foreign ? report.currency.cash_income_pen : ingEfe
+  const egreEfeShown = report.currency?.has_foreign ? report.currency.cash_expense_pen : egreEfe
+  const saldoEfeShown = report.currency?.has_foreign ? report.currency.physical_balance_pen : saldoEfe
 
   drawSectionTitle(doc, y, 'Efectivo en caja (para arqueo)')
   ensureSpace(doc, y, 8)
@@ -408,9 +455,9 @@ export function generateCashSessionReportPdf(report: CashSessionReport, opts?: {
   doc.text('Solo pagos directos en efectivo; excluye SPOT, Yape, Plin y bancos.', MARGIN, y.v)
   y.v += 5
   drawSummaryBoxes(doc, y, [
-    { label: 'Ingresos efectivo', value: money(ingEfe), tone: 'green' },
-    { label: 'Egresos efectivo', value: money(egreEfe), tone: 'red' },
-    { label: 'Saldo efectivo', value: money(saldoEfe), tone: 'strong' },
+    { label: 'Ingresos efectivo', value: money(ingEfeShown), tone: 'green' },
+    { label: 'Egresos efectivo', value: money(egreEfeShown), tone: 'red' },
+    { label: report.currency?.has_foreign ? 'Saldo efectivo (S/)' : 'Saldo efectivo', value: money(saldoEfeShown), tone: 'strong' },
   ])
 
   drawSectionTitle(doc, y, 'Totales por método de pago')
