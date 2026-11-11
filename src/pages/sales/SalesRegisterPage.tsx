@@ -141,6 +141,13 @@ export interface SaleFormItem {
   unit: string
   quantity: number
   unit_price: number
+  /**
+   * Solo UI: precio de catálogo en SOLES con el que entró la línea (el catálogo está en soles). Mientras la línea no se
+   * edite a mano, su precio en el documento se recalcula como pen_unit_price ÷ TC cuando el documento es en USD (o queda
+   * igual en PEN), de modo que cambiar la moneda o el TC nunca deja precios en soles etiquetados como dólares. Se
+   * descarta al construir el payload y se pierde si el usuario teclea el precio.
+   */
+  pen_unit_price?: number
   igv_affectation_type: string
   price_includes_igv: boolean
   line_discount_mode?: CheckoutDiscountMode
@@ -495,6 +502,50 @@ function SalesRegisterContent({
     const n = parseFloat(form.exchange_rate.replace(',', '.'))
     return Number.isFinite(n) && n > 0 ? n : null
   }, [form.exchange_rate])
+
+  // Moneda del documento: el catálogo está en soles; en un documento en USD cada precio se convierte con el TC (÷ TC).
+  const usdRate = form.currency === 'USD' ? parsedExchangeRate : null
+  const toDocPrice = (penPrice: number) => (usdRate ? Math.round((penPrice / usdRate) * 1e6) / 1e6 : penPrice)
+  const [pendingConvertFrom, setPendingConvertFrom] = useState<'PEN' | 'USD' | null>(null)
+  /** Cambia la moneda del documento y reconvierte (sin perder valor) las líneas manuales y los descuentos en monto. */
+  const changeCurrency = (next: string) => {
+    if (next === form.currency) return
+    setPendingConvertFrom(form.currency === 'USD' ? 'USD' : 'PEN')
+    setForm((f) => ({ ...f, currency: next }))
+  }
+  // Líneas de catálogo (con precio en soles de origen): el precio del documento se deriva siempre de ese precio y del TC.
+  useEffect(() => {
+    setItems((prev) => {
+      let changed = false
+      const next = prev.map((it) => {
+        if (it.pen_unit_price == null) return it
+        const target = form.currency === 'USD' ? (parsedExchangeRate ? Math.round((it.pen_unit_price / parsedExchangeRate) * 1e6) / 1e6 : null) : it.pen_unit_price
+        if (target == null || Math.abs(target - it.unit_price) < 1e-9) return it
+        changed = true
+        return { ...it, unit_price: target }
+      })
+      return changed ? next : prev
+    })
+  }, [form.currency, parsedExchangeRate])
+  // Al cambiar de moneda: líneas manuales (sin precio de catálogo) y descuentos en monto conservan su valor (PEN→USD divide,
+  // USD→PEN multiplica) con el TC vigente; si el TC aún no está, la conversión espera.
+  useEffect(() => {
+    if (!pendingConvertFrom) return
+    if (!parsedExchangeRate) return
+    const factor = pendingConvertFrom === 'PEN' ? 1 / parsedExchangeRate : parsedExchangeRate
+    const r6 = (v: number) => Math.round(v * 1e6) / 1e6
+    setItems((prev) =>
+      prev.map((it) => ({
+        ...it,
+        unit_price: it.pen_unit_price == null ? r6(it.unit_price * factor) : it.unit_price,
+        line_discount_value:
+          it.line_discount_mode === 'amount' && it.line_discount_value ? r6(it.line_discount_value * factor) : it.line_discount_value,
+      })),
+    )
+    if (discountMode === 'amount' && discountValue > 0) setDiscountValue(r6(discountValue * factor))
+    setPendingConvertFrom(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingConvertFrom, parsedExchangeRate])
 
   const moneySym = saleCurrencySymbol(form.currency)
   const fmt = (n: number) => formatSaleMoney(n, form.currency)
@@ -874,7 +925,12 @@ function SalesRegisterContent({
     }))
   }, [form.sunat_code])
 
-  const appendSaleItem = (item: SaleFormItem) => {
+  const appendSaleItem = (rawItem: SaleFormItem) => {
+    // El catálogo está en soles: se guarda como origen de la línea y, si el documento es en USD, se convierte con el TC.
+    const item: SaleFormItem =
+      rawItem.product_id != null
+        ? { ...rawItem, pen_unit_price: rawItem.unit_price, unit_price: toDocPrice(rawItem.unit_price) }
+        : rawItem
     const key = saleItemMergeKey(item)
     setItems(prev => {
       const existing = prev.find(it => saleItemMergeKey(it) === key)
@@ -1048,14 +1104,21 @@ function SalesRegisterContent({
   }
 
   const updateItem = (idx: number, field: keyof SaleFormItem, value: string | number | boolean) => {
-    setItems(prev => prev.map((it, i) => (i !== idx ? it : { ...it, [field]: value })))
+    // Teclear el precio rompe el vínculo con el precio de catálogo (precio pactado): ya no se re-deriva del TC.
+    setItems(prev => prev.map((it, i) => (i !== idx ? it : { ...it, [field]: value, ...(field === 'unit_price' ? { pen_unit_price: undefined } : {}) })))
   }
 
   const removeItem = (idx: number) => setItems(prev => prev.filter((_, i) => i !== idx))
 
   /** Aplica los cambios del modal de edición a la línea correspondiente. */
   const applyItemEdit = (patch: Partial<SaleFormItem>) => {
-    setItems(prev => prev.map((it, i) => (i !== editItemIdx ? it : { ...it, ...patch })))
+    setItems(prev =>
+      prev.map((it, i) => {
+        if (i !== editItemIdx) return it
+        const priceEdited = patch.unit_price !== undefined && Math.abs(patch.unit_price - it.unit_price) > 1e-9
+        return { ...it, ...patch, ...(priceEdited ? { pen_unit_price: undefined } : {}) }
+      }),
+    )
     setEditItemIdx(null)
   }
 
@@ -2285,6 +2348,7 @@ function SalesRegisterContent({
                     operation_type_code: code,
                     currency: goesToDetraccion ? 'PEN' : f.currency,
                   }))
+                  if (goesToDetraccion) changeCurrency('PEN')
                   // El código de bien no es intercambiable entre 1001 y 1004 (catálogos
                   // distintos): limpiar siempre que cambie el modo, no solo al salir de detracción.
                   if (code !== form.operation_type_code) {
@@ -2336,7 +2400,7 @@ function SalesRegisterContent({
                   className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
                   value={form.currency}
                   disabled={isDetraccion}
-                  onChange={(e) => setForm((f) => ({ ...f, currency: e.target.value }))}
+                  onChange={(e) => changeCurrency(e.target.value)}
                 >
                   <option value="PEN">Soles (PEN)</option>
                   <option value="USD">Dólares (USD)</option>
@@ -3380,6 +3444,7 @@ function SalesRegisterContent({
         <ProductPickerModal
           variant="sale"
           currency={form.currency}
+          exchangeRate={parsedExchangeRate}
           onAdd={addProductToItems}
           onClose={() => setShowProductPicker(false)}
           addedProductIds={cartProductIds}
