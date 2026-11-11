@@ -26,6 +26,12 @@ export interface Sale {
   currency: string
   operation_type_code?: string
   exchange_rate?: number | null
+  /** Solo listados: equivalente en SOLES (total × TC de la venta; en PEN = total). Ausente si no hay ningún TC. */
+  total_pen?: number | null
+  /** TC con el que se calculó total_pen (el guardado o, si faltaba, el del día de emisión). */
+  rate_effective?: number | null
+  /** true si la venta no guardó TC y se usó el TC del día de emisión. */
+  rate_estimated?: boolean
   payment_method?: string
   status: string
   billing_status: SaleBillingStatus
@@ -377,9 +383,18 @@ export interface SaleListCurrencySummary {
   count_cancelled: number
   count_active: number
   sum_change_amount: number
+  /** Ventas vigentes de esta moneda convertidas a SOLES con el TC de cada venta (PEN = sum_active). */
+  sum_active_pen?: number
+  /** Ventas en USD sin TC guardado: convertidas con el TC del día de emisión / sin poder convertirse. */
+  rate_estimated_count?: number
+  rate_missing_count?: number
 }
 
 export interface SaleListSummary {
+  /** Ventas vigentes de TODAS las monedas convertidas a soles (USD × TC de cada venta). */
+  sum_active_pen?: number
+  rate_estimated_count?: number
+  rate_missing_count?: number
   /** Mismos totales separados por moneda. Los sum_* planos suman todas las monedas tal cual
    *  (legado): para mostrar importes usar este campo. */
   by_currency?: SaleListCurrencySummary[]
