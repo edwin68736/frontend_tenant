@@ -20,6 +20,7 @@ import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 import { Modal } from '@/components/ui/Modal'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { formatDisplayDatePeru } from '@/utils/datesPeru'
+import { formatSaleMoney } from '@/utils/formatMoney'
 import { formatPaymentMethodLabel } from '@/utils/paymentMethodLabel'
 import { resolveSaleUnitNames, saleLineUnitLabel } from '@/utils/saleUnitNames'
 
@@ -185,7 +186,14 @@ function PurchasesContent() {
                     </p>
                   </td>
                   <td className="px-4 py-3 text-gray-700">{p.supplier_name ?? p.contact_name ?? 'Sin proveedor'}</td>
-                  <td className="px-4 py-3 font-semibold text-gray-800">S/ {Number(p.total).toFixed(2)}</td>
+                  <td className="px-4 py-3 font-semibold text-gray-800">
+                    {formatSaleMoney(Number(p.total), p.currency)}
+                    {p.currency === 'USD' && p.exchange_rate ? (
+                      <span className="block text-xs font-normal text-gray-400">
+                        ≈ S/ {(Number(p.total) * Number(p.exchange_rate)).toFixed(2)} (TC {Number(p.exchange_rate).toFixed(3)})
+                      </span>
+                    ) : null}
+                  </td>
                   <td className="px-4 py-3 text-gray-600 text-xs">{purchasePaymentLabel(p.payment_method)}</td>
                   <td className="px-4 py-3">
                     {p.linked_retention ? (
@@ -306,7 +314,7 @@ function PurchasesContent() {
                           <p className="font-medium text-gray-800">{item.description}</p>
                           <p className="text-xs text-gray-400">
                             {item.quantity}
-                            {saleUnitLabel ? ` ${saleUnitLabel}` : ''} × S/ {Number(item.unit_cost).toFixed(2)}
+                            {saleUnitLabel ? ` ${saleUnitLabel}` : ''} × {formatSaleMoney(Number(item.unit_cost), detail.purchase.currency)}
                           </p>
                           {(item.serials ?? []).length > 0 && (
                             <p className="text-xs text-gray-500 mt-1 font-mono">
@@ -315,7 +323,7 @@ function PurchasesContent() {
                           )}
                         </div>
                         <p className="font-semibold text-gray-700">
-                          S/ {(item.quantity * item.unit_cost).toFixed(2)}
+                          {formatSaleMoney(item.quantity * item.unit_cost, detail.purchase.currency)}
                         </p>
                       </div>
                     </div>
@@ -325,16 +333,22 @@ function PurchasesContent() {
                 <div className="pt-2 space-y-1 text-sm">
                   <div className="flex justify-between text-gray-600">
                     <span>Subtotal</span>
-                    <span>S/ {Number(detail.purchase.subtotal).toFixed(2)}</span>
+                    <span>{formatSaleMoney(Number(detail.purchase.subtotal), detail.purchase.currency)}</span>
                   </div>
                   <div className="flex justify-between text-gray-600">
                     <span>IGV</span>
-                    <span>S/ {Number(detail.purchase.tax_amount).toFixed(2)}</span>
+                    <span>{formatSaleMoney(Number(detail.purchase.tax_amount), detail.purchase.currency)}</span>
                   </div>
                   <div className="flex justify-between font-bold text-gray-800">
                     <span>Total</span>
-                    <span>S/ {Number(detail.purchase.total).toFixed(2)}</span>
+                    <span>{formatSaleMoney(Number(detail.purchase.total), detail.purchase.currency)}</span>
                   </div>
+                  {detail.purchase.currency === 'USD' && detail.purchase.exchange_rate ? (
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>Equivalente en soles (TC {Number(detail.purchase.exchange_rate).toFixed(3)})</span>
+                      <span>S/ {(Number(detail.purchase.total) * Number(detail.purchase.exchange_rate)).toFixed(2)}</span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
               {linkedRetention && detail && (
