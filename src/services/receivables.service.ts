@@ -46,12 +46,19 @@ export interface ReceivablesCurrencySummary {
   direct_due: number
   count_open: number
   count_overdue: number
+  /** Este saldo convertido a soles con el TC de cada documento (en PEN = direct_due). */
+  direct_due_pen?: number
 }
 
 export interface ReceivablesSummary {
   /** Saldo directo por moneda (el total_direct_due plano mezcla PEN y USD). */
   by_currency?: ReceivablesCurrencySummary[]
   total_direct_due: number
+  /** Saldo directo de todas las monedas EN SOLES (cada USD al TC de su documento). */
+  total_direct_due_pen?: number
+  /** Documentos en USD sin TC guardado: convertidos con el TC del día de emisión / sin poder convertirse. */
+  rate_estimated_count?: number
+  rate_missing_count?: number
   total_spot_pending: number
   count_open: number
   count_overdue: number
@@ -63,8 +70,15 @@ export interface StatementLine {
   type: string
   reference: string
   description: string
+  /** Importe en la moneda del documento (currency). */
   debit: number
   credit: number
+  currency?: string
+  exchange_rate?: number | null
+  /** Importe de la línea en soles. */
+  debit_pen?: number
+  credit_pen?: number
+  /** Saldo corriente EN SOLES. */
   balance: number
   sale_id?: number
   /** Caja/sesión donde ocurrió el cobro — solo presente en líneas type="payment". */
@@ -75,7 +89,11 @@ export interface AccountStatement {
   contact_id: number
   contact_name: string
   lines: StatementLine[]
+  /** Saldo directo EN SOLES (cada USD al TC de su documento). */
   total_due: number
+  total_due_by_currency?: ReceivablesCurrencySummary[]
+  rate_estimated_count?: number
+  rate_missing_count?: number
   spot_pending: number
 }
 

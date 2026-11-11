@@ -6,6 +6,7 @@ import type { PaymentMethodRecord } from '@/services/cashbank.service'
 import { formatPaymentMethodLabel } from '@/utils/paymentMethodLabel'
 import { defaultOperationalPaymentCode, filterOperationalPaymentMethods } from '@/utils/operationalPaymentMethods'
 import { formatDisplayDatePeru } from '@/utils/datesPeru'
+import { formatSaleMoney } from '@/utils/formatMoney'
 
 type Props = {
   row: ReceivableRow
@@ -55,7 +56,7 @@ export function CollectPaymentModal({ row, paymentMethods, onClose, onSuccess }:
       return
     }
     if (amount > row.direct_due + 0.01) {
-      toast.error(`El monto no puede superar el saldo S/ ${row.direct_due.toFixed(2)}`)
+      toast.error(`El monto no puede superar el saldo ${formatSaleMoney(row.direct_due, row.currency)}`)
       return
     }
     setLoading(true)
@@ -85,8 +86,8 @@ export function CollectPaymentModal({ row, paymentMethods, onClose, onSuccess }:
         {row.status === 'credit' ? ' · Estado: a crédito' : ''}
       </p>
       <p className="text-sm mb-3">
-        Saldo pendiente: <strong>S/ {row.direct_due.toFixed(2)}</strong>
-        <span className="text-gray-400 text-xs ml-2">(cobrado S/ {row.direct_paid.toFixed(2)})</span>
+        Saldo pendiente: <strong>{formatSaleMoney(row.direct_due, row.currency)}</strong>
+        <span className="text-gray-400 text-xs ml-2">(cobrado {formatSaleMoney(row.direct_paid, row.currency)})</span>
       </p>
 
       {openInstallments.length > 0 ? (
@@ -114,7 +115,7 @@ export function CollectPaymentModal({ row, paymentMethods, onClose, onSuccess }:
                     {formatDisplayDatePeru(inst.due_date)}
                     {inst.is_overdue ? <span className="text-red-600 ml-1">Vencida</span> : null}
                   </td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">S/ {inst.due_amount.toFixed(2)}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{formatSaleMoney(inst.due_amount, row.currency)}</td>
                   <td className="px-3 py-1.5 text-xs">{installmentStatusLabel(inst.status)}</td>
                 </tr>
               ))}
@@ -134,7 +135,7 @@ export function CollectPaymentModal({ row, paymentMethods, onClose, onSuccess }:
             >
               {openInstallments.map((inst) => (
                 <option key={inst.id} value={inst.id}>
-                  Cuota {inst.installment_no} — S/ {inst.due_amount.toFixed(2)} (vence{' '}
+                  Cuota {inst.installment_no} — {formatSaleMoney(inst.due_amount, row.currency)} (vence{' '}
                   {formatDisplayDatePeru(inst.due_date)})
                 </option>
               ))}
@@ -145,8 +146,7 @@ export function CollectPaymentModal({ row, paymentMethods, onClose, onSuccess }:
           </div>
         ) : selectedInstallment ? (
           <p className="text-xs text-gray-500">
-            Se aplicará a la cuota {selectedInstallment.installment_no} (S/{' '}
-            {selectedInstallment.due_amount.toFixed(2)}).
+            Se aplicará a la cuota {selectedInstallment.installment_no} ({formatSaleMoney(selectedInstallment.due_amount, row.currency)}).
           </p>
         ) : null}
         <div>
@@ -180,7 +180,7 @@ export function CollectPaymentModal({ row, paymentMethods, onClose, onSuccess }:
               className="text-xs text-emerald-700 mt-1 hover:underline"
               onClick={() => setAmount(row.direct_due)}
             >
-              Cobrar saldo total (S/ {row.direct_due.toFixed(2)})
+              Cobrar saldo total ({formatSaleMoney(row.direct_due, row.currency)})
             </button>
           ) : null}
         </div>
