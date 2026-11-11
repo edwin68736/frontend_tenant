@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { payablesService, type PayableRow } from '@/services/payables.service'
 import type { PaymentMethodRecord } from '@/services/cashbank.service'
+import { formatSaleMoney } from '@/utils/formatMoney'
 import { formatPaymentMethodLabel } from '@/utils/paymentMethodLabel'
 import { defaultOperationalPaymentCode, filterOperationalPaymentMethods } from '@/utils/operationalPaymentMethods'
 
@@ -29,7 +30,7 @@ export function PayPayableModal({ row, paymentMethods, onClose, onSuccess }: Pro
       return
     }
     if (amount > row.due + 0.01) {
-      toast.error(`El monto no puede superar el saldo S/ ${row.due.toFixed(2)}`)
+      toast.error(`El monto no puede superar el saldo ${formatSaleMoney(row.due, row.currency)}`)
       return
     }
     setLoading(true)
@@ -58,8 +59,8 @@ export function PayPayableModal({ row, paymentMethods, onClose, onSuccess }: Pro
       <p className="text-sm text-gray-500 mb-1 font-mono">{row.purchase_number}</p>
       <p className="text-xs text-gray-500 mb-3">{row.contact_name}</p>
       <p className="text-sm mb-4">
-        Saldo pendiente: <strong>S/ {row.due.toFixed(2)}</strong>
-        <span className="text-gray-400 text-xs ml-2">(pagado S/ {row.paid_amount.toFixed(2)})</span>
+        Saldo pendiente: <strong>{formatSaleMoney(row.due, row.currency)}</strong>
+        <span className="text-gray-400 text-xs ml-2">(pagado {formatSaleMoney(row.paid_amount, row.currency)})</span>
       </p>
 
       <div className="space-y-3">
@@ -94,7 +95,7 @@ export function PayPayableModal({ row, paymentMethods, onClose, onSuccess }: Pro
               className="text-xs text-emerald-700 mt-1 hover:underline"
               onClick={() => setAmount(row.due)}
             >
-              Pagar saldo total (S/ {row.due.toFixed(2)})
+              Pagar saldo total ({formatSaleMoney(row.due, row.currency)})
             </button>
           ) : null}
         </div>

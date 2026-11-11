@@ -5,6 +5,7 @@ import RequireModule from '@/components/ui/RequireModule'
 import { useAuth } from '@/contexts/AuthContext'
 import { payablesService, type PayableRow, type PayablesSummary } from '@/services/payables.service'
 import { cashbankService, type PaymentMethodRecord } from '@/services/cashbank.service'
+import { formatSaleMoney } from '@/utils/formatMoney'
 import { formatDisplayDatePeru } from '@/utils/datesPeru'
 import { PayPayableModal } from '@/components/payables/PayPayableModal'
 import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
@@ -77,7 +78,13 @@ function PayablesContent() {
 
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-          <KpiCard label="Saldo pendiente" value={`S/ ${summary.total_due.toFixed(2)}`} />
+          <KpiCard
+            label={(summary.total_due_usd ?? 0) > 0 ? 'Saldo pendiente (en soles, US$ al TC de cada compra)' : 'Saldo pendiente'}
+            value={formatSaleMoney(summary.total_due, 'PEN')}
+          />
+          {(summary.total_due_usd ?? 0) > 0 && (
+            <KpiCard label="De ese saldo, en dólares" value={formatSaleMoney(summary.total_due_usd ?? 0, 'USD')} />
+          )}
           <KpiCard label="Documentos abiertos" value={String(summary.count_open)} />
           <KpiCard label="Vencidos" value={String(summary.count_overdue)} accent="red" />
         </div>
@@ -118,10 +125,10 @@ function PayablesContent() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right">S/ {row.original_amount.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-right text-gray-600">S/ {row.paid_amount.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-right">{formatSaleMoney(row.original_amount, row.currency)}</td>
+                    <td className="px-4 py-3 text-right text-gray-600">{formatSaleMoney(row.paid_amount, row.currency)}</td>
                     <td className="px-4 py-3 text-right font-semibold text-emerald-700">
-                      {row.due > 0 ? `S/ ${row.due.toFixed(2)}` : '—'}
+                      {row.due > 0 ? formatSaleMoney(row.due, row.currency) : '—'}
                     </td>
                     <td className="px-4 py-3">
                       {row.due > 0 && canPay && (

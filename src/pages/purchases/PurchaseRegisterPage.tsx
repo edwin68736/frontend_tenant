@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useExchangeRate } from '@/hooks/useExchangeRate'
+import { saleCurrencySymbol } from '@/utils/formatMoney'
 import { useCatalogAccess } from '@/hooks/useCatalogAccess'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { purchaseOrdersService } from '@/services/purchaseOrders.service'
@@ -113,6 +115,44 @@ function PurchaseRegisterContent() {
    */
   const [priceIncludesIgv, setPriceIncludesIgv] = useState(false)
 
+  // Moneda del documento (PEN/USD) y TC venta (criterio del sistema anterior), por fecha de emisión y editable.
+  // El documento, su pago y la cuenta por pagar quedan en la moneda elegida; inventario y costos se llevan en soles
+  // (costo × TC) en el backend.
+  const currency: 'PEN' | 'USD' = form.currency === 'USD' ? 'USD' : 'PEN'
+  const sym = saleCurrencySymbol(currency)
+  const [rate, setRate] = useState('')
+  const [rateTouched, setRateTouched] = useState(false)
+  const rateNum = parseFloat(rate.replace(',', '.'))
+  const { exchangeRate: autoRate, loading: rateLoading, error: rateError } = useExchangeRate(form.issue_date ?? '', {
+    enabled: currency === 'USD',
+  })
+  useEffect(() => {
+    if (currency === 'USD' && autoRate && !rateTouched) setRate(autoRate)
+  }, [autoRate, currency, rateTouched])
+  // Al cambiar de moneda se reconvierten los costos ya tecleados (PEN→USD divide, USD→PEN multiplica), como el
+  // sistema anterior; si el TC aún no llega, la conversión queda pendiente hasta que llegue.
+  const [pendingFrom, setPendingFrom] = useState<'PEN' | 'USD' | null>(null)
+  const changeCurrency = (c: 'PEN' | 'USD') => {
+    if (c === currency) return
+    setForm(f => ({ ...f, currency: c }))
+    setRateTouched(false)
+    setPendingFrom(currency)
+  }
+  const itemsRef = useRef(items)
+  itemsRef.current = items
+  useEffect(() => {
+    if (!pendingFrom) return
+    if (itemsRef.current.length === 0) return setPendingFrom(null)
+    if (!(rateNum > 0)) return
+    const factor = pendingFrom === 'PEN' ? 1 / rateNum : rateNum
+    // A soles se redondea a centavos; a dólares se conservan 4 decimales (el costo de catálogo en soles no cae en centavos exactos).
+    const scale = pendingFrom === 'USD' ? 100 : 10000
+    setItems(prev => prev.map(it => ({ ...it, unit_cost: Math.round(it.unit_cost * factor * scale) / scale })))
+    setPendingFrom(null)
+  }, [pendingFrom, rateNum])
+  /** Costo de catálogo (en soles) llevado a la moneda del documento. */
+  const toDocCost = (penCost: number) => (currency === 'USD' && rateNum > 0 ? Math.round((penCost / rateNum) * 10000) / 10000 : penCost)
+
   // Tasa real del tenant (18% o 10.5% Ley 31659) para que el total en pantalla
   // coincida con el que calcula el backend.
   const { sunat: cachedSunat } = useBranchCheckoutSeries()
@@ -148,10 +188,11 @@ function PurchaseRegisterContent() {
           toast.error('La orden ya fue recibida o está anulada')
           return
         }
-        if (order.currency !== 'PEN') {
-          toast.error('Las órdenes en dólares aún no se pueden convertir en compra (próxima fase).')
-          navigate('/purchases/orders', { replace: true })
-          return
+        // La compra hereda la moneda de la orden (debe coincidir); el TC arranca con el de la orden y se actualiza al de
+        // la fecha del comprobante si hay uno disponible.
+        if (order.currency === 'USD') {
+          setForm(f => ({ ...f, currency: 'USD' }))
+          if (order.exchange_rate) setRate(String(order.exchange_rate))
         }
         // manage_series/presentaciones no viajan en la orden: se consultan por producto.
         const lines: PurchaseLineItem[] = await Promise.all(
@@ -220,6 +261,7 @@ function PurchaseRegisterContent() {
       presentations,
       priceIncludesIgv,
     })
+    line.unit_cost = toDocCost(line.unit_cost)
     setItems(i => {
       // Un producto con presentaciones permite varias líneas (una por presentación): no se fusionan.
       const existing = presentations.length > 0 ? undefined : i.find(it => it.product_id === p.id)
@@ -379,6 +421,10 @@ function PurchaseRegisterContent() {
         return
       }
     }
+    if (currency === 'USD' && !(rateNum > 0)) {
+      toast.error('Ingrese el tipo de cambio para compras en dólares')
+      return
+    }
     setSaving(true)
     try {
       const payloadItems = items.map(
@@ -405,6 +451,8 @@ function PurchaseRegisterContent() {
         series,
         number,
         price_includes_igv: priceIncludesIgv,
+        currency,
+        exchange_rate: currency === 'USD' ? rateNum : undefined,
         purchase_order_id: orderNumber ? (orderParam ?? undefined) : undefined,
         items: payloadItems,
       } as CreatePurchaseInput)
@@ -535,6 +583,40 @@ function PurchaseRegisterContent() {
                 : 'Se registrará como cuenta por pagar al proveedor (CxP): no se descuenta nada ahora, se paga después desde Cuentas por pagar.'}
             </p>
           </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Moneda</label>
+            <select
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
+              value={currency}
+              disabled={orderNumber != null}
+              onChange={e => changeCurrency(e.target.value as 'PEN' | 'USD')}
+            >
+              <option value="PEN">Soles (PEN)</option>
+              <option value="USD">Dólares (USD)</option>
+            </select>
+            {orderNumber != null && <p className="text-xs text-gray-400 mt-0.5">La moneda la define la orden de compra.</p>}
+          </div>
+          {currency === 'USD' && (
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de cambio (venta) *</label>
+              <input
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm tabular-nums"
+                inputMode="decimal"
+                value={rate}
+                placeholder={rateLoading ? 'Consultando…' : '3.750'}
+                onChange={e => {
+                  setRate(e.target.value)
+                  setRateTouched(true)
+                }}
+              />
+              {rateError && !rate && <p className="text-xs text-amber-700 mt-0.5">{rateError} Ingréselo manualmente.</p>}
+              <p className="text-xs text-gray-400 mt-0.5">
+                El documento, el pago y la cuenta por pagar quedan en dólares. El costo del inventario se registra en soles al TC.
+                {form.payment_method ? ' Elija una cuenta en dólares al pagar.' : ''}
+              </p>
+            </div>
+          )}
 
           <div className="sm:col-span-2 lg:col-span-3">
             <label
@@ -749,7 +831,7 @@ function PurchaseRegisterContent() {
                       </td>
                     )}
                     <td className="px-3 py-2.5 text-right font-medium text-gray-700 tabular-nums">
-                      S/ {lineTotal(it).toFixed(2)}
+                      {sym} {lineTotal(it).toFixed(2)}
                     </td>
                     <td className="px-2 py-2.5">
                       <button
@@ -776,16 +858,22 @@ function PurchaseRegisterContent() {
           <div className="text-right space-y-1 text-sm sm:ml-auto">
             <div className="flex justify-between gap-8 text-gray-600">
               <span>Subtotal</span>
-              <span className="tabular-nums">S/ {subtotal.toFixed(2)}</span>
+              <span className="tabular-nums">{sym} {subtotal.toFixed(2)}</span>
             </div>
             <div className="flex justify-between gap-8 text-gray-600">
               <span>IGV</span>
-              <span className="tabular-nums">S/ {igv.toFixed(2)}</span>
+              <span className="tabular-nums">{sym} {igv.toFixed(2)}</span>
             </div>
             <div className="flex justify-between gap-8 font-bold text-gray-800 text-base pt-1 border-t border-gray-200">
               <span>Total</span>
-              <span className="tabular-nums">S/ {total.toFixed(2)}</span>
+              <span className="tabular-nums">{sym} {total.toFixed(2)}</span>
             </div>
+            {currency === 'USD' && rateNum > 0 && (
+              <div className="flex justify-between gap-8 text-xs text-gray-500">
+                <span>Equivalente en soles</span>
+                <span className="tabular-nums">S/ {(total * rateNum).toFixed(2)}</span>
+              </div>
+            )}
           </div>
         </section>
 

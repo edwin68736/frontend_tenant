@@ -14,10 +14,16 @@ export interface PayableRow {
   due: number
   status: string
   is_overdue: boolean
+  /** Moneda del documento: original_amount/paid_amount/due vienen en ella. */
+  currency: string
+  exchange_rate?: number | null
 }
 
 export interface PayablesSummary {
+  /** Saldo consolidado en SOLES (los USD convertidos con el TC de cada compra). */
   total_due: number
+  /** Parte del saldo que está en dólares (en dólares). */
+  total_due_usd?: number
   count_open: number
   count_overdue: number
 }

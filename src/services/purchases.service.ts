@@ -14,6 +14,8 @@ export interface Purchase {
   tax_amount: number
   total: number
   currency: string
+  /** TC venta de la compra en USD (null/ausente en soles). */
+  exchange_rate?: number | null
   status: string
   /** Código del método con el que se pagó al registrar; vacío = compra a crédito (cuenta por pagar). */
   payment_method?: string
@@ -92,6 +94,8 @@ export interface CreatePurchaseInput {
   number: string
   issue_date: string
   currency: string
+  /** TC venta; obligatorio si currency = USD. */
+  exchange_rate?: number
   payment_method?: string
   notes?: string
   /** Criterio global: el costo unitario tecleado ya incluye IGV (se desagrega en el backend). */
