@@ -14,6 +14,7 @@ import { usersService } from '@/services/users.service'
 import type { TenantUser } from '@/services/users.service'
 import { formatPaymentMethodLabel, isDetractionPaymentMethod } from '@/utils/paymentMethodLabel'
 import { DETRACCION_PAYMENT_METHOD_NAME } from '@/utils/fiscalDetraction'
+import { SessionCurrencyPanel } from '@/components/cash/SessionCurrencyPanel'
 import { downloadCashSessionReportPdf } from '@/utils/cashSessionReportPdf'
 import { downloadCashMovementsReportPdf } from '@/utils/cashMovementsReportPdf'
 import {
@@ -449,15 +450,17 @@ function CashReportsContent() {
             </div>
           </div>
 
+          <SessionCurrencyPanel currency={report.currency} />
+
           {/* Totales generales */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             {[
               { label: 'Cobrado directo', val: directSalesTotal, color: 'text-emerald-700', bg: 'bg-emerald-50', hint: 'Efectivo, Yape, Plin, etc.' },
               { label: DETRACCION_PAYMENT_METHOD_NAME, val: spotTotal, color: 'text-amber-800', bg: 'bg-amber-50', hint: 'Sin impacto en arqueo' },
               { label: 'Total comercial', val: commercialTotal, color: 'text-gray-800', bg: 'bg-gray-50', hint: 'Directo + SPOT' },
-              { label: 'Total ingresos caja', val: report.totals.total_income, color: 'text-green-600', bg: 'bg-green-50', hint: 'Movimientos físicos' },
-              { label: 'Total egresos', val: report.totals.total_expense, color: 'text-red-600', bg: 'bg-red-50', hint: '' },
-              { label: 'Saldo final', val: report.totals.final_balance, color: 'text-[rgb(var(--p700))]', bg: 'bg-[rgb(var(--p50))]', hint: '' },
+              { label: 'Total ingresos caja', val: report.currency?.has_foreign ? report.currency.cash_income_pen : report.totals.total_income, color: 'text-green-600', bg: 'bg-green-50', hint: 'Movimientos físicos' },
+              { label: 'Total egresos', val: report.currency?.has_foreign ? report.currency.cash_expense_pen : report.totals.total_expense, color: 'text-red-600', bg: 'bg-red-50', hint: '' },
+              { label: 'Saldo final', val: report.currency?.has_foreign ? report.currency.physical_balance_pen : report.totals.final_balance, color: 'text-[rgb(var(--p700))]', bg: 'bg-[rgb(var(--p50))]', hint: '' },
             ].map(c => (
               <div key={c.label} className={`${c.bg} rounded-2xl shadow-sm p-4`}>
                 <p className="text-xs text-gray-500">{c.label}</p>
