@@ -19,6 +19,8 @@ type Props = {
   /** Precio mostrado: venta (P. venta) o compra (Precio compra). */
   variant?: 'sale' | 'purchase'
   currency?: string
+  /** TC (venta) del documento: con currency = USD el precio de catálogo (soles) se muestra convertido (÷ TC). */
+  exchangeRate?: number | null
   /** Abre alta rápida de producto (p. ej. desde compras). */
   onNewProduct?: () => void
   /** IDs de productos ya en el detalle (p. ej. carrito de venta). */
@@ -32,6 +34,7 @@ export function ProductPickerModal({
   onClose,
   variant = 'sale',
   currency = 'PEN',
+  exchangeRate = null,
   onNewProduct,
   addedProductIds = [],
   lastAddedProductId = null,
@@ -40,7 +43,11 @@ export function ProductPickerModal({
     variant === 'sale' ? formatSaleMoney(n, currency) : `S/ ${Number(n).toFixed(2)}`
   const priceLabel = variant === 'sale' ? 'P. venta' : 'Precio compra'
   const priceValue = (p: Product) =>
-    variant === 'sale' ? Number(p.sale_price ?? 0) : Number(p.purchase_price ?? 0)
+    variant === 'sale'
+      ? currency === 'USD' && exchangeRate && exchangeRate > 0
+        ? Number(p.sale_price ?? 0) / exchangeRate
+        : Number(p.sale_price ?? 0)
+      : Number(p.purchase_price ?? 0)
 
   const { activeBranchId } = useBranch()
   const { hasPermission } = useAuth()
