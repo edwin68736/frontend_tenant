@@ -25,6 +25,16 @@ export interface Purchase {
   linked_retention?: LinkedFiscalDocSummary | null
 }
 
+/** Total de las compras del filtro (sin anuladas) en una moneda; total_pen es el equivalente en soles. */
+export interface PurchaseCurrencyTotal {
+  currency: string
+  count: number
+  subtotal: number
+  tax_amount: number
+  total: number
+  total_pen: number
+}
+
 export interface PurchaseItem {
   product_id: number
   code: string
@@ -116,10 +126,11 @@ export const purchasesService = {
     per_page?: number
   }) =>
     api
-      .get<{ data: Purchase[]; total?: number }>('/api/purchases', { params })
+      .get<{ data: Purchase[]; total?: number; totals_by_currency?: PurchaseCurrencyTotal[] }>('/api/purchases', { params })
       .then(r => ({
         data: r.data.data ?? [],
         total: r.data.total ?? r.data.data?.length ?? 0,
+        totalsByCurrency: r.data.totals_by_currency ?? [],
       })),
 
   get: (id: number): Promise<PurchaseDetail> =>
