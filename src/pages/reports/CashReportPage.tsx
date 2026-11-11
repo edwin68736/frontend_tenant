@@ -14,6 +14,46 @@ import { exportTableToPdf } from '@/utils/exportPdf'
 import { exportTableToExcel } from '@/utils/exportExcel'
 import type { ExportColumn } from '@/utils/exportPdf'
 import { getTodayPeru } from '@/utils/datesPeru'
+import { formatSaleMoney } from '@/utils/formatMoney'
+
+const curOf = (r?: { currency?: string }) => String(r?.currency || 'PEN').toUpperCase()
+const rateText = (r: MovementReportRow) =>
+  curOf(r) === 'USD' ? (r.exchange_rate ? `${Number(r.exchange_rate).toFixed(3)}${r.rate_estimated ? '*' : ''}` : 'sin TC') : ''
+const penText = (r: MovementReportRow) =>
+  curOf(r) === 'USD' && r.rate_missing ? 'sin TC' : formatSaleMoney(Number(r.amount_pen ?? r.amount), 'PEN')
+
+/** Filas de totales para PDF/Excel: una por moneda (cada una en la suya) y, con dólares, la fila final en soles. */
+function buildCashFooter(cols: { key: unknown }[], rows: MovementReportRow[]): (string | number)[][] {
+  const cur = [...new Set(rows.map(curOf))].sort((a, b) => (a === 'PEN' ? -1 : b === 'PEN' ? 1 : a.localeCompare(b)))
+  const round = (n: number) => Math.round(n * 100) / 100
+  const line = (label: string, cb: (c: string) => { amount?: number; pen?: number; note?: string }, c = ''): (string | number)[] =>
+    cols.map((col, i) => {
+      if (i === 0) return label
+      const v = cb(c)
+      if (col.key === 'currency') return c
+      if (col.key === 'amount') return v.amount != null ? round(v.amount) : ''
+      if (col.key === 'amount_pen') return v.pen != null ? round(v.pen) : ''
+      if (col.key === 'doc_number') return v.note ?? ''
+      return ''
+    })
+  const out = cur.map((c) =>
+    line(cur.length > 1 ? `NETO ${c === 'USD' ? 'US$' : 'S/'}` : 'NETO', (cc) => {
+      const rs = rows.filter((r) => curOf(r) === cc)
+      return { amount: rs.reduce((a, r) => a + Number(r.amount || 0), 0), pen: rs.reduce((a, r) => a + (r.rate_missing ? 0 : Number(r.amount_pen ?? r.amount)), 0) }
+    }, c),
+  )
+  if (cur.some((c) => c !== 'PEN')) {
+    const est = rows.filter((r) => r.rate_estimated).length
+    const miss = rows.filter((r) => r.rate_missing).length
+    out.push(
+      line('TOTAL NETO EN SOLES', () => ({
+        pen: rows.reduce((a, r) => a + (r.rate_missing ? 0 : Number(r.amount_pen ?? r.amount)), 0),
+        note: [est ? `${est} con TC estimado (*)` : '', miss ? `${miss} sin TC (no incluidas)` : ''].filter(Boolean).join(' · '),
+      }), 'PEN'),
+    )
+  }
+  return out
+}
 
 type Branch = { id: number; name: string }
 
@@ -77,7 +117,10 @@ function buildExportCols(): ExportColumn<MovementReportRow>[] {
     { key: 'branch_name', label: 'Sucursal' },
     { key: 'cash_session_id', label: 'Sesión de caja', format: (v: unknown) => (v ? `#${v}` : '—') },
     { key: 'payment_method', label: 'Método de pago', format: (v: unknown) => formatPaymentMethod(String(v || '')) },
-    { key: 'amount', label: 'Monto', format: (v: unknown) => `S/ ${Number(v).toFixed(2)}` },
+    { key: 'currency', label: 'Moneda', format: (v: unknown) => String(v || 'PEN') },
+    { key: 'amount', label: 'Monto (original)', format: (v: unknown, r: MovementReportRow) => formatSaleMoney(Number(v), r?.currency) },
+    { key: 'exchange_rate', label: 'TC', format: (_v: unknown, r: MovementReportRow) => (r ? rateText(r) : '') },
+    { key: 'amount_pen', label: 'Equivalente S/', format: (_v: unknown, r: MovementReportRow) => (r ? penText(r) : '') },
     { key: 'notes_detail', label: 'Notas' },
   ]
 }
@@ -156,6 +199,7 @@ export default function CashReportPage() {
         buildExportCols(),
         rows,
         `reporte-caja-${filters.date_from || 'todo'}-${filters.date_to || 'todo'}.pdf`,
+        { footerRows: buildCashFooter(buildExportCols(), rows) },
       )
       toast.success('PDF descargado')
     } catch {
@@ -169,7 +213,7 @@ export default function CashReportPage() {
     setLoading(true)
     try {
       const { data: rows } = await cashbankService.listMovementsReport(exportParamsAllRows())
-      await exportTableToExcel<MovementReportRow>('Caja', buildExportCols(), rows, `reporte-caja-${filters.date_from || 'todo'}-${filters.date_to || 'todo'}.xlsx`)
+      await exportTableToExcel<MovementReportRow>('Caja', buildExportCols(), rows, `reporte-caja-${filters.date_from || 'todo'}-${filters.date_to || 'todo'}.xlsx`, buildCashFooter(buildExportCols(), rows))
       toast.success('Excel descargado')
     } catch {
       toast.error('Error al exportar')
@@ -196,14 +240,22 @@ export default function CashReportPage() {
       label: 'Método de pago',
       format: (v: unknown) => formatPaymentMethod(String(v || '')),
     },
+    { key: 'currency', label: 'Moneda', format: (v: unknown) => String(v || 'PEN') },
     {
       key: 'amount',
-      label: 'Monto',
-      format: (v: unknown) => `S/ ${Number(v).toFixed(2)}`,
+      label: 'Monto (original)',
+      format: (v: unknown, r: MovementReportRow) => formatSaleMoney(Number(v), r?.currency),
     },
+    { key: 'exchange_rate', label: 'TC', format: (_v: unknown, r: MovementReportRow) => (r ? rateText(r) : '') },
+    { key: 'amount_pen', label: 'Equivalente S/', format: (_v: unknown, r: MovementReportRow) => (r ? penText(r) : '') },
   ]
 
   const totalPages = Math.max(1, Math.ceil(total / perPage))
+  // Con movimientos en dólares los totales de arriba son el consolidado EN SOLES (cada USD al TC de su documento) y debajo se
+  // detalla el valor original por moneda.
+  const hasForeign = (summary.by_currency ?? []).some((c) => c.currency !== 'PEN')
+  const currencyLines = (s: MovementReportSummary, pick: (c: NonNullable<MovementReportSummary['by_currency']>[number]) => number) =>
+    (s.by_currency ?? []).map((c) => formatSaleMoney(pick(c), c.currency)).join(' + ')
 
   return (
     <div className="space-y-4">
@@ -294,15 +346,24 @@ export default function CashReportPage() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <div className="rounded-2xl border border-emerald-100 bg-emerald-50/80 px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Total ingresos</p>
-            <p className="text-xl font-bold text-emerald-900">S/ {summary.sum_income.toFixed(2)}</p>
+            <p className="text-xl font-bold text-emerald-900">S/ {(summary.sum_income_pen ?? summary.sum_income).toFixed(2)}</p>
+            {hasForeign && <p className="text-[10px] text-emerald-800/80 mt-0.5">{currencyLines(summary, (c) => c.sum_income)}</p>}
           </div>
           <div className="rounded-2xl border border-red-100 bg-red-50/80 px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-red-800">Total egresos</p>
-            <p className="text-xl font-bold text-red-900">S/ {summary.sum_expense.toFixed(2)}</p>
+            <p className="text-xl font-bold text-red-900">S/ {(summary.sum_expense_pen ?? summary.sum_expense).toFixed(2)}</p>
+            {hasForeign && <p className="text-[10px] text-red-800/80 mt-0.5">{currencyLines(summary, (c) => c.sum_expense)}</p>}
           </div>
           <div className="rounded-2xl border border-sky-100 bg-sky-50/80 px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-sky-800">Neto en caja</p>
-            <p className="text-xl font-bold text-sky-900">S/ {summary.net_movement.toFixed(2)}</p>
+            <p className="text-xl font-bold text-sky-900">S/ {(summary.net_movement_pen ?? summary.net_movement).toFixed(2)}</p>
+            {hasForeign && (
+              <p className="text-[10px] text-sky-800/80 mt-0.5">
+                {currencyLines(summary, (c) => c.net_movement)}
+                {(summary.rate_estimated_count ?? 0) > 0 ? ` · ${summary.rate_estimated_count} con TC estimado (*)` : ''}
+                {(summary.rate_missing_count ?? 0) > 0 ? ` · ${summary.rate_missing_count} sin TC (no incluidas)` : ''}
+              </p>
+            )}
           </div>
           <div className="rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Registros (filtro)</p>
@@ -341,7 +402,16 @@ export default function CashReportPage() {
                           const cls = n >= 0 ? 'text-emerald-700' : 'text-red-600'
                           return (
                             <td key={String(col.key)} className={`px-4 py-2 align-top font-medium ${cls}`}>
-                              S/ {n.toFixed(2)}
+                              {formatSaleMoney(n, row.currency)}
+                            </td>
+                          )
+                        }
+                        if (col.key === 'amount_pen') {
+                          const n = Number(row.amount_pen ?? row.amount)
+                          const cls = row.rate_missing ? 'text-gray-400' : n >= 0 ? 'text-emerald-700' : 'text-red-600'
+                          return (
+                            <td key={String(col.key)} className={`px-4 py-2 align-top font-medium ${cls}`}>
+                              {penText(row)}
                             </td>
                           )
                         }

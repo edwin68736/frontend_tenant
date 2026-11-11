@@ -289,6 +289,28 @@ export interface MovementReportRow {
    *  genérico de caja. Ausente/null cuando el movimiento es manual. */
   sale_id?: number | null
   purchase_id?: number | null
+  /** Moneda del documento de origen (amount viene en ella; manuales = PEN). */
+  currency?: string
+  /** TC del documento (ausente en soles). */
+  exchange_rate?: number | null
+  /** Equivalente en SOLES (amount × TC). */
+  amount_pen?: number
+  /** El documento no guardó TC: se usó el TC del día de emisión. */
+  rate_estimated?: boolean
+  /** USD sin ningún TC: no entra en los totales en soles. */
+  rate_missing?: boolean
+}
+
+/** Ingresos/egresos/neto de UNA moneda (cada uno en la suya) y su equivalente en soles. */
+export interface MovementCurrencyTotal {
+  currency: string
+  rows: number
+  sum_income: number
+  sum_expense: number
+  net_movement: number
+  sum_income_pen: number
+  sum_expense_pen: number
+  net_pen: number
 }
 
 export interface MovementReportSummary {
@@ -296,6 +318,13 @@ export interface MovementReportSummary {
   sum_income: number
   sum_expense: number
   net_movement: number
+  /** Totales separados por moneda y consolidados en soles (cada USD al TC de su documento). */
+  by_currency?: MovementCurrencyTotal[]
+  sum_income_pen?: number
+  sum_expense_pen?: number
+  net_movement_pen?: number
+  rate_estimated_count?: number
+  rate_missing_count?: number
 }
 
 export interface MovementsReportParams {
@@ -406,6 +435,12 @@ export const cashbankService = {
         sum_income: Number(summaryRaw.sum_income ?? 0),
         sum_expense: Number(summaryRaw.sum_expense ?? 0),
         net_movement: Number(summaryRaw.net_movement ?? 0),
+        by_currency: summaryRaw.by_currency ?? [],
+        sum_income_pen: Number(summaryRaw.sum_income_pen ?? summaryRaw.sum_income ?? 0),
+        sum_expense_pen: Number(summaryRaw.sum_expense_pen ?? summaryRaw.sum_expense ?? 0),
+        net_movement_pen: Number(summaryRaw.net_movement_pen ?? summaryRaw.net_movement ?? 0),
+        rate_estimated_count: Number(summaryRaw.rate_estimated_count ?? 0),
+        rate_missing_count: Number(summaryRaw.rate_missing_count ?? 0),
       },
       detraction: detractionBlock
         ? {

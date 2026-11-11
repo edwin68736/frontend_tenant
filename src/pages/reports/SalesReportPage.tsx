@@ -118,6 +118,13 @@ const fmtMoneyCell = (v: unknown, r?: { currency?: string }) => {
   return Number.isFinite(n) ? formatSaleMoney(n, r?.currency) : ''
 }
 
+/** TC de la venta en USD (3 decimales); con * si es el TC del día porque la venta no lo guardó. Vacío en soles. */
+const rateCell = (r: { currency?: string; exchange_rate?: number | null; rate_effective?: number | null; rate_estimated?: boolean }) => {
+  if (String(r.currency || 'PEN').toUpperCase() !== 'USD') return ''
+  const n = Number(r.rate_effective ?? r.exchange_rate)
+  return Number.isFinite(n) && n > 0 ? `${n.toFixed(3)}${r.rate_estimated ? '*' : ''}` : 'sin TC'
+}
+
 const currencyCode = (c?: string | null) => String(c || 'PEN').trim().toUpperCase() || 'PEN'
 
 /** Una fila de totales por moneda: nunca se suman soles y dólares en un mismo número. Con una sola
@@ -135,7 +142,7 @@ function buildFooterRows<C extends { key: unknown; excelNumber?: boolean }>(
   if (groups.size === 0) groups.set('PEN', [])
   const multi = groups.size > 1
   const ordered = [...groups.entries()].sort(([a], [b]) => (a === 'PEN' ? -1 : b === 'PEN' ? 1 : a.localeCompare(b)))
-  return ordered.map(([cur, rs]) =>
+  const perCurrency = ordered.map(([cur, rs]) =>
     cols.map((col, i) => {
       if (i === 0) return multi ? `TOTAL ${saleCurrencySymbol(cur)}` : 'TOTAL'
       if (col.key === 'contact_name') return `No anuladas: ${rs.length}/${allRows.filter((r) => currencyCode(r.currency) === cur).length}`
@@ -145,6 +152,23 @@ function buildFooterRows<C extends { key: unknown; excelNumber?: boolean }>(
       return Math.round(sum * 100) / 100
     }),
   )
+  // Con alguna venta en dólares: última fila con TODO convertido a soles (cada USD al TC de su venta).
+  if (!ordered.some(([cur]) => cur !== 'PEN')) return perCurrency
+  const estimated = rows.filter((r) => r.rate_estimated).length
+  const missing = rows.filter((r) => currencyCode(r.currency) === 'USD' && r.total_pen == null).length
+  const consolidated = cols.map((col, i) => {
+    if (i === 0) return 'TOTAL CONSOLIDADO EN SOLES'
+    if (col.key === 'contact_name') {
+      const notes = [estimated ? `${estimated} con TC estimado (*)` : '', missing ? `${missing} sin TC (no incluidas)` : '']
+      return notes.filter(Boolean).join(' · ')
+    }
+    if (col.key === 'currency') return 'PEN'
+    if (col.key === 'total_pen') {
+      return Math.round(rows.reduce((acc, row) => acc + (Number(row.total_pen) || 0), 0) * 100) / 100
+    }
+    return ''
+  })
+  return [...perCurrency, consolidated]
 }
 
 /** Fila del reporte con los campos que se calculan en el cliente (no vienen del backend). */
@@ -187,6 +211,14 @@ const COLS: ExcelExportColumn<ReportSaleRow>[] = [
   { key: 'subtotal', label: 'Subtotal', format: fmtMoneyCell, excelNumber: true },
   { key: 'tax_amount', label: 'IGV', format: fmtMoneyCell, excelNumber: true },
   { key: 'total', label: 'Total facturado', format: fmtMoneyCell, excelNumber: true },
+  // Valor original (arriba) + su conversión a soles con el TC de la venta (* = TC del día de emisión, la venta no lo guardó).
+  { key: 'exchange_rate', label: 'TC', format: (_v: unknown, r) => rateCell(r as ReportSaleRow) },
+  {
+    key: 'total_pen',
+    label: 'Equivalente S/',
+    format: (v: unknown) => (v == null ? 'sin TC' : formatSaleMoney(Number(v), 'PEN')),
+    excelNumber: true,
+  },
   { key: 'net_effect', label: 'Efectivo neto', format: fmtMoneyCell, excelNumber: true },
   { key: 'detraccion_amount', label: 'Detracción SPOT', format: (v: unknown, r) => (r as Sale).has_detraccion ? fmtMoneyCell(v) : '—', excelNumber: true },
   { key: 'net_payable', label: 'Neto cobrado', format: fmtMoneyCell, excelNumber: true },
@@ -232,6 +264,8 @@ const PDF_LAYOUT: Record<string, { weight: number; align?: 'right' | 'center' }>
   subtotal: { weight: 19, align: 'right' },
   tax_amount: { weight: 18, align: 'right' },
   total: { weight: 20, align: 'right' },
+  exchange_rate: { weight: 12, align: 'center' },
+  total_pen: { weight: 20, align: 'right' },
   net_effect: { weight: 20, align: 'right' },
   detraccion_amount: { weight: 18, align: 'right' },
   net_payable: { weight: 20, align: 'right' },
@@ -400,6 +434,9 @@ export default function SalesReportPage() {
         amountTotal: 0,
         amountCancelled: 0,
         amountActive: 0,
+        sumActivePEN: 0,
+        rateEstimated: 0,
+        rateMissing: 0,
         sumDetraccion: 0,
         sumNetPayable: 0,
         countDetraccion: 0,
@@ -431,6 +468,9 @@ export default function SalesReportPage() {
       amountTotal: s.sum_total,
       amountCancelled: s.sum_cancelled,
       amountActive: s.sum_active,
+      sumActivePEN: s.sum_active_pen ?? s.sum_active,
+      rateEstimated: s.rate_estimated_count ?? 0,
+      rateMissing: s.rate_missing_count ?? 0,
       sumDetraccion: s.sum_detraccion ?? 0,
       sumNetPayable: s.sum_net_payable ?? 0,
       countDetraccion: s.count_detraccion ?? 0,
@@ -449,7 +489,7 @@ export default function SalesReportPage() {
       // vistazo y la fila TOTAL sea la suma real de lo que se ve en cada columna (emitido menos
       // anulado). El Excel no cambia: ahí los montos van tal cual los declara el documento.
       const isCancelled = (r: ReportSaleRow) => String(r.status || '').toLowerCase() === 'cancelled'
-      const NEGATE_KEYS = ['subtotal', 'tax_amount', 'total', 'net_payable'] as const
+      const NEGATE_KEYS = ['subtotal', 'tax_amount', 'total', 'net_payable', 'total_pen'] as const
       const pdfRows: ReportSaleRow[] = withDoc.map((r) => {
         if (!isCancelled(r)) return r
         const copy = { ...r } as ReportSaleRow
@@ -701,6 +741,17 @@ export default function SalesReportPage() {
               </div>
             )
           })}
+          {stats.byCurrency.some((c) => c.currency !== 'PEN') && (
+            <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-indigo-800">Total consolidado en soles</p>
+              <p className="text-2xl font-bold text-indigo-950">{formatSaleMoney(stats.sumActivePEN, 'PEN')}</p>
+              <p className="text-[10px] text-indigo-700/80 mt-0.5">
+                No anuladas; los US$ al TC de cada venta
+                {stats.rateEstimated > 0 ? ` · ${stats.rateEstimated} con TC del día (*)` : ''}
+                {stats.rateMissing > 0 ? ` · ${stats.rateMissing} sin TC, no incluidas` : ''}
+              </p>
+            </div>
+          )}
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Total general (incl. anuladas)</p>
             <MoneyLines items={stats.byCurrency.map((c) => ({ currency: c.currency, amount: c.sum_total }))} className="text-2xl font-bold text-slate-900" />
