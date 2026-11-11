@@ -29,6 +29,10 @@ type MotiveGroup = {
   total: number
 }
 
+/** Total de la nota en soles: las notas en USD se convierten con su propio TC (sin TC se toma el importe tal cual). */
+const notePen = (r: { total: number; currency?: string; exchange_rate?: number | null }) =>
+  r.currency === 'USD' && r.exchange_rate && r.exchange_rate > 0 ? r.total * r.exchange_rate : r.total
+
 export default function NotesReportPage() {
   const { activeBranchId: activeBranchIdRaw, isAllBranches } = useBranch()
   // Modo "Todas las sucursales": el filtro arranca en "todas" (consolidado), no en la sucursal activa.
@@ -86,7 +90,7 @@ export default function NotesReportPage() {
         total: 0,
       }
       g.count += 1
-      g.total += r.total
+      g.total += notePen(r)
       map.set(key, g)
     }
     return Array.from(map.values()).sort((a, b) => b.total - a.total)
@@ -95,9 +99,9 @@ export default function NotesReportPage() {
   const totals = useMemo(
     () => ({
       count: rows.length,
-      total: rows.reduce((s, r) => s + r.total, 0),
-      credit: rows.filter((r) => r.doc_type === 'NOTA_CREDITO').reduce((s, r) => s + r.total, 0),
-      debit: rows.filter((r) => r.doc_type === 'NOTA_DEBITO').reduce((s, r) => s + r.total, 0),
+      total: rows.reduce((s, r) => s + notePen(r), 0),
+      credit: rows.filter((r) => r.doc_type === 'NOTA_CREDITO').reduce((s, r) => s + notePen(r), 0),
+      debit: rows.filter((r) => r.doc_type === 'NOTA_DEBITO').reduce((s, r) => s + notePen(r), 0),
     }),
     [rows],
   )
@@ -180,7 +184,10 @@ export default function NotesReportPage() {
         </button>
       </div>
 
-      {/* Resumen */}
+      {/* Resumen (en soles: una nota en dólares se convierte con el tipo de cambio de la propia nota) */}
+      {rows.some((r) => r.currency === 'USD') && (
+        <p className="text-xs text-gray-500">Los totales están en soles; las notas en dólares se convierten con el tipo de cambio de cada nota.</p>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="bg-white border border-gray-200 rounded-2xl p-4">
           <p className="text-xs text-gray-500">Notas de crédito</p>

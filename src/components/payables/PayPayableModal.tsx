@@ -24,8 +24,8 @@ export function PayPayableModal({ row, paymentMethods, onClose, onSuccess }: Pro
   const [reference, setReference] = useState('')
   const [loading, setLoading] = useState(false)
 
-  // Aviso (no bloquea, igual que el sistema anterior): el pago se registra en la moneda del documento y la caja es única
-  // y sin moneda; una cuenta bancaria con otra moneda mezclaría dólares y soles en su saldo.
+  // Aviso informativo: el pago se registra en la moneda del documento y el servidor lo convierte con el tipo de cambio a la moneda de la
+  // cuenta bancaria (o a soles en caja); no se mezclan monedas en ningún saldo.
   const [accounts, setAccounts] = useState<BankAccount[]>([])
   useEffect(() => {
     cashbankService.listBankAccounts().then(setAccounts).catch(() => setAccounts([]))
@@ -36,9 +36,9 @@ export function PayPayableModal({ row, paymentMethods, onClose, onSuccess }: Pro
   const curName = (c: string) => (c === 'USD' ? 'dólares' : 'soles')
   let currencyWarning = ''
   if (account && (account.currency || 'PEN') !== docCur) {
-    currencyWarning = `La cuenta "${account.name}" es en ${curName(account.currency || 'PEN')} y esta compra es en ${curName(docCur)}: el importe se descontará tal cual y mezclará monedas en el saldo de la cuenta. Elija una cuenta en ${curName(docCur)}.`
+    currencyWarning = `La cuenta "${account.name}" es en ${curName(account.currency || 'PEN')} y esta compra es en ${curName(docCur)}: el pago se convertirá con el tipo de cambio a la moneda de la cuenta.`
   } else if (docCur === 'USD' && selected?.destination_type === 'cash') {
-    currencyWarning = 'Esta compra es en dólares y la caja es única (sin moneda): el efectivo se descontará en dólares de la caja. Si paga en soles, use una cuenta o método en soles con el equivalente.'
+    currencyWarning = 'Esta compra es en dólares: el efectivo se descuenta de la caja en soles, al tipo de cambio de la compra.'
   }
 
   const submit = async () => {
