@@ -198,6 +198,14 @@ function ReceivablesContent() {
                 : `S/ ${summary.total_direct_due.toFixed(2)}`
             }
           />
+          {(summary.by_currency ?? []).some(c => c.currency !== 'PEN') && (
+            <KpiCard
+              label={`Saldo total en soles (US$ al TC de cada documento)${
+                (summary.rate_estimated_count ?? 0) > 0 ? ` · ${summary.rate_estimated_count} con TC del día` : ''
+              }${(summary.rate_missing_count ?? 0) > 0 ? ` · ${summary.rate_missing_count} sin TC` : ''}`}
+              value={formatSaleMoney(summary.total_direct_due_pen ?? summary.total_direct_due, 'PEN')}
+            />
+          )}
           <KpiCard label="SPOT pendiente BN" value={`S/ ${summary.total_spot_pending.toFixed(2)}`} />
           <KpiCard label="Documentos abiertos" value={String(summary.count_open)} />
           <KpiCard label="Vencidos" value={String(summary.count_overdue)} accent="red" />
@@ -349,7 +357,12 @@ function ReceivablesContent() {
               <Building2 size={18} className="text-gray-500" />
               <div>
                 <h3 className="font-bold">{statement.contact_name}</h3>
-                <p className="text-xs text-gray-500">Estado de cuenta — saldo directo S/ {statement.total_due.toFixed(2)}</p>
+                <p className="text-xs text-gray-500">
+                  Estado de cuenta — saldo directo {formatSaleMoney(statement.total_due, 'PEN')}
+                  {(statement.total_due_by_currency ?? []).some(c => c.currency !== 'PEN')
+                    ? ` (${(statement.total_due_by_currency ?? []).map(c => formatSaleMoney(c.direct_due, c.currency)).join(' + ')}; los US$ al TC de cada documento)`
+                    : ''}
+                </p>
                 {statement.spot_pending > 0 && (
                   <p className="text-xs text-amber-700">SPOT BN pendiente: S/ {statement.spot_pending.toFixed(2)}</p>
                 )}
@@ -364,7 +377,7 @@ function ReceivablesContent() {
                     <th className="text-left py-2">Caja</th>
                     <th className="text-right py-2">Cargo</th>
                     <th className="text-right py-2">Abono</th>
-                    <th className="text-right py-2">Saldo</th>
+                    <th className="text-right py-2">Saldo (S/)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -375,9 +388,15 @@ function ReceivablesContent() {
                       <td className="py-2 text-xs text-gray-500">
                         {line.type === 'payment' && line.cash_session_id ? `#${line.cash_session_id}` : '—'}
                       </td>
-                      <td className="py-2 text-right">{line.debit > 0 ? line.debit.toFixed(2) : ''}</td>
-                      <td className="py-2 text-right">{line.credit > 0 ? line.credit.toFixed(2) : ''}</td>
-                      <td className="py-2 text-right font-medium">{line.balance.toFixed(2)}</td>
+                      <td className="py-2 text-right">
+                        {line.debit > 0 ? formatSaleMoney(line.debit, line.currency) : ''}
+                        {line.debit > 0 && line.currency === 'USD' ? <span className="block text-[10px] text-gray-400">≈ S/ {(line.debit_pen ?? 0).toFixed(2)}</span> : null}
+                      </td>
+                      <td className="py-2 text-right">
+                        {line.credit > 0 ? formatSaleMoney(line.credit, line.currency) : ''}
+                        {line.credit > 0 && line.currency === 'USD' ? <span className="block text-[10px] text-gray-400">≈ S/ {(line.credit_pen ?? 0).toFixed(2)}</span> : null}
+                      </td>
+                      <td className="py-2 text-right font-medium">S/ {line.balance.toFixed(2)}</td>
                     </tr>
                   ))}
                 </tbody>
