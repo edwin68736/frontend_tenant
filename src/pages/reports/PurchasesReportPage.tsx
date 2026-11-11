@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { FileDown, FileSpreadsheet, Search } from 'lucide-react'
 import { toast } from 'sonner'
-import { purchasesService, type Purchase } from '@/services/purchases.service'
+import { purchasesService, type Purchase, type PurchaseCurrencyTotal } from '@/services/purchases.service'
+import { formatSaleMoney } from '@/utils/formatMoney'
 import { billingStatusLabel, normalizeBillingStatus } from '@/constants/billingStatus'
 import { exportTableToPdf } from '@/utils/exportPdf'
 import { exportTableToExcel } from '@/utils/exportExcel'
@@ -16,9 +17,23 @@ const COLS: ExportColumn<Purchase>[] = [
   { key: 'series', label: 'Serie' },
   { key: 'number', label: 'Número' },
   { key: 'supplier_name', label: 'Proveedor' },
-  { key: 'subtotal', label: 'Subtotal', format: (v: unknown) => `S/ ${Number(v).toFixed(2)}` },
-  { key: 'tax_amount', label: 'IGV', format: (v: unknown) => `S/ ${Number(v).toFixed(2)}` },
-  { key: 'total', label: 'Total', format: (v: unknown) => `S/ ${Number(v).toFixed(2)}` },
+  { key: 'currency', label: 'Moneda', format: (v: unknown) => (String(v || 'PEN') === 'USD' ? 'USD' : 'PEN') },
+  {
+    key: 'exchange_rate',
+    label: 'TC',
+    format: (v: unknown, r: Purchase) => (r.currency === 'USD' && v ? Number(v).toFixed(3) : ''),
+  },
+  { key: 'subtotal', label: 'Subtotal', format: (v: unknown, r: Purchase) => formatSaleMoney(Number(v), r.currency) },
+  { key: 'tax_amount', label: 'IGV', format: (v: unknown, r: Purchase) => formatSaleMoney(Number(v), r.currency) },
+  { key: 'total', label: 'Total', format: (v: unknown, r: Purchase) => formatSaleMoney(Number(v), r.currency) },
+  {
+    key: 'total_pen',
+    label: 'Total en soles',
+    format: (_v: unknown, r: Purchase) =>
+      r.currency === 'USD' && r.exchange_rate
+        ? formatSaleMoney(Number(r.total) * Number(r.exchange_rate), 'PEN')
+        : formatSaleMoney(Number(r.total), 'PEN'),
+  },
   {
     key: 'status',
     label: 'Estado',
@@ -76,6 +91,7 @@ export default function PurchasesReportPage() {
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(25)
   const [total, setTotal] = useState(0)
+  const [totals, setTotals] = useState<PurchaseCurrencyTotal[]>([])
 
   useEffect(() => {
     void load()
@@ -95,13 +111,15 @@ export default function PurchasesReportPage() {
       if (filters.from) params.from = filters.from
       if (filters.to) params.to = filters.to
       if (searchSupplier.trim()) params.q = searchSupplier.trim()
-      const { data: list, total: t } = await purchasesService.list(params)
+      const { data: list, total: t, totalsByCurrency } = await purchasesService.list(params)
       setData(Array.isArray(list) ? list : [])
       setTotal(Number(t) || 0)
+      setTotals(totalsByCurrency)
     } catch {
       toast.error('Error al cargar compras')
       setData([])
       setTotal(0)
+      setTotals([])
     } finally {
       setLoading(false)
     }
@@ -216,6 +234,30 @@ export default function PurchasesReportPage() {
           </button>
         </div>
       </div>
+      {!loading && totals.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {totals.map(t => (
+            <div key={t.currency} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+              <p className="text-xs text-gray-500">
+                {t.currency === 'USD' ? 'Compras en dólares' : 'Compras en soles'} · {t.count} comprobante{t.count === 1 ? '' : 's'}
+              </p>
+              <p className="text-xl font-bold text-gray-800 tabular-nums">{formatSaleMoney(t.total, t.currency)}</p>
+              <p className="text-xs text-gray-400">
+                Subtotal {formatSaleMoney(t.subtotal, t.currency)} · IGV {formatSaleMoney(t.tax_amount, t.currency)}
+                {t.currency === 'USD' ? ` · ≈ ${formatSaleMoney(t.total_pen, 'PEN')}` : ''}
+              </p>
+            </div>
+          ))}
+          {totals.length > 1 && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+              <p className="text-xs text-gray-500">Total consolidado en soles (US$ al TC de cada compra)</p>
+              <p className="text-xl font-bold text-gray-800 tabular-nums">
+                {formatSaleMoney(totals.reduce((a, t) => a + t.total_pen, 0), 'PEN')}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
       {loading && (
         <div className="flex justify-center py-12">
           <div className="w-8 h-8 border-2 border-gray-300 border-t-[rgb(var(--p600))] rounded-full animate-spin" />
