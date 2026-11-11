@@ -10,9 +10,9 @@ type Props = {
   className?: string
 }
 
-/** Cuentas que pueden recibir un cobro directo: activas y en soles (el saldo de la cuenta se mueve en soles). */
+/** Cuentas que pueden recibir un cobro directo: las activas (un cobro en otra moneda se convierte con el TC a la moneda de la cuenta). */
 export function eligibleDestinationAccounts(accounts: BankAccount[]): BankAccount[] {
-  return (accounts ?? []).filter((a) => a.active !== false && (!a.currency || String(a.currency).toUpperCase() === 'PEN'))
+  return (accounts ?? []).filter((a) => a.active !== false)
 }
 
 /** ¿Esta línea de pago permite elegir la cuenta de destino? Solo métodos que van a cuenta bancaria y con más de una cuenta posible. */
@@ -20,7 +20,9 @@ export function canChooseDestination(method: PaymentMethodRecord | undefined, ac
   return !!method && method.destination_type === 'bank_account' && eligibleDestinationAccounts(accounts).length > 1
 }
 
-const accLabel = (a: BankAccount) => [a.bank_name, a.name].map((s) => (s ?? '').trim()).filter(Boolean).join(' · ') || `Cuenta ${a.id}`
+const accLabel = (a: BankAccount) =>
+  ([a.bank_name, a.name].map((s) => (s ?? '').trim()).filter(Boolean).join(' · ') || `Cuenta ${a.id}`) +
+  (String(a.currency || 'PEN').toUpperCase() === 'USD' ? ' (US$)' : '')
 
 /**
  * Destino del pago: «¿a qué cuenta entró este dinero?». Por defecto usa la cuenta vinculada al método; el cajero puede elegir otra

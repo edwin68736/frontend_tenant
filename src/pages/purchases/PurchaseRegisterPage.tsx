@@ -596,7 +596,7 @@ function PurchaseRegisterContent() {
               onChange={e => setForm(f => ({ ...f, issue_date: e.target.value }))}
             />
           </div>
-          <div>
+          <div className={isMixed ? 'sm:col-span-2' : ''}>
             <label className="block text-xs font-medium text-gray-600 mb-1">Método de pago</label>
             <select
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
@@ -667,6 +667,7 @@ function PurchaseRegisterContent() {
                   {(() => {
                     const paid = mixedPayments.reduce((s, l) => s + (Number(l.amount) || 0), 0)
                     const diff = Math.round((total - paid) * 100) / 100
+                    if (total <= 0) return <span className="text-gray-400">Agregue productos para calcular el total</span>
                     return (
                       <span className={Math.abs(diff) < 0.01 ? 'text-green-700' : 'text-amber-700'}>
                         {Math.abs(diff) < 0.01 ? 'Pagos completos' : diff > 0 ? `Faltan ${sym} ${diff.toFixed(2)}` : `Sobran ${sym} ${(-diff).toFixed(2)}`}

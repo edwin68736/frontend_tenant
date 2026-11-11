@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { X, ArrowRight } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
@@ -29,6 +29,18 @@ export function TransferModal({ open, onClose, accounts, defaultFromId, onDone }
   const [date, setDate] = useState(getTodayPeru())
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
+  const submitting = useRef(false)
+
+  // Al abrir se parte limpio: origen = la cuenta que se está viendo, sin destino ni montos de la vez anterior.
+  useEffect(() => {
+    if (!open) return
+    setFromKey(defaultFromId ? `b:${defaultFromId}` : CASH)
+    setToKey('')
+    setAmount('')
+    setRate('')
+    setNotes('')
+    setDate(getTodayPeru())
+  }, [open, defaultFromId])
 
   const find = (k: string) => active.find((a) => keyOf(a) === k)
   const fromCur = fromKey === CASH ? 'PEN' : curOf(find(fromKey))
@@ -44,6 +56,8 @@ export function TransferModal({ open, onClose, accounts, defaultFromId, onDone }
   const submit = async () => {
     if (!toKey) return toast.error('Elija el destino de la transferencia')
     if (amt <= 0) return toast.error('Indique el monto a transferir')
+    if (submitting.current) return // evita el doble envío antes de que el botón se deshabilite
+    submitting.current = true
     setSaving(true)
     try {
       await cashbankService.createTransfer({
@@ -63,6 +77,7 @@ export function TransferModal({ open, onClose, accounts, defaultFromId, onDone }
       const msg = (e as { response?: { data?: { error?: string } } })?.response?.data?.error
       toast.error(msg || 'No se pudo registrar la transferencia')
     } finally {
+      submitting.current = false
       setSaving(false)
     }
   }
