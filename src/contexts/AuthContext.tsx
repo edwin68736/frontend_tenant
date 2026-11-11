@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react'
 import { authService, decodeJWT, type AuthUser, type LoginPayload, type JWTPayload } from '@/services/auth.service'
 import { hasTenantPermission } from '@/lib/permissions'
 import {
@@ -13,7 +13,8 @@ import {
 import { toast } from 'sonner'
 import { isNativeShell } from '@/lib/platform/detect'
 import { clearCompanyCaches } from '@/lib/companyConfig/store'
-import { SESSION_EXPIRED_EVENT, SESSION_REFRESHED_EVENT } from '@/services/api'
+import { SESSION_EXPIRED_EVENT, SESSION_REFRESHED_EVENT, refreshAccessToken } from '@/services/api'
+import { hasStaleProductPermissions } from '@/lib/staleTokenPermissions'
 import { useIdleLogout } from '@/hooks/useIdleLogout'
 import { markIdleActivity, clearIdleActivity } from '@/lib/idleSession'
 import { clearAllCaches } from '@/lib/branchScope/caches'
@@ -112,6 +113,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Cierre de sesión automático por inactividad (3h) — ver hooks/useIdleLogout.ts.
   useIdleLogout(state.isAuthenticated)
+
+  // Token anterior a un permiso nuevo (V177): renovar una vez por carga para que la interfaz refleje los permisos del rol.
+  const staleRefreshTried = useRef(false)
+  useEffect(() => {
+    if (!state.isAuthenticated || state.isImpersonated || staleRefreshTried.current) return
+    if (!hasStaleProductPermissions(state.permissions)) return
+    staleRefreshTried.current = true
+    void refreshAccessToken()
+  }, [state.isAuthenticated, state.isImpersonated, state.permissions])
 
   // Restaurar sesión o acceso maestro (/?master_sso=...) — sin recarga de página
   useEffect(() => {
