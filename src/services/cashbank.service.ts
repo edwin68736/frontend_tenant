@@ -161,7 +161,11 @@ export interface IncomeDetailRow {
   type: string
   doc_number: string
   reference: string
+  /** Siempre en SOLES (un documento en USD se convierte con su tipo de cambio). */
   amount: number
+  /** Moneda e importe originales cuando el documento no es en soles. */
+  currency?: string
+  original_amount?: number
   payment_method: string
   /** Motivo/categoría de un movimiento manual (vacío en ventas). */
   category?: string
@@ -175,7 +179,10 @@ export interface ExpenseDetailRow {
   type: string
   doc_number: string
   reference: string
+  /** Siempre en SOLES. */
   amount: number
+  currency?: string
+  original_amount?: number
   payment_method: string
   category?: string
 }

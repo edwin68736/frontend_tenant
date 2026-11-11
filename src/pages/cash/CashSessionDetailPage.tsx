@@ -165,6 +165,11 @@ function CashSessionDetailContent() {
   }
 
   const formatMoney = (n: number) => `S/ ${Number(n).toFixed(2)}`
+  // Las filas vienen en soles; si el documento era en dólares se muestra además el importe original.
+  const origHint = (row: { currency?: string; original_amount?: number }) =>
+    row.currency === 'USD' && row.original_amount ? (
+      <span className="block text-[10px] font-normal text-gray-400">US$ {Number(row.original_amount).toFixed(2)} al TC del documento</span>
+    ) : null
   // Con documentos en dólares el efectivo esperado y los totales van en soles (cada USD al TC de su documento).
   const fx = report.currency?.has_foreign ? report.currency : null
   const cashExpected = fx ? fx.physical_balance_pen : (report.cash_physical?.physical_balance ?? balanceSummary?.cash_expected ?? 0)
@@ -332,7 +337,7 @@ function CashSessionDetailContent() {
                   <tr key={i} className="border-b border-blue-100/80">
                     <td className="px-3 py-2 text-xs">{new Date(row.date).toLocaleString()}</td>
                     <td className="px-3 py-2">{row.doc_number || '—'}</td>
-                    <td className="px-3 py-2 font-semibold text-blue-900">{formatMoney(row.amount)}</td>
+                    <td className="px-3 py-2 font-semibold text-blue-900">{formatMoney(row.amount)}{origHint(row)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -362,7 +367,7 @@ function CashSessionDetailContent() {
                   <tr key={i} className="border-b border-orange-100/80">
                     <td className="px-3 py-2 text-xs">{new Date(row.date).toLocaleString()}</td>
                     <td className="px-3 py-2">{row.doc_number || '—'}</td>
-                    <td className="px-3 py-2 font-semibold text-orange-900">{formatMoney(row.amount)}</td>
+                    <td className="px-3 py-2 font-semibold text-orange-900">{formatMoney(row.amount)}{origHint(row)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -411,7 +416,7 @@ function CashSessionDetailContent() {
                   <td className="px-4 py-2">{row.reference || '-'}</td>
                   <td className="px-4 py-2">{formatPaymentMethodLabel(row.payment_method)}</td>
                   <td className="px-4 py-2 text-xs text-gray-500">{row.type === 'cobro_cxc' && row.sale_cash_session_id ? `#${row.sale_cash_session_id}` : '—'}</td>
-                  <td className="px-4 py-2 font-medium text-green-600">{formatMoney(row.amount)}</td>
+                  <td className="px-4 py-2 font-medium text-green-600">{formatMoney(row.amount)}{origHint(row)}</td>
                 </tr>
               )) : <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-400">Sin ingresos</td></tr>}
             </tbody>
@@ -433,7 +438,7 @@ function CashSessionDetailContent() {
                   <td className="px-4 py-2">{row.doc_number || '-'}</td>
                   <td className="px-4 py-2">{row.reference || '-'}</td>
                   <td className="px-4 py-2">{formatPaymentMethodLabel(row.payment_method)}</td>
-                  <td className="px-4 py-2 font-medium text-red-600">{formatMoney(row.amount)}</td>
+                  <td className="px-4 py-2 font-medium text-red-600">{formatMoney(row.amount)}{origHint(row)}</td>
                 </tr>
               )) : <tr><td colSpan={6} className="px-4 py-6 text-center text-gray-400">Sin egresos</td></tr>}
             </tbody>
