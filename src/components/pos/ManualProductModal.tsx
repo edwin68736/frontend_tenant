@@ -58,7 +58,7 @@ export function ManualProductModal({ open, onClose, onAdd }: Props) {
 
   return (
     <PortalModal open={open} onClose={onClose} className="max-w-md" stacked>
-      <div className="bg-white rounded-2xl shadow-xl w-full overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-xl w-full overflow-clip">
         <div className="flex items-center justify-between p-4 border-b border-stone-200">
           <h3 className="font-bold text-stone-900">Producto manual</h3>
           <button type="button" onClick={onClose} className="p-1 rounded-lg hover:bg-stone-100">
@@ -136,20 +136,13 @@ export function ManualProductModal({ open, onClose, onAdd }: Props) {
                 onChange={(e) => setPriceIncludesIgv(e.target.checked)}
                 className="h-4 w-4 accent-primary-600"
               />
-              Precio incluye IGV
+              <span>Precio incluye IGV{priceIncludesIgv ? '' : ' (se suma al total)'}</span>
             </label>
           ) : (
             <p className="text-xs text-stone-500">Esta afectación no aplica IGV al total.</p>
           )}
-          {isGravadoIgv(igv) && unitPrice.trim() && (
-            <p className="text-xs text-stone-500 rounded-lg bg-stone-50 border border-stone-100 px-2 py-1.5">
-              {priceIncludesIgv
-                ? 'El monto ingresado es el precio final con IGV incluido (se desglosa al cobrar y facturar).'
-                : 'El monto ingresado es la base; se sumará el IGV al total del carrito y en la factura.'}
-            </p>
-          )}
         </div>
-        <div className="p-4 border-t border-stone-200 flex gap-2">
+        <div className="sticky bottom-0 z-10 bg-white p-4 border-t border-stone-200 flex gap-2">
           <button type="button" onClick={onClose} className="flex-1 py-2.5 border border-stone-200 rounded-xl text-sm font-medium">
             Cancelar
           </button>
