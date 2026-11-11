@@ -23,6 +23,7 @@ import { categoryLabel } from '@/utils/cashMovementCategories'
 import { MethodBalanceGrid } from '@/components/cash/MethodBalanceGrid'
 import { MovementsList } from '@/components/cash/MovementsList'
 import { SessionProductsSold } from '@/components/cash/SessionProductsSold'
+import { SessionCurrencyPanel } from '@/components/cash/SessionCurrencyPanel'
 import { ArqueoTable, sumArqueo, arqueoSumColorClass, parseArqueoJson } from '@/components/cash/ArqueoTable'
 
 function isEfectivo(m: string): boolean {
@@ -164,7 +165,9 @@ function CashSessionDetailContent() {
   }
 
   const formatMoney = (n: number) => `S/ ${Number(n).toFixed(2)}`
-  const cashExpected = report.cash_physical?.physical_balance ?? balanceSummary?.cash_expected ?? 0
+  // Con documentos en dólares el efectivo esperado y los totales van en soles (cada USD al TC de su documento).
+  const fx = report.currency?.has_foreign ? report.currency : null
+  const cashExpected = fx ? fx.physical_balance_pen : (report.cash_physical?.physical_balance ?? balanceSummary?.cash_expected ?? 0)
   const spotTotal = report.detraction?.total_spot ?? report.totals.total_detraccion_spot ?? 0
   const directSalesTotal = report.totals.total_sales_direct ?? report.totals.total_sales ?? 0
   const commercialTotal = report.totals.total_sales_commercial ?? directSalesTotal + spotTotal
@@ -257,6 +260,7 @@ function CashSessionDetailContent() {
         <p className="text-sm font-semibold text-[rgb(var(--p800))]">Total de la sesión</p>
         <p className="text-xl font-bold text-[rgb(var(--p700))]">{formatMoney(balanceSummary?.total ?? report.totals.final_balance)}</p>
       </div>
+      <SessionCurrencyPanel currency={report.currency} />
 
       {/* Efectivo / Arqueo — exclusivamente físico, nunca el total. */}
       <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-100">
@@ -295,9 +299,9 @@ function CashSessionDetailContent() {
           { label: 'Cobrado directo', val: directSalesTotal, color: 'text-emerald-700', bg: 'bg-emerald-50', hint: 'Efectivo, Yape, Plin, etc.' },
           { label: DETRACCION_PAYMENT_METHOD_NAME, val: spotTotal, color: 'text-amber-800', bg: 'bg-amber-50', hint: 'Sin impacto en arqueo' },
           { label: 'Total comercial', val: commercialTotal, color: 'text-gray-800', bg: 'bg-gray-50', hint: 'Directo + SPOT' },
-          { label: 'Total ingresos caja', val: report.totals.total_income, color: 'text-green-600', bg: 'bg-green-50', hint: 'Movimientos físicos' },
-          { label: 'Total egresos', val: report.totals.total_expense, color: 'text-red-600', bg: 'bg-red-50', hint: '' },
-          { label: 'Saldo final', val: report.totals.final_balance, color: 'text-[rgb(var(--p700))]', bg: 'bg-[rgb(var(--p50))]', hint: '' },
+          { label: 'Total ingresos caja', val: fx ? fx.cash_income_pen : report.totals.total_income, color: 'text-green-600', bg: 'bg-green-50', hint: 'Movimientos físicos' },
+          { label: 'Total egresos', val: fx ? fx.cash_expense_pen : report.totals.total_expense, color: 'text-red-600', bg: 'bg-red-50', hint: '' },
+          { label: 'Saldo final', val: fx ? fx.physical_balance_pen : report.totals.final_balance, color: 'text-[rgb(var(--p700))]', bg: 'bg-[rgb(var(--p50))]', hint: '' },
         ].map(c => (
           <div key={c.label} className={`${c.bg} rounded-2xl shadow-sm p-4`}>
             <p className="text-xs text-gray-500">{c.label}</p>

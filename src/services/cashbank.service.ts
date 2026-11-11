@@ -163,9 +163,28 @@ export interface MethodBalance {
  *  nunca deben mezclarse: uno es "cuánta plata hay en total", el otro es "cuánto efectivo físico
  *  debería haber en la gaveta"). */
 export interface SessionBalanceSummary {
+  /** Todos los importes en SOLES (los documentos en USD entran con su equivalente al TC del documento). */
   by_method: MethodBalance[]
   total: number
   cash_expected: number
+  /** La sesión tuvo documentos en dólares. */
+  has_foreign?: boolean
+  rate_estimated_count?: number
+  rate_missing_count?: number
+}
+
+/** Sesión con documentos en dólares: totales en soles y montos originales por moneda. */
+export interface SessionCurrencySummary {
+  has_foreign: boolean
+  by_currency?: MovementCurrencyTotal[]
+  total_income_pen: number
+  total_expense_pen: number
+  cash_income_pen: number
+  cash_expense_pen: number
+  /** Efectivo esperado del arqueo en soles (apertura + ingresos − egresos en efectivo). */
+  physical_balance_pen: number
+  rate_estimated_count: number
+  rate_missing_count: number
 }
 
 /** Producto vendido en una sesión de caja (todos los métodos de pago), agrupado por producto y unidad. */
@@ -268,6 +287,8 @@ export interface CashSessionReport {
     total: number
     purchases: ExpenseDetailRow[]
   }
+  /** Moneda: con documentos en dólares, saldo y totales EN SOLES; el resto del reporte queda en la moneda de cada documento. */
+  currency?: SessionCurrencySummary
 }
 
 export interface MovementReportRow {

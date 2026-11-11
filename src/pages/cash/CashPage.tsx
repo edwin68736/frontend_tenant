@@ -692,6 +692,7 @@ function CashContent() {
           <div className="space-y-2">
             <p className="text-xs text-gray-500">
               El arqueo cuenta solo efectivo físico — efectivo esperado: <span className="font-semibold">S/ {cashExpected.toFixed(2)}</span> (Yape/Plin/transferencia/tarjeta no llevan arqueo).
+              {balanceSummary?.has_foreign ? ' Hay documentos en dólares: el esperado está en soles (cada US$ al TC de su documento).' : ''}
             </p>
             <ArqueoTable
               arqueo={closeArqueo}
