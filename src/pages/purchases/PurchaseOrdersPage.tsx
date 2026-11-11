@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Search, Pencil, Send, Ban, ShoppingCart, Eye } from 'lucide-react'
+import { Plus, Search, Pencil, Send, Ban, ShoppingCart, Eye, Printer, Download } from 'lucide-react'
+import { contactsService } from '@/services/contacts.service'
+import { openPurchaseOrderPdfViewer, downloadPurchaseOrderPdf } from '@/utils/purchaseOrderPdf'
 import {
   purchaseOrdersService,
   PURCHASE_ORDER_STATUS_LABEL,
@@ -67,6 +69,27 @@ function PurchaseOrdersContent() {
       setDetail(await purchaseOrdersService.get(id))
     } catch (e) {
       toast.error(errMsg(e, 'No se pudo cargar la orden'))
+    }
+  }
+
+  const printOrder = async (mode: 'view' | 'download') => {
+    if (!detail) return
+    try {
+      // Datos del proveedor para el documento (la orden solo guarda el id).
+      const c = detail.order.contact_id ? await contactsService.get(detail.order.contact_id).catch(() => null) : null
+      const input = {
+        order: detail.order,
+        items: detail.items,
+        supplier: {
+          name: c?.business_name || detail.order.contact_name || '',
+          docNumber: c?.doc_number,
+          address: c?.address,
+        },
+      }
+      if (mode === 'view') await openPurchaseOrderPdfViewer(input)
+      else await downloadPurchaseOrderPdf(input)
+    } catch {
+      toast.error('No se pudo generar el PDF de la orden')
     }
   }
 
@@ -251,6 +274,12 @@ function PurchaseOrdersContent() {
             </div>
             {detail.order.notes && <p className="text-sm text-gray-600 whitespace-pre-wrap">{detail.order.notes}</p>}
             <div className="flex flex-wrap gap-2 justify-end pt-2 border-t border-gray-100">
+              <button type="button" onClick={() => void printOrder('view')} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-sm hover:bg-gray-50">
+                <Printer size={14} /> Imprimir / PDF
+              </button>
+              <button type="button" onClick={() => void printOrder('download')} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-sm hover:bg-gray-50">
+                <Download size={14} /> Descargar
+              </button>
               {canCreate && detail.order.status === 'draft' && (
                 <button type="button" onClick={() => void markSent(detail.order)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-sm hover:bg-gray-50">
                   <Send size={14} /> Marcar como enviada
