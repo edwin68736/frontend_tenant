@@ -118,17 +118,33 @@ export function downloadCashSessionReportExcel(
     resumen.push(['Cuenta por pagar generada (CxP, sin pagar)', money(report.payable_generated.total)])
   }
 
+  // Con documentos en dólares, el efectivo esperado y los totales de la sesión están en SOLES (cada US$ al TC de su documento).
+  const fx = report.currency?.has_foreign ? report.currency : null
   const cash = report.cash_physical
   if (cash) {
-    resumen.push([], ['EFECTIVO EN CAJA'], ['Concepto', 'Monto'])
+    const ing = fx ? fx.cash_income_pen : cash.total_income
+    const egr = fx ? fx.cash_expense_pen : cash.total_expense
+    const fisico = fx ? fx.physical_balance_pen : cash.physical_balance
+    resumen.push([], [fx ? 'EFECTIVO EN CAJA (EN SOLES)' : 'EFECTIVO EN CAJA'], ['Concepto', 'Monto'])
     resumen.push(['Saldo de apertura', money(cash.opening_balance)])
-    resumen.push(['Ingresos', money(cash.total_income)])
-    resumen.push(['Egresos', money(cash.total_expense)])
-    resumen.push(['Saldo físico', money(cash.physical_balance)])
+    resumen.push(['Ingresos', money(ing)])
+    resumen.push(['Egresos', money(egr)])
+    resumen.push(['Saldo físico', money(fisico)])
     if (s?.closing_balance != null) {
       resumen.push(['Saldo de cierre declarado', money(s.closing_balance)])
-      resumen.push(['Diferencia', money(Number(s.closing_balance) - Number(cash.physical_balance))])
+      resumen.push(['Diferencia', money(Number(s.closing_balance) - Number(fisico))])
     }
+  }
+  if (fx) {
+    resumen.push([], ['DOCUMENTOS EN DÓLARES — RESUMEN EN SOLES'])
+    resumen.push(['Moneda', 'Ingresos', 'Egresos', 'Neto (original)', 'Equivalente S/'])
+    for (const r of fx.by_currency ?? []) {
+      resumen.push([r.currency, money(r.sum_income), money(r.sum_expense), money(r.net_movement), money(r.net_pen)])
+    }
+    resumen.push(['TOTAL NETO EN SOLES (todos los métodos)', '', '', '', money(fx.total_income_pen - fx.total_expense_pen)])
+    resumen.push(['Efectivo esperado para el arqueo (S/)', '', '', '', money(fx.physical_balance_pen)])
+    if (fx.rate_estimated_count > 0) resumen.push([`${fx.rate_estimated_count} movimiento(s) con TC del día de emisión (el documento no guardó TC)`])
+    if (fx.rate_missing_count > 0) resumen.push([`${fx.rate_missing_count} sin ningún TC: no incluidos en los totales en soles`])
   }
 
   const metodos: CellValue[][] = [['TOTALES POR MÉTODO DE PAGO'], []]
