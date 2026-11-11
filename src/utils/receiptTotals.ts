@@ -168,7 +168,7 @@ export function formatReceiptTotalAmount(
   currency: string,
   opts?: { negative?: boolean },
 ): string {
-  const sym = currency === 'USD' ? '$' : 'S/'
+  const sym = currency === 'USD' ? 'US$' : 'S/'
   const n = Math.abs(amount)
   const formatted = `${sym} ${n.toFixed(2)}`
   return opts?.negative ? `- ${formatted}` : formatted

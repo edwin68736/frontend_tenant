@@ -108,7 +108,7 @@ export function primaryPaymentLabel(data: PrintData): string {
 }
 
 export function moneySymbol(currency: string): string {
-  return currency === 'USD' ? '$' : 'S/'
+  return currency === 'USD' ? 'US$' : 'S/'
 }
 
 export async function qrDataUrl(payload: string, sizeMm: number): Promise<string> {

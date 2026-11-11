@@ -382,6 +382,9 @@ export interface MovementReportSummary {
   sum_income_pen?: number
   sum_expense_pen?: number
   net_movement_pen?: number
+  /** Transferencias internas (caja ↔ cuentas): no son ingresos ni egresos; sí cuentan en el neto en caja. */
+  transfers_in_pen?: number
+  transfers_out_pen?: number
   rate_estimated_count?: number
   rate_missing_count?: number
 }
@@ -498,6 +501,8 @@ export const cashbankService = {
         sum_income_pen: Number(summaryRaw.sum_income_pen ?? summaryRaw.sum_income ?? 0),
         sum_expense_pen: Number(summaryRaw.sum_expense_pen ?? summaryRaw.sum_expense ?? 0),
         net_movement_pen: Number(summaryRaw.net_movement_pen ?? summaryRaw.net_movement ?? 0),
+        transfers_in_pen: Number(summaryRaw.transfers_in_pen ?? 0),
+        transfers_out_pen: Number(summaryRaw.transfers_out_pen ?? 0),
         rate_estimated_count: Number(summaryRaw.rate_estimated_count ?? 0),
         rate_missing_count: Number(summaryRaw.rate_missing_count ?? 0),
       },

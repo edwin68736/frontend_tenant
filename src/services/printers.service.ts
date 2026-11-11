@@ -444,7 +444,7 @@ export function buildPrecuentaEscPos(input: {
 }
 
 function moneyEsc(currency: string, n: number): string {
-  const sym = currency === 'USD' ? '$' : 'S/'
+  const sym = currency === 'USD' ? 'US$' : 'S/'
   return `${sym}${Number(n ?? 0).toFixed(2)}`
 }
 

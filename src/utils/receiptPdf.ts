@@ -71,7 +71,7 @@ async function qrDataUrlForPrint(sizeMm: number, payload: string): Promise<strin
 }
 
 function formatMoney(n: number, currency = 'PEN'): string {
-  const sym = currency === 'USD' ? '$' : 'S/'
+  const sym = currency === 'USD' ? 'US$' : 'S/'
   return `${sym} ${n.toFixed(2)}`
 }
 

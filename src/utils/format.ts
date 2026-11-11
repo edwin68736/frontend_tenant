@@ -1,11 +1,11 @@
 export function formatMoney(n: number, currency = 'PEN'): string {
-  const sym = currency === 'USD' ? '$' : 'S/'
+  const sym = currency === 'USD' ? 'US$' : 'S/'
   return `${sym} ${Number(n).toFixed(2)}`
 }
 
 /** Ticket térmico: sin espacio tras el símbolo (evita salto de línea en S/ | monto). */
 export function formatMoneyTicket(n: number, currency = 'PEN'): string {
-  const sym = currency === 'USD' ? '$' : 'S/'
+  const sym = currency === 'USD' ? 'US$' : 'S/'
   return `${sym}${Number(n).toFixed(2)}`
 }
 

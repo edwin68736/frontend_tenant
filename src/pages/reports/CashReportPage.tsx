@@ -357,6 +357,11 @@ export default function CashReportPage() {
           <div className="rounded-2xl border border-sky-100 bg-sky-50/80 px-4 py-3">
             <p className="text-xs font-semibold uppercase tracking-wide text-sky-800">Neto en caja</p>
             <p className="text-xl font-bold text-sky-900">S/ {(summary.net_movement_pen ?? summary.net_movement).toFixed(2)}</p>
+            {((summary.transfers_in_pen ?? 0) > 0 || (summary.transfers_out_pen ?? 0) > 0) && (
+              <p className="text-[10px] text-sky-800/80 mt-0.5" title="Las transferencias entre la caja y las cuentas no son ingresos ni egresos, pero sí mueven el efectivo">
+                Incluye transferencias internas: +S/ {(summary.transfers_in_pen ?? 0).toFixed(2)} / −S/ {(summary.transfers_out_pen ?? 0).toFixed(2)}
+              </p>
+            )}
             {hasForeign && (
               <p className="text-[10px] text-sky-800/80 mt-0.5">
                 {currencyLines(summary, (c) => c.net_movement)}

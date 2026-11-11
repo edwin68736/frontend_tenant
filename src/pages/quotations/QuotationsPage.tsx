@@ -594,7 +594,7 @@ function QuotationsContent() {
                       </td>
                       <td className="px-4 py-3 text-gray-600">{row.contact_name ?? '—'}</td>
                       <td className="px-4 py-3 font-semibold">
-                        {row.currency === 'USD' ? '$' : 'S/'} {Number(row.total).toFixed(2)}
+                        {row.currency === 'USD' ? 'US$' : 'S/'} {Number(row.total).toFixed(2)}
                       </td>
                       <td className="px-4 py-3">
                         <span
