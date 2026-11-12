@@ -25,10 +25,11 @@ describe('exportService', () => {
     expect(exportPrintLines('0101', EMPTY_EXPORT_FORM)).toEqual([])
   })
 
-  it('0201 y 0208 piden solo el país donde se usa el servicio, y no el Perú', () => {
-    expect(exportFormError('0201', EMPTY_EXPORT_FORM)).toMatch(/país/i)
+  it('0201 y 0208 no piden nada: el país donde se usa el servicio es opcional, pero no puede ser el Perú', () => {
+    expect(exportFormError('0201', EMPTY_EXPORT_FORM)).toBeNull()
     expect(exportFormError('0208', { ...EMPTY_EXPORT_FORM, country_use: 'PE' })).toMatch(/fuera del Perú/)
     expect(exportFormError('0201', { ...EMPTY_EXPORT_FORM, country_use: 'US' })).toBeNull()
+    expect(buildExportPayload('0201', EMPTY_EXPORT_FORM)).toEqual({})
     expect(buildExportPayload('0201', { ...EMPTY_EXPORT_FORM, country_use: 'US' })).toEqual({ country_use: 'US' })
   })
 

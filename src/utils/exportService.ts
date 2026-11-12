@@ -12,7 +12,7 @@ import { toContactDocCode } from '@/utils/contactDocTypes'
 export const EXPORT_MAX_STAY_DAYS = 60
 
 export interface ExportFormState {
-  /** 0201 y 0208: país donde se usa el servicio. */
+  /** 0201 y 0208: país donde se usa el servicio (opcional). */
   country_use: string
   /** 0202: país que emitió el pasaporte del huésped (y donde reside, salvo que se indique otro). */
   passport_country: string
@@ -71,7 +71,7 @@ export function stayDays(checkIn: string, checkOut: string): number | null {
 export function exportFormError(op: string, f: ExportFormState, contact?: ExportContact | null): string | null {
   if (!isExportOperation(op)) return null
   if (op !== SUNAT_TIPO_OPERACION_EXPORT_HOSPEDAJE) {
-    if (!f.country_use) return 'Elija el país donde se usa el servicio'
+    // El país donde se usa el servicio es opcional (SUNAT beta acepta 0201/0208 sin él).
     if (f.country_use === 'PE') return 'En una exportación el servicio se usa fuera del Perú'
     return null
   }
@@ -118,7 +118,7 @@ export function exportPrintLines(op: string, f: ExportFormState, contact?: Expor
 /** Cuerpo `export` que espera el servidor para esa operación (el huésped lo toma el servidor del cliente de la venta). */
 export function buildExportPayload(op: string, f: ExportFormState): Record<string, string> | undefined {
   if (!isExportOperation(op)) return undefined
-  if (op !== SUNAT_TIPO_OPERACION_EXPORT_HOSPEDAJE) return { country_use: f.country_use }
+  if (op !== SUNAT_TIPO_OPERACION_EXPORT_HOSPEDAJE) return f.country_use ? { country_use: f.country_use } : {}
   const body: Record<string, string> = {
     passport_country: f.passport_country,
     entry_date: f.entry_date,

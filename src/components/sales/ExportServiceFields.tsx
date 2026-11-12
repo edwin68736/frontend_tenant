@@ -24,15 +24,26 @@ const COUNTRY_OPTIONS = EXPORT_COUNTRIES.map((c) => ({ value: c.code, label: c.n
 export function ExportServiceFields({ operationCode, value, onChange, contact }: Props) {
   const set = (patch: Partial<ExportFormState>) => onChange({ ...value, ...patch })
   const [otherResidence, setOtherResidence] = useState(false)
+  const [showCountryUse, setShowCountryUse] = useState(false)
 
   if (operationCode !== SUNAT_TIPO_OPERACION_EXPORT_HOSPEDAJE) {
+    // Servicio a un cliente del exterior: no hay nada obligatorio. El país donde se usa el servicio es opcional y queda escondido.
     return (
-      <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-3 space-y-2">
-        <p className="text-xs text-sky-900">Exportación: sin IGV. Solo falta indicar dónde se usa el servicio.</p>
-        <div className="max-w-sm">
-          <label className={LABEL}>País donde se usa el servicio *</label>
-          <SearchSelect options={COUNTRY_OPTIONS} value={value.country_use} onChange={(v) => set({ country_use: v })} placeholder="Seleccione el país" />
-        </div>
+      <div className="rounded-xl border border-sky-200 bg-sky-50/60 px-3 py-2 space-y-2">
+        <p className="text-xs text-sky-900">
+          Exportación de servicio: sin IGV, y la factura no pide RUC del cliente.{' '}
+          {!showCountryUse && !value.country_use && (
+            <button type="button" onClick={() => setShowCountryUse(true)} className="text-[rgb(var(--p600))] hover:underline">
+              Indicar el país donde se usa el servicio (opcional)
+            </button>
+          )}
+        </p>
+        {(showCountryUse || value.country_use) && (
+          <div className="max-w-sm">
+            <label className={LABEL}>País donde se usa el servicio (opcional)</label>
+            <SearchSelect options={COUNTRY_OPTIONS} value={value.country_use} onChange={(v) => set({ country_use: v })} placeholder="Sin indicar" />
+          </div>
+        )}
       </div>
     )
   }
