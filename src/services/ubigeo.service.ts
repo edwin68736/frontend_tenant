@@ -25,6 +25,9 @@ export const ubigeoService = {
     api.get<{ data: UbiProvincia[] }>('/api/ubigeo/provincias', { params: { region_id: regionId } }).then((r) => r.data.data ?? []),
   getDistritos: (provinciaId: string) =>
     api.get<{ data: UbiDistrito[] }>('/api/ubigeo/distritos', { params: { provincia_id: provinciaId } }).then((r) => r.data.data ?? []),
+  /** Agrega al catálogo un distrito que todavía no existe (código INEI de 6 dígitos + nombre). */
+  addDistrito: (id: string, nombre: string) =>
+    api.post<{ data: UbiDistrito; created: boolean }>('/api/ubigeo/distritos', { id, nombre }).then((r) => r.data.data),
 }
 
 /** Parsea ubigeo (6 dígitos) en region_id, provincia_id y distrito_id para preseleccionar selects. */
