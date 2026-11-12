@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { SearchSelect } from '@/components/ui/SearchSelect'
 import { EXPORT_COUNTRIES } from '@/constants/countries'
 import { SUNAT_TIPO_OPERACION_EXPORT_HOSPEDAJE } from '@/constants/sunat'
-import { EXPORT_MAX_STAY_DAYS, guestFromContact, stayDays, type ExportContact, type ExportFormState } from '@/utils/exportService'
+import { EXPORT_MAX_STAY_DAYS, guestFromContact, resolvedStayDates, stayDays, type ExportContact, type ExportFormState } from '@/utils/exportService'
 
 type Props = {
   operationCode: string
@@ -25,6 +25,7 @@ export function ExportServiceFields({ operationCode, value, onChange, contact }:
   const set = (patch: Partial<ExportFormState>) => onChange({ ...value, ...patch })
   const [otherResidence, setOtherResidence] = useState(false)
   const [showCountryUse, setShowCountryUse] = useState(false)
+  const [showDates, setShowDates] = useState(false)
 
   if (operationCode !== SUNAT_TIPO_OPERACION_EXPORT_HOSPEDAJE) {
     // Servicio a un cliente del exterior: no hay nada obligatorio. El país donde se usa el servicio es opcional y queda escondido.
@@ -49,7 +50,10 @@ export function ExportServiceFields({ operationCode, value, onChange, contact }:
   }
 
   const guest = guestFromContact(contact)
-  const days = stayDays(value.check_in, value.check_out)
+  const r = resolvedStayDates(value)
+  const days = stayDays(r.checkIn, r.checkOut)
+  const contactCountry = (contact?.country ?? '').trim().toUpperCase()
+  const contactCountryName = EXPORT_COUNTRIES.find((c) => c.code === contactCountry)?.name
   return (
     <div className="rounded-xl border border-sky-200 bg-sky-50/60 p-3 space-y-3">
       <p className="text-xs text-sky-900">
@@ -67,8 +71,16 @@ export function ExportServiceFields({ operationCode, value, onChange, contact }:
       )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
-          <label className={LABEL}>País del pasaporte *</label>
-          <SearchSelect options={COUNTRY_OPTIONS} value={value.passport_country} onChange={(v) => set({ passport_country: v })} placeholder="Seleccione el país" />
+          {contactCountryName && !value.passport_country ? (
+            <p className="text-sm text-gray-800">
+              País del pasaporte: <strong>{contactCountryName}</strong> <span className="text-xs text-gray-500">(de la ficha del cliente)</span>
+            </p>
+          ) : (
+            <>
+              <label className={LABEL}>País del pasaporte *</label>
+              <SearchSelect options={COUNTRY_OPTIONS} value={value.passport_country} onChange={(v) => set({ passport_country: v })} placeholder="Seleccione el país" />
+            </>
+          )}
           {!otherResidence ? (
             <button type="button" onClick={() => setOtherResidence(true)} className="mt-1 text-xs text-[rgb(var(--p600))] hover:underline">
               Reside en otro país
@@ -95,20 +107,32 @@ export function ExportServiceFields({ operationCode, value, onChange, contact }:
             </div>
           )}
         </div>
-        <div>
-          <label className={LABEL}>Ingresó al Perú el * (sello de migraciones)</label>
-          <input type="date" className={INPUT} value={value.entry_date} onChange={(e) => set({ entry_date: e.target.value })} />
-        </div>
-        <div>
-          <label className={LABEL}>Entra al hotel *</label>
-          <input type="date" className={INPUT} value={value.check_in} onChange={(e) => set({ check_in: e.target.value })} />
-        </div>
-        <div>
-          <label className={LABEL}>Sale del hotel *</label>
-          <input type="date" className={INPUT} value={value.check_out} onChange={(e) => set({ check_out: e.target.value })} />
-        </div>
       </div>
-      {days !== null && <p className="text-xs text-gray-600">Estadía: {days} día(s)</p>}
+      {!showDates && !value.entry_date && !value.check_in && !value.check_out ? (
+        <p className="text-xs text-gray-600">
+          Estadía: hoy (entra y sale el día de la emisión).{' '}
+          <button type="button" onClick={() => setShowDates(true)} className="text-[rgb(var(--p600))] hover:underline">
+            Cambiar fechas
+          </button>
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label className={LABEL}>Entra al hotel</label>
+            <input type="date" className={INPUT} value={value.check_in} onChange={(e) => set({ check_in: e.target.value })} />
+          </div>
+          <div>
+            <label className={LABEL}>Sale del hotel</label>
+            <input type="date" className={INPUT} value={value.check_out} onChange={(e) => set({ check_out: e.target.value })} />
+          </div>
+          <div>
+            <label className={LABEL}>Ingresó al Perú el</label>
+            <input type="date" className={INPUT} value={value.entry_date} onChange={(e) => set({ entry_date: e.target.value })} />
+          </div>
+          <p className="sm:col-span-3 text-xs text-gray-500">Si deja vacío algún campo se usa el día de la emisión.</p>
+        </div>
+      )}
+      {days !== null && showDates && <p className="text-xs text-gray-600">Estadía: {days} día(s)</p>}
     </div>
   )
 }

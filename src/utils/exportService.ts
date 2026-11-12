@@ -18,6 +18,7 @@ export interface ExportFormState {
   passport_country: string
   /** 0202: solo si el huésped reside en un país distinto al de su pasaporte; vacío = el mismo. */
   residence_country: string
+  /** Las tres fechas son opcionales: vacías = el día de la emisión (el huésped entra y sale hoy; ingreso al país = ingreso al hotel). */
   entry_date: string
   check_in: string
   check_out: string
@@ -37,6 +38,8 @@ export interface ExportContact {
   doc_type?: string | number | null
   doc_number?: string | null
   business_name?: string | null
+  /** País (ISO alfa-2) de un cliente extranjero. */
+  country?: string | null
 }
 
 /** Huésped que sale del cliente: pasaporte (7) o carné de extranjería (4) con número y nombre; null si el cliente no sirve. */
@@ -67,7 +70,23 @@ export function stayDays(checkIn: string, checkOut: string): number | null {
   return Math.max(1, Math.round((b - a) / DAY_MS))
 }
 
+function todayISO(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** Fechas efectivas de la estadía: las indicadas o, si están vacías, el día de la emisión. */
+export function resolvedStayDates(f: ExportFormState): { entry: string; checkIn: string; checkOut: string } {
+  const checkIn = f.check_in || todayISO()
+  return { entry: f.entry_date || checkIn, checkIn, checkOut: f.check_out || checkIn }
+}
+
 /** Mensaje para el cajero si falta o sobra algo; null si el formulario está completo para esa operación. */
+/** País del pasaporte que se usa: el elegido en la venta o, si no, el de la ficha del cliente. */
+export function effectivePassportCountry(f: ExportFormState, contact?: ExportContact | null): string {
+  return f.passport_country || (contact?.country ?? '').trim().toUpperCase()
+}
+
 export function exportFormError(op: string, f: ExportFormState, contact?: ExportContact | null): string | null {
   if (!isExportOperation(op)) return null
   if (op !== SUNAT_TIPO_OPERACION_EXPORT_HOSPEDAJE) {
@@ -78,16 +97,18 @@ export function exportFormError(op: string, f: ExportFormState, contact?: Export
   if (!guestFromContact(contact)) {
     return 'Elija como cliente al huésped: debe estar registrado con su pasaporte o carné de extranjería (use «Nuevo cliente»)'
   }
-  if (!f.passport_country) return 'Indique el país del pasaporte del huésped'
-  if ((f.residence_country || f.passport_country) === 'PE') {
+  const passport = effectivePassportCountry(f, contact)
+  if (!passport) return 'Indique el país del pasaporte del huésped (o regístrelo en la ficha del cliente)'
+  if ((f.residence_country || passport) === 'PE') {
     return 'El huésped reside en el Perú: no es una exportación (use una venta normal con IGV)'
   }
-  const entry = parseDay(f.entry_date)
-  const inn = parseDay(f.check_in)
-  const out = parseDay(f.check_out)
-  if (entry === null) return 'Indique la fecha de ingreso al país'
-  if (inn === null) return 'Indique la fecha de ingreso al hotel'
-  if (out === null) return 'Indique la fecha de salida del hotel'
+  const r = resolvedStayDates(f)
+  const entry = parseDay(r.entry)
+  const inn = parseDay(r.checkIn)
+  const out = parseDay(r.checkOut)
+  if (entry === null) return 'La fecha de ingreso al país no es válida'
+  if (inn === null) return 'La fecha de ingreso al hotel no es válida'
+  if (out === null) return 'La fecha de salida del hotel no es válida'
   if (inn < entry) return 'El ingreso al hotel no puede ser anterior al ingreso al país'
   if (out < inn) return 'La salida no puede ser anterior al ingreso al hotel'
   if (Math.round((out - entry) / DAY_MS) > EXPORT_MAX_STAY_DAYS) {
@@ -103,11 +124,12 @@ export function exportPrintLines(op: string, f: ExportFormState, contact?: Expor
   if (op === SUNAT_TIPO_OPERACION_EXPORT_HOSPEDAJE) {
     const g = guestFromContact(contact)
     const doc = g?.docType === '4' ? 'C. Extranjería' : 'Pasaporte'
-    const days = stayDays(f.check_in, f.check_out) ?? 0
+    const r = resolvedStayDates(f)
+    const days = stayDays(r.checkIn, r.checkOut) ?? 1
     return [
       'EXPORTACIÓN DE SERVICIOS - DECRETO LEGISLATIVO Nº 919',
-      `Huésped: ${g?.name ?? '—'} · Doc. ${doc} ${g?.docNumber ?? '—'} (emitido en ${f.passport_country}) · Residencia: ${f.residence_country || f.passport_country}`,
-      `Ingreso al país: ${fmt(f.entry_date)} · Estadía: ${fmt(f.check_in)} al ${fmt(f.check_out)} (${days} día(s))`,
+      `Huésped: ${g?.name ?? '—'} · Doc. ${doc} ${g?.docNumber ?? '—'} (emitido en ${effectivePassportCountry(f, contact)}) · Residencia: ${f.residence_country || effectivePassportCountry(f, contact)}`,
+      `Ingreso al país: ${fmt(r.entry)} · Estadía: ${fmt(r.checkIn)} al ${fmt(r.checkOut)} (${days} día(s))`,
     ]
   }
   const lines = ['EXPORTACIÓN DE SERVICIOS']
@@ -119,12 +141,11 @@ export function exportPrintLines(op: string, f: ExportFormState, contact?: Expor
 export function buildExportPayload(op: string, f: ExportFormState): Record<string, string> | undefined {
   if (!isExportOperation(op)) return undefined
   if (op !== SUNAT_TIPO_OPERACION_EXPORT_HOSPEDAJE) return f.country_use ? { country_use: f.country_use } : {}
-  const body: Record<string, string> = {
-    passport_country: f.passport_country,
-    entry_date: f.entry_date,
-    check_in: f.check_in,
-    check_out: f.check_out,
-  }
+  const body: Record<string, string> = {}
+  if (f.passport_country) body.passport_country = f.passport_country
+  if (f.entry_date) body.entry_date = f.entry_date
+  if (f.check_in) body.check_in = f.check_in
+  if (f.check_out) body.check_out = f.check_out
   if (f.residence_country) body.residence_country = f.residence_country
   return body
 }

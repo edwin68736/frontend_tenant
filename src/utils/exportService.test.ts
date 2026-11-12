@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { EMPTY_EXPORT_FORM, buildExportPayload, exportFormError, exportPrintLines, guestFromContact, stayDays, type ExportFormState } from './exportService'
+import { EMPTY_EXPORT_FORM,
+  effectivePassportCountry, buildExportPayload, exportFormError, exportPrintLines, guestFromContact, stayDays, type ExportFormState } from './exportService'
 
 const huesped = { doc_type: '7', doc_number: 'X1234567', business_name: '  John   Smith ' }
 
@@ -50,7 +51,8 @@ describe('exportService', () => {
     expect(exportFormError('0202', { ...hospedaje, residence_country: 'PE' }, huesped)).toMatch(/reside en el Perú/)
     expect(exportFormError('0202', { ...hospedaje, check_out: '2026-12-01' }, huesped)).toMatch(/60 días/)
     expect(exportFormError('0202', { ...hospedaje, check_in: '2026-09-30' }, huesped)).toMatch(/anterior al ingreso al país/)
-    expect(exportFormError('0202', { ...hospedaje, entry_date: '' }, huesped)).toMatch(/ingreso al país/)
+    // sin fechas = el día de la emisión: es válido
+    expect(exportFormError('0202', { ...hospedaje, entry_date: '', check_in: '', check_out: '' }, huesped)).toBeNull()
   })
 
   it('0202: el cuerpo no repite al huésped (lo toma el servidor del cliente) y la residencia solo va si es distinta', () => {
@@ -64,5 +66,16 @@ describe('exportService', () => {
     expect(lines[1]).toContain('John Smith')
     expect(lines[1]).toContain('X1234567')
     expect(lines[2]).toContain('(3 día(s))')
+  })
+})
+
+describe('país del pasaporte desde la ficha del cliente', () => {
+  const guest = { doc_type: '7', doc_number: 'AB123456', business_name: 'John Smith', country: 'us' }
+  const dates = { ...EMPTY_EXPORT_FORM, entry_date: '2026-11-01', check_in: '2026-11-02', check_out: '2026-11-05' }
+  it('no pide el país si el cliente ya lo tiene, y lo pide si no', () => {
+    expect(effectivePassportCountry(dates, guest)).toBe('US')
+    expect(exportFormError('0202', dates, guest)).toBeNull()
+    expect(exportFormError('0202', dates, { ...guest, country: '' })).toMatch(/país del pasaporte/i)
+    expect(effectivePassportCountry({ ...dates, passport_country: 'CO' }, guest)).toBe('CO')
   })
 })
