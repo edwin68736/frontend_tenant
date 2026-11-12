@@ -1,3 +1,4 @@
+import { serviceChargeLabel } from '@/utils/serviceCharge'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import axios from 'axios'
 import { createPortal } from 'react-dom'
@@ -606,7 +607,17 @@ function SalesContent() {
                   </td>
                   <td className="px-4 py-3 text-gray-600">{s.contact_name ?? '—'}</td>
                   <td className="px-4 py-3 text-gray-600 text-xs">{s.user_name ?? '—'}</td>
-                  <td className="px-4 py-3 font-semibold text-gray-800">{formatSaleMoney(Number(s.total), s.currency)}</td>
+                  <td className="px-4 py-3 font-semibold text-gray-800">
+                    {formatSaleMoney(Number(s.total), s.currency)}
+                    {Number(s.service_charge_amount) > 0 && (
+                      <p
+                        className="text-[11px] font-normal text-gray-500"
+                        title={`Incluye ${serviceChargeLabel(s.service_charge_rate).toLowerCase()} (sin IGV)`}
+                      >
+                        incl. recargo {formatSaleMoney(Number(s.service_charge_amount), s.currency)}
+                      </p>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1">
                       <button
@@ -1248,6 +1259,12 @@ function SalesContent() {
                     <span>IGV</span>
                     <span>{formatSaleMoney(Number(detail.sale.tax_amount), detail.sale.currency)}</span>
                   </div>
+                  {Number(detail.sale.service_charge_amount) > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>{serviceChargeLabel(detail.sale.service_charge_rate)}</span>
+                      <span>{formatSaleMoney(Number(detail.sale.service_charge_amount), detail.sale.currency)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between font-bold text-gray-800">
                     <span>Total</span>
                     <span>{formatSaleMoney(Number(detail.sale.total), detail.sale.currency)}</span>

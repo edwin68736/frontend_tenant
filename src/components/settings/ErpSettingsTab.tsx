@@ -4,6 +4,7 @@ import { ErpCompanySettings } from '@/components/settings/erp/ErpCompanySettings
 import { ReceiptWalletSettings } from '@/components/company/ReceiptWalletSettings'
 import { SaleNoteBrandingSettings } from '@/components/company/SaleNoteBrandingSettings'
 import { LogoSizeSettings } from '@/components/company/LogoSizeSettings'
+import { ServiceChargeSettings } from '@/components/company/ServiceChargeSettings'
 import { A4DesignSettings } from '@/components/company/A4DesignSettings'
 import CompanySunatPage from '@/pages/company/CompanySunatPage'
 import CompanyBranchesPage from '@/pages/company/CompanyBranchesPage'
@@ -53,6 +54,7 @@ export function ErpSettingsTab() {
           <LogoSizeSettings />
           <ReceiptWalletSettings />
           <SaleNoteBrandingSettings />
+          <ServiceChargeSettings />
         </div>
       )}
       {tab === 'impuestos' && <CompanySunatPage />}

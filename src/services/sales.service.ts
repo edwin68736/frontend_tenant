@@ -23,6 +23,9 @@ export interface Sale {
   subtotal: number
   tax_amount: number
   total: number
+  /** Recargo al consumo incluido en total (omitido/0 si no aplica). */
+  service_charge_amount?: number
+  service_charge_rate?: number
   currency: string
   operation_type_code?: string
   exchange_rate?: number | null
@@ -210,6 +213,8 @@ export interface SaleFiscalContextResponse {
 }
 
 export interface CreateSaleInput {
+  /** Aplica el recargo al consumo; el servidor toma el % de la configuración de la empresa. */
+  apply_service_charge?: boolean
   branch_id: number
   contact_id?: number | null
   doc_type: string

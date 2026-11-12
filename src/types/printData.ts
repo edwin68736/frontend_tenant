@@ -20,6 +20,9 @@ export interface PrintData {
   subtotal: number
   tax_amount: number
   total: number
+  /** Recargo al consumo (ya incluido en total; subtotal e IGV no lo incluyen). */
+  service_charge_amount?: number
+  service_charge_rate?: number
   global_discount_amount?: number
   line_discount_total?: number
   totals_by_affectation?: Record<string, PrintAffectTotal>

@@ -1,6 +1,7 @@
 import { sumAffectationByGroup } from '@/constants/igvAffectation'
 import type { PrintData } from '@/types/printData'
 import { calcPaymentChange, roundDisplay, roundSunat, sumMoney } from '@/utils/money'
+import { serviceChargeLabel } from '@/utils/serviceCharge'
 import { receiptTotalDiscount, lineSubtotalDiscount, lineGlobalSubtotalDiscount } from '@/utils/receiptDiscount'
 
 /** Descuento por línea agregado desde print_data persistido. */
@@ -157,6 +158,12 @@ export function buildReceiptTotalLines(data: PrintData): ReceiptTotalLine[] {
   const prepDed = data.fiscal?.prepayment_deduction_total ?? 0
   if (data.fiscal?.has_prepayment_deduction && prepDed > 0.000001) {
     lines.push({ label: 'ANTICIPO:', amount: prepDed, negative: true })
+  }
+
+  // Recargo al consumo: no lleva IGV; el total ya lo incluye (subtotal e IGV no).
+  const serviceCharge = roundSunat(Number(data.service_charge_amount) || 0)
+  if (serviceCharge > 0.000001) {
+    lines.push({ label: `${serviceChargeLabel(data.service_charge_rate)}:`, amount: serviceCharge })
   }
 
   lines.push({ label: 'TOTAL A PAGAR:', amount: total, bold: true })

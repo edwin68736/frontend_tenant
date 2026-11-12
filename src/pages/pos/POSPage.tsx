@@ -14,7 +14,8 @@ import { contactsService, type Contact } from '@/services/contacts.service'
 import { salesService } from '@/services/sales.service'
 import { checkoutErrorMessage } from '@/utils/checkoutError'
 import { cashbankService, type CashSession, type PaymentMethodRecord, type BankAccount } from '@/services/cashbank.service'
-import { tenantCanEmitFactura, type SunatConfig } from '@/services/company.service'
+import { companyService, tenantCanEmitFactura, type SunatConfig } from '@/services/company.service'
+import { serviceChargeAmount, serviceChargeLabel } from '@/utils/serviceCharge'
 import { useAuth } from '@/contexts/AuthContext'
 import { useBranch } from '@/contexts/BranchContext'
 import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
@@ -643,7 +644,24 @@ function POSContent() {
     )})
 
   const checkoutDiscountAmount = saleCalc.globalDiscountAmount
-  const payableTotal = saleCalc.total
+  // Recargo al consumo (DL 25988): % sobre el subtotal sin IGV tras descuentos; sin IGV, suma al total.
+  const [serviceChargeCfg, setServiceChargeCfg] = useState<{ enabled: boolean; rate: number }>({ enabled: false, rate: 0 })
+  const [applyServiceCharge, setApplyServiceCharge] = useState(true)
+  useEffect(() => {
+    let alive = true
+    companyService
+      .getConfig()
+      .then((cfg) => {
+        if (alive) setServiceChargeCfg({ enabled: cfg.service_charge_enabled === true, rate: Number(cfg.service_charge_rate) || 0 })
+      })
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [])
+  const serviceChargeApplied = serviceChargeCfg.enabled && applyServiceCharge
+  const serviceChargeValue = serviceChargeApplied ? serviceChargeAmount(saleCalc.subtotal, serviceChargeCfg.rate) : 0
+  const payableTotal = roundSunat(saleCalc.total + serviceChargeValue)
   const taxGlobal = saleCalc.taxAmount
   const rawSubtotalGlobal = useMemo(
     () => roundSunat(saleCalc.lines.reduce((s, l) => s + l.grossSubtotal, 0)),
@@ -856,6 +874,7 @@ function POSContent() {
       const today = getTodayPeru()
       const sale = await salesService.create({
         branch_id: branchId,
+        apply_service_charge: serviceChargeApplied ? true : undefined,
         contact_id: contactForCheckout?.id ?? null,
         doc_type: selectedSeries.doc_type,
         series_id: seriesId,
@@ -1374,6 +1393,9 @@ function POSContent() {
             {totalsByAfectacion.exportacion.total > 0 && (
               <div className="flex justify-between text-xs text-gray-500"><span>Op. exportación</span><span>S/ {totalsByAfectacion.exportacion.total.toFixed(2)}</span></div>
             )}
+            {serviceChargeValue > 0 && (
+              <div className="flex justify-between text-xs text-gray-500"><span>{serviceChargeLabel(serviceChargeCfg.rate)}</span><span>{formatMoney(serviceChargeValue)}</span></div>
+            )}
             <div className="flex justify-between font-bold text-gray-800"><span>Total</span><span>{formatMoney(displayCartTotal)}</span></div>
             <button
               type="button"
@@ -1440,6 +1462,12 @@ function POSContent() {
                   <div className="flex justify-between text-xs text-gray-500">
                     <span>Op. exportación</span>
                     <span>S/ {totalsByAfectacion.exportacion.total.toFixed(2)}</span>
+                  </div>
+                )}
+                {serviceChargeValue > 0 && (
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>{serviceChargeLabel(serviceChargeCfg.rate)}</span>
+                    <span>{formatMoney(serviceChargeValue)}</span>
                   </div>
                 )}
                 <div className="flex justify-between font-bold text-gray-800 text-base">
@@ -1547,6 +1575,11 @@ function POSContent() {
         loading={processing}
         rawTotal={rawSubtotalGlobal}
         payableTotal={payableTotal}
+        serviceCharge={
+          serviceChargeCfg.enabled
+            ? { rate: serviceChargeCfg.rate, amount: serviceChargeValue, applied: applyServiceCharge, onToggle: setApplyServiceCharge }
+            : undefined
+        }
         discountBase={checkoutDiscountAmount}
         discountMode={checkoutDiscountMode}
         discountValue={checkoutDiscountValue}

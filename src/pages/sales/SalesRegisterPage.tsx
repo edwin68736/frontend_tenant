@@ -88,6 +88,7 @@ import {
 import { UnitQuantityInput } from '@/components/ui/UnitQuantityInput'
 import { PRODUCT_IGV_AFFECTATION_OPTIONS, stripAffectationCodePrefix } from '@/constants/igvAffectation'
 import type { CheckoutDiscountMode } from '@/utils/checkoutDiscount'
+import { serviceChargeAmount, serviceChargeLabel } from '@/utils/serviceCharge'
 import { roundSunat, calcPaymentChange, sumMoney, nonCashOverpay } from '@/utils/money'
 import { quotationsService } from '@/services/quotations.service'
 import { useBarcodeProductScanner } from '@/hooks/useBarcodeProductScanner'
@@ -465,6 +466,8 @@ function SalesRegisterContent({
     trip_detail: '',
   })
   const [emitPrepayment, setEmitPrepayment] = useState(false)
+  // Recargo al consumo (DL 25988): marcado por defecto cuando el tenant lo tiene activado.
+  const [applyServiceCharge, setApplyServiceCharge] = useState(true)
   const [deductPrepayment, setDeductPrepayment] = useState(false)
   const [prepaymentDeductionRows, setPrepaymentDeductionRows] = useState<PrepaymentDeductionRow[]>([])
   const [prepaymentAffectationGroup, setPrepaymentAffectationGroup] =
@@ -1229,6 +1232,18 @@ function SalesRegisterContent({
   const prepaymentDeductionTotal = prepaymentAdjustedTotals?.deductionTotal ?? 0
   const prepaymentPayableTotal = Math.max(0, checkoutTotal)
   const prepaymentCoversAll = isPrepaymentDeduct && prepaymentPayableTotal <= 0.009
+  // Recargo al consumo: % sobre el subtotal SIN IGV tras descuentos (saleCalc.subtotal excluye bonificaciones).
+  // No se combina con anticipos ni detracción; el servidor toma el % de la configuración.
+  const serviceChargeRate = Number(companyConfig?.service_charge_rate) || 0
+  const serviceChargeAvailable =
+    companyConfig?.service_charge_enabled === true &&
+    !isQuotation &&
+    !isPrepaymentEmit &&
+    !isPrepaymentDeduct &&
+    !isDetraccion
+  const serviceChargeApplied = serviceChargeAvailable && applyServiceCharge
+  const serviceChargeValue = serviceChargeApplied ? serviceChargeAmount(saleCalc.subtotal, serviceChargeRate) : 0
+  const payableWithCharge = roundSunat(checkoutTotal + serviceChargeValue)
   const saleDeductibleBase = saleDeductibleBaseForGroup(prepaymentAffectationGroup, totalsByAfectacion)
 
   const selectedContact = form.contact_id ? customers.find(c => c.id === form.contact_id!) : null
@@ -1346,10 +1361,10 @@ function SalesRegisterContent({
     isDetraccion && detractionPreview.applicable
       ? detractionCollectible
       : !isNotaVenta && fiscalForm.has_igv_retention && retentionPreview.applicable
-        ? retentionPreview.netCollectible
+        ? roundSunat(retentionPreview.netCollectible + serviceChargeValue)
         : isPrepaymentDeduct
           ? prepaymentPayableTotal
-          : totalGlobal
+          : payableWithCharge
 
   const paymentsTotalPaid = useMemo(
     () => sumMoney(...payments.map(p => Number(p.amount) || 0)),
@@ -1490,7 +1505,9 @@ function SalesRegisterContent({
     saleCalc,
     subtotalGlobal: prepaymentAdjustedTotals?.subtotal ?? subtotalGlobal,
     taxGlobal: prepaymentAdjustedTotals?.taxAmount ?? taxGlobal,
-    totalGlobal: prepaymentAdjustedTotals?.total ?? totalGlobal,
+    totalGlobal: prepaymentAdjustedTotals?.total ?? roundSunat(totalGlobal + serviceChargeValue),
+    serviceChargeAmount: serviceChargeValue,
+    serviceChargeRate: serviceChargeValue > 0 ? serviceChargeRate : undefined,
     lineDiscountTotal,
     checkoutDiscountAmount,
     selectedSeries,
@@ -1756,10 +1773,10 @@ function SalesRegisterContent({
       isDetraccion && detractionPreview.applicable
         ? detractionCollectible
         : !isNotaVenta && fiscalForm.has_igv_retention && retentionPreview.applicable
-          ? retentionPreview.netCollectible
+          ? roundSunat(retentionPreview.netCollectible + serviceChargeValue)
           : isPrepaymentDeduct
             ? prepaymentPayableTotal
-            : checkoutTotal
+            : payableWithCharge
     const noPaymentRequired = requiredDirect <= 0.009
 
     if (paymentConditionCode === 'cash') {
@@ -1900,6 +1917,7 @@ function SalesRegisterContent({
       }
       const payload: CreateSaleInput = {
         branch_id: activeBranchId,
+        apply_service_charge: serviceChargeApplied ? true : undefined,
         contact_id: form.contact_id || null,
         doc_type: series.find(s => s.id === form.series_id)?.doc_type ?? 'BOLETA',
         series_id: form.series_id,
@@ -3333,12 +3351,37 @@ onChange={(code) =>
                     )}
                   </>
                 )}
+                {serviceChargeAvailable && (
+                  <label className="flex items-start gap-2 text-xs text-gray-700 pt-1 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 rounded"
+                      checked={applyServiceCharge}
+                      disabled={saving}
+                      onChange={(e) => setApplyServiceCharge(e.target.checked)}
+                    />
+                    <span>
+                      {serviceChargeLabel(serviceChargeRate)}
+                      <span className="block text-[11px] text-gray-400">Sin IGV; corresponde a los trabajadores.</span>
+                    </span>
+                  </label>
+                )}
+                {serviceChargeValue > 0 && (
+                  <div className="flex justify-between text-gray-600 text-xs">
+                    <span>{serviceChargeLabel(serviceChargeRate)}</span>
+                    <span className="tabular-nums">{fmt(serviceChargeValue)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between items-baseline font-bold text-gray-900 text-sm pt-2 mt-1 border-t border-gray-200">
                   <span className="uppercase text-xs tracking-wide">
-                    {isPrepaymentDeduct && prepaymentDeductionTotal > 0 ? 'Total venta' : 'Total comprobante'}
+                    {isPrepaymentDeduct && prepaymentDeductionTotal > 0
+                      ? 'Total venta'
+                      : serviceChargeValue > 0
+                        ? 'Total a pagar'
+                        : 'Total comprobante'}
                   </span>
                   <span className="tabular-nums text-base">
-                    {fmt(isPrepaymentDeduct && prepaymentDeductionTotal > 0 ? totalGlobal : checkoutTotal)}
+                    {fmt(isPrepaymentDeduct && prepaymentDeductionTotal > 0 ? totalGlobal : payableWithCharge)}
                   </span>
                 </div>
                 {!isNotaVenta && isPrepaymentDeduct && prepaymentDeductionTotal > 0 && (

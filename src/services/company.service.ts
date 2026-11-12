@@ -54,6 +54,10 @@ export interface CompanyConfig {
   receipt_bank_account_ids?: string | number[]
   detraction_bn_account?: string
   detraction_default_payment_method?: string
+  /** Recargo al consumo (DL 25988): activado por el tenant. Ausente = backend sin esta función. */
+  service_charge_enabled?: boolean
+  /** % del recargo sobre el valor de venta sin IGV (0 < % ≤ 13). Default 10. */
+  service_charge_rate?: number
 }
 
 /** Capacidades resueltas por el backend según el régimen tributario del tenant. */

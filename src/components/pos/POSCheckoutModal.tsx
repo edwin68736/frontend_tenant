@@ -24,6 +24,7 @@ import { BranchSeriesEmptyState } from '@/components/pos/BranchSeriesEmptyState'
 import { CheckoutCartBillingFields } from '@/components/pos/CheckoutCartBillingFields'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { normalizeDocTypeKey } from '@/utils/paymentMethodVisual'
+import { serviceChargeLabel } from '@/utils/serviceCharge'
 
 export type CheckoutPaymentLine = {
   method: string
@@ -66,6 +67,8 @@ type Props = {
   loading: boolean
   rawTotal: number
   payableTotal: number
+  /** Recargo al consumo (ya incluido en payableTotal). Ausente = el tenant no lo usa. */
+  serviceCharge?: { rate: number; amount: number; applied: boolean; onToggle: (applied: boolean) => void }
   /** Descuento ya calculado por el motor sobre la base (el monto en S/ se teclea con IGV). */
   discountBase?: number
   discountMode: CheckoutDiscountMode
@@ -108,6 +111,7 @@ export function POSCheckoutModal({
   loading,
   rawTotal,
   payableTotal,
+  serviceCharge,
   discountBase,
   discountMode,
   discountValue,
@@ -562,6 +566,19 @@ export function POSCheckoutModal({
                       <span>IGV gravado</span>
                       <span>{formatMoney(igvAmount)}</span>
                     </div>
+                  )}
+                  {serviceCharge && (
+                    <label className="flex items-center gap-2 text-[11px] text-stone-600 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="rounded"
+                        checked={serviceCharge.applied}
+                        disabled={loading}
+                        onChange={(e) => serviceCharge.onToggle(e.target.checked)}
+                      />
+                      <span className="flex-1">{serviceChargeLabel(serviceCharge.rate)}</span>
+                      {serviceCharge.applied && serviceCharge.amount > 0 && <span>{formatMoney(serviceCharge.amount)}</span>}
+                    </label>
                   )}
                   <div
                     className={clsx(

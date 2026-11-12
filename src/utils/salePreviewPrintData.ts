@@ -66,7 +66,11 @@ export type BuildSalePreviewPrintDataInput = {
   }
   subtotalGlobal: number
   taxGlobal: number
+  /** Ya incluye el recargo al consumo (si hay). */
   totalGlobal: number
+  /** Recargo al consumo (sin IGV) incluido en totalGlobal. */
+  serviceChargeAmount?: number
+  serviceChargeRate?: number
   lineDiscountTotal: number
   checkoutDiscountAmount: number
   selectedSeries: SalePreviewSeries | null
@@ -333,6 +337,8 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
     subtotalGlobal,
     taxGlobal,
     totalGlobal,
+    serviceChargeAmount,
+    serviceChargeRate,
     lineDiscountTotal,
     checkoutDiscountAmount,
     selectedSeries,
@@ -422,7 +428,7 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
   if (!isNotaVenta && isDetraccion && detractionPreview.applicable) {
     payable = detractionPreview.netPayable
   } else if (!isNotaVenta && fiscalForm.has_igv_retention && retentionPreview.applicable) {
-    payable = retentionPreview.netCollectible
+    payable = (retentionPreview.netCollectible ?? 0) + (serviceChargeAmount ?? 0)
   }
 
   const directPaid = directPayments.reduce((s, p) => s + p.amount, 0)
@@ -498,6 +504,8 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
     subtotal: subtotalGlobal,
     tax_amount: taxGlobal,
     total: totalGlobal,
+    service_charge_amount: serviceChargeAmount && serviceChargeAmount > 0 ? serviceChargeAmount : undefined,
+    service_charge_rate: serviceChargeAmount && serviceChargeAmount > 0 ? serviceChargeRate : undefined,
     global_discount_amount: checkoutDiscountAmount > 0 ? checkoutDiscountAmount : undefined,
     line_discount_total: lineDiscountTotal > 0 ? lineDiscountTotal : undefined,
     totals_by_affectation: Object.keys(totalsByAffectation).length ? totalsByAffectation : undefined,
