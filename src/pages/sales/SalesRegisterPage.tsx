@@ -1498,6 +1498,7 @@ function SalesRegisterContent({
     companyConfig,
     branchName: activeBranch?.name ?? 'Principal',
     branchAddress: branchIdentity.hasOwnAddress ? branchIdentity.address : '',
+    branchPhone: branchIdentity.hasOwnPhone ? branchIdentity.phone : '',
     branchLogo: branchIdentity.logo,
     payments,
     fiscalForm,
@@ -2063,7 +2064,8 @@ function SalesRegisterContent({
   }
 
   const companyDisplayName = (companyConfig?.trade_name || companyConfig?.business_name || '').trim()
-  const companyContactLine = [companyConfig?.email?.trim(), companyConfig?.phone?.trim()].filter(Boolean).join(' - ')
+  // Contacto del encabezado: el teléfono es el de la sucursal activa si lo tiene (con respaldo al de la empresa); el correo es de la empresa.
+  const companyContactLine = [companyConfig?.email?.trim(), (branchIdentity.hasOwnPhone ? branchIdentity.phone : companyConfig?.phone)?.trim()].filter(Boolean).join(' - ')
   const companyLogoSrc = resolveCompanyLogoDisplayUrl(companyConfig?.logo_url)
 
   /** Preferencia de empresa: aplica a ventas futuras hasta que se desactive. */
@@ -2078,7 +2080,8 @@ function SalesRegisterContent({
         setCompanyConfig((c) => (c ? { ...c, show_terms_conditions: !checked } : c))
       })
   }
-  const headerLogoSrc = companyLogoSrc || BRAND_APP_LOGO
+  // Logo del encabezado: el propio de la sucursal activa si lo tiene; si no, el de la empresa.
+  const headerLogoSrc = (branchIdentity.hasOwnLogo ? branchIdentity.logo : null) || companyLogoSrc || BRAND_APP_LOGO
 
   return (
     <div className="space-y-4 relative">

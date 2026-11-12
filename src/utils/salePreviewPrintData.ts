@@ -75,6 +75,8 @@ export type BuildSalePreviewPrintDataInput = {
   companyDraft?: SalePreviewCompanyDraft
   branchName: string
   branchAddress?: string
+  /** Teléfono propio de la sucursal activa; vacío/omitido = el de la empresa. */
+  branchPhone?: string
   /** Logo ya resuelto de la sucursal activa (useBranchIdentity().logo); null/omitido = el de la empresa. */
   branchLogo?: string | null
   payments: Array<{ method: string; amount: string | number; reference?: string }>
@@ -339,6 +341,7 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
     companyDraft,
     branchName,
     branchAddress,
+    branchPhone,
     branchLogo,
     payments,
     fiscalForm,
@@ -355,7 +358,8 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
       : (selectedSeries?.sunat_code ?? form.sunat_code).trim() || form.sunat_code
 
   const companyTradeName = (companyDraft?.trade_name ?? companyConfig?.trade_name ?? '').trim()
-  const companyPhone = (companyDraft?.phone ?? companyConfig?.phone ?? '').trim()
+  // El teléfono propio de la sucursal gana sobre el de la empresa (misma regla que dirección y logo).
+  const companyPhone = (branchPhone?.trim() || (companyDraft?.phone ?? companyConfig?.phone ?? '')).trim()
   const companyEmail = (companyDraft?.email ?? companyConfig?.email ?? '').trim()
   const companyAddress = (companyDraft?.address ?? companyConfig?.address ?? '').trim()
   const branchAddr = branchAddress?.trim() ?? ''
