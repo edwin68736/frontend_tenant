@@ -40,6 +40,8 @@ export interface CompanyConfig {
   show_business_name_on_sale_note?: boolean
   /** Solo nota de venta (SUNAT 00): discriminar Op. gravadas / IGV en el impreso. Default true. */
   show_igv_breakdown_on_sale_note?: boolean
+  /** La empresa factura servicios a clientes del exterior (exportación: operaciones 0201/0202/0208). Apagado por defecto. */
+  exports_enabled?: boolean
   /** Tamaño del logo en TODOS los comprobantes, separado por formato: pequeno | mediano | grande. */
   logo_size_ticket?: string
   logo_size_a4?: string

@@ -210,6 +210,8 @@ export interface SaleFiscalContextResponse {
 }
 
 export interface CreateSaleInput {
+  /** Datos de la exportación de servicios (operaciones 0201/0202/0208). */
+  export?: Record<string, string>
   branch_id: number
   contact_id?: number | null
   doc_type: string

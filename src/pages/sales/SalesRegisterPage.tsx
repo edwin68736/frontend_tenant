@@ -52,11 +52,15 @@ import { formatSaleMoney, saleCurrencySymbol } from '@/utils/formatMoney'
 import { useExchangeRate } from '@/hooks/useExchangeRate'
 import { catalogsService, type DetraccionGood } from '@/services/catalogs.service'
 import { UbigeoCascadeSelect } from '@/components/UbigeoCascadeSelect'
+import { ExportServiceFields } from '@/components/sales/ExportServiceFields'
+import { EMPTY_EXPORT_FORM, buildExportPayload, exportFormError, exportPrintLines, type ExportFormState } from '@/utils/exportService'
 import { previewDetraccion, DETRACCION_PAYMENT_METHOD_CODE, DETRACCION_PAYMENT_METHOD_NAME } from '@/utils/fiscalDetraction'
 import { filterOperationalPaymentMethods, findOperationalPaymentMethod, missingRequiredReference } from '@/utils/operationalPaymentMethods'
 import {
   formatTipoDocIdentidadDisplay,
+  EXPORT_OPERATION_OPTIONS,
   SALES_OPERATION_TYPE_OPTIONS,
+  isExportOperation,
   SUNAT_TIPO_OPERACION_DETRACCION,
   SUNAT_TIPO_OPERACION_NO_DOMICILIADOS,
   SUNAT_TIPO_OPERACION_TRANSPORTE_CARGA,
@@ -150,6 +154,8 @@ export interface SaleFormItem {
    */
   pen_unit_price?: number
   igv_affectation_type: string
+  /** Solo UI: afectación original de la línea mientras la operación es una exportación (IGV 0); se restaura al salir de la exportación. */
+  igv_affectation_original?: string
   price_includes_igv: boolean
   line_discount_mode?: CheckoutDiscountMode
   line_discount_value?: number
@@ -370,6 +376,8 @@ function SalesRegisterContent({
     notes: '',
   })
   const [items, setItems] = useState<SaleFormItem[]>([])
+  // Exportación de servicios (0201/0202/0208): datos que pide la operación elegida.
+  const [exportForm, setExportForm] = useState<ExportFormState>(EMPTY_EXPORT_FORM)
   usePendingWork(
     isQuotation ? 'cotización en edición' : isNotaVenta ? 'nota de venta en edición' : 'venta en edición',
     items.length > 0,
@@ -592,7 +600,28 @@ function SalesRegisterContent({
       setForm((f) => ({ ...f, operation_type_code: SUNAT_TIPO_OPERACION_VENTA_INTERNA }))
       setDetraccionGoodCode('')
     }
-  }, [form.sunat_code, form.operation_type_code])
+    // Exportación de servicios: solo factura o boleta, y solo si la empresa la habilitó.
+    if (isExportOperation(form.operation_type_code) && (!['01', '03'].includes(form.sunat_code) || companyConfig?.exports_enabled !== true)) {
+      setForm((f) => ({ ...f, operation_type_code: SUNAT_TIPO_OPERACION_VENTA_INTERNA }))
+    }
+  }, [form.sunat_code, form.operation_type_code, companyConfig?.exports_enabled])
+
+  // Exportación = sin IGV: todas las líneas pasan a afectación 40 (el servidor también lo fuerza) y recuperan la suya al salir.
+  const isExportOp = isExportOperation(form.operation_type_code)
+  useEffect(() => {
+    setItems((prev) => {
+      if (isExportOp) {
+        if (prev.every((it) => it.igv_affectation_type === '40')) return prev
+        return prev.map((it) =>
+          it.igv_affectation_type === '40' ? it : { ...it, igv_affectation_original: it.igv_affectation_type, igv_affectation_type: '40' },
+        )
+      }
+      if (prev.every((it) => !it.igv_affectation_original)) return prev
+      return prev.map((it) =>
+        it.igv_affectation_original ? { ...it, igv_affectation_type: it.igv_affectation_original, igv_affectation_original: undefined } : it,
+      )
+    })
+  }, [isExportOp, items])
 
   useEffect(() => {
     if (!emitPrepayment) return
@@ -1440,9 +1469,14 @@ function SalesRegisterContent({
   }, [prepaymentCoversAll, paymentConditionCode])
 
   const operationTypeOptions = useMemo(() => {
-    if (form.sunat_code === '01') return SALES_OPERATION_TYPE_OPTIONS
-    return SALES_OPERATION_TYPE_OPTIONS.filter((o) => o.code === SUNAT_TIPO_OPERACION_VENTA_INTERNA)
-  }, [form.sunat_code])
+    const base =
+      form.sunat_code === '01'
+        ? SALES_OPERATION_TYPE_OPTIONS
+        : SALES_OPERATION_TYPE_OPTIONS.filter((o) => o.code === SUNAT_TIPO_OPERACION_VENTA_INTERNA)
+    // La exportación de servicios sirve para factura y boleta, y solo se ofrece si la empresa la habilitó en Ajustes.
+    const exportOps = companyConfig?.exports_enabled === true && ['01', '03'].includes(form.sunat_code) ? EXPORT_OPERATION_OPTIONS : []
+    return [...base, ...exportOps]
+  }, [form.sunat_code, companyConfig?.exports_enabled])
 
   // Bug reportado: con detracción activa, "Observaciones" (y O/C, vendedor, guías, términos)
   // quedaba sin efecto en el PDF — el submit mandaba fiscal_context COMPLETO como undefined
@@ -1498,6 +1532,7 @@ function SalesRegisterContent({
     companyConfig,
     branchName: activeBranch?.name ?? 'Principal',
     branchAddress: branchIdentity.hasOwnAddress ? branchIdentity.address : '',
+    exportNotes: exportPrintLines(form.operation_type_code, exportForm),
     branchPhone: branchIdentity.hasOwnPhone ? branchIdentity.phone : '',
     branchLogo: branchIdentity.logo,
     payments,
@@ -1711,6 +1746,14 @@ function SalesRegisterContent({
 
     const sunatCode = form.sunat_code
     const isVentasNoDomiciliados = form.operation_type_code === SUNAT_TIPO_OPERACION_NO_DOMICILIADOS
+    const isExport = isExportOperation(form.operation_type_code)
+    if (isExport) {
+      const exportError = exportFormError(form.operation_type_code, exportForm)
+      if (exportError) {
+        toast.error(exportError)
+        return
+      }
+    }
     if (sunatCode === '01') {
       if (!selectedContact) {
         toast.error('Factura (01) requiere un cliente seleccionado')
@@ -1722,11 +1765,12 @@ function SalesRegisterContent({
       }
       // 0401 (ventas no domiciliados): el cliente es extranjero/no domiciliado sin RUC peruano
       // —pasaporte, carné de extranjería, doc. trib. no dom. sin RUC—, así que no se exige RUC.
-      if (!isVentasNoDomiciliados && selectedContact.doc_type !== '6') {
+      // Exportación: el adquirente está en el exterior; la factura lo identifica con «-» y no se exige RUC.
+      if (!isVentasNoDomiciliados && !isExport && selectedContact.doc_type !== '6') {
         toast.error('La factura solo puede emitirse a clientes con RUC')
         return
       }
-      if (!isVentasNoDomiciliados) {
+      if (!isVentasNoDomiciliados && !isExport) {
         const docNum = (selectedContact.doc_number ?? '').trim()
         if (docNum.length !== SUNAT_RUC_LENGTH || !/^\d+$/.test(docNum)) {
           toast.error(`El RUC del cliente debe tener ${SUNAT_RUC_LENGTH} dígitos numéricos`)
@@ -1905,6 +1949,7 @@ function SalesRegisterContent({
         series_id: form.series_id,
         currency: form.currency,
         operation_type_code: form.operation_type_code,
+        export: buildExportPayload(form.operation_type_code, exportForm),
         exchange_rate: form.currency === 'USD' ? parsedExchangeRate ?? undefined : undefined,
         cash_session_id: cashSession?.id ?? null,
         issue_date: form.issue_date,
@@ -2354,9 +2399,9 @@ function SalesRegisterContent({
             <div className="lg:col-span-6">
               <label className="block text-xs font-medium text-gray-600 mb-1">Tipo operación</label>
               <select
-                className={`w-full border border-gray-200 rounded-xl px-3 py-2 text-sm ${form.sunat_code !== '01' ? 'bg-gray-50' : ''}`}
+                className={`w-full border border-gray-200 rounded-xl px-3 py-2 text-sm ${operationTypeOptions.length <= 1 ? 'bg-gray-50' : ''}`}
                 value={form.operation_type_code}
-                disabled={form.sunat_code !== '01'}
+                disabled={operationTypeOptions.length <= 1}
                 onChange={(e) => {
                   const code = e.target.value
                   const goesToDetraccion =
@@ -2386,6 +2431,7 @@ function SalesRegisterContent({
                   // otra operación (detracción o no domiciliados), se desactiva para no fallar
                   // recién al guardar.
                   if (code !== SUNAT_TIPO_OPERACION_VENTA_INTERNA) setEmitPrepayment(false)
+                  if (code !== form.operation_type_code) setExportForm(EMPTY_EXPORT_FORM)
                 }}
               >
                 {operationTypeOptions.map((op) => (
@@ -2397,6 +2443,10 @@ function SalesRegisterContent({
             </div>
           )}
         </div>
+
+        {isExportOp && !isNotaVenta && !isQuotation && (
+          <ExportServiceFields operationCode={form.operation_type_code} value={exportForm} onChange={setExportForm} />
+        )}
 
         {/* Cliente (solo pantalla grande), moneda y tipo de cambio.
             En cotización esta grilla solo lleva el cliente, así que en móvil no se muestra. */}
