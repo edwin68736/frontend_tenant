@@ -1542,7 +1542,7 @@ function SalesRegisterContent({
     companyConfig,
     branchName: activeBranch?.name ?? 'Principal',
     branchAddress: branchIdentity.hasOwnAddress ? branchIdentity.address : '',
-    exportNotes: exportPrintLines(form.operation_type_code, exportForm),
+    exportNotes: exportPrintLines(form.operation_type_code, exportForm, selectedContact),
     branchPhone: branchIdentity.hasOwnPhone ? branchIdentity.phone : '',
     branchLogo: branchIdentity.logo,
     payments,
@@ -1758,7 +1758,7 @@ function SalesRegisterContent({
     const isVentasNoDomiciliados = form.operation_type_code === SUNAT_TIPO_OPERACION_NO_DOMICILIADOS
     const isExport = isExportOperation(form.operation_type_code)
     if (isExport) {
-      const exportError = exportFormError(form.operation_type_code, exportForm)
+      const exportError = exportFormError(form.operation_type_code, exportForm, selectedContact)
       if (exportError) {
         toast.error(exportError)
         return
@@ -2455,7 +2455,7 @@ function SalesRegisterContent({
         </div>
 
         {isExportOp && !isNotaVenta && !isQuotation && (
-          <ExportServiceFields operationCode={form.operation_type_code} value={exportForm} onChange={setExportForm} />
+          <ExportServiceFields operationCode={form.operation_type_code} value={exportForm} onChange={setExportForm} contact={selectedContact} />
         )}
 
         {/* Cliente (solo pantalla grande), moneda y tipo de cambio.
