@@ -61,6 +61,7 @@ import {
   EXPORT_OPERATION_OPTIONS,
   SALES_OPERATION_TYPE_OPTIONS,
   isExportOperation,
+  SUNAT_TIPO_OPERACION_EXPORT_HOSPEDAJE,
   SUNAT_TIPO_OPERACION_DETRACCION,
   SUNAT_TIPO_OPERACION_NO_DOMICILIADOS,
   SUNAT_TIPO_OPERACION_TRANSPORTE_CARGA,
@@ -601,7 +602,12 @@ function SalesRegisterContent({
       setDetraccionGoodCode('')
     }
     // Exportación de servicios: solo factura o boleta, y solo si la empresa la habilitó.
-    if (isExportOperation(form.operation_type_code) && (!['01', '03'].includes(form.sunat_code) || companyConfig?.exports_enabled !== true)) {
+    if (
+      isExportOperation(form.operation_type_code) &&
+      (!['01', '03'].includes(form.sunat_code) ||
+        companyConfig?.exports_enabled !== true ||
+        (form.operation_type_code === SUNAT_TIPO_OPERACION_EXPORT_HOSPEDAJE && form.sunat_code !== '01'))
+    ) {
       setForm((f) => ({ ...f, operation_type_code: SUNAT_TIPO_OPERACION_VENTA_INTERNA }))
     }
   }, [form.sunat_code, form.operation_type_code, companyConfig?.exports_enabled])
@@ -1474,7 +1480,11 @@ function SalesRegisterContent({
         ? SALES_OPERATION_TYPE_OPTIONS
         : SALES_OPERATION_TYPE_OPTIONS.filter((o) => o.code === SUNAT_TIPO_OPERACION_VENTA_INTERNA)
     // La exportación de servicios sirve para factura y boleta, y solo se ofrece si la empresa la habilitó en Ajustes.
-    const exportOps = companyConfig?.exports_enabled === true && ['01', '03'].includes(form.sunat_code) ? EXPORT_OPERATION_OPTIONS : []
+    // El hospedaje (0202) solo se admite en factura (SUNAT, catálogo 51: no hay 0202 para boleta).
+    const exportOps =
+      companyConfig?.exports_enabled === true && ['01', '03'].includes(form.sunat_code)
+        ? EXPORT_OPERATION_OPTIONS.filter((o) => o.code !== SUNAT_TIPO_OPERACION_EXPORT_HOSPEDAJE || form.sunat_code === '01')
+        : []
     return [...base, ...exportOps]
   }, [form.sunat_code, companyConfig?.exports_enabled])
 
