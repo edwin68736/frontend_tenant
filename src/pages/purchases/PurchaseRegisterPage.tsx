@@ -7,7 +7,7 @@ import { purchaseOrdersService } from '@/services/purchaseOrders.service'
 import { toast } from 'sonner'
 import { cashbankService, type PaymentMethodRecord } from '@/services/cashbank.service'
 import { filterOperationalPaymentMethods } from '@/utils/operationalPaymentMethods'
-import { Plus, Trash2, ArrowLeft, X, UserPlus, PackagePlus } from 'lucide-react'
+import { Plus, Trash2, ArrowLeft, X, UserPlus, PackagePlus, Loader2 } from 'lucide-react'
 import {
   purchasesService,
   type PurchaseItem,
@@ -23,7 +23,8 @@ import { ProductPickerModal } from '@/components/sales/ProductPickerModal'
 import { formatTipoDocIdentidadDisplay } from '@/constants/sunat'
 import { useBranch } from '@/contexts/BranchContext'
 import { resolveSaleUnitNames, saleLineUnitLabel } from '@/utils/saleUnitNames'
-import { buildPurchasePdfInput, openPurchasePdfViewer, purchasePaymentLabel, type PurchasePdfFormat } from '@/utils/purchasePdf'
+import { buildPurchasePdfInput, purchasePaymentLabel, type PurchasePdfInput } from '@/utils/purchasePdf'
+import { PurchasePreviewModal } from '@/components/purchases/PurchasePreviewModal'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
 import { QuickProductCreateModal } from '@/components/products/QuickProductCreateModal'
@@ -421,18 +422,19 @@ function PurchaseRegisterContent() {
     ).total
 
   const { activeBranchId } = useBranch()
-  const [previewBusy, setPreviewBusy] = useState<PurchasePdfFormat | null>(null)
+  const [previewBusy, setPreviewBusy] = useState(false)
+  const [previewInput, setPreviewInput] = useState<PurchasePdfInput | null>(null)
 
   /**
-   * Vista previa del PDF (A4 o ticket) con lo digitado en el formulario, sin registrar nada. Acepta datos incompletos
-   * (serie, número o proveedor aún vacíos) y marca el documento como «VISTA PREVIA».
+   * Vista previa del PDF con lo digitado en el formulario (modal con Ticket / A4, como en ventas), sin registrar nada.
+   * Acepta datos incompletos (serie, número o proveedor aún vacíos) y marca el documento como «VISTA PREVIA».
    */
-  const previewPurchase = async (format: PurchasePdfFormat) => {
+  const previewPurchase = async () => {
     if (items.length === 0) {
       toast.error('Agregue al menos un producto para previsualizar')
       return
     }
-    setPreviewBusy(format)
+    setPreviewBusy(true)
     try {
       const supplier = suppliers.find(s => s.id === form.contact_id)
       const upfront = isMixed
@@ -467,11 +469,11 @@ function PurchaseRegisterContent() {
         item => (item.sale_unit_id ? saleLineUnitLabel(item, names) : null),
         { preview: true },
       )
-      await openPurchasePdfViewer(input, format)
+      setPreviewInput(input)
     } catch {
       toast.error('No se pudo generar la vista previa')
     } finally {
-      setPreviewBusy(null)
+      setPreviewBusy(false)
     }
   }
 
@@ -1061,39 +1063,34 @@ function PurchaseRegisterContent() {
           </div>
         </section>
 
-        <div className="flex flex-col-reverse sm:flex-row gap-2 pt-2 border-t border-gray-100">
+        <div className="grid grid-cols-1 gap-2 pt-4 border-t border-gray-100 sm:grid-cols-3 md:flex md:flex-row md:justify-end">
           <Link
             to="/purchases"
-            className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 text-center"
+            className="order-3 sm:order-1 md:order-none w-full md:w-auto inline-flex items-center justify-center px-3 md:px-5 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 md:min-w-[7.5rem]"
           >
             Cancelar
           </Link>
           <button
             type="button"
-            onClick={() => void previewPurchase('a4')}
-            disabled={previewBusy != null}
-            className="flex-1 sm:flex-none sm:px-5 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            onClick={() => void previewPurchase()}
+            disabled={previewBusy || saving || items.length === 0}
+            className="order-2 w-full md:w-auto inline-flex items-center justify-center gap-2 px-3 md:px-5 py-2.5 rounded-xl border border-amber-300 bg-amber-50 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50 md:min-w-[9rem]"
           >
-            {previewBusy === 'a4' ? 'Generando...' : 'Previsualizar PDF'}
-          </button>
-          <button
-            type="button"
-            onClick={() => void previewPurchase('ticket')}
-            disabled={previewBusy != null}
-            className="flex-1 sm:flex-none sm:px-5 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-          >
-            {previewBusy === 'ticket' ? 'Generando...' : 'Previsualizar ticket'}
+            {previewBusy ? <Loader2 size={16} className="animate-spin" /> : null}
+            Previsualizar
           </button>
           <button
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="flex-1 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50 hover:opacity-90"
+            className="order-1 sm:order-3 md:order-none w-full md:w-auto inline-flex items-center justify-center px-3 md:px-6 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50 md:min-w-[9rem]"
           >
             {saving ? 'Guardando...' : 'Registrar compra'}
           </button>
         </div>
       </div>
+
+      <PurchasePreviewModal open={previewInput != null} onClose={() => setPreviewInput(null)} input={previewInput} />
 
       <QuickContactCreateModal
         open={addSupplierOpen}
