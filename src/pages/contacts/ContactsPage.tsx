@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import WriteOnly from '@/components/branch/WriteOnly'
 import { toast } from 'sonner'
-import { Plus, Pencil, Trash2, Search, ToggleLeft, ToggleRight, SearchCheck, Eye, Users, FileSpreadsheet } from 'lucide-react'
+import { Plus, Pencil, Trash2, Search, ToggleLeft, ToggleRight, Eye, Users, FileSpreadsheet } from 'lucide-react'
 import {
   contactsService,
   type Contact,
@@ -23,6 +23,7 @@ import { ContactCountryField, contactDocNeedsCountry } from '@/components/contac
 import { ubigeoToIds } from '@/services/ubigeo.service'
 import RequireModule from '@/components/ui/RequireModule'
 import { useAuth } from '@/contexts/AuthContext'
+import { ConsultaButton, ManualNameToggle, nameInputClass } from '@/components/contacts/ContactLookupControls'
 import { Modal } from '@/components/ui/Modal'
 import {
   SUNAT_TIPO_DOC_IDENTIDAD_LIST,
@@ -95,6 +96,8 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
   const [ubigeo, setUbigeo] = useState({ regionId: '', provinciaId: '', distritoId: '' })
   const [saving, setSaving] = useState(false)
   const [consultando, setConsultando] = useState(false)
+  /** Con RUC/DNI la razón social viene de la consulta (bloqueada); este interruptor permite escribirla a mano. */
+  const [manualName, setManualName] = useState(false)
   const [tenantRuc, setTenantRuc] = useState<string>('')
   const [modalTab, setModalTab] = useState<'general' | 'extra'>('general')
   const [importOpen, setImportOpen] = useState(false)
@@ -110,6 +113,7 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
 
   const resetExtras = () => {
     setModalTab('general')
+    setManualName(false)
     setContactPersons([])
     setPhotoFile(null)
     if (photoBlobRef.current) {
@@ -271,8 +275,15 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
       es_buen_contribuyente: false,
     }))
 
+  const formDocType = toTipoDocIdentidadCode(form.doc_type)
+  /** Con RUC/DNI el nombre viene de la consulta y no se teclea (evita errores de razón social); «Escribir manualmente» lo habilita. */
+  const nameLocked = (formDocType === '1' || formDocType === '6') && !manualName
+
   const handleSave = async () => {
-    if (!form.business_name || !form.doc_number) { toast.error('Nombre y documento son requeridos'); return }
+    if (!form.business_name || !form.doc_number) {
+      toast.error(nameLocked && form.doc_number && !form.business_name ? 'Consulte el documento para traer la razón social, o active «Escribir manualmente»' : 'Nombre y documento son requeridos')
+      return
+    }
     if (showExtraTab && !validateContactPersons()) return
     setSaving(true)
     try {
@@ -611,6 +622,7 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
                   value={toTipoDocIdentidadCode(form.doc_type)} onChange={e => {
                     const next = e.target.value
                     setF('doc_type', next)
+                    setManualName(false)
                     if (next !== '6') resetFiscalFlags()
                   }}>
                   {SUNAT_TIPO_DOC_IDENTIDAD_LIST.map(d => <option key={d.code} value={d.code}>{d.shortLabel}</option>)}
@@ -624,19 +636,15 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
                     <div className="flex border border-gray-200 rounded-xl overflow-hidden bg-white focus-within:ring-2 focus-within:ring-[rgb(var(--p600))] focus-within:border-[rgb(var(--p600))]">
                       <input
                         className="flex-1 min-w-0 px-3 py-2 border-0 text-sm focus:outline-none focus:ring-0"
-                        value={form.doc_number} onChange={e => setF('doc_number', e.target.value)}
+                        value={form.doc_number}
+                        onChange={e => {
+                          // Cambiar el número invalida el nombre traído antes: se vuelve a consultar (salvo escritura manual).
+                          setF('doc_number', e.target.value)
+                          if (nameLocked && form.business_name) setF('business_name', '')
+                        }}
                         placeholder={docType === '6' ? 'RUC 11 dígitos' : 'DNI 8 dígitos'}
                       />
-                      <button
-                        type="button"
-                        onClick={handleConsulta}
-                        disabled={consultando || !form.doc_number}
-                        className="flex items-center gap-1.5 px-3 py-2 border-l border-gray-200 text-sm text-gray-600 hover:bg-gray-50 bg-gray-50/80 whitespace-nowrap disabled:opacity-50"
-                        title="Consultar DNI o RUC en SUNAT"
-                      >
-                        <SearchCheck size={14} className={consultando ? 'animate-pulse' : ''} />
-                        {consultando ? '...' : 'Consultar'}
-                      </button>
+                      <ConsultaButton onClick={handleConsulta} disabled={consultando || !form.doc_number} loading={consultando} />
                     </div>
                   ) : (
                     <input
@@ -649,9 +657,15 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="block text-xs font-medium text-gray-600 mb-1">Razón Social / Nombre *</label>
-                <input className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-                  value={form.business_name} onChange={e => setF('business_name', e.target.value)} />
+              <div>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <label className="block text-xs font-medium text-gray-600">Razón Social / Nombre *</label>
+                  {(formDocType === '1' || formDocType === '6') && <ManualNameToggle checked={manualName} onChange={setManualName} />}
+                </div>
+                <input className={nameInputClass(nameLocked)}
+                  value={form.business_name} readOnly={nameLocked}
+                  placeholder={nameLocked ? 'Se completa al consultar el documento' : ''}
+                  onChange={e => setF('business_name', e.target.value)} />
               </div>
               <div><label className="block text-xs font-medium text-gray-600 mb-1">Nombre Comercial</label>
                 <input className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"

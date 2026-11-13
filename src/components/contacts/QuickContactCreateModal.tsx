@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { SearchCheck } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { PortalModal } from '@/components/ui/PortalModal'
 import {
@@ -8,6 +7,7 @@ import {
   type Contact,
   type CreateContactInput,
 } from '@/services/contacts.service'
+import { ConsultaButton, ManualNameToggle, nameInputClass } from '@/components/contacts/ContactLookupControls'
 import { ContactCountryField, contactDocNeedsCountry } from '@/components/contacts/ContactCountryField'
 import { consultaService } from '@/services/consulta.service'
 import { companyService } from '@/services/company.service'
@@ -95,6 +95,8 @@ export function QuickContactCreateModal({
   const [tenantRuc, setTenantRuc] = useState('')
   const [consultando, setConsultando] = useState(false)
   const [saving, setSaving] = useState(false)
+  /** Con RUC/DNI la razón social viene de la consulta (bloqueada); este interruptor permite escribirla a mano. */
+  const [manualName, setManualName] = useState(false)
   /** Evita reconsultar en cada render mientras el modal sigue abierto; se resetea al cerrar. */
   const autoConsultedRef = useRef(false)
 
@@ -108,6 +110,8 @@ export function QuickContactCreateModal({
       doc_number: defaultDocNumber?.trim() || '',
       business_name: defaultBusinessName?.trim() || '',
     })
+    // Si llega un nombre escrito en el buscador (sin documento), se deja editable.
+    setManualName(Boolean(defaultBusinessName?.trim()))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, defaultDocType, defaultDocNumber, defaultBusinessName])
 
@@ -119,6 +123,8 @@ export function QuickContactCreateModal({
   const showConsulta = contactDocSupportsConsulta(docType)
   const entityLabel = contactType === 'supplier' ? 'proveedor' : 'cliente'
   const entityLabelCap = contactType === 'supplier' ? 'Proveedor' : 'Cliente'
+
+  const nameLocked = showConsulta && !manualName
 
   const patch = (patch: Partial<QuickContactForm>) => setForm((f) => ({ ...f, ...patch }))
 
@@ -201,7 +207,7 @@ export function QuickContactCreateModal({
       return
     }
     if (!form.business_name.trim()) {
-      toast.error('Ingrese nombre o razón social')
+      toast.error(nameLocked ? 'Consulte el documento para traer la razón social, o active «Escribir manualmente»' : 'Ingrese nombre o razón social')
       return
     }
     setSaving(true)
@@ -245,16 +251,18 @@ export function QuickContactCreateModal({
             <select
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
               value={docType}
-              onChange={(e) =>
+              onChange={(e) => {
+                setManualName(false)
                 patch({
                   doc_type: e.target.value,
                   doc_number: '',
+                  business_name: showConsulta ? '' : form.business_name,
                   es_agente_de_retencion: false,
                   es_agente_de_percepcion: false,
                   es_agente_de_percepcion_combustible: false,
                   es_buen_contribuyente: false,
                 })
-              }
+              }}
             >
               {DOC_TYPE_OPTIONS_ORDERED.map((d) => (
                 <option key={d.code} value={d.code}>
@@ -271,20 +279,15 @@ export function QuickContactCreateModal({
                   className="flex-1 min-w-0 px-3 py-2 border-0 text-sm focus:outline-none focus:ring-0"
                   value={form.doc_number}
                   onChange={(e) =>
-                    patch({ doc_number: sanitizeContactDocNumber(docType, e.target.value) })
+                    // Cambiar el número invalida el nombre traído antes: se vuelve a consultar (salvo escritura manual).
+                    patch({
+                      doc_number: sanitizeContactDocNumber(docType, e.target.value),
+                      ...(nameLocked ? { business_name: '' } : {}),
+                    })
                   }
                   placeholder={contactDocNumberPlaceholder(docType)}
                 />
-                <button
-                  type="button"
-                  onClick={handleConsulta}
-                  disabled={consultando || !form.doc_number.trim()}
-                  className="flex items-center gap-1.5 px-3 py-2 border-l border-gray-200 text-sm text-gray-600 hover:bg-gray-50 bg-gray-50/80 whitespace-nowrap disabled:opacity-50"
-                  title="Consultar DNI o RUC"
-                >
-                  <SearchCheck size={14} className={consultando ? 'animate-pulse' : ''} />
-                  {consultando ? '...' : 'Consultar'}
-                </button>
+                <ConsultaButton onClick={handleConsulta} disabled={consultando || !form.doc_number.trim()} loading={consultando} title="Consultar DNI o RUC" />
               </div>
             ) : (
               <input
@@ -299,11 +302,15 @@ export function QuickContactCreateModal({
           </div>
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Nombre / Razón social *</label>
+          <div className="mb-1 flex items-center justify-between gap-2">
+            <label className="block text-xs font-medium text-gray-600">Nombre / Razón social *</label>
+            {showConsulta && <ManualNameToggle checked={manualName} onChange={setManualName} />}
+          </div>
           <input
-            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-            placeholder="Se completa con Consultar o ingrese manualmente"
+            className={nameInputClass(nameLocked)}
+            placeholder={nameLocked ? 'Se completa al consultar el documento' : 'Ingrese el nombre o razón social'}
             value={form.business_name}
+            readOnly={nameLocked}
             onChange={(e) => patch({ business_name: e.target.value })}
           />
         </div>
