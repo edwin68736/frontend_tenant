@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import WriteOnly from '@/components/branch/WriteOnly'
 import { toast } from 'sonner'
-import { Plus, Pencil, Trash2, Wallet, Building2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Wallet, Building2, ImagePlus } from 'lucide-react'
 import { cashbankService, type PaymentMethodRecord, type BankAccount } from '@/services/cashbank.service'
 import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { PaymentMethodIcon } from '@/components/pos/PaymentMethodIcon'
+import { fileToIconDataUrl, ICON_ACCEPT } from '@/utils/imageIcon'
 
 export default function PaymentMethodsPage() {
   return (
@@ -29,9 +31,30 @@ function PaymentMethodsContent() {
     active: true,
     applies_to: 'both' as 'income' | 'expense' | 'both',
     requires_reference: false,
+    logo_url: '',
   })
   const [saving, setSaving] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<PaymentMethodRecord | null>(null)
+  const [logoBusy, setLogoBusy] = useState(false)
+
+  const accountLabel = (id: number | null | undefined) => {
+    const a = bankAccounts.find(x => x.id === id)
+    if (!a) return id ? `Cuenta #${id}` : ''
+    return a.bank_name ? `${a.name} — ${a.bank_name}` : a.name
+  }
+
+  const handleLogoFile = async (file: File | undefined) => {
+    if (!file) return
+    setLogoBusy(true)
+    try {
+      const url = await fileToIconDataUrl(file)
+      setForm(f => ({ ...f, logo_url: url }))
+    } catch (e: any) {
+      toast.error(e?.message ?? 'No se pudo procesar la imagen')
+    } finally {
+      setLogoBusy(false)
+    }
+  }
 
   const load = () => {
     Promise.all([
@@ -50,7 +73,7 @@ function PaymentMethodsContent() {
 
   const openCreate = () => {
     setEditing(null)
-    setForm({ name: '', code: '', destination_type: 'cash', bank_account_id: null, active: true, applies_to: 'both', requires_reference: false })
+    setForm({ name: '', code: '', destination_type: 'cash', bank_account_id: null, active: true, applies_to: 'both', requires_reference: false, logo_url: '' })
     setShowModal(true)
   }
 
@@ -64,6 +87,7 @@ function PaymentMethodsContent() {
       active: pm.active,
       applies_to: pm.applies_to ?? 'both',
       requires_reference: !!pm.requires_reference,
+      logo_url: pm.logo_url ?? '',
     })
     setShowModal(true)
   }
@@ -86,6 +110,7 @@ function PaymentMethodsContent() {
           active: form.active,
           applies_to: form.applies_to,
           requires_reference: form.requires_reference,
+          logo_url: form.logo_url, // '' quita el logo propio y vuelve al icono por defecto
         })
         toast.success('Método actualizado')
       } else {
@@ -96,6 +121,7 @@ function PaymentMethodsContent() {
           bank_account_id: form.bank_account_id ?? undefined,
           applies_to: form.applies_to,
           requires_reference: form.requires_reference,
+          logo_url: form.logo_url || undefined,
         })
         toast.success('Método creado')
       }
@@ -161,7 +187,14 @@ function PaymentMethodsContent() {
             <tbody>
               {list.map(pm => (
                 <tr key={pm.id} className="border-b border-gray-50 hover:bg-gray-50/50">
-                  <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{pm.name}</td>
+                  <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-50 border border-gray-100">
+                        <PaymentMethodIcon code={pm.code} name={pm.name} logoUrl={pm.logo_url} className="h-6 w-6 object-contain" />
+                      </span>
+                      {pm.name}
+                    </span>
+                  </td>
                   <td className="px-4 py-3 font-mono text-gray-600 whitespace-nowrap">{pm.code}</td>
                   <td className="px-4 py-3">
                     {pm.destination_type === 'cash' ? (
@@ -170,11 +203,11 @@ function PaymentMethodsContent() {
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 text-blue-700">
-                        <Building2 size={14} /> Cuenta bancaria
-                        {pm.bank_account_id && (
-                          <span className="text-gray-500">
-                            (ID: {pm.bank_account_id})
-                          </span>
+                        <Building2 size={14} className="shrink-0" />
+                        {pm.bank_account_id ? (
+                          <span>{accountLabel(pm.bank_account_id)}</span>
+                        ) : (
+                          <span className="text-gray-500">Cuenta bancaria · sin cuenta asignada</span>
                         )}
                       </span>
                     )}
@@ -228,6 +261,33 @@ function PaymentMethodsContent() {
               onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
               placeholder="Ej. Efectivo, Yape"
             />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Logo</label>
+            <div className="flex items-center gap-3">
+              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-gray-50">
+                <PaymentMethodIcon code={form.code} name={form.name} logoUrl={form.logo_url} className="h-10 w-10 object-contain" />
+              </span>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className={`inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 ${logoBusy ? 'opacity-50 pointer-events-none' : ''}`}>
+                    <ImagePlus size={14} /> {form.logo_url ? 'Cambiar logo' : 'Subir logo'}
+                    <input
+                      type="file"
+                      accept={ICON_ACCEPT}
+                      className="hidden"
+                      onChange={e => { handleLogoFile(e.target.files?.[0]); e.target.value = '' }}
+                    />
+                  </label>
+                  {form.logo_url && (
+                    <button type="button" onClick={() => setForm(f => ({ ...f, logo_url: '' }))} className="text-xs text-red-600 hover:underline">
+                      Quitar
+                    </button>
+                  )}
+                </div>
+                <p className="mt-1 text-[11px] text-gray-400">PNG, JPG o WEBP. Se reduce automáticamente a un icono pequeño. Sin logo se usa el icono por defecto.</p>
+              </div>
+            </div>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Código</label>

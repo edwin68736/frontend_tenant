@@ -6,6 +6,7 @@ type PaymentMethodOption = {
   id: number
   code: string
   name: string
+  logo_url?: string
 }
 
 type Props = {
@@ -39,7 +40,7 @@ export function PaymentMethodSelect({ methods, value, onChange, disabled, classN
         className="flex w-full items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-left hover:border-gray-300 disabled:opacity-60"
       >
         {selected ? (
-          <PaymentMethodIcon code={selected.code} name={selected.name} className="h-5 w-5 shrink-0 object-contain" />
+          <PaymentMethodIcon code={selected.code} name={selected.name} logoUrl={selected.logo_url} className="h-5 w-5 shrink-0 object-contain" />
         ) : null}
         <span className="min-w-0 flex-1 truncate text-gray-800">{selected?.name ?? 'Método'}</span>
         <ChevronDown size={16} className={`shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -58,7 +59,7 @@ export function PaymentMethodSelect({ methods, value, onChange, disabled, classN
                 m.code === value ? 'bg-[rgb(var(--p50))] text-[rgb(var(--p800))]' : 'text-gray-800'
               }`}
             >
-              <PaymentMethodIcon code={m.code} name={m.name} className="h-5 w-5 shrink-0 object-contain" />
+              <PaymentMethodIcon code={m.code} name={m.name} logoUrl={m.logo_url} className="h-5 w-5 shrink-0 object-contain" />
               <span className="truncate">{m.name}</span>
             </button>
           ))}

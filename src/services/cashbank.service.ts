@@ -615,10 +615,10 @@ export const cashbankService = {
   getPaymentMethod: (id: number): Promise<PaymentMethodRecord> =>
     api.get(`/api/cashbank/payment-methods/${id}`).then(r => r.data.data ?? r.data),
 
-  createPaymentMethod: (data: { name: string; code: string; destination_type: string; bank_account_id?: number; applies_to?: string; requires_reference?: boolean }): Promise<PaymentMethodRecord> =>
+  createPaymentMethod: (data: { name: string; code: string; destination_type: string; bank_account_id?: number; applies_to?: string; requires_reference?: boolean; logo_url?: string }): Promise<PaymentMethodRecord> =>
     api.post('/api/cashbank/payment-methods', data).then(r => r.data.data ?? r.data),
 
-  updatePaymentMethod: (id: number, data: Partial<{ name: string; code: string; destination_type: string; bank_account_id?: number; active: boolean; applies_to: string; requires_reference: boolean }>): Promise<void> =>
+  updatePaymentMethod: (id: number, data: Partial<{ name: string; code: string; destination_type: string; bank_account_id?: number; active: boolean; applies_to: string; requires_reference: boolean; logo_url: string }>): Promise<void> =>
     api.put(`/api/cashbank/payment-methods/${id}`, data).then(r => r.data),
 
   deletePaymentMethod: (id: number): Promise<void> =>
@@ -640,6 +640,8 @@ export interface PaymentMethodRecord {
   applies_to?: 'income' | 'expense' | 'both'
   /** Exige N° de operación / referencia al cobrar o pagar. */
   requires_reference?: boolean
+  /** Logo propio (data URL reducido). Vacío = icono por defecto según el código. */
+  logo_url?: string
 }
 
 export interface Bank {

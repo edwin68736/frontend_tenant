@@ -37,6 +37,7 @@ export type CheckoutPaymentLine = {
 type MethodOption = {
   code: string
   name: string
+  logo_url?: string
 }
 
 const LABEL = 'block text-xs font-medium text-stone-600 mb-1'
@@ -167,7 +168,7 @@ export function POSCheckoutModal({
 
   const methodOptions: MethodOption[] = useMemo(() => {
     if (paymentMethods.length > 0) {
-      return paymentMethods.map((pm) => ({ code: pm.code, name: pm.name }))
+      return paymentMethods.map((pm) => ({ code: pm.code, name: pm.name, logo_url: pm.logo_url }))
     }
     return FALLBACK_METHODS
   }, [paymentMethods])
@@ -448,7 +449,7 @@ export function POSCheckoutModal({
                         onClick={() => updateLine(0, { method: opt.code, destination_account_id: undefined })}
                         className={methodCardClass(payments[0]?.method === opt.code)}
                       >
-                        <PaymentMethodIcon code={opt.code} name={opt.name} className="h-7 w-7 object-contain" />
+                        <PaymentMethodIcon code={opt.code} name={opt.name} logoUrl={opt.logo_url} className="h-7 w-7 object-contain" />
                         <span className="text-[11px] font-medium leading-tight text-stone-800">{opt.name}</span>
                       </button>
                     ))}
@@ -495,7 +496,7 @@ export function POSCheckoutModal({
                           className="flex min-h-[40px] min-w-0 items-center gap-1.5 rounded-lg border border-stone-200 bg-white px-2 py-1.5 text-left text-xs hover:border-primary-300"
                         >
                           {opt ? (
-                            <PaymentMethodIcon code={opt.code} name={opt.name} className="h-5 w-5 shrink-0 object-contain" />
+                            <PaymentMethodIcon code={opt.code} name={opt.name} logoUrl={opt.logo_url} className="h-5 w-5 shrink-0 object-contain" />
                           ) : (
                             <span className="text-sm shrink-0">💳</span>
                           )}
@@ -667,7 +668,7 @@ export function POSCheckoutModal({
                 }}
                 className={methodCardClass(false)}
               >
-                <PaymentMethodIcon code={opt.code} name={opt.name} className="h-7 w-7 object-contain" />
+                <PaymentMethodIcon code={opt.code} name={opt.name} logoUrl={opt.logo_url} className="h-7 w-7 object-contain" />
                 <span className="text-[11px] font-medium text-stone-800">{opt.name}</span>
               </button>
             ))}
