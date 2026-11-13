@@ -249,7 +249,7 @@ export function QuickContactCreateModal({
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de documento</label>
             <select
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[rgb(var(--p600))] focus:border-[rgb(var(--p600))]"
               value={docType}
               onChange={(e) => {
                 setManualName(false)
@@ -291,7 +291,7 @@ export function QuickContactCreateModal({
               </div>
             ) : (
               <input
-                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[rgb(var(--p600))] focus:border-[rgb(var(--p600))]"
                 value={form.doc_number}
                 onChange={(e) =>
                   patch({ doc_number: sanitizeContactDocNumber(docType, e.target.value) })
@@ -318,7 +318,7 @@ export function QuickContactCreateModal({
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Dirección (opcional)</label>
           <input
-            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[rgb(var(--p600))] focus:border-[rgb(var(--p600))]"
             placeholder="Se completa al consultar RUC"
             value={form.address}
             onChange={(e) => patch({ address: e.target.value })}
@@ -329,7 +329,7 @@ export function QuickContactCreateModal({
             <label className="block text-xs font-medium text-gray-600 mb-1">Celular (opcional)</label>
             <input
               type="tel"
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[rgb(var(--p600))] focus:border-[rgb(var(--p600))]"
               placeholder="Ej. 999 888 777"
               value={form.phone}
               onChange={(e) => patch({ phone: e.target.value })}
@@ -340,7 +340,7 @@ export function QuickContactCreateModal({
             <label className="block text-xs font-medium text-gray-600 mb-1">Correo (opcional)</label>
             <input
               type="email"
-              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[rgb(var(--p600))] focus:border-[rgb(var(--p600))]"
               placeholder={contactType === 'supplier' ? 'proveedor@ejemplo.com' : 'cliente@ejemplo.com'}
               value={form.email}
               onChange={(e) => patch({ email: e.target.value })}

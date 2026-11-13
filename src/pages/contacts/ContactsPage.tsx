@@ -618,7 +618,7 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
           <div className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div><label className="block text-xs font-medium text-gray-600 mb-1">Tipo de documento</label>
-                <select className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                <select className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[rgb(var(--p600))] focus:border-[rgb(var(--p600))]"
                   value={toTipoDocIdentidadCode(form.doc_type)} onChange={e => {
                     const next = e.target.value
                     setF('doc_type', next)
@@ -668,7 +668,7 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
                   onChange={e => setF('business_name', e.target.value)} />
               </div>
               <div><label className="block text-xs font-medium text-gray-600 mb-1">Nombre Comercial</label>
-                <input className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                <input className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[rgb(var(--p600))] focus:border-[rgb(var(--p600))]"
                   value={form.trade_name ?? ''} onChange={e => setF('trade_name', e.target.value)} />
               </div>
             </div>
@@ -685,16 +685,16 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
               onChange={(regionId, provinciaId, distritoId) => setUbigeo({ regionId, provinciaId, distritoId })}
             />
             <div><label className="block text-xs font-medium text-gray-600 mb-1">Dirección</label>
-              <input className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              <input className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[rgb(var(--p600))] focus:border-[rgb(var(--p600))]"
                 value={form.address ?? ''} onChange={e => setF('address', e.target.value)} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div><label className="block text-xs font-medium text-gray-600 mb-1">Teléfono</label>
-                <input className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                <input className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[rgb(var(--p600))] focus:border-[rgb(var(--p600))]"
                   value={form.phone ?? ''} onChange={e => setF('phone', e.target.value)} />
               </div>
               <div><label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
-                <input type="email" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                <input type="email" className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[rgb(var(--p600))] focus:border-[rgb(var(--p600))]"
                   value={form.email ?? ''} onChange={e => setF('email', e.target.value)} />
               </div>
             </div>
