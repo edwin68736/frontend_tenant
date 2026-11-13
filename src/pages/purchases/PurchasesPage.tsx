@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Search, X, Eye, Ban, Receipt } from 'lucide-react'
+import { Plus, Search, X, Eye, Ban, Receipt, FileText, Ticket, Download } from 'lucide-react'
 import { purchasesService, type Purchase, type PurchaseDetail } from '@/services/purchases.service'
 import { companyService, type SeriesRow } from '@/services/company.service'
 import { FiscalRetentionPerceptionModal } from '@/components/billing/FiscalRetentionPerceptionModal'
@@ -23,6 +23,7 @@ import { formatDisplayDatePeru } from '@/utils/datesPeru'
 import { formatSaleMoney } from '@/utils/formatMoney'
 import { formatPaymentMethodLabel } from '@/utils/paymentMethodLabel'
 import { resolveSaleUnitNames, saleLineUnitLabel } from '@/utils/saleUnitNames'
+import { buildPurchasePdfInput, downloadPurchasePdf, openPurchasePdfViewer, type PurchasePdfFormat } from '@/utils/purchasePdf'
 
 export default function PurchasesPage() {
   return (
@@ -92,6 +93,29 @@ function PurchasesContent() {
       toast.error('Error al cargar detalle')
     } finally {
       setDetailLoading(false)
+    }
+  }
+
+  /** PDF de la compra (A4 o ticket): previsualiza en el visor o descarga. Sirve desde la lista (por id) y desde el detalle abierto. */
+  const [pdfBusy, setPdfBusy] = useState<string | null>(null)
+  const runPurchasePdf = async (id: number, format: PurchasePdfFormat, mode: 'view' | 'download') => {
+    const key = `${id}:${format}:${mode}`
+    if (pdfBusy) return
+    setPdfBusy(key)
+    try {
+      const d = detail && detail.purchase.id === id ? detail : await purchasesService.get(id)
+      const names = await resolveSaleUnitNames(d.items ?? []).catch(() => new Map())
+      const input = await buildPurchasePdfInput(
+        d,
+        purchasePaymentLabel(d.purchase.payment_method, d.purchase.payments_upfront),
+        item => (item.sale_unit_id ? saleLineUnitLabel(item, names) : null),
+      )
+      if (mode === 'view') await openPurchasePdfViewer(input, format)
+      else await downloadPurchasePdf(input, format)
+    } catch {
+      toast.error('No se pudo generar el PDF de la compra')
+    } finally {
+      setPdfBusy(null)
     }
   }
 
@@ -228,6 +252,24 @@ function PurchasesContent() {
                       >
                         <Eye size={14} />
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => void runPurchasePdf(p.id, 'a4', 'view')}
+                        disabled={pdfBusy != null}
+                        className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-50"
+                        title="Previsualizar PDF (A4)"
+                      >
+                        <FileText size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void runPurchasePdf(p.id, 'ticket', 'view')}
+                        disabled={pdfBusy != null}
+                        className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg disabled:opacity-50"
+                        title="Previsualizar ticket"
+                      >
+                        <Ticket size={14} />
+                      </button>
                       {canWrite && p.status !== 'cancelled' && hasPermission('purchases.delete') && (
                         <button
                           type="button"
@@ -353,6 +395,24 @@ function PurchasesContent() {
                     </div>
                   ) : null}
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  ['a4', 'view', 'Previsualizar PDF A4', FileText],
+                  ['ticket', 'view', 'Previsualizar ticket', Ticket],
+                  ['a4', 'download', 'Descargar PDF A4', Download],
+                  ['ticket', 'download', 'Descargar ticket', Download],
+                ] as const).map(([format, mode, label, Icon]) => (
+                  <button
+                    key={`${format}-${mode}`}
+                    type="button"
+                    onClick={() => void runPurchasePdf(detail.purchase.id, format, mode)}
+                    disabled={pdfBusy != null}
+                    className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    <Icon size={14} /> {pdfBusy === `${detail.purchase.id}:${format}:${mode}` ? 'Generando...' : label}
+                  </button>
+                ))}
               </div>
               {linkedRetention && detail && (
                 <LinkedFiscalDocPanel
