@@ -21,9 +21,8 @@ import { Modal } from '@/components/ui/Modal'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { formatDisplayDatePeru } from '@/utils/datesPeru'
 import { formatSaleMoney } from '@/utils/formatMoney'
-import { formatPaymentMethodLabel } from '@/utils/paymentMethodLabel'
 import { resolveSaleUnitNames, saleLineUnitLabel } from '@/utils/saleUnitNames'
-import { buildPurchasePdfInput, downloadPurchasePdf, openPurchasePdfViewer, type PurchasePdfFormat } from '@/utils/purchasePdf'
+import { buildPurchasePdfInput, downloadPurchasePdf, openPurchasePdfViewer, purchasePaymentLabel, type PurchasePdfFormat } from '@/utils/purchasePdf'
 
 export default function PurchasesPage() {
   return (
@@ -32,12 +31,6 @@ export default function PurchasesPage() {
     </RequireModule>
   )
 }
-
-/** Compra sin método de pago = a crédito (queda como cuenta por pagar). */
-const purchasePaymentLabel = (code?: string, upfront?: { method: string }[]) =>
-  upfront && upfront.length > 1
-    ? `Mixto (${upfront.map(u => formatPaymentMethodLabel(u.method)).join(' + ')})`
-    : code?.trim() ? formatPaymentMethodLabel(code) : 'Crédito'
 
 function PurchasesContent() {
   const { hasPermission } = useAuth()

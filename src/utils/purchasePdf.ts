@@ -16,6 +16,7 @@ import {
 } from '@/utils/receiptTicketPaper'
 import { contactsService } from '@/services/contacts.service'
 import { formatTipoDocIdentidadDisplay } from '@/constants/sunat'
+import { formatPaymentMethodLabel } from '@/utils/paymentMethodLabel'
 import type { Purchase, PurchaseDetail, PurchaseItem } from '@/services/purchases.service'
 
 /**
@@ -53,7 +54,15 @@ export interface PurchasePdfInput {
   supplier: PurchasePdfSupplier
   /** «Crédito», «Efectivo», «Mixto (…)». */
   paymentLabel: string
+  /** Vista previa desde el formulario (aún no registrada): se marca como tal en el documento. */
+  preview?: boolean
 }
+
+/** Compra sin método de pago = a crédito (queda como cuenta por pagar). */
+export const purchasePaymentLabel = (code?: string, upfront?: { method: string }[]): string =>
+  upfront && upfront.length > 1
+    ? `Mixto (${upfront.map(u => formatPaymentMethodLabel(u.method)).join(' + ')})`
+    : code?.trim() ? formatPaymentMethodLabel(code) : 'Crédito'
 
 const PAGE_W = 210
 const PAGE_H = 297
@@ -121,6 +130,7 @@ export async function buildPurchasePdfInput(
   detail: PurchaseDetail,
   paymentLabel: string,
   unitLabelOf?: (item: PurchaseItem) => string | null,
+  opts?: { preview?: boolean },
 ): Promise<PurchasePdfInput> {
   const supplier = await loadPurchasePdfSupplier(detail.purchase)
   const lines: PurchasePdfLine[] = (detail.items ?? []).map((it) => ({
@@ -132,7 +142,7 @@ export async function buildPurchasePdfInput(
     total: Number(it.quantity) * Number(it.unit_cost),
     serials: it.serials,
   }))
-  return { purchase: detail.purchase, lines, supplier, paymentLabel }
+  return { purchase: detail.purchase, lines, supplier, paymentLabel, preview: opts?.preview }
 }
 
 const statusLabel = (p: Purchase) => (p.status === 'cancelled' ? 'Anulada' : 'Recibida')
@@ -148,7 +158,7 @@ async function loadLogo(logoSrc: string | null) {
 
 /* ─────────────────────────────── A4 ─────────────────────────────── */
 
-async function generateA4({ purchase: p, lines, supplier, paymentLabel }: PurchasePdfInput): Promise<jsPDF> {
+async function generateA4({ purchase: p, lines, supplier, paymentLabel, preview }: PurchasePdfInput): Promise<jsPDF> {
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
   const font = (size: number, style: 'normal' | 'bold' = 'normal') => {
     doc.setFont('helvetica', style)
@@ -345,13 +355,14 @@ async function generateA4({ purchase: p, lines, supplier, paymentLabel }: Purcha
   const pages = doc.getNumberOfPages()
   for (let pg = 1; pg <= pages; pg++) {
     doc.setPage(pg)
-    if (p.status === 'cancelled') {
+    if (p.status === 'cancelled' || preview) {
       doc.saveGraphicsState()
       doc.setGState(new (doc as unknown as { GState: new (o: { opacity: number }) => unknown }).GState({ opacity: 0.12 }) as never)
       doc.setFont('helvetica', 'bold')
       doc.setFontSize(80)
-      doc.setTextColor(200, 0, 0)
-      doc.text('ANULADA', PAGE_W / 2, PAGE_H / 2, { align: 'center', angle: 35 })
+      doc.setTextColor(preview ? 120 : 200, preview ? 120 : 0, preview ? 120 : 0)
+      doc.setFontSize(preview ? 60 : 80)
+      doc.text(preview ? 'VISTA PREVIA' : 'ANULADA', PAGE_W / 2, PAGE_H / 2, { align: 'center', angle: 35 })
       doc.restoreGraphicsState()
     }
     font(7)
@@ -366,7 +377,7 @@ async function generateA4({ purchase: p, lines, supplier, paymentLabel }: Purcha
 const TICKET_PAGE_HEIGHT = 900
 
 async function generateTicket(
-  { purchase: p, lines, supplier, paymentLabel }: PurchasePdfInput,
+  { purchase: p, lines, supplier, paymentLabel, preview }: PurchasePdfInput,
   paperWidthMm?: TicketPaperWidthMm,
 ): Promise<jsPDF> {
   const paperMm = normalizeTicketPaperWidth(paperWidthMm ?? configuredTicketPaperMm())
@@ -441,6 +452,7 @@ async function generateTicket(
   center('COMPROBANTE DE COMPRA', 9.5, true)
   center(`${String(p.doc_type || '').toUpperCase()} ${purchaseDocNumber(p)}`.trim(), 10, true)
   if (p.status === 'cancelled') center('*** ANULADA ***', 9, true)
+  if (preview) center('*** VISTA PREVIA ***', 9, true)
   center('Documento interno — no es comprobante de pago', 6.5)
   y += 1
   rule()

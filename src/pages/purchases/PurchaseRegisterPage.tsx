@@ -21,6 +21,9 @@ import { UnitQuantityInput } from '@/components/ui/UnitQuantityInput'
 import { PurchaseSaleUnitSelector } from '@/components/purchases/PurchaseSaleUnitSelector'
 import { ProductPickerModal } from '@/components/sales/ProductPickerModal'
 import { formatTipoDocIdentidadDisplay } from '@/constants/sunat'
+import { useBranch } from '@/contexts/BranchContext'
+import { resolveSaleUnitNames, saleLineUnitLabel } from '@/utils/saleUnitNames'
+import { buildPurchasePdfInput, openPurchasePdfViewer, purchasePaymentLabel, type PurchasePdfFormat } from '@/utils/purchasePdf'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
 import { QuickProductCreateModal } from '@/components/products/QuickProductCreateModal'
@@ -416,6 +419,61 @@ function PurchaseRegisterContent() {
       taxConfig.taxRate,
       taxConfig,
     ).total
+
+  const { activeBranchId } = useBranch()
+  const [previewBusy, setPreviewBusy] = useState<PurchasePdfFormat | null>(null)
+
+  /**
+   * Vista previa del PDF (A4 o ticket) con lo digitado en el formulario, sin registrar nada. Acepta datos incompletos
+   * (serie, número o proveedor aún vacíos) y marca el documento como «VISTA PREVIA».
+   */
+  const previewPurchase = async (format: PurchasePdfFormat) => {
+    if (items.length === 0) {
+      toast.error('Agregue al menos un producto para previsualizar')
+      return
+    }
+    setPreviewBusy(format)
+    try {
+      const supplier = suppliers.find(s => s.id === form.contact_id)
+      const upfront = isMixed
+        ? mixedPayments.filter(l => l.method && Number(l.amount) > 0).map(l => ({ method: l.method, amount: Number(l.amount) }))
+        : undefined
+      const detail = {
+        purchase: {
+          id: 0,
+          doc_type: form.doc_type ?? '',
+          series: (form.series ?? '').trim(),
+          number: (form.number ?? '').trim(),
+          issue_date: form.issue_date ?? '',
+          contact_id: form.contact_id || undefined,
+          supplier_name: supplier?.business_name,
+          subtotal,
+          tax_amount: igv,
+          total,
+          currency,
+          exchange_rate: currency === 'USD' && rateNum > 0 ? rateNum : null,
+          status: 'received',
+          payment_method: isMixed ? undefined : form.payment_method,
+          payments_upfront: upfront,
+          branch_id: activeBranchId ?? undefined,
+          notes: form.notes,
+        },
+        items,
+      }
+      const names = await resolveSaleUnitNames(items).catch(() => new Map())
+      const input = await buildPurchasePdfInput(
+        detail,
+        purchasePaymentLabel(detail.purchase.payment_method, upfront),
+        item => (item.sale_unit_id ? saleLineUnitLabel(item, names) : null),
+        { preview: true },
+      )
+      await openPurchasePdfViewer(input, format)
+    } catch {
+      toast.error('No se pudo generar la vista previa')
+    } finally {
+      setPreviewBusy(null)
+    }
+  }
 
   const handleSave = async () => {
     if (!form.contact_id || items.length === 0) {
@@ -1010,6 +1068,22 @@ function PurchaseRegisterContent() {
           >
             Cancelar
           </Link>
+          <button
+            type="button"
+            onClick={() => void previewPurchase('a4')}
+            disabled={previewBusy != null}
+            className="flex-1 sm:flex-none sm:px-5 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {previewBusy === 'a4' ? 'Generando...' : 'Previsualizar PDF'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void previewPurchase('ticket')}
+            disabled={previewBusy != null}
+            className="flex-1 sm:flex-none sm:px-5 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {previewBusy === 'ticket' ? 'Generando...' : 'Previsualizar ticket'}
+          </button>
           <button
             type="button"
             onClick={handleSave}
