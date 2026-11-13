@@ -90,7 +90,8 @@ function WeightForm({
   const price = Number(product.sale_price) || 0
 
   const [mode, setMode] = useState<'weight' | 'amount'>('weight')
-  const [useSmall, setUseSmall] = useState(true)
+  // Por defecto se escribe en kilos/litros (la unidad en que está el producto); gramos/mililitros son el atajo para cantidades chicas.
+  const [useSmall, setUseSmall] = useState(false)
   const [raw, setRaw] = useState('')
   const [stock, setStock] = useState<number | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)

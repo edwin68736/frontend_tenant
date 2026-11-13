@@ -13,6 +13,7 @@ import {
 } from '@/services/products.service'
 import { formatAmountDisplay, formatUnitPrice } from '@/utils/money'
 import { productUnitFormDisplayName } from '@/constants/sunatUnits'
+import { weightKindOfUnit } from '@/components/pos/WeightQuantityModal'
 import type { CatalogCartLine } from '@/utils/posCart'
 import { createCatalogCartLine } from '@/utils/posCart'
 import type { CartModifierEntry } from '@/types/productModifiers'
@@ -55,6 +56,20 @@ type Props = {
 /** "S/ 0.0045": precio unitario con los decimales que necesite (venta por gramo/mililitro). */
 function formatPrice(amount: number): string {
   return `S/ ${formatUnitPrice(amount)}`
+}
+
+/**
+ * Unidad de venta que se preselecciona al abrir el modal. Con una sola opción, esa. En un producto de peso o volumen (base KGM/LTR) con
+ * unidades de venta más chicas (gramo, mililitro…), la unidad base: se vende por kilo/litro y gramos/mililitros es la excepción. En el
+ * resto de productos no se preselecciona nada (el cajero elige).
+ */
+export function defaultSaleUnitKey(units: ProductSaleUnit[], productUnit: string | undefined | null): string | null {
+  if (units.length === 0) return null
+  const baseSaleUnit = units.find((u) => u.is_base)
+  const totalOptions = units.length + (baseSaleUnit ? 0 : 1)
+  if (totalOptions === 1) return `su-${units[0].id}`
+  if (weightKindOfUnit(productUnit)) return baseSaleUnit ? `su-${baseSaleUnit.id}` : 'base'
+  return null
 }
 
 function resolveSaleUnitPrice1(
@@ -169,9 +184,7 @@ export function ProductConfigureModal({ product, branchId, stacked, enableSaleUn
         // agrega si ya existe una SaleUnit real marcada is_base (ver sección "SALE UNIT is_base"
         // del encargo de corrección): en ese caso esa fila real YA representa la unidad base.
         if (units.length > 0) {
-          const hasIsBaseSaleUnit = units.some((u) => u.is_base)
-          const totalOptions = units.length + (hasIsBaseSaleUnit ? 0 : 1)
-          setSelectedUnitKey(totalOptions === 1 ? `su-${units[0].id}` : null)
+          setSelectedUnitKey(defaultSaleUnitKey(units, product.unit))
         }
 
         // Precios por sucursal de cada SaleUnit (Fase 7D), para resolver el precio efectivo sin
