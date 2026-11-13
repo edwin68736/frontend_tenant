@@ -376,18 +376,6 @@ export default function DashboardPage() {
     }))
   }, [analytics])
 
-  const pieSunat = useMemo(() => {
-    const s = analytics?.summary
-    if (!s) return []
-    return [
-      { name: 'Pendiente', value: s.pending_sunat, fill: '#f59e0b' },
-      { name: 'Enviado', value: s.sent_sunat, fill: '#3b82f6' },
-      { name: 'Aceptado', value: s.accepted_sunat, fill: '#10b981' },
-      { name: 'Rechazado', value: s.rejected_sunat, fill: '#ef4444' },
-      { name: 'Error', value: s.error_sunat, fill: '#64748b' },
-    ].filter((x) => x.value > 0)
-  }, [analytics])
-
   const piePayment = useMemo(() => {
     return (analytics?.by_payment_method ?? []).map((x, i) => ({
       name: paymentLabel(x.key),
@@ -668,9 +656,9 @@ export default function DashboardPage() {
       </div>
 
       {/* Main charts */}
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6">
         {/* p-3 en móvil: con p-5 el padding se comía el ancho útil del gráfico. */}
-        <div className="xl:col-span-2 rounded-3xl border border-slate-100 bg-white p-3 md:p-5 shadow-sm transition hover:shadow-md">
+        <div className="rounded-3xl border border-slate-100 bg-white p-3 md:p-5 shadow-sm transition hover:shadow-md">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="text-sm font-bold text-slate-800">Evolución diaria</h2>
@@ -730,32 +718,6 @@ export default function DashboardPage() {
                   />
                   <Bar yAxisId="right" dataKey="documents" name="Documentos" fill="#94a3b8" radius={[4, 4, 0, 0]} maxBarSize={28} />
                 </ComposedChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
-
-        <div className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm transition hover:shadow-md">
-          <h2 className="text-sm font-bold text-slate-800">SUNAT (Factura/Boleta)</h2>
-          <p className="text-xs text-slate-500">Distribución por estado de facturación electrónica</p>
-          <div className="mt-4 h-[260px]">
-            {loading ? (
-              <div className="flex h-full items-center justify-center text-slate-400">Cargando…</div>
-            ) : pieSunat.length === 0 ? (
-              <div className="flex h-full items-center justify-center text-center text-sm text-slate-400">
-                Sin comprobantes electrónicos en el rango
-              </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={pieSunat} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={52} outerRadius={78} paddingAngle={2}>
-                    {pieSunat.map((_, i) => (
-                      <Cell key={i} fill={pieSunat[i].fill} stroke="#fff" strokeWidth={2} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: 11 }} />
-                </PieChart>
               </ResponsiveContainer>
             )}
           </div>
