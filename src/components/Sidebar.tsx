@@ -423,8 +423,31 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
 
   const [companyProfile, setCompanyProfile] = useState<{ business_name: string; ruc: string } | null>(null)
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({})
-  const [flyout, setFlyout] = useState<{ groupId: string; top: number; left: number } | null>(null)
+  // `id` es el de un grupo (muestra su submenú) o el de un ítem simple (muestra solo su nombre).
+  const [flyout, setFlyout] = useState<{ id: string; top: number; left: number } | null>(null)
   const flyoutRef = useRef<HTMLDivElement | null>(null)
+  const flyoutCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const cancelFlyoutClose = () => {
+    if (flyoutCloseTimer.current) {
+      clearTimeout(flyoutCloseTimer.current)
+      flyoutCloseTimer.current = null
+    }
+  }
+  /** Cierra con una pequeña espera para que el mouse pueda viajar del icono al flotante sin que desaparezca. */
+  const scheduleFlyoutClose = () => {
+    cancelFlyoutClose()
+    flyoutCloseTimer.current = setTimeout(() => setFlyout(null), 160)
+  }
+  useEffect(() => cancelFlyoutClose, [])
+  /** Abre el flotante junto al icono (al pasar el mouse o al hacer clic). Ajusta la altura para que no se salga de la pantalla. */
+  const openFlyoutAt = (el: HTMLElement, id: string, itemCount: number) => {
+    cancelFlyoutClose()
+    const rect = el.getBoundingClientRect()
+    const estimated = 40 + itemCount * 30
+    const top = Math.max(8, Math.min(rect.top, window.innerHeight - estimated - 8))
+    setFlyout({ id, top, left: rect.right + 8 })
+  }
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -529,15 +552,35 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
     isCollapsed && flyout && typeof document !== 'undefined'
       ? createPortal(
           (() => {
-            const group = visibleGroups.find(g => g.id === flyout.groupId)
-            if (!group) return null
+            const group = visibleGroups.find(g => g.id === flyout.id)
+            const single = group ? null : visibleSimpleItems.find(i => i.id === flyout.id)
+            if (!group && !single) return null
             return (
               <div
                 ref={flyoutRef}
-                className="fixed z-50 rounded-2xl bg-white text-gray-800 shadow-xl border border-gray-100 ring-1 ring-black/5 min-w-[220px] py-2"
+                className="fixed z-50 rounded-2xl bg-white text-gray-800 shadow-xl border border-gray-100 ring-1 ring-black/5 min-w-[220px] max-h-[calc(100vh-1rem)] overflow-y-auto py-2"
                 style={{ top: flyout.top, left: flyout.left }}
+                onMouseEnter={cancelFlyoutClose}
+                onMouseLeave={scheduleFlyoutClose}
               >
-                {group.children.map(child => (
+                <p className="px-3 pb-1.5 pt-0.5 text-[11px] font-bold uppercase tracking-wide text-gray-400">
+                  {group ? group.label : single!.label}
+                </p>
+                {single && (
+                  <NavLink
+                    to={single.to}
+                    end={!!single.exact || single.to === '/dashboard'}
+                    onClick={() => {
+                      onClose()
+                      setFlyout(null)
+                    }}
+                    className="flex items-center gap-2 border-t border-gray-100 px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50"
+                  >
+                    <span className="shrink-0">{single.icon}</span>
+                    <span className="truncate min-w-0">Ir a {single.label}</span>
+                  </NavLink>
+                )}
+                {group?.children.map(child => (
                   <NavLink
                     key={child.id}
                     to={child.to}
@@ -634,7 +677,9 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
                         : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50',
                     )
                   }
-                  title={isCollapsed ? item.label : undefined}
+                  onMouseEnter={isCollapsed ? e => openFlyoutAt(e.currentTarget, item.id, 1) : undefined}
+                  onMouseLeave={isCollapsed ? scheduleFlyoutClose : undefined}
+                  aria-label={isCollapsed ? item.label : undefined}
                 >
                   {item.icon}
                   {!isCollapsed && <span>{item.label}</span>}
@@ -653,29 +698,23 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
 
             if (isCollapsed) {
               // Modo colapsado: sólo icono; el submenú se muestra como flyout fijo fuera del sidebar
-              const isFlyoutOpen = flyout?.groupId === group.id
+              const isFlyoutOpen = flyout?.id === group.id
               return (
                 <div key={group.id} className="relative">
                   <button
                     type="button"
+                    onMouseEnter={e => openFlyoutAt(e.currentTarget, group.id, group.children.length)}
+                    onMouseLeave={scheduleFlyoutClose}
                     onClick={e => {
-                      const btn = e.currentTarget as HTMLButtonElement
-                      const rect = btn.getBoundingClientRect()
-                      setFlyout(prev =>
-                        prev && prev.groupId === group.id
-                          ? null
-                          : {
-                              groupId: group.id,
-                              top: rect.top + window.scrollY,
-                              left: rect.right + 8,
-                            },
-                      )
+                      // Clic = fijar/cerrar (útil en pantallas táctiles, donde no hay «pasar el mouse»).
+                      if (flyout?.id === group.id) setFlyout(null)
+                      else openFlyoutAt(e.currentTarget, group.id, group.children.length)
                     }}
                     className={clsx(
                       'flex items-center justify-center w-full rounded-xl px-2 py-2 text-[13px] font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors',
                       (hasActiveChild || isFlyoutOpen) && 'bg-[rgb(var(--p600))] text-white shadow-sm',
                     )}
-                    title={group.label}
+                    aria-label={group.label}
                   >
                     {group.icon}
                   </button>
