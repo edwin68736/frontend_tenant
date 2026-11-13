@@ -260,7 +260,26 @@ function CashSessionDetailContent() {
       <div>
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Saldos por método</p>
         <MethodBalanceGrid byMethod={balanceSummary?.by_method ?? []} />
+        <p className="text-[11px] text-gray-400 mt-1.5">Agrupado por el método que se indicó al cobrar o pagar. Un método puede quedar en negativo si en esta sesión se pagó más de lo que se cobró con él; abajo está dónde quedó realmente el dinero.</p>
       </div>
+      {(report.accounts?.length ?? 0) > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Por cuenta (dónde quedó el dinero)</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {report.accounts!.map(a => (
+              <div key={a.account_id} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 sm:p-4">
+                <p className="text-sm font-semibold text-gray-800 truncate" title={a.name}>{a.name}</p>
+                <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
+                  <div><p className="text-gray-400">Entró</p><p className="font-semibold text-green-600">{a.currency === 'USD' ? 'US$' : 'S/'} {a.income.toFixed(2)}</p></div>
+                  <div><p className="text-gray-400">Salió</p><p className="font-semibold text-red-500">{a.currency === 'USD' ? 'US$' : 'S/'} {a.expense.toFixed(2)}</p></div>
+                  <div><p className="text-gray-400">Neto</p><p className={`font-semibold ${a.net < 0 ? 'text-red-500' : 'text-gray-800'}`}>{a.currency === 'USD' ? 'US$' : 'S/'} {a.net.toFixed(2)}</p></div>
+                </div>
+                <p className="mt-2 text-[11px] text-gray-400">Saldo actual de la cuenta: <span className="font-medium text-gray-600">{a.currency === 'USD' ? 'US$' : 'S/'} {a.balance.toFixed(2)}</span></p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="bg-[rgb(var(--p50))] rounded-2xl shadow-sm p-3 sm:p-4 flex items-center justify-between">
         <p className="text-sm font-semibold text-[rgb(var(--p800))]">Total de la sesión</p>
         <p className="text-xl font-bold text-[rgb(var(--p700))]">{formatMoney(balanceSummary?.total ?? report.totals.final_balance)}</p>

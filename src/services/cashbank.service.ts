@@ -278,8 +278,20 @@ export interface SessionDocumentsReport {
   cancelled_total: number
 }
 
+/** Lo que entró y salió en una cuenta durante la sesión (por la cuenta real, no por el método declarado) y su saldo actual. */
+export interface SessionAccountTotals {
+  account_id: number
+  name: string
+  currency: string
+  income: number
+  expense: number
+  net: number
+  balance: number
+}
+
 export interface CashSessionReport {
   session: CashSessionReportSession
+  accounts?: SessionAccountTotals[]
   income_detail: IncomeDetailRow[]
   expense_detail: ExpenseDetailRow[]
   cancelled_sales_detail?: IncomeDetailRow[]
@@ -337,6 +349,8 @@ export interface CashSessionReport {
 }
 
 export interface MovementReportRow {
+  /** Cuenta bancaria/billetera que recibió (o pagó) este movimiento no efectivo; vacío en efectivo. */
+  account_name?: string
   date: string
   type: string
   doc_number: string
@@ -471,7 +485,7 @@ export const cashbankService = {
   listMovements: (sessionId: number): Promise<CashMovement[]> =>
     api.get(`/api/cashbank/sessions/${sessionId}/movements`).then(r => r.data.data ?? r.data ?? []),
 
-  addMovement: (sessionId: number, data: { type: 'income' | 'expense'; category: string; reference?: string; payment_method?: string; amount: number; notes?: string; contact_id?: number | null }): Promise<CashMovement> =>
+  addMovement: (sessionId: number, data: { type: 'income' | 'expense'; category: string; reference?: string; payment_method?: string; amount: number; notes?: string; contact_id?: number | null; destination_account_id?: number | null }): Promise<CashMovement> =>
     api.post(`/api/cashbank/sessions/${sessionId}/movements`, data).then(r => r.data.data ?? r.data),
 
   /** Revierte un movimiento MANUAL (ingreso/egreso sin venta/compra asociada). El original

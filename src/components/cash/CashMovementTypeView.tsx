@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { TrendingUp, TrendingDown, Eye, Download, Plus, UserPlus } from 'lucide-react'
-import { cashbankService, type CashSession, type MovementReportRow } from '@/services/cashbank.service'
+import { cashbankService, type BankAccount, type CashSession, type MovementReportRow, type PaymentMethodRecord } from '@/services/cashbank.service'
+import { PaymentDestinationSelect } from '@/components/sales/PaymentDestinationSelect'
+import { findOperationalPaymentMethod } from '@/utils/operationalPaymentMethods'
 import { contactsService, type Contact } from '@/services/contacts.service'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
 import { useBranch } from '@/contexts/BranchContext'
@@ -74,9 +76,17 @@ export function CashMovementTypeView({ type }: { type: MovementType }) {
   // Modal "Agregar ingreso/egreso" — mismos campos que el modal de movimiento de CashPage.tsx,
   // más `contact_id` (solo egresos) para vincular el egreso con un proveedor.
   const [showAddModal, setShowAddModal] = useState(false)
-  const [addForm, setAddForm] = useState<{ category: string; reference: string; amount: number; notes: string; payment_method: string; contact_id: number | undefined }>(
-    { category: '', reference: '', amount: 0, notes: '', payment_method: 'efectivo', contact_id: undefined },
+  const [addForm, setAddForm] = useState<{ category: string; reference: string; amount: number; notes: string; payment_method: string; contact_id: number | undefined; destination_account_id: string }>(
+    { category: '', reference: '', amount: 0, notes: '', payment_method: 'efectivo', contact_id: undefined, destination_account_id: '' },
   )
+  // Métodos y cuentas para elegir qué cuenta recibe el ingreso (o de cuál sale el egreso) cuando el método va a una cuenta.
+  const [payMethods, setPayMethods] = useState<PaymentMethodRecord[]>([])
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
+  useEffect(() => {
+    if (!showAddModal) return
+    cashbankService.listPaymentMethods().then(setPayMethods).catch(() => setPayMethods([]))
+    cashbankService.listBankAccounts().then(setBankAccounts).catch(() => setBankAccounts([]))
+  }, [showAddModal])
   const [saving, setSaving] = useState(false)
 
   // Proveedores para el egreso — mismo patrón que PurchaseRegisterPage.tsx (select + botón
@@ -190,6 +200,7 @@ export function CashMovementTypeView({ type }: { type: MovementType }) {
       notes: '',
       payment_method: 'efectivo',
       contact_id: undefined,
+      destination_account_id: '',
     })
     setShowAddModal(true)
   }
@@ -199,7 +210,13 @@ export function CashMovementTypeView({ type }: { type: MovementType }) {
     if (!addForm.amount) { toast.error('Monto requerido'); return }
     setSaving(true)
     try {
-      await cashbankService.addMovement(session.id, { type, ...addForm, contact_id: addForm.contact_id || undefined })
+      const { destination_account_id, ...rest } = addForm
+      await cashbankService.addMovement(session.id, {
+        type,
+        ...rest,
+        contact_id: addForm.contact_id || undefined,
+        destination_account_id: destination_account_id ? Number(destination_account_id) : undefined,
+      })
       toast.success(copy.addedToast)
       setShowAddModal(false)
       // Si ya estoy en la página 1, setPage(1) no dispara el useEffect (mismo valor) — recargo a
@@ -289,7 +306,14 @@ export function CashMovementTypeView({ type }: { type: MovementType }) {
                         )}
                         <td className="px-3 sm:px-4 py-2 text-xs text-gray-500">{m.doc_number || m.cash_reference || 'Sin referencia'}</td>
                         <td className="px-3 sm:px-4 py-2 text-xs whitespace-nowrap">{m.user_name || '—'}</td>
-                        <td className="px-3 sm:px-4 py-2 whitespace-nowrap">{formatPaymentMethodLabel(m.payment_method)}</td>
+                        <td className="px-3 sm:px-4 py-2 whitespace-nowrap">
+                          {formatPaymentMethodLabel(m.payment_method)}
+                          {m.account_name && (
+                            <span className="block text-[10px] text-gray-400" title={type === 'income' ? 'Cuenta que recibió el dinero' : 'Cuenta de la que salió el dinero'}>
+                              {type === 'income' ? '→' : '←'} {m.account_name}
+                            </span>
+                          )}
+                        </td>
                         <td className={`px-3 sm:px-4 py-2 font-semibold whitespace-nowrap ${type === 'income' ? 'text-green-600' : 'text-red-500'}`}>
                           {type === 'income' ? '+' : '-'} {m.currency === 'USD' ? `US$ ${Math.abs(m.amount).toFixed(2)}` : `S/ ${Math.abs(m.amount).toFixed(2)}`}
                           {m.currency === 'USD' && m.amount_pen != null ? (
@@ -445,7 +469,7 @@ export function CashMovementTypeView({ type }: { type: MovementType }) {
             <select
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
               value={addForm.payment_method}
-              onChange={e => setAddForm(f => ({ ...f, payment_method: e.target.value }))}
+              onChange={e => setAddForm(f => ({ ...f, payment_method: e.target.value, destination_account_id: '' }))}
             >
               <option value="efectivo">Efectivo</option>
               <option value="yape">Yape</option>
@@ -453,6 +477,13 @@ export function CashMovementTypeView({ type }: { type: MovementType }) {
               <option value="tarjeta">Tarjeta</option>
               <option value="transferencia">Transferencia</option>
             </select>
+            <PaymentDestinationSelect
+              className="mt-2 w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
+              method={findOperationalPaymentMethod(payMethods, addForm.payment_method)}
+              accounts={bankAccounts}
+              value={addForm.destination_account_id}
+              onChange={v => setAddForm(f => ({ ...f, destination_account_id: v }))}
+            />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Monto (S/) *</label>
