@@ -19,6 +19,8 @@ export interface Contact {
   trade_name: string
   address: string
   ubigeo: string
+  /** País (ISO alfa-2) de un cliente extranjero; vacío = Perú. */
+  country?: string
   phone: string
   email: string
   photo_url?: string
@@ -45,6 +47,7 @@ export interface CreateContactInput {
   trade_name?: string
   address?: string
   ubigeo?: string
+  country?: string
   phone?: string
   email?: string
   photo_url?: string

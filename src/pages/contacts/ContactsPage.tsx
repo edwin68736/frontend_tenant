@@ -19,6 +19,7 @@ import type { ContactPerson } from '@/services/contacts.service'
 import { consultaService } from '@/services/consulta.service'
 import { companyService } from '@/services/company.service'
 import { UbigeoSelects } from '@/components/UbigeoSelects'
+import { ContactCountryField, contactDocNeedsCountry } from '@/components/contacts/ContactCountryField'
 import { ubigeoToIds } from '@/services/ubigeo.service'
 import RequireModule from '@/components/ui/RequireModule'
 import { useAuth } from '@/contexts/AuthContext'
@@ -49,6 +50,7 @@ const empty = (type: ContactListType): CreateContactInput => ({
   trade_name: '',
   address: '',
   ubigeo: '',
+  country: '',
   phone: '',
   email: '',
   es_agente_de_retencion: false,
@@ -229,6 +231,7 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
       trade_name: c.trade_name,
       address: rawAddr,
       ubigeo: ubi,
+      country: c.country ?? '',
       phone: c.phone,
       email: c.email,
       es_agente_de_retencion: c.es_agente_de_retencion ?? false,
@@ -280,6 +283,7 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
         ubigeo: ubigeo.distritoId || undefined,
       }
       const docType = toTipoDocIdentidadCode(form.doc_type)
+      if (!contactDocNeedsCountry(docType)) payload.country = ''
       if (docType !== '6') {
         delete payload.es_agente_de_retencion
         delete payload.es_agente_de_percepcion
@@ -654,6 +658,11 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
                   value={form.trade_name ?? ''} onChange={e => setF('trade_name', e.target.value)} />
               </div>
             </div>
+            {contactDocNeedsCountry(toTipoDocIdentidadCode(form.doc_type)) && (
+              <div className="max-w-sm">
+                <ContactCountryField value={form.country ?? ''} onChange={(v) => setF('country', v)} />
+              </div>
+            )}
             <p className="text-xs font-medium text-gray-600 mt-2">Ubicación (para comprobantes electrónicos)</p>
             <UbigeoSelects
               regionId={ubigeo.regionId}

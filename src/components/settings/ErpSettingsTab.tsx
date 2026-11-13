@@ -3,6 +3,7 @@ import { useLocation } from 'react-router-dom'
 import { ErpCompanySettings } from '@/components/settings/erp/ErpCompanySettings'
 import { ReceiptWalletSettings } from '@/components/company/ReceiptWalletSettings'
 import { SaleNoteBrandingSettings } from '@/components/company/SaleNoteBrandingSettings'
+import { ExportSettings } from '@/components/company/ExportSettings'
 import { LogoSizeSettings } from '@/components/company/LogoSizeSettings'
 import { ServiceChargeSettings } from '@/components/company/ServiceChargeSettings'
 import { A4DesignSettings } from '@/components/company/A4DesignSettings'
@@ -55,6 +56,7 @@ export function ErpSettingsTab() {
           <ReceiptWalletSettings />
           <SaleNoteBrandingSettings />
           <ServiceChargeSettings />
+          <ExportSettings />
         </div>
       )}
       {tab === 'impuestos' && <CompanySunatPage />}

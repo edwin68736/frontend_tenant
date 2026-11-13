@@ -215,6 +215,8 @@ export interface SaleFiscalContextResponse {
 export interface CreateSaleInput {
   /** Aplica el recargo al consumo; el servidor toma el % de la configuración de la empresa. */
   apply_service_charge?: boolean
+  /** Datos de la exportación de servicios (operaciones 0201/0202/0208). */
+  export?: Record<string, string>
   branch_id: number
   contact_id?: number | null
   doc_type: string

@@ -79,6 +79,8 @@ export type BuildSalePreviewPrintDataInput = {
   companyDraft?: SalePreviewCompanyDraft
   branchName: string
   branchAddress?: string
+  /** Líneas de exportación (leyenda y datos del huésped/país) que se anteponen a las notas del comprobante. */
+  exportNotes?: string[]
   /** Teléfono propio de la sucursal activa; vacío/omitido = el de la empresa. */
   branchPhone?: string
   /** Logo ya resuelto de la sucursal activa (useBranchIdentity().logo); null/omitido = el de la empresa. */
@@ -347,6 +349,7 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
     companyDraft,
     branchName,
     branchAddress,
+    exportNotes,
     branchPhone,
     branchLogo,
     payments,
@@ -487,7 +490,7 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
       // Logo de la sucursal activa (mismo criterio que el backend en el ticket final); si no tiene,
       // getCompanyLogoForPrint da el de la empresa, que incluye el logo_data_url embebido.
       logo_url: branchLogo || getCompanyLogoForPrint() || resolveLogoUrl(companyConfig?.logo_url),
-      additional_notes: companyConfig?.additional_notes?.trim() || undefined,
+      additional_notes: [...(exportNotes ?? []), companyConfig?.additional_notes?.trim() ?? ''].filter(Boolean).join('\n') || undefined,
       // Nuevo RUS: no discriminar IGV en el impreso (solo el total). El XML sí lo lleva.
       show_igv_breakdown: String(companyConfig?.taxpayer_regime ?? '').toLowerCase() !== 'nrus',
       show_business_name_on_sale_note: companyConfig?.show_business_name_on_sale_note !== false,

@@ -8,6 +8,7 @@ import {
   type Contact,
   type CreateContactInput,
 } from '@/services/contacts.service'
+import { ContactCountryField, contactDocNeedsCountry } from '@/components/contacts/ContactCountryField'
 import { consultaService } from '@/services/consulta.service'
 import { companyService } from '@/services/company.service'
 import { SUNAT_TIPO_DOC_IDENTIDAD_LIST, toTipoDocIdentidadCode } from '@/constants/sunat'
@@ -38,6 +39,7 @@ type QuickContactForm = {
   phone: string
   email: string
   ubigeo: string
+  country: string
   es_agente_de_retencion: boolean
   es_agente_de_percepcion: boolean
   es_agente_de_percepcion_combustible: boolean
@@ -52,6 +54,7 @@ const emptyForm = (defaultDocType = '6'): QuickContactForm => ({
   phone: '',
   email: '',
   ubigeo: '',
+  country: '',
   es_agente_de_retencion: false,
   es_agente_de_percepcion: false,
   es_agente_de_percepcion_combustible: false,
@@ -212,6 +215,7 @@ export function QuickContactCreateModal({
         phone: form.phone.trim() || undefined,
         email: form.email.trim() || undefined,
         ubigeo: form.ubigeo.trim() || undefined,
+        country: contactDocNeedsCountry(docType) ? form.country || undefined : undefined,
       }
       if (docType === '6') {
         payload.es_agente_de_retencion = form.es_agente_de_retencion
@@ -303,6 +307,7 @@ export function QuickContactCreateModal({
             onChange={(e) => patch({ business_name: e.target.value })}
           />
         </div>
+        {contactDocNeedsCountry(docType) && <ContactCountryField value={form.country} onChange={(v) => patch({ country: v })} />}
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Dirección (opcional)</label>
           <input

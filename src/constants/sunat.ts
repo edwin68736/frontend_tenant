@@ -24,6 +24,8 @@ export const SUNAT_TIPO_OPERACION: Record<string, string> = {
   '0104': 'Venta interna – Anticipos',
   '0200': 'Exportación de bienes',
   '0201': 'Exportación de servicios',
+  '0202': 'Exportación de servicios – Hospedaje a no domiciliados',
+  '0208': 'Exportación de servicios – Realizados parcialmente en el extranjero',
   '0401': 'Ventas no domiciliados',
   '1001': 'Operación sujeta a detracción',
   '2001': 'Operación sujeta a percepción',
@@ -44,6 +46,26 @@ export const SUNAT_TIPO_OPERACION_NO_DOMICILIADOS = '0401'
 /** Detracción por servicio de transporte de carga por vía terrestre (Res. 073-2006-SUNAT),
  * código de bien 027 exclusivo — solo factura (01). */
 export const SUNAT_TIPO_OPERACION_TRANSPORTE_CARGA = '1004'
+
+/** Exportación de servicios (cliente del exterior, sin IGV): factura o boleta. Solo si la empresa la habilitó (exports_enabled). */
+export const SUNAT_TIPO_OPERACION_EXPORT_SERVICIOS = '0201'
+export const SUNAT_TIPO_OPERACION_EXPORT_HOSPEDAJE = '0202'
+export const SUNAT_TIPO_OPERACION_EXPORT_PARCIAL = '0208'
+
+export function isExportOperation(code: string | null | undefined): boolean {
+  return (
+    code === SUNAT_TIPO_OPERACION_EXPORT_SERVICIOS ||
+    code === SUNAT_TIPO_OPERACION_EXPORT_HOSPEDAJE ||
+    code === SUNAT_TIPO_OPERACION_EXPORT_PARCIAL
+  )
+}
+
+/** Opciones de exportación en Nuevo Comprobante, con nombres simples para el cajero. */
+export const EXPORT_OPERATION_OPTIONS: { code: string; label: string }[] = [
+  { code: SUNAT_TIPO_OPERACION_EXPORT_SERVICIOS, label: 'Exportación – Servicio a cliente del exterior' },
+  { code: SUNAT_TIPO_OPERACION_EXPORT_HOSPEDAJE, label: 'Exportación – Hospedaje a extranjero' },
+  { code: SUNAT_TIPO_OPERACION_EXPORT_PARCIAL, label: 'Exportación – Servicio realizado en parte en el exterior' },
+]
 
 /** Opciones habilitadas en Nuevo Comprobante. 1001, 0401 y 1004 solo con factura (01). */
 export const SALES_OPERATION_TYPE_OPTIONS: { code: string; label: string }[] = [
