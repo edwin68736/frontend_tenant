@@ -24,6 +24,7 @@ export type SalePreviewFormItem = {
   igv_affectation_type: string
   modifiers_json?: string
   item_note?: string
+  pack_label?: string
 }
 
 export type SalePreviewSeries = {
@@ -390,6 +391,7 @@ export function buildSalePreviewPrintData(input: BuildSalePreviewPrintDataInput)
       igv_affectation_type: it.igv_affectation_type || '10',
       modifiers_json: it.modifiers_json,
       item_note: it.item_note,
+      pack_label: it.pack_label,
     }
   })
 

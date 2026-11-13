@@ -77,6 +77,9 @@ export function receiptItemDisplayDescription(it: PrintItem): string {
   let base = (it.description || '').trim() || '—'
   const pres = receiptModifierEntries(it.modifiers_json).find((m) => m.kind === 'variant')?.name ?? ''
   if (pres && !base.toLowerCase().includes(pres.toLowerCase())) base = `${base} - ${pres}`
+  // Contenido de la unidad de venta (caja de 12 → «(12 UND)»): va pegado a la descripción, como una nota adicional de la línea.
+  const pack = (it.pack_label || '').trim()
+  if (pack) base = `${base} (${pack})`
   // La nota de línea ("segundo uso", "sin caja") va debajo. Este helper es el punto único de todos los
   // renderizadores, así que cubre ticket, A4, impresión directa y vista previa.
   const parts = [base, ...receiptItemModifierLines(it)]

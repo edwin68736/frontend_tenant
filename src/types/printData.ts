@@ -230,6 +230,8 @@ export interface PrintItem {
    */
   product_id?: number | null
   sale_unit_id?: number | null
+  /** Contenido de la unidad de venta («12 UND»), congelado al emitir; se imprime entre paréntesis junto a la descripción. */
+  pack_label?: string
   /**
    * Nombre comercial ya resuelto para esta línea (ej. "Caja"), calculado en frontend antes de
    * imprimir (ver utils/saleUnitNames.ts) — Fase 7F. No lo llena el backend. Si falta (llamador

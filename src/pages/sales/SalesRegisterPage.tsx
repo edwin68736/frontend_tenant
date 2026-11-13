@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { formatPackLabel } from '@/utils/packLabel'
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Plus, Trash2, X, Package, UserPlus, ScanBarcode, Pencil, Loader2, Wallet, StickyNote, AlertTriangle } from 'lucide-react'
@@ -169,6 +170,8 @@ export interface SaleFormItem {
   /** Selección del combo; vacío en productos normales. */
   combo_json?: string
   item_note?: string
+  /** Contenido de la unidad de venta («12 UND»); solo alimenta la vista previa (el comprobante usa el que congela el servidor). */
+  pack_label?: string
 }
 
 /** Series guardadas en la línea de la cotización (JSON de strings); vacío si no hay o es inválido. */
@@ -275,6 +278,7 @@ function catalogLineToSaleItem(line: CatalogCartLine): SaleFormItem {
     modifiers_json: catalogLineModifiersJson(line),
     combo_json: catalogLineComboJson(line),
     item_note: line.notes?.trim() || undefined,
+    pack_label: formatPackLabel(line.sale_unit?.conversion_factor, p.unit) || undefined,
     serials: line.serials,
   }
 }
