@@ -1045,7 +1045,7 @@ function PurchaseRegisterContent() {
         }}
       />
 
-      <Modal open={showProductPicker} onClose={() => setShowProductPicker(false)} contentClassName="max-w-2xl">
+      <Modal open={showProductPicker} onClose={() => setShowProductPicker(false)} contentClassName="max-w-5xl w-[min(100%,64rem)]">
         <ProductPickerModal
           variant="purchase"
           onAdd={p => {
