@@ -25,6 +25,24 @@ export interface Purchase {
   notes?: string
   created_at?: string
   linked_retention?: LinkedFiscalDocSummary | null
+  /** Foto congelada al registrar la compra (proveedor, empresa y sucursal emisora): el PDF usa esto, no los datos actuales. */
+  print_snapshot?: PurchasePrintSnapshot | null
+  /** Logo (data URL) de esa foto. */
+  print_logo?: string
+}
+
+export interface PurchasePrintSnapshot {
+  client?: { doc_type: string; doc_number: string; business_name: string; address?: string; email?: string; phone?: string } | null
+  company: {
+    ruc: string
+    business_name: string
+    trade_name?: string
+    address?: string
+    phone?: string
+    email?: string
+    website?: string
+  }
+  branch: { name: string; address?: string }
 }
 
 /** Total de las compras del filtro (sin anuladas) en una moneda; total_pen es el equivalente en soles. */

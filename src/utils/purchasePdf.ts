@@ -96,19 +96,70 @@ export function purchasePdfFileName(p: Purchase, format: PurchasePdfFormat): str
   return `compra-${purchaseDocNumber(p)}${format === 'ticket' ? '-ticket' : ''}.pdf`
 }
 
-function companyNames() {
-  const cfg = getCompanyConfigCache()
-  const trade = String(cfg?.trade_name ?? '').trim()
-  const business = String(cfg?.business_name ?? '').trim()
-  // La razón social es lo principal; el nombre comercial va debajo si es distinto.
-  const primary = business || trade
-  const secondary =
-    business && trade && business.localeCompare(trade, undefined, { sensitivity: 'accent' }) !== 0 ? trade : ''
-  return { cfg, primary, secondary }
+/** Emisor que se imprime en la cabecera. */
+interface PurchaseIssuer {
+  primary: string
+  secondary: string
+  ruc: string
+  branchName: string
+  address: string
+  phone: string
+  email: string
+  logo: string | null
 }
 
-/** Proveedor con sus datos de contacto (si el usuario no puede leer contactos, queda solo el nombre de la compra). */
+/**
+ * Emisor del documento: el de la foto congelada al registrar la compra (razón social, RUC, sucursal, dirección, logo de ese
+ * momento) o, solo en la vista previa del formulario, el actual de la empresa y la sucursal.
+ */
+async function resolveIssuer(p: Purchase): Promise<PurchaseIssuer> {
+  const pick = (trade: string, business: string) => ({
+    // La razón social es lo principal; el nombre comercial va debajo si es distinto.
+    primary: business || trade,
+    secondary: business && trade && business.localeCompare(trade, undefined, { sensitivity: 'accent' }) !== 0 ? trade : '',
+  })
+  const snap = p.print_snapshot
+  if (snap) {
+    const names = pick(String(snap.company.trade_name ?? '').trim(), String(snap.company.business_name ?? '').trim())
+    return {
+      ...names,
+      ruc: snap.company.ruc || '',
+      branchName: snap.branch?.name || '',
+      address: String(snap.company.address ?? '').trim(),
+      phone: String(snap.company.phone ?? '').trim(),
+      email: String(snap.company.email ?? '').trim(),
+      logo: p.print_logo || null,
+    }
+  }
+  const cfg = getCompanyConfigCache()
+  const names = pick(String(cfg?.trade_name ?? '').trim(), String(cfg?.business_name ?? '').trim())
+  const issuer = await loadBranchPrintIdentity({ id: p.branch_id, name: '' })
+  return {
+    ...names,
+    ruc: cfg?.ruc || '',
+    branchName: issuer.name || '',
+    address: issuer.address || '',
+    phone: String(issuer.phone || cfg?.phone || '').trim(),
+    email: String(cfg?.email ?? '').trim(),
+    logo: issuer.logo,
+  }
+}
+
+/**
+ * Proveedor con sus datos de contacto. Si la compra tiene foto congelada (registrada desde que existe), se usa esa: editar el
+ * proveedor después no cambia el PDF. Sin foto (vista previa del formulario) se lee el contacto actual.
+ */
 export async function loadPurchasePdfSupplier(p: Purchase): Promise<PurchasePdfSupplier> {
+  const frozen = p.print_snapshot?.client
+  if (frozen) {
+    return {
+      name: String(frozen.business_name ?? '').trim() || String(p.supplier_name ?? '').trim() || '—',
+      docLabel: formatTipoDocIdentidadDisplay(frozen.doc_type, frozen.doc_number) || undefined,
+      address: String(frozen.address ?? '').trim() || undefined,
+      phone: String(frozen.phone ?? '').trim() || undefined,
+      email: String(frozen.email ?? '').trim() || undefined,
+    }
+  }
   const fallbackName = String(p.supplier_name ?? p.contact_name ?? '').trim() || '—'
   if (!p.contact_id) return { name: fallbackName }
   try {
@@ -172,8 +223,8 @@ async function generateA4({ purchase: p, lines, supplier, paymentLabel, preview 
   const boxW = 62
   const boxH = 30
   const boxX = PAGE_W - MARGIN - boxW
-  const { cfg, primary, secondary } = companyNames()
-  const issuer = await loadBranchPrintIdentity({ id: p.branch_id, name: '' })
+  const issuer = await resolveIssuer(p)
+  const { primary, secondary } = issuer
   const logoSize = readLogoPrintSize('a4')
   const logoMaxW = scaleLogoDimension(36, logoSize, 'a4')
   const logoMaxH = scaleLogoDimension(22, logoSize, 'a4')
@@ -201,18 +252,17 @@ async function generateA4({ purchase: p, lines, supplier, paymentLabel, preview 
     }
   }
   if (secondary) info(secondary.toUpperCase())
-  if (cfg?.ruc) info(`RUC ${cfg.ruc}`)
-  if (issuer.name) info(`Sucursal: ${issuer.name}`)
+  if (issuer.ruc) info(`RUC ${issuer.ruc}`)
+  if (issuer.branchName) info(`Sucursal: ${issuer.branchName}`)
   if (issuer.address) info(issuer.address)
-  const phone = issuer.phone || cfg?.phone?.trim()
-  if (phone) info(`Teléfono: ${phone}`)
-  if (cfg?.email?.trim()) info(`Email: ${cfg.email.trim()}`)
+  if (issuer.phone) info(`Teléfono: ${issuer.phone}`)
+  if (issuer.email) info(`Email: ${issuer.email}`)
 
   doc.setDrawColor(0, 0, 0)
   doc.setLineWidth(0.25)
   doc.roundedRect(boxX, top, boxW, boxH, 2, 2)
   font(9, 'bold')
-  doc.text(`RUC:  ${cfg?.ruc || '—'}`, boxX + boxW / 2, top + 5.5, { align: 'center' })
+  doc.text(`RUC:  ${issuer.ruc || '—'}`, boxX + boxW / 2, top + 5.5, { align: 'center' })
   doc.setFillColor(...GRAY)
   doc.rect(boxX, top + 9, boxW, 8, 'F')
   font(10, 'bold')
@@ -429,8 +479,8 @@ async function generateTicket(
   }
 
   y += 3
-  const { cfg, primary, secondary } = companyNames()
-  const issuer = await loadBranchPrintIdentity({ id: p.branch_id, name: '' })
+  const issuer = await resolveIssuer(p)
+  const { primary, secondary } = issuer
   const logoAsset = await loadLogo(issuer.logo)
   if (logoAsset) {
     const size = readLogoPrintSize('ticket')
@@ -442,11 +492,10 @@ async function generateTicket(
   }
   if (primary) center(primary, 11, true)
   if (secondary) center(secondary, 7.5)
-  if (cfg?.ruc) center(`RUC ${cfg.ruc}`, 8)
-  if (issuer.name) center(`Sucursal: ${issuer.name}`, 7)
+  if (issuer.ruc) center(`RUC ${issuer.ruc}`, 8)
+  if (issuer.branchName) center(`Sucursal: ${issuer.branchName}`, 7)
   if (issuer.address) center(issuer.address, 7)
-  const phone = issuer.phone || cfg?.phone?.trim()
-  if (phone) center(`Tel. ${phone}`, 7)
+  if (issuer.phone) center(`Tel. ${issuer.phone}`, 7)
   y += 2
 
   center('COMPROBANTE DE COMPRA', 9.5, true)
