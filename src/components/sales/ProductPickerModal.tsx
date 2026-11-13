@@ -301,12 +301,12 @@ export function ProductPickerModal({
           </div>
         </div>
       )}
-      <div className="pt-2 flex flex-col gap-2">
+      <div className="pt-2 flex flex-row gap-2 sm:justify-end">
         {onNewProduct && (
           <button
             type="button"
             onClick={onNewProduct}
-            className="w-full py-2.5 border border-[rgb(var(--p300))] rounded-xl text-sm text-[rgb(var(--p600))] font-medium hover:bg-[rgb(var(--p50))]"
+            className="flex-1 sm:flex-none sm:min-w-[11rem] px-4 py-2.5 border border-[rgb(var(--p300))] rounded-xl text-sm text-[rgb(var(--p600))] font-medium hover:bg-[rgb(var(--p50))]"
           >
             + Nuevo producto
           </button>
@@ -314,7 +314,7 @@ export function ProductPickerModal({
         <button
           type="button"
           onClick={onClose}
-          className="w-full py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50"
+          className="flex-1 sm:flex-none sm:min-w-[11rem] px-4 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50"
         >
           Cerrar{' '}
           <span className="text-gray-400 font-normal">[ESC]</span>
