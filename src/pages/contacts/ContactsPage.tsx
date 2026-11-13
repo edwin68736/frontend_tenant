@@ -633,9 +633,9 @@ export function ContactsContent({ contactType, pageTitle, pageSubtitle }: Contac
                   const docType = toTipoDocIdentidadCode(form.doc_type)
                   const showConsulta = docType === '1' || docType === '6'
                   return showConsulta ? (
-                    <div className="flex border border-gray-200 rounded-xl overflow-hidden bg-white focus-within:ring-2 focus-within:ring-[rgb(var(--p600))] focus-within:border-[rgb(var(--p600))]">
+                    <div className="flex border border-gray-200 rounded-xl overflow-hidden bg-white">
                       <input
-                        className="flex-1 min-w-0 px-3 py-2 border-0 text-sm focus:outline-none focus:ring-0"
+                        className="flex-1 min-w-0 px-3 py-2 border-0 text-sm"
                         value={form.doc_number}
                         onChange={e => {
                           // Cambiar el número invalida el nombre traído antes: se vuelve a consultar (salvo escritura manual).
