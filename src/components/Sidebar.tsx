@@ -563,7 +563,7 @@ export default function Sidebar({ mobileOpen, onClose, embedded, collapsed, onTo
                 onMouseEnter={cancelFlyoutClose}
                 onMouseLeave={scheduleFlyoutClose}
               >
-                <p className="px-3 pb-1.5 pt-0.5 text-[11px] font-bold uppercase tracking-wide text-gray-400">
+                <p className="-mt-2 mb-1 rounded-t-2xl bg-[rgb(var(--p600))] px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-white">
                   {group ? group.label : single!.label}
                 </p>
                 {single && (
