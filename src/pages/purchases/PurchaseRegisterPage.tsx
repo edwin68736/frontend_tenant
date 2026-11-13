@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useExchangeRate } from '@/hooks/useExchangeRate'
 import { saleCurrencySymbol } from '@/utils/formatMoney'
 import { useCatalogAccess } from '@/hooks/useCatalogAccess'
@@ -20,6 +20,8 @@ import { Modal } from '@/components/ui/Modal'
 import { UnitQuantityInput } from '@/components/ui/UnitQuantityInput'
 import { PurchaseSaleUnitSelector } from '@/components/purchases/PurchaseSaleUnitSelector'
 import { ProductPickerModal } from '@/components/sales/ProductPickerModal'
+import { formatTipoDocIdentidadDisplay } from '@/constants/sunat'
+import { SearchableSelect } from '@/components/SearchableSelect'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
 import { QuickProductCreateModal } from '@/components/products/QuickProductCreateModal'
 import { getTodayPeru } from '@/utils/datesPeru'
@@ -108,7 +110,21 @@ function PurchaseRegisterContent() {
   const [items, setItems] = useState<PurchaseLineItem[]>([])
   usePendingWork('compra en edición', items.length > 0)
   const [saving, setSaving] = useState(false)
+  /**
+   * El documento va dentro del label a propósito: SearchableSelect filtra por label, así que permite buscar al
+   * proveedor tecleando su RUC/DNI (igual que el selector de clientes en ventas).
+   */
+  const supplierOptions = useMemo(
+    () =>
+      suppliers.map(s => {
+        const doc = formatTipoDocIdentidadDisplay(s.doc_type, s.doc_number)
+        return { value: s.id, label: `${s.business_name}${doc ? ` — ${doc}` : ''}` }
+      }),
+    [suppliers],
+  )
   const [addSupplierOpen, setAddSupplierOpen] = useState(false)
+  /** Texto tecleado en el buscador de proveedor cuando se pulsa «Agregar»: precarga el RUC/DNI o el nombre en el alta rápida. */
+  const [newSupplierQuery, setNewSupplierQuery] = useState('')
   const [seriesModalItemIdx, setSeriesModalItemIdx] = useState<number | null>(null)
   const [seriesModalText, setSeriesModalText] = useState('')
   /**
@@ -527,22 +543,30 @@ function PurchaseRegisterContent() {
           <div className="sm:col-span-2 lg:col-span-1">
             <label className="block text-xs font-medium text-gray-600 mb-1">Proveedor *</label>
             <div className="flex gap-2 items-stretch">
-              <select
-                className="flex-1 min-w-0 border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"
-                value={form.contact_id ?? ''}
-                disabled={loadingSuppliers}
-                onChange={e => setForm(f => ({ ...f, contact_id: Number(e.target.value) }))}
-              >
-                <option value="">Seleccionar proveedor...</option>
-                {suppliers.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.business_name}
-                  </option>
-                ))}
-              </select>
+              <div className="flex-1 min-w-0">
+                <SearchableSelect
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2 min-h-[42px]"
+                  value={form.contact_id ?? ''}
+                  disabled={loadingSuppliers}
+                  onChange={v => setForm(f => ({ ...f, contact_id: v == null || String(v) === '' ? undefined : Number(v) }))}
+                  options={supplierOptions}
+                  placeholder="Seleccionar proveedor..."
+                  searchable
+                  searchPlaceholder="Buscar por nombre o RUC/DNI..."
+                  allowClear
+                  onCreateNew={q => {
+                    setNewSupplierQuery(q)
+                    setAddSupplierOpen(true)
+                  }}
+                  createNewLabel={q => `Agregar proveedor "${q}"`}
+                />
+              </div>
               <button
                 type="button"
-                onClick={() => setAddSupplierOpen(true)}
+                onClick={() => {
+                  setNewSupplierQuery('')
+                  setAddSupplierOpen(true)
+                }}
                 className="shrink-0 inline-flex items-center justify-center rounded-xl border border-gray-200 px-3 py-2 text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] min-h-[42px]"
                 title="Nuevo proveedor"
                 aria-label="Nuevo proveedor"
@@ -999,9 +1023,14 @@ function PurchaseRegisterContent() {
 
       <QuickContactCreateModal
         open={addSupplierOpen}
-        onClose={() => setAddSupplierOpen(false)}
+        onClose={() => {
+          setAddSupplierOpen(false)
+          setNewSupplierQuery('')
+        }}
         contactType="supplier"
-        defaultDocType="6"
+        defaultDocType={/^\d{8}$/.test(newSupplierQuery.trim()) ? '1' : '6'}
+        defaultDocNumber={/^\d{8}$|^\d{11}$/.test(newSupplierQuery.trim()) ? newSupplierQuery.trim() : undefined}
+        defaultBusinessName={newSupplierQuery.trim() && !/^\d{8}$|^\d{11}$/.test(newSupplierQuery.trim()) ? newSupplierQuery.trim() : undefined}
         onCreated={(contact) => {
           setSuppliers(prev => [...prev, contact])
           setForm(f => ({ ...f, contact_id: contact.id }))
