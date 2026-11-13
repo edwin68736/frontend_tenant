@@ -738,11 +738,14 @@ export async function importCatalogProducts(
   updated: number
   stockRegistered: number
   failed: { row: number; name: string; error: string }[]
+  /** Filas omitidas porque el plan llegó a su tope de productos. */
+  limitSkipped: number
 }> {
   const failed: { row: number; name: string; error: string }[] = []
   let created = 0
   let updated = 0
   let stockRegistered = 0
+  let limitSkipped = 0
 
   for (let offset = 0; offset < rows.length; offset += BULK_CHUNK_SIZE) {
     const chunk = rows.slice(offset, offset + BULK_CHUNK_SIZE)
@@ -752,6 +755,7 @@ export async function importCatalogProducts(
       created += res.created
       updated += res.updated ?? 0
       stockRegistered += res.stock_registered
+      limitSkipped += res.limit_skipped ?? 0
       failed.push(...res.failed)
       onProgress?.({ done: offset + chunk.length, total: rows.length, current: chunk[chunk.length - 1]?.nombre })
     } catch (e: unknown) {
@@ -766,5 +770,5 @@ export async function importCatalogProducts(
   }
 
   onProgress?.({ done: rows.length, total: rows.length })
-  return { created, updated, stockRegistered, failed }
+  return { created, updated, stockRegistered, failed, limitSkipped }
 }

@@ -401,6 +401,9 @@ export interface BulkImportResultPayload {
   updated?: number
   stock_registered: number
   failed: { row: number; name: string; error: string }[]
+  /** Filas de productos NUEVOS omitidas porque el plan ya no tenía cupo (no son errores del Excel). */
+  limit_skipped?: number
+  plan_limit?: { max: number; used: number; allowed_new: number }
 }
 
 export interface BulkPriceUpdateRowPayload {

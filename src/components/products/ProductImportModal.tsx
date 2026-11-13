@@ -23,6 +23,8 @@ import {
 } from '@/utils/catalogProductImport'
 import { formatExpiryDisplay } from '@/utils/productExpiry'
 import { AdvancedDone, AdvancedSummary } from '@/components/products/ProductAdvancedImportPanels'
+import { ImportPlanLimitNotice } from '@/components/products/ImportPlanLimitNotice'
+import { useModules } from '@/contexts/ModulesContext'
 import {
   downloadAdvancedProductTemplate,
   runAdvancedBatches,
@@ -57,7 +59,9 @@ export function ProductImportModal({ open, onClose, onImported }: Props) {
     updated: number
     stockRegistered: number
     failed: { row: number; name: string; error: string }[]
+    limitSkipped?: number
   } | null>(null)
+  const { limits, refresh: refreshLimits } = useModules()
   const [helpOpen, setHelpOpen] = useState(false)
   // Importación avanzada (Excel con varias hojas). La básica no usa nada de esto.
   const [mode, setMode] = useState<Mode>('basic')
@@ -165,11 +169,13 @@ export function ProductImportModal({ open, onClose, onImported }: Props) {
       const result = await runAdvancedBatches(adv.items, selectedBranchId, false, setImportProgress)
       setAdvResult(result)
       setStep('done')
+      void refreshLimits()
+      if (result.limitSkipped > 0) toast.warning(`${result.limitSkipped} fila(s) no se importaron: tu plan llegó a su límite de productos`)
       if (result.created > 0 || result.updated > 0) {
         toast.success(`${result.created} creado(s), ${result.updated} actualizado(s)`)
         // Si hubo fallidos el modal sigue abierto mostrando el reporte (onImported lo cierra); el
         // listado se refresca al cerrar (ver handleClose).
-        if (result.failed.length === 0) onImported()
+        if (result.failed.length === 0 && result.limitSkipped === 0) onImported()
         else needsRefresh.current = true
       }
       if (result.failed.length > 0) toast.error(`${result.failed.length} producto(s) con error`)
@@ -236,13 +242,17 @@ export function ProductImportModal({ open, onClose, onImported }: Props) {
       )
       setImportResult(result)
       setStep('done')
+      void refreshLimits()
+      if (result.limitSkipped > 0) toast.warning(`${result.limitSkipped} fila(s) no se importaron: tu plan llegó a su límite de productos`)
       if (result.created > 0 || result.updated > 0) {
         const parts: string[] = []
         if (result.created > 0) parts.push(`${result.created} creado(s)`)
         if (result.updated > 0) parts.push(`${result.updated} actualizado(s)`)
         const stockMsg = result.stockRegistered > 0 ? ` · ${result.stockRegistered} con stock en kardex` : ''
         toast.success(`${parts.join(', ')}${stockMsg}`)
-        onImported()
+        // Con filas omitidas por el plan o con error el modal se queda abierto mostrando el informe; el listado se refresca al cerrarlo.
+        if (result.failed.length > 0 || result.limitSkipped > 0) needsRefresh.current = true
+        else onImported()
       }
       if (result.failed.length > 0) toast.error(`${result.failed.length} fila(s) con error`)
     } catch {
@@ -421,6 +431,24 @@ export function ProductImportModal({ open, onClose, onImported }: Props) {
 
           {mode === 'basic' && validation && !validating && step !== 'importing' && (
             <ValidationSummary validation={validation} />
+          )}
+
+          {/* Tope de productos del plan: se avisa ANTES de importar cuántos entrarán, y al terminar cuántos se omitieron. */}
+          {step === 'validated' && !validating && mode === 'basic' && validation && validation.errors.length === 0 && (
+            <ImportPlanLimitNotice
+              phase="before"
+              limit={limits.products}
+              candidates={validation.rows.filter((r) => (r.tipo ?? '').trim().toLowerCase() !== 'service').length}
+            />
+          )}
+          {step === 'validated' && !validating && mode === 'advanced' && adv && adv.errors.length === 0 && advPreview && (
+            <ImportPlanLimitNotice phase="preview" limit={limits.products} skipped={advPreview.limitSkipped} />
+          )}
+          {step === 'done' && mode === 'basic' && importResult && (
+            <ImportPlanLimitNotice phase="after" limit={limits.products} skipped={importResult.limitSkipped ?? 0} />
+          )}
+          {step === 'done' && mode === 'advanced' && advResult && (
+            <ImportPlanLimitNotice phase="after" limit={limits.products} skipped={advResult.limitSkipped} />
           )}
 
           {mode === 'advanced' && adv && !validating && step !== 'importing' && step !== 'done' && (

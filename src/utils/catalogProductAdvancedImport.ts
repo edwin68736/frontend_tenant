@@ -440,6 +440,10 @@ export type AdvancedTotals = {
   branchPrices: { created: number; updated: number; deactivated: number }
   branchStocksSet: number
   failed: { row: number; name: string; error: string }[]
+  /** Filas de productos nuevos omitidas porque el plan llegó a su tope de productos. */
+  limitSkipped: number
+  /** Productos nuevos que cabían en el plan al empezar (undefined = el plan no limita productos). */
+  allowedNew?: number
 }
 
 export type AdvancedProgress = { done: number; total: number; current?: string }
@@ -450,7 +454,7 @@ function emptyTotals(): AdvancedTotals {
     presentations: { created: 0, updated: 0, deactivated: 0 },
     saleUnits: { created: 0, updated: 0, deactivated: 0 },
     branchPrices: { created: 0, updated: 0, deactivated: 0 },
-    branchStocksSet: 0, failed: [],
+    branchStocksSet: 0, failed: [], limitSkipped: 0,
   }
 }
 
@@ -468,6 +472,8 @@ function addResult(t: AdvancedTotals, r: BulkImportAdvancedResultPayload) {
   t.branchPrices.updated += r.branch_prices_updated ?? 0
   t.branchPrices.deactivated += r.branch_prices_deactivated ?? 0
   t.branchStocksSet += r.branch_stocks_set ?? 0
+  t.limitSkipped += r.limit_skipped ?? 0
+  if (t.allowedNew === undefined && r.plan_limit) t.allowedNew = r.plan_limit.allowed_new
   t.failed.push(...(r.failed ?? []))
 }
 
@@ -494,6 +500,12 @@ export async function runAdvancedBatches(
       for (const it of chunk) totals.failed.push({ row: it.row_number, name: it.name, error: msg })
     }
     onProgress?.({ done: offset + chunk.length, total: items.length })
+  }
+  // En la simulación cada lote se revierte, así que el servidor cuenta el cupo de cada uno desde cero: se recorta aquí al total
+  // que realmente cabe para que el resumen previo diga lo mismo que hará la importación real.
+  if (dryRun && totals.allowedNew !== undefined && totals.created > totals.allowedNew) {
+    totals.limitSkipped += totals.created - totals.allowedNew
+    totals.created = totals.allowedNew
   }
   return totals
 }
