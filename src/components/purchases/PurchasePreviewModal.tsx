@@ -4,6 +4,7 @@ import { FileText, Loader2, Receipt, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { PdfBlobViewer } from '@/components/PdfBlobViewer'
+import type { jsPDF } from 'jspdf'
 import { generatePurchasePdf, type PurchasePdfFormat, type PurchasePdfInput } from '@/utils/purchasePdf'
 
 const FORMAT_BTN =
@@ -11,17 +12,30 @@ const FORMAT_BTN =
 
 const FORMAT_LABEL = 'text-[10px] font-semibold uppercase tracking-wide sm:text-xs'
 
-interface PurchasePreviewModalProps {
+interface PurchasePreviewModalProps<T = PurchasePdfInput> {
   open: boolean
   onClose: () => void
-  input: PurchasePdfInput | null
+  input: T | null
+  /** Por defecto genera el PDF de la compra; la orden de compra pasa el suyo. */
+  generate?: (input: T, format: PurchasePdfFormat) => Promise<jsPDF>
+  title?: string
+  subtitle?: string
+  notice?: string
 }
 
 /**
  * Previsualización de la compra antes de registrarla. Mismo patrón que la de ventas (SaleReceiptPreviewModal): alternador
  * Ticket / A4 arriba, visor del PDF embebido y aviso de documento no válido. Abre en ticket, como ventas.
  */
-export function PurchasePreviewModal({ open, onClose, input }: PurchasePreviewModalProps) {
+export function PurchasePreviewModal<T = PurchasePdfInput>({
+  open,
+  onClose,
+  input,
+  generate,
+  title = 'Previsualización de la compra',
+  subtitle = 'Vista previa antes de registrar la compra',
+  notice = 'Documento de previsualización con marca de agua — la compra aún no está registrada.',
+}: PurchasePreviewModalProps<T>) {
   const [format, setFormat] = useState<PurchasePdfFormat>('ticket')
   const [pdfUrl, setPdfUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -47,7 +61,7 @@ export function PurchasePreviewModal({ open, onClose, input }: PurchasePreviewMo
       setLoading(true)
       revokeUrl()
       try {
-        const doc = await generatePurchasePdf(input, next)
+        const doc = generate ? await generate(input, next) : await generatePurchasePdf(input as unknown as PurchasePdfInput, next)
         const url = URL.createObjectURL(doc.output('blob'))
         urlRef.current = url
         loadedFormatRef.current = next
@@ -60,7 +74,7 @@ export function PurchasePreviewModal({ open, onClose, input }: PurchasePreviewMo
         setLoading(false)
       }
     },
-    [input, revokeUrl],
+    [input, generate, revokeUrl],
   )
 
   useEffect(() => {
@@ -81,8 +95,8 @@ export function PurchasePreviewModal({ open, onClose, input }: PurchasePreviewMo
     <Modal open={open} onClose={handleClose} contentClassName="max-w-4xl" stacked>
       <div className="flex items-center justify-between gap-3 border-b border-gray-100 pb-3">
         <div>
-          <h3 className="font-bold text-gray-800">Previsualización de la compra</h3>
-          <p className="text-xs text-gray-500">Vista previa antes de registrar la compra</p>
+          <h3 className="font-bold text-gray-800">{title}</h3>
+          <p className="text-xs text-gray-500">{subtitle}</p>
         </div>
         <button type="button" onClick={handleClose} className="p-1.5 rounded-lg hover:bg-gray-100" aria-label="Cerrar">
           <X size={18} />
@@ -121,14 +135,14 @@ export function PurchasePreviewModal({ open, onClose, input }: PurchasePreviewMo
         ) : (
           <PdfBlobViewer
             url={pdfUrl}
-            title="Previsualización de la compra"
+            title={title}
             embedOptions={format === 'a4' ? { fit: 'page' } : undefined}
           />
         )}
       </div>
 
       <p className="text-[11px] text-center text-red-600/80">
-        Documento de previsualización con marca de agua — la compra aún no está registrada.
+        {notice}
       </p>
     </Modal>
   )

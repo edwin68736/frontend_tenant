@@ -6,6 +6,14 @@ import { readLogoPrintSize, scaleLogoDimension } from '@/services/printers/logoP
 import { downloadJsPdf } from '@/utils/downloadBlob'
 import { openPdfViewer } from '@/components/pdf/pdfViewerStore'
 import { TUKIFAC_APP_NAME } from '@/lib/appVersion'
+import {
+  configuredTicketPaperMm,
+  normalizeTicketPaperWidth,
+  ticketMarginMm,
+  ticketPageWidthMm,
+  ticketTopPaddingMm,
+} from '@/utils/receiptTicketPaper'
+import { contactsService } from '@/services/contacts.service'
 import { PURCHASE_ORDER_STATUS_LABEL, type PurchaseOrder, type PurchaseOrderItem } from '@/services/purchaseOrders.service'
 
 /**
@@ -22,10 +30,39 @@ export interface PurchaseOrderPdfSupplier {
   email?: string
 }
 
+export type PurchaseOrderPdfFormat = 'a4' | 'ticket'
+
 export interface PurchaseOrderPdfInput {
   order: PurchaseOrder
   items: PurchaseOrderItem[]
   supplier: PurchaseOrderPdfSupplier
+  /** Vista previa desde el formulario (aún no creada): se marca como tal en el documento. */
+  preview?: boolean
+}
+
+/** Proveedor con sus datos de contacto para el documento (la orden solo guarda el id). */
+export async function loadPurchaseOrderPdfSupplier(order: Pick<PurchaseOrder, 'contact_id' | 'contact_name'>): Promise<PurchaseOrderPdfSupplier> {
+  const fallback = String(order.contact_name ?? '').trim()
+  if (!order.contact_id) return { name: fallback }
+  try {
+    const c = await contactsService.get(order.contact_id)
+    return {
+      name: String(c.business_name ?? '').trim() || fallback,
+      docNumber: c.doc_number || undefined,
+      address: String(c.address ?? '').trim() || undefined,
+      phone: String(c.phone ?? '').trim() || undefined,
+      email: String(c.email ?? '').trim() || undefined,
+    }
+  } catch {
+    return { name: fallback }
+  }
+}
+
+export async function buildPurchaseOrderPdfInput(
+  detail: { order: PurchaseOrder; items: PurchaseOrderItem[] },
+  opts?: { preview?: boolean },
+): Promise<PurchaseOrderPdfInput> {
+  return { order: detail.order, items: detail.items, supplier: await loadPurchaseOrderPdfSupplier(detail.order), preview: opts?.preview }
 }
 
 const PAGE_W = 210
@@ -47,11 +84,50 @@ function fmtDate(d?: string | null): string {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : d
 }
 
-export function purchaseOrderFileName(o: PurchaseOrder): string {
-  return `orden-compra-${o.number}.pdf`
+export function purchaseOrderFileName(o: PurchaseOrder, format: PurchaseOrderPdfFormat = 'a4'): string {
+  return `orden-compra-${o.number || 'borrador'}${format === 'ticket' ? '-ticket' : ''}.pdf`
 }
 
-export async function generatePurchaseOrderPdf({ order, items, supplier }: PurchaseOrderPdfInput): Promise<jsPDF> {
+const orderNumberText = (o: PurchaseOrder) => o.number || '(sin número)'
+
+async function loadLogo(src: string | null | undefined) {
+  if (!src) return null
+  try {
+    return await resolveReceiptLogoForPdf(src)
+  } catch {
+    return null
+  }
+}
+
+/** Emisor para la cabecera: razón social como principal y nombre comercial debajo (igual que el PDF de compras). */
+async function resolveIssuer(order: PurchaseOrder) {
+  const cfg = getCompanyConfigCache()
+  const branch = await loadBranchPrintIdentity({ id: order.branch_id, name: '' })
+  const trade = String(cfg?.trade_name ?? '').trim()
+  const business = String(cfg?.business_name ?? '').trim()
+  return {
+    primary: business || trade,
+    secondary: business && trade && business.localeCompare(trade, undefined, { sensitivity: 'accent' }) !== 0 ? trade : '',
+    ruc: cfg?.ruc || '',
+    branchName: branch.name || '',
+    address: branch.address || '',
+    phone: String(branch.phone || cfg?.phone || '').trim(),
+    email: String(cfg?.email ?? '').trim(),
+    logo: branch.logo,
+  }
+}
+
+function drawPreviewMark(doc: jsPDF, w: number, h: number) {
+  doc.saveGraphicsState()
+  doc.setGState(new (doc as unknown as { GState: new (o: { opacity: number }) => unknown }).GState({ opacity: 0.12 }) as never)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(60)
+  doc.setTextColor(120, 120, 120)
+  doc.text('VISTA PREVIA', w / 2, h / 2, { align: 'center', angle: 35 })
+  doc.restoreGraphicsState()
+}
+
+async function generateA4({ order, items, supplier, preview }: PurchaseOrderPdfInput): Promise<jsPDF> {
   const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
   const font = (size: number, style: 'normal' | 'bold' = 'normal') => {
     doc.setFont('helvetica', style)
@@ -65,32 +141,23 @@ export async function generatePurchaseOrderPdf({ order, items, supplier }: Purch
   const boxW = 62
   const boxH = 30
   const boxX = PAGE_W - MARGIN - boxW
-  const cfg = getCompanyConfigCache()
-  const issuer = await loadBranchPrintIdentity({ id: order.branch_id, name: '' })
+  const issuer = await resolveIssuer(order)
   let logo: { dataUrl: string; format: string; w: number; h: number } | null = null
   const logoSize = readLogoPrintSize('a4')
   const logoMaxW = scaleLogoDimension(36, logoSize, 'a4')
   const logoMaxH = scaleLogoDimension(22, logoSize, 'a4')
-  if (issuer.logo) {
-    try {
-      const r = await resolveReceiptLogoForPdf(issuer.logo)
-      if (r) {
-        const { w, h } = fitReceiptLogoMm(r.naturalW, r.naturalH, logoMaxW, logoMaxH)
-        logo = { dataUrl: r.dataUrl, format: r.format, w, h }
-      }
-    } catch {
-      /* sin logo */
-    }
+  const logoAsset = await loadLogo(issuer.logo)
+  if (logoAsset) {
+    const { w, h } = fitReceiptLogoMm(logoAsset.naturalW, logoAsset.naturalH, logoMaxW, logoMaxH)
+    logo = { dataUrl: logoAsset.dataUrl, format: logoAsset.format, w, h }
+    doc.addImage(logo.dataUrl, logo.format, MARGIN, top, logo.w, logo.h)
   }
-  if (logo) doc.addImage(logo.dataUrl, logo.format, MARGIN, top, logo.w, logo.h)
   const infoX = MARGIN + (logo ? logoMaxW + 4 : 0)
   const infoW = boxX - infoX - 4
 
-  const trade = String(cfg?.trade_name ?? '').trim()
-  const business = String(cfg?.business_name ?? '').trim()
   let cy = top + 3
   font(11.5, 'bold')
-  for (const line of doc.splitTextToSize((trade || business || '—').toUpperCase(), infoW) as string[]) {
+  for (const line of doc.splitTextToSize((issuer.primary || '—').toUpperCase(), infoW) as string[]) {
     doc.text(line, infoX, cy)
     cy += LINE_H + 0.2
   }
@@ -101,23 +168,24 @@ export async function generatePurchaseOrderPdf({ order, items, supplier }: Purch
       cy += LINE_H - 0.15
     }
   }
-  if (trade && business && trade.toLowerCase() !== business.toLowerCase()) info(business.toUpperCase())
-  if (cfg?.ruc) info(`RUC ${cfg.ruc}`)
+  if (issuer.secondary) info(issuer.secondary.toUpperCase())
+  if (issuer.ruc) info(`RUC ${issuer.ruc}`)
+  if (issuer.branchName) info(`Sucursal: ${issuer.branchName}`)
   if (issuer.address) info(issuer.address)
-  if (cfg?.phone?.trim()) info(`Teléfono: ${cfg.phone.trim()}`)
-  if (cfg?.email?.trim()) info(`Email: ${cfg.email.trim()}`)
+  if (issuer.phone) info(`Teléfono: ${issuer.phone}`)
+  if (issuer.email) info(`Email: ${issuer.email}`)
 
   doc.setDrawColor(0, 0, 0)
   doc.setLineWidth(0.25)
   doc.roundedRect(boxX, top, boxW, boxH, 2, 2)
   font(9, 'bold')
-  doc.text(`RUC:  ${cfg?.ruc || '—'}`, boxX + boxW / 2, top + 5.5, { align: 'center' })
+  doc.text(`RUC:  ${issuer.ruc || '—'}`, boxX + boxW / 2, top + 5.5, { align: 'center' })
   doc.setFillColor(...GRAY)
   doc.rect(boxX, top + 9, boxW, 8, 'F')
   font(10, 'bold')
   doc.text('ORDEN DE COMPRA', boxX + boxW / 2, top + 14.5, { align: 'center' })
   font(11, 'bold')
-  doc.text(order.number, boxX + boxW / 2, top + 24, { align: 'center' })
+  doc.text(orderNumberText(order), boxX + boxW / 2, top + 24, { align: 'center' })
 
   let y = Math.max(cy, top + boxH) + 6
 
@@ -140,6 +208,7 @@ export async function generatePurchaseOrderPdf({ order, items, supplier }: Purch
   put(MARGIN + 2, 'Razón social:', supplier.name || '—', colW - 4)
   put(MARGIN + 2, 'RUC/Doc.:', supplier.docNumber || '—', colW - 4)
   if (supplier.address) put(MARGIN + 2, 'Dirección:', supplier.address, colW - 4)
+  if (supplier.phone) put(MARGIN + 2, 'Teléfono:', supplier.phone, colW - 4)
   sy = y + 9
   const right: [string, string][] = [
     ['Emisión:', fmtDate(order.issue_date)],
@@ -250,25 +319,169 @@ export async function generatePurchaseOrderPdf({ order, items, supplier }: Purch
   const pages = doc.getNumberOfPages()
   for (let p = 1; p <= pages; p++) {
     doc.setPage(p)
+    if (preview) drawPreviewMark(doc, PAGE_W, PAGE_H)
     font(7)
     doc.text(`${TUKIFAC_APP_NAME} · Documento comercial, no es comprobante de pago`, PAGE_W / 2, PAGE_H - 8, { align: 'center' })
   }
   return doc
 }
 
-export async function downloadPurchaseOrderPdf(input: PurchaseOrderPdfInput): Promise<void> {
-  const doc = await generatePurchaseOrderPdf(input)
-  await downloadJsPdf(doc, purchaseOrderFileName(input.order))
+/* ────────────────────────────── Ticket ────────────────────────────── */
+
+/** Alto holgado de rollo; se recorta al contenido real al final (igual que el PDF de compras). */
+const TICKET_PAGE_HEIGHT = 900
+
+async function generateTicket({ order, items, supplier, preview }: PurchaseOrderPdfInput): Promise<jsPDF> {
+  const paperMm = normalizeTicketPaperWidth(configuredTicketPaperMm())
+  const pageW = ticketPageWidthMm(paperMm)
+  const margin = ticketMarginMm(paperMm)
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [pageW, TICKET_PAGE_HEIGHT], compress: false })
+  const innerW = pageW - 2 * margin
+  const lineH = 4.2
+  const sym = symbol(order.currency)
+  let y = margin + ticketTopPaddingMm(paperMm)
+
+  const center = (text: string, size: number, bold = false) => {
+    doc.setTextColor(0, 0, 0)
+    doc.setFont('helvetica', bold ? 'bold' : 'normal')
+    doc.setFontSize(size)
+    for (const line of doc.splitTextToSize(text, innerW) as string[]) {
+      doc.text(line, pageW / 2, y, { align: 'center' })
+      y += lineH
+    }
+  }
+  const row = (label: string, value: string, size = 8) => {
+    doc.setTextColor(0, 0, 0)
+    doc.setFontSize(size)
+    doc.setFont('helvetica', 'bold')
+    doc.text(label, margin, y)
+    const labelW = doc.getTextWidth(`${label} `) + 0.8
+    doc.setFont('helvetica', 'normal')
+    const valueLines = doc.splitTextToSize(value, innerW - labelW) as string[]
+    doc.text(valueLines[0] ?? '', margin + labelW, y)
+    y += lineH
+    for (let i = 1; i < valueLines.length; i++) {
+      doc.text(valueLines[i], margin, y)
+      y += lineH
+    }
+  }
+  const amountRow = (label: string, value: string, bold = false) => {
+    doc.setTextColor(0, 0, 0)
+    doc.setFont('helvetica', bold ? 'bold' : 'normal')
+    doc.setFontSize(bold ? 9 : 8)
+    doc.text(label, margin, y)
+    doc.text(value, pageW - margin, y, { align: 'right' })
+    y += lineH
+  }
+  const rule = () => {
+    doc.setDrawColor(0, 0, 0)
+    doc.setLineWidth(0.3)
+    doc.line(margin, y, pageW - margin, y)
+    y += lineH * 0.9
+  }
+
+  y += 3
+  const issuer = await resolveIssuer(order)
+  const logoAsset = await loadLogo(issuer.logo)
+  if (logoAsset) {
+    const size = readLogoPrintSize('ticket')
+    const maxW = Math.min(scaleLogoDimension(paperMm === 58 ? 26 : 30, size), innerW)
+    const maxH = scaleLogoDimension(paperMm === 58 ? 9 : 11, size)
+    const { w, h } = fitReceiptLogoMm(logoAsset.naturalW, logoAsset.naturalH, maxW, maxH)
+    doc.addImage(logoAsset.dataUrl, logoAsset.format, (pageW - w) / 2, y, w, h, undefined, 'NONE')
+    y += h + 6
+  }
+  if (issuer.primary) center(issuer.primary, 11, true)
+  if (issuer.secondary) center(issuer.secondary, 7.5)
+  if (issuer.ruc) center(`RUC ${issuer.ruc}`, 8)
+  if (issuer.branchName) center(`Sucursal: ${issuer.branchName}`, 7)
+  if (issuer.address) center(issuer.address, 7)
+  if (issuer.phone) center(`Tel. ${issuer.phone}`, 7)
+  y += 2
+
+  center('ORDEN DE COMPRA', 9.5, true)
+  center(orderNumberText(order), 10, true)
+  if (order.status === 'cancelled') center('*** ANULADA ***', 9, true)
+  if (preview) center('*** VISTA PREVIA ***', 9, true)
+  center('Documento comercial — no es comprobante de pago', 6.5)
+  y += 1
+  rule()
+
+  row('Emisión:', fmtDate(order.issue_date))
+  if (order.expected_date) row('Entrega:', fmtDate(order.expected_date))
+  row('Proveedor:', supplier.name || '—')
+  if (supplier.docNumber) row('Doc.:', supplier.docNumber)
+  row('Moneda:', order.currency === 'USD' ? `USD${order.exchange_rate ? ` · TC ${Number(order.exchange_rate).toFixed(3)}` : ''}` : 'Soles (PEN)')
+  if (order.payment_condition) row('Pago:', order.payment_condition)
+  y += 1
+  rule()
+
+  doc.setFontSize(7.5)
+  doc.setFont('helvetica', 'bold')
+  doc.text('DESCRIPCIÓN', margin, y)
+  doc.text('IMPORTE', pageW - margin, y, { align: 'right' })
+  y += lineH
+  for (const it of items) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7.5)
+    const name = `${it.code ? `[${it.code}] ` : ''}${it.description}`
+    for (const ln of doc.splitTextToSize(name, innerW) as string[]) {
+      doc.text(ln, margin, y)
+      y += lineH - 0.4
+    }
+    doc.text(`${qty(it.quantity)}${it.unit ? ` ${it.unit}` : ''} x ${money(it.unit_cost)}`, margin, y)
+    doc.setFont('helvetica', 'bold')
+    doc.text(money(it.total), pageW - margin, y, { align: 'right' })
+    y += lineH - 0.4 + 0.8
+  }
+  rule()
+  amountRow('Subtotal:', `${sym} ${money(order.subtotal)}`)
+  amountRow('IGV:', `${sym} ${money(order.tax_amount)}`)
+  amountRow('TOTAL:', `${sym} ${money(order.total)}`, true)
+  if (order.currency === 'USD' && order.exchange_rate) {
+    amountRow('Equiv. en soles:', `S/ ${money(Number(order.total) * Number(order.exchange_rate))}`)
+  }
+  const notes = (order.notes ?? '').trim()
+  if (notes) {
+    y += 1
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7.5)
+    for (const ln of doc.splitTextToSize(`Obs.: ${notes}`, innerW) as string[]) {
+      doc.text(ln, margin, y)
+      y += lineH
+    }
+  }
+  y += 1
+  rule()
+  center(`${TUKIFAC_APP_NAME} - Sistema POS`, 6.5)
+
+  const finalHeight = Math.max(y + margin, margin * 4)
+  const mediaBox = doc.getPageInfo(1).pageContext.mediaBox
+  mediaBox.bottomLeftY = mediaBox.topRightY - finalHeight * doc.internal.scaleFactor
+  return doc
+}
+
+/* ───────────────────────────── API pública ───────────────────────────── */
+
+export function generatePurchaseOrderPdf(input: PurchaseOrderPdfInput, format: PurchaseOrderPdfFormat = 'a4'): Promise<jsPDF> {
+  return format === 'a4' ? generateA4(input) : generateTicket(input)
+}
+
+
+
+export async function downloadPurchaseOrderPdf(input: PurchaseOrderPdfInput, format: PurchaseOrderPdfFormat = 'a4'): Promise<void> {
+  const doc = await generatePurchaseOrderPdf(input, format)
+  await downloadJsPdf(doc, purchaseOrderFileName(input.order, format))
 }
 
 /** Abre la orden en el visor de PDF global de la app. */
-export async function openPurchaseOrderPdfViewer(input: PurchaseOrderPdfInput): Promise<void> {
-  const doc = await generatePurchaseOrderPdf(input)
+export async function openPurchaseOrderPdfViewer(input: PurchaseOrderPdfInput, format: PurchaseOrderPdfFormat = 'a4'): Promise<void> {
+  const doc = await generatePurchaseOrderPdf(input, format)
   const url = URL.createObjectURL(doc.output('blob'))
   openPdfViewer({
     url,
-    title: `Orden de compra ${input.order.number}`,
-    fileName: purchaseOrderFileName(input.order),
+    title: `Orden de compra ${orderNumberText(input.order)}${format === 'ticket' ? ' (ticket)' : ''}`,
+    fileName: purchaseOrderFileName(input.order, format),
     onClose: () => URL.revokeObjectURL(url),
   })
 }

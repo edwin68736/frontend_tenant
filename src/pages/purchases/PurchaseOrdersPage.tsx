@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Search, Pencil, Send, Ban, ShoppingCart, Eye, Printer, Download } from 'lucide-react'
-import { contactsService } from '@/services/contacts.service'
-import { openPurchaseOrderPdfViewer, downloadPurchaseOrderPdf } from '@/utils/purchaseOrderPdf'
+import { Plus, Search, Pencil, Send, Ban, ShoppingCart, Eye, FileText, Ticket, Download } from 'lucide-react'
+import {
+  buildPurchaseOrderPdfInput,
+  openPurchaseOrderPdfViewer,
+  downloadPurchaseOrderPdf,
+  type PurchaseOrderPdfFormat,
+} from '@/utils/purchaseOrderPdf'
 import {
   purchaseOrdersService,
   PURCHASE_ORDER_STATUS_LABEL,
@@ -72,24 +76,20 @@ function PurchaseOrdersContent() {
     }
   }
 
-  const printOrder = async (mode: 'view' | 'download') => {
-    if (!detail) return
+  /** PDF de la orden (A4 o ticket): previsualiza en el visor o descarga. Sirve desde la lista (por id) y desde el detalle abierto. */
+  const [pdfBusy, setPdfBusy] = useState<string | null>(null)
+  const runOrderPdf = async (id: number, format: PurchaseOrderPdfFormat, mode: 'view' | 'download') => {
+    if (pdfBusy) return
+    setPdfBusy(`${id}:${format}:${mode}`)
     try {
-      // Datos del proveedor para el documento (la orden solo guarda el id).
-      const c = detail.order.contact_id ? await contactsService.get(detail.order.contact_id).catch(() => null) : null
-      const input = {
-        order: detail.order,
-        items: detail.items,
-        supplier: {
-          name: c?.business_name || detail.order.contact_name || '',
-          docNumber: c?.doc_number,
-          address: c?.address,
-        },
-      }
-      if (mode === 'view') await openPurchaseOrderPdfViewer(input)
-      else await downloadPurchaseOrderPdf(input)
+      const d = detail && detail.order.id === id ? detail : await purchaseOrdersService.get(id)
+      const input = await buildPurchaseOrderPdfInput(d)
+      if (mode === 'view') await openPurchaseOrderPdfViewer(input, format)
+      else await downloadPurchaseOrderPdf(input, format)
     } catch {
       toast.error('No se pudo generar el PDF de la orden')
+    } finally {
+      setPdfBusy(null)
     }
   }
 
@@ -205,6 +205,24 @@ function PurchaseOrdersContent() {
                       >
                         <Eye size={15} />
                       </button>
+                      <button
+                        type="button"
+                        title="Previsualizar PDF (A4)"
+                        disabled={pdfBusy != null}
+                        onClick={() => void runOrderPdf(o.id, 'a4', 'view')}
+                        className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg disabled:opacity-50"
+                      >
+                        <FileText size={15} />
+                      </button>
+                      <button
+                        type="button"
+                        title="Previsualizar ticket"
+                        disabled={pdfBusy != null}
+                        onClick={() => void runOrderPdf(o.id, 'ticket', 'view')}
+                        className="p-1.5 text-gray-500 hover:bg-gray-100 rounded-lg disabled:opacity-50"
+                      >
+                        <Ticket size={15} />
+                      </button>
                       {canCreate && open(o) && (
                         <button
                           type="button"
@@ -273,13 +291,25 @@ function PurchaseOrdersContent() {
               <p className="font-bold text-gray-800 text-base">Total {currencySymbol(detail.order.currency)} {Number(detail.order.total).toFixed(2)}</p>
             </div>
             {detail.order.notes && <p className="text-sm text-gray-600 whitespace-pre-wrap">{detail.order.notes}</p>}
-            <div className="flex flex-wrap gap-2 justify-end pt-2 border-t border-gray-100">
-              <button type="button" onClick={() => void printOrder('view')} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-sm hover:bg-gray-50">
-                <Printer size={14} /> Imprimir / PDF
-              </button>
-              <button type="button" onClick={() => void printOrder('download')} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-sm hover:bg-gray-50">
-                <Download size={14} /> Descargar
-              </button>
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-gray-100">
+              {([
+                ['a4', 'view', 'Previsualizar PDF A4', FileText],
+                ['ticket', 'view', 'Previsualizar ticket', Ticket],
+                ['a4', 'download', 'Descargar PDF A4', Download],
+                ['ticket', 'download', 'Descargar ticket', Download],
+              ] as const).map(([format, mode, label, Icon]) => (
+                <button
+                  key={`${format}-${mode}`}
+                  type="button"
+                  onClick={() => void runOrderPdf(detail.order.id, format, mode)}
+                  disabled={pdfBusy != null}
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  <Icon size={14} /> {pdfBusy === `${detail.order.id}:${format}:${mode}` ? 'Generando...' : label}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2 justify-end">
               {canCreate && detail.order.status === 'draft' && (
                 <button type="button" onClick={() => void markSent(detail.order)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-sm hover:bg-gray-50">
                   <Send size={14} /> Marcar como enviada

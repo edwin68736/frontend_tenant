@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Trash2, ArrowLeft, UserPlus } from 'lucide-react'
+import { Plus, Trash2, ArrowLeft, UserPlus, PackagePlus, Loader2 } from 'lucide-react'
 import {
   purchaseOrdersService,
+  type PurchaseOrder,
   type PurchaseOrderItem,
 } from '@/services/purchaseOrders.service'
 import { contactsService, type Contact } from '@/services/contacts.service'
@@ -14,6 +15,16 @@ import { Modal } from '@/components/ui/Modal'
 import { UnitQuantityInput } from '@/components/ui/UnitQuantityInput'
 import { ProductPickerModal } from '@/components/sales/ProductPickerModal'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
+import { QuickProductCreateModal } from '@/components/products/QuickProductCreateModal'
+import { PurchasePreviewModal } from '@/components/purchases/PurchasePreviewModal'
+import { SearchableSelect } from '@/components/SearchableSelect'
+import { useCatalogAccess } from '@/hooks/useCatalogAccess'
+import { formatTipoDocIdentidadDisplay } from '@/constants/sunat'
+import {
+  generatePurchaseOrderPdf,
+  loadPurchaseOrderPdfSupplier,
+  type PurchaseOrderPdfInput,
+} from '@/utils/purchaseOrderPdf'
 import { useBranchCheckoutSeries } from '@/contexts/BranchCheckoutSeriesContext'
 import { useBranch } from '@/contexts/BranchContext'
 import { useExchangeRate } from '@/hooks/useExchangeRate'
@@ -54,6 +65,14 @@ function PurchaseOrderFormContent() {
   const [loading, setLoading] = useState(editingId != null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [addSupplierOpen, setAddSupplierOpen] = useState(false)
+  /** Texto tecleado en el buscador de proveedor cuando se pulsa «Agregar»: precarga el RUC/DNI o el nombre en el alta rápida. */
+  const [newSupplierQuery, setNewSupplierQuery] = useState('')
+  const [loadingSuppliers, setLoadingSuppliers] = useState(true)
+  const [addQuickProductOpen, setAddQuickProductOpen] = useState(false)
+  // Crear un producto es catálogo global (products.manage_global): sin él no se ofrece el alta rápida.
+  const { canCreateGlobal: canCreateProduct } = useCatalogAccess()
+  const [previewBusy, setPreviewBusy] = useState(false)
+  const [previewInput, setPreviewInput] = useState<PurchaseOrderPdfInput | null>(null)
   const [status, setStatus] = useState('draft')
   usePendingWork('orden de compra en edición', items.length > 0)
 
@@ -78,7 +97,18 @@ function PurchaseOrderFormContent() {
       .list('', 'supplier')
       .then(s => setSuppliers(Array.isArray(s) ? s : []))
       .catch(() => toast.error('Error al cargar proveedores'))
+      .finally(() => setLoadingSuppliers(false))
   }, [])
+
+  /** El documento va dentro del label: SearchableSelect filtra por label, así que se busca por nombre o RUC/DNI. */
+  const supplierOptions = useMemo(
+    () =>
+      suppliers.map(sup => {
+        const doc = formatTipoDocIdentidadDisplay(sup.doc_type, sup.doc_number)
+        return { value: sup.id, label: `${sup.business_name}${doc ? ` — ${doc}` : ''}` }
+      }),
+    [suppliers],
+  )
 
   // Series de orden de compra de la sucursal activa (solo al crear; al editar la serie no cambia).
   useEffect(() => {
@@ -145,6 +175,11 @@ function PurchaseOrderFormContent() {
       ]
     })
     toast.success(`"${p.name}" agregado`)
+  }
+
+  const openQuickProduct = () => {
+    setPickerOpen(false)
+    setAddQuickProductOpen(true)
   }
 
   const updateItem = (idx: number, patch: Partial<PurchaseOrderItem>) =>
@@ -222,6 +257,42 @@ function PurchaseOrderFormContent() {
     }
   }
 
+  /** Vista previa del PDF con lo digitado (modal Ticket / A4, como en compras y ventas), sin guardar nada. */
+  const previewOrder = async () => {
+    if (items.length === 0) return toast.error('Agregue al menos un producto para previsualizar')
+    setPreviewBusy(true)
+    try {
+      const order: PurchaseOrder = {
+        id: 0,
+        branch_id: activeBranchId || 0,
+        contact_id: contactId || null,
+        contact_name: suppliers.find(x => x.id === contactId)?.business_name ?? '',
+        series_id: seriesId,
+        series: series.find(x => x.id === seriesId)?.series ?? '',
+        correlative: 0,
+        number: '',
+        issue_date: issueDate,
+        expected_date: expectedDate || null,
+        currency,
+        exchange_rate: currency === 'USD' && rateNum > 0 ? rateNum : null,
+        payment_condition: paymentCondition.trim(),
+        subtotal: totals.subtotal,
+        tax_amount: totals.igv,
+        total: totals.total,
+        price_includes_igv: priceIncludesIgv,
+        notes: notes.trim(),
+        status: 'draft',
+        created_at: new Date().toISOString(),
+      }
+      const lines = items.map(it => ({ ...it, total: calc(it).total }))
+      setPreviewInput({ order, items: lines, supplier: await loadPurchaseOrderPdfSupplier(order), preview: true })
+    } catch {
+      toast.error('No se pudo generar la previsualización')
+    } finally {
+      setPreviewBusy(false)
+    }
+  }
+
   if (loading) {
     return <div className="flex justify-center py-16"><div className="w-6 h-6 border-2 border-gray-300 border-t-transparent rounded-full animate-spin" /></div>
   }
@@ -242,17 +313,43 @@ function PurchaseOrderFormContent() {
         </header>
 
         <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div className="sm:col-span-2 lg:col-span-3">
+          <div className="sm:col-span-2 lg:col-span-1">
             <label className="block text-xs font-medium text-gray-600 mb-1">Proveedor *</label>
             <div className="flex gap-2 items-stretch">
-              <select className="flex-1 min-w-0 border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white" value={contactId || ''} onChange={e => setContactId(Number(e.target.value))}>
-                <option value="">Seleccionar proveedor...</option>
-                {suppliers.map(s => <option key={s.id} value={s.id}>{s.business_name}</option>)}
-              </select>
-              <button type="button" onClick={() => setAddSupplierOpen(true)} className="shrink-0 inline-flex items-center justify-center rounded-xl border border-gray-200 px-3 py-2 text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] min-h-[42px]" title="Nuevo proveedor" aria-label="Nuevo proveedor">
+              <div className="flex-1 min-w-0">
+                <SearchableSelect
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white text-left flex items-center justify-between gap-2 min-h-[42px]"
+                  value={contactId || ''}
+                  disabled={loadingSuppliers}
+                  onChange={v => setContactId(v == null || String(v) === '' ? 0 : Number(v))}
+                  options={supplierOptions}
+                  placeholder="Seleccionar proveedor..."
+                  searchable
+                  searchPlaceholder="Buscar por nombre o RUC/DNI..."
+                  allowClear
+                  onCreateNew={q => {
+                    setNewSupplierQuery(q)
+                    setAddSupplierOpen(true)
+                  }}
+                  createNewLabel={q => `Agregar proveedor "${q}"`}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setNewSupplierQuery('')
+                  setAddSupplierOpen(true)
+                }}
+                className="shrink-0 inline-flex items-center justify-center rounded-xl border border-gray-200 px-3 py-2 text-[rgb(var(--p600))] hover:bg-[rgb(var(--p50))] min-h-[42px]"
+                title="Nuevo proveedor"
+                aria-label="Nuevo proveedor"
+              >
                 <UserPlus size={18} />
               </button>
             </div>
+            {suppliers.length === 0 && !loadingSuppliers && (
+              <p className="text-xs text-amber-700 mt-1">No hay proveedores registrados. Use el botón + para crear uno aquí.</p>
+            )}
           </div>
 
           <div>
@@ -294,7 +391,7 @@ function PurchaseOrderFormContent() {
               {rateError && !rate && <p className="text-xs text-amber-700 mt-0.5">{rateError} Ingréselo manualmente.</p>}
             </div>
           )}
-          <div className={currency === 'USD' ? '' : 'sm:col-span-2'}>
+          <div className={currency === 'USD' ? 'sm:col-span-2 lg:col-span-2' : 'sm:col-span-2'}>
             <label className="block text-xs font-medium text-gray-600 mb-1">Condición de pago (referencia)</label>
             <input className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" placeholder="Ej. Crédito 30 días" value={paymentCondition} onChange={e => setPaymentCondition(e.target.value)} maxLength={120} />
           </div>
@@ -309,9 +406,14 @@ function PurchaseOrderFormContent() {
 
         <section className="border-t border-gray-100 pt-5">
           <div className="flex flex-wrap items-center gap-2 mb-3">
-            <button type="button" onClick={() => setPickerOpen(true)} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[rgb(var(--p600))] text-white text-sm font-medium hover:opacity-90">
+            <button type="button" onClick={() => setPickerOpen(true)} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[rgb(var(--p600))] text-white text-sm font-medium hover:opacity-90 shrink-0">
               <Plus size={14} /> Agregar producto
             </button>
+            {canCreateProduct && (
+              <button type="button" onClick={openQuickProduct} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-gray-200 text-[rgb(var(--p600))] text-sm font-medium hover:bg-[rgb(var(--p50))] shrink-0">
+                <PackagePlus size={14} /> Nuevo producto
+              </button>
+            )}
             <p className="text-xs text-gray-500 ml-auto">Total de ítems: {items.length}</p>
           </div>
           <div className="overflow-x-auto rounded-xl border border-gray-200">
@@ -365,17 +467,72 @@ function PurchaseOrderFormContent() {
           </div>
         </section>
 
-        <div className="flex flex-col-reverse sm:flex-row gap-2 pt-2 border-t border-gray-100">
-          <Link to="/purchases/orders" className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 text-center">Cancelar</Link>
-          <button type="button" onClick={save} disabled={saving} className="flex-1 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50 hover:opacity-90">
+        <div className="grid grid-cols-1 gap-2 pt-4 border-t border-gray-100 sm:grid-cols-3 md:flex md:flex-row md:justify-end">
+          <Link
+            to="/purchases/orders"
+            className="order-3 sm:order-1 md:order-none w-full md:w-auto inline-flex items-center justify-center px-3 md:px-5 py-2.5 border border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 md:min-w-[7.5rem]"
+          >
+            Cancelar
+          </Link>
+          <button
+            type="button"
+            onClick={() => void previewOrder()}
+            disabled={previewBusy || saving || items.length === 0}
+            className="order-2 w-full md:w-auto inline-flex items-center justify-center gap-2 px-3 md:px-5 py-2.5 rounded-xl border border-amber-300 bg-amber-50 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50 md:min-w-[9rem]"
+          >
+            {previewBusy ? <Loader2 size={16} className="animate-spin" /> : null}
+            Previsualizar
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            className="order-1 sm:order-3 md:order-none w-full md:w-auto inline-flex items-center justify-center px-3 md:px-6 py-2.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm font-medium disabled:opacity-50 hover:opacity-90 md:min-w-[9rem]"
+          >
             {saving ? 'Guardando...' : editingId != null ? 'Guardar cambios' : 'Crear orden'}
           </button>
         </div>
       </div>
 
-      <QuickContactCreateModal open={addSupplierOpen} onClose={() => setAddSupplierOpen(false)} contactType="supplier" defaultDocType="6" onCreated={c => { setSuppliers(p => [...p, c]); setContactId(c.id) }} />
-      <Modal open={pickerOpen} onClose={() => setPickerOpen(false)} contentClassName="max-w-2xl">
-        <ProductPickerModal variant="purchase" onAdd={p => addProduct(p)} onClose={() => setPickerOpen(false)} />
+      <PurchasePreviewModal
+        open={previewInput != null}
+        onClose={() => setPreviewInput(null)}
+        input={previewInput}
+        generate={generatePurchaseOrderPdf}
+        title="Previsualización de la orden de compra"
+        subtitle="Vista previa antes de crear la orden"
+        notice="Documento de previsualización con marca de agua — la orden aún no está creada."
+      />
+
+      <QuickContactCreateModal
+        open={addSupplierOpen}
+        onClose={() => {
+          setAddSupplierOpen(false)
+          setNewSupplierQuery('')
+        }}
+        contactType="supplier"
+        defaultDocType={/^\d{8}$/.test(newSupplierQuery.trim()) ? '1' : '6'}
+        defaultDocNumber={/^\d{8}$|^\d{11}$/.test(newSupplierQuery.trim()) ? newSupplierQuery.trim() : undefined}
+        defaultBusinessName={newSupplierQuery.trim() && !/^\d{8}$|^\d{11}$/.test(newSupplierQuery.trim()) ? newSupplierQuery.trim() : undefined}
+        onCreated={c => {
+          setSuppliers(p => [...p, c])
+          setContactId(c.id)
+        }}
+      />
+
+      <QuickProductCreateModal
+        open={addQuickProductOpen}
+        onClose={() => setAddQuickProductOpen(false)}
+        onCreated={product => addProduct(product)}
+      />
+
+      <Modal open={pickerOpen} onClose={() => setPickerOpen(false)} contentClassName="max-w-5xl w-[min(100%,64rem)]">
+        <ProductPickerModal
+          variant="purchase"
+          onAdd={p => addProduct(p)}
+          onClose={() => setPickerOpen(false)}
+          onNewProduct={canCreateProduct ? openQuickProduct : undefined}
+        />
       </Modal>
     </div>
   )
