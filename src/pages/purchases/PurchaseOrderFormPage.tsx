@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Plus, Trash2, ArrowLeft, UserPlus, PackagePlus, Loader2 } from 'lucide-react'
 import {
@@ -17,6 +17,7 @@ import { ProductPickerModal } from '@/components/sales/ProductPickerModal'
 import { QuickContactCreateModal } from '@/components/contacts/QuickContactCreateModal'
 import { QuickProductCreateModal } from '@/components/products/QuickProductCreateModal'
 import { PurchasePreviewModal } from '@/components/purchases/PurchasePreviewModal'
+import { PurchaseOrderDoneModal } from '@/components/purchases/PurchaseOrderDoneModal'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { useCatalogAccess } from '@/hooks/useCatalogAccess'
 import { formatTipoDocIdentidadDisplay } from '@/constants/sunat'
@@ -34,7 +35,7 @@ import { getTodayPeru } from '@/utils/datesPeru'
 import { usePendingWork } from '@/lib/branchScope/pendingWork'
 import { currencySymbol } from './PurchaseOrdersPage'
 
-export default function PurchaseOrderFormPage() {
+function PurchaseOrderFormInner() {
   return (
     <RequireModule moduleKey="purchases">
       <PurchaseOrderFormContent />
@@ -62,6 +63,8 @@ function PurchaseOrderFormContent() {
   const [priceIncludesIgv, setPriceIncludesIgv] = useState(false)
   const [items, setItems] = useState<PurchaseOrderItem[]>([])
   const [saving, setSaving] = useState(false)
+  /** Orden recién guardada: abre el modal con el PDF y las opciones de envío (como cotizaciones y ventas). */
+  const [done, setDone] = useState<{ order: PurchaseOrder; items: PurchaseOrderItem[]; edited: boolean } | null>(null)
   const [loading, setLoading] = useState(editingId != null)
   const [pickerOpen, setPickerOpen] = useState(false)
   const [addSupplierOpen, setAddSupplierOpen] = useState(false)
@@ -74,7 +77,7 @@ function PurchaseOrderFormContent() {
   const [previewBusy, setPreviewBusy] = useState(false)
   const [previewInput, setPreviewInput] = useState<PurchaseOrderPdfInput | null>(null)
   const [status, setStatus] = useState('draft')
-  usePendingWork('orden de compra en edición', items.length > 0)
+  usePendingWork('orden de compra en edición', items.length > 0 && !done)
 
   const { sunat: cachedSunat } = useBranchCheckoutSeries()
   const [sunat, setSunat] = useState<SunatConfig | null>(null)
@@ -246,10 +249,15 @@ function PurchaseOrderFormContent() {
         notes: notes.trim() || undefined,
         items: items.map(({ id: _id, subtotal: _s, tax_amount: _t, total: _tt, tax_rate: _r, ...rest }) => rest),
       }
-      if (editingId != null) await purchaseOrdersService.update(editingId, body)
-      else await purchaseOrdersService.create(body)
+      const saved = editingId != null ? await purchaseOrdersService.update(editingId, body) : await purchaseOrdersService.create(body)
       toast.success(editingId != null ? 'Orden actualizada' : 'Orden de compra creada')
-      navigate('/purchases/orders', { state: { created: true } })
+      // Ya está guardada: si no se puede armar el modal con su detalle, se vuelve a la lista como antes.
+      try {
+        const d = await purchaseOrdersService.get(saved.id)
+        setDone({ order: d.order, items: d.items, edited: editingId != null })
+      } catch {
+        navigate('/purchases/orders', { state: { created: true } })
+      }
     } catch (e: unknown) {
       toast.error((e as { response?: { data?: { error?: string } } }).response?.data?.error ?? 'Error al guardar la orden')
     } finally {
@@ -520,6 +528,17 @@ function PurchaseOrderFormContent() {
         }}
       />
 
+      <PurchaseOrderDoneModal
+        open={done != null}
+        detail={done}
+        edited={done?.edited}
+        onGoToList={() => navigate('/purchases/orders', { state: { created: true } })}
+        onNewOrder={() => {
+          setDone(null)
+          navigate('/purchases/orders/new')
+        }}
+      />
+
       <QuickProductCreateModal
         open={addQuickProductOpen}
         onClose={() => setAddQuickProductOpen(false)}
@@ -536,4 +555,10 @@ function PurchaseOrderFormContent() {
       </Modal>
     </div>
   )
+}
+
+/** `location.key` cambia en cada navegación (incluso a la misma ruta): "Nueva orden" remonta el formulario vacío. */
+export default function PurchaseOrderFormPage() {
+  const location = useLocation()
+  return <PurchaseOrderFormInner key={location.key} />
 }

@@ -130,7 +130,7 @@ export async function printTicketPdfDocument(
   await printTicketPngBlob(blob, paperMm)
 }
 
-function printPdfBlobInIframe(blob: Blob): Promise<void> {
+export function printPdfBlobInIframe(blob: Blob): Promise<void> {
   const url = URL.createObjectURL(blob)
   return new Promise<void>((resolve, reject) => {
     const iframe = document.createElement('iframe')
