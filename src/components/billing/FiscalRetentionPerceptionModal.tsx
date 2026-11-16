@@ -234,6 +234,23 @@ export function FiscalRetentionPerceptionModal({ mode, open, onClose, onCreated,
       }
     }
 
+    const emisionDia = fechaEmision.slice(0, 10)
+    if (emisionDia > toDateTimeLocalPeru().slice(0, 10)) {
+      toast.error('La fecha de emisión no puede ser posterior a hoy')
+      return
+    }
+    const posterior = details.find((d) => d.fecha_emision.slice(0, 10) > emisionDia)
+    if (posterior) {
+      toast.error(`El comprobante ${posterior.num_doc} tiene fecha ${posterior.fecha_emision.slice(0, 10)}, posterior a la emisión (${emisionDia}). Corrija la fecha de emisión o la del comprobante`)
+      return
+    }
+    for (const d of details) {
+      if (!/^[A-Za-z0-9]{1,4}-\d{1,8}$/.test(d.num_doc.trim())) {
+        toast.error(`El número "${d.num_doc}" no tiene el formato SERIE-CORRELATIVO (ej. F001-00000123)`)
+        return
+      }
+    }
+
     setSending(true)
     const proveedor = {
       tipo_doc: toTipoDocIdentidadCode(selectedContact.doc_type ?? '6'),
@@ -365,6 +382,7 @@ export function FiscalRetentionPerceptionModal({ mode, open, onClose, onCreated,
               <label className="text-xs text-gray-500 block mb-1">Fecha emisión</label>
               <input
                 type="datetime-local"
+                max={toDateTimeLocalPeru()}
                 value={fechaEmision.slice(0, 16) || toDateTimeLocalPeru()}
                 onChange={(e) => setFechaEmision(fromDateTimeLocalToISOPeru(e.target.value))}
                 className="w-full border rounded-lg px-2 py-1.5"

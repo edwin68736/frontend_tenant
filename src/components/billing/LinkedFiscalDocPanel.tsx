@@ -6,7 +6,7 @@ import { SunatResponseDetail } from '@/components/billing/SunatResponseDetail'
 import { ReversionCreateModal } from '@/components/billing/ReversionCreateModal'
 import { FiscalDocumentTimeline, type FiscalTimelineOrigin } from '@/components/billing/FiscalDocumentTimeline'
 import { DocumentViewerModal } from '@/components/ui/DocumentViewerModal'
-import { createLocalReceiptPdfObjectUrl, downloadLocalReceiptPdf } from '@/utils/localReceiptPdf'
+import { createFiscalAuxPdfObjectUrl, downloadFiscalAuxPdf, fetchFiscalAuxPrintData } from '@/utils/fiscalAuxPdf'
 import {
   billingStatusColor,
   billingStatusLabel,
@@ -86,7 +86,7 @@ export function LinkedFiscalDocPanel({ doc, onStatusRefresh, origin, showTimelin
     setPdfOpen(true)
     setPdfUrl(null)
     try {
-      const { url, fileName } = await createLocalReceiptPdfObjectUrl(saleId, 'a4')
+      const { url, fileName } = await createFiscalAuxPdfObjectUrl(await fetchFiscalAuxPrintData(doc.doc_kind, doc.id))
       setPdfUrl(url)
       setPdfName(fileName)
     } catch (e: unknown) {
@@ -156,7 +156,7 @@ export function LinkedFiscalDocPanel({ doc, onStatusRefresh, origin, showTimelin
               disabled={downloading === 'pdf'}
               onClick={() => {
                 setDownloading('pdf')
-                downloadLocalReceiptPdf(saleId!, 'a4')
+                fetchFiscalAuxPrintData(doc.doc_kind, doc.id).then(downloadFiscalAuxPdf)
                   .catch((e) => toast.error(e?.message ?? 'Error'))
                   .finally(() => setDownloading(null))
               }}

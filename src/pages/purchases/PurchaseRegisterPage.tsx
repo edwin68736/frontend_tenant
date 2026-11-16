@@ -675,6 +675,7 @@ function PurchaseRegisterContent() {
             <label className="block text-xs font-medium text-gray-600 mb-1">Fecha emisión</label>
             <input
               type="date"
+              max={getTodayPeru()}
               className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
               value={form.issue_date ?? ''}
               onChange={e => setForm(f => ({ ...f, issue_date: e.target.value }))}
