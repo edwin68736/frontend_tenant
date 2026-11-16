@@ -3,6 +3,7 @@ import axios from 'axios'
 import { Search } from 'lucide-react'
 import { FileDown, FileSpreadsheet } from 'lucide-react'
 import { toast } from 'sonner'
+import { usersService, type TenantUser } from '@/services/users.service'
 import { salesService, type Sale, type SaleListSummary, type SaleListCurrencySummary } from '@/services/sales.service'
 import { formatSaleMoney, saleCurrencySymbol } from '@/utils/formatMoney'
 import { companyService } from '@/services/company.service'
@@ -326,7 +327,13 @@ export default function SalesReportPage() {
     payment_method: '',
     payment_mode: 'all' as PaymentModeFilter,
     sale_status: 'all' as SaleStatusFilter,
+    user_id: '' as number | '',
+    seller_user_id: '' as number | '',
   })
+  const [filterUsers, setFilterUsers] = useState<TenantUser[]>([])
+  useEffect(() => {
+    usersService.listUsers().then((u) => setFilterUsers(Array.isArray(u) ? u : [])).catch(() => setFilterUsers([]))
+  }, [])
 
   /** Solo filtros de búsqueda (sin paginación). */
   const buildFilterParams = (customer: string = searchCustomer): Parameters<typeof salesService.list>[0] => {
@@ -343,6 +350,8 @@ export default function SalesReportPage() {
     if (filters.doc_type_group === 'boleta') params.sunat_code = '03'
     if (filters.payment_method) params.payment_method = filters.payment_method
     if (filters.payment_mode !== 'all') params.payment_mode = filters.payment_mode
+    if (filters.user_id) params.user_id = Number(filters.user_id)
+    if (filters.seller_user_id) params.seller_user_id = Number(filters.seller_user_id)
     if (customer.trim()) params.q = customer.trim()
     if (filters.sale_status === 'active') params.sale_status = 'active'
     if (filters.sale_status === 'cancelled') params.sale_status = 'cancelled'
@@ -425,7 +434,7 @@ export default function SalesReportPage() {
   useEffect(() => {
     void load()
     return () => listAbortRef.current?.abort()
-  }, [filters.from, filters.to, filters.branch_id, filters.doc_type_group, filters.payment_method, filters.payment_mode, filters.sale_status, debouncedCustomer, page, perPage])
+  }, [filters.from, filters.to, filters.branch_id, filters.doc_type_group, filters.payment_method, filters.payment_mode, filters.sale_status, filters.user_id, filters.seller_user_id, debouncedCustomer, page, perPage])
 
   const stats = useMemo(() => {
     const s = summary
@@ -520,6 +529,8 @@ export default function SalesReportPage() {
           methodName ? `Método de pago: ${methodName}` : '',
           filters.payment_mode === 'mixed' ? 'Solo pago mixto' : filters.payment_mode === 'single' ? 'Solo un método' : '',
           filters.sale_status === 'active' ? 'Solo no anuladas' : filters.sale_status === 'cancelled' ? 'Solo anuladas' : '',
+          filters.user_id ? `Registrado por: ${filterUsers.find((u) => u.id === Number(filters.user_id))?.name ?? filters.user_id}` : '',
+          filters.seller_user_id ? `Vendedor: ${filterUsers.find((u) => u.id === Number(filters.seller_user_id))?.name ?? filters.seller_user_id}` : '',
           searchCustomer.trim() ? `Búsqueda: "${searchCustomer.trim()}"` : '',
         ]
           .filter(Boolean)
@@ -653,6 +664,28 @@ export default function SalesReportPage() {
               <option value="all">Todos</option>
               <option value="mixed">Solo pago mixto</option>
               <option value="single">Solo un método</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Registrado por</label>
+            <select
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              value={filters.user_id}
+              onChange={e => { setFilters(f => ({ ...f, user_id: e.target.value ? Number(e.target.value) : '' })); setPage(1) }}
+            >
+              <option value="">Todos</option>
+              {filterUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Vendedor</label>
+            <select
+              className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+              value={filters.seller_user_id}
+              onChange={e => { setFilters(f => ({ ...f, seller_user_id: e.target.value ? Number(e.target.value) : '' })); setPage(1) }}
+            >
+              <option value="">Todos</option>
+              {filterUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
           </div>
           <div>

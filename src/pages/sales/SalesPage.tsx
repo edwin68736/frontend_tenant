@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Search, Eye, X, Plus, FileText, ExternalLink, RefreshCw, Download, Ticket, FileDown, ChevronDown, Ban, Truck } from 'lucide-react'
+import { usersService, type TenantUser } from '@/services/users.service'
 import { salesService, type Sale, type SaleDetail } from '@/services/sales.service'
 import { PrintDocButton } from '@/components/print/PrintDocButton'
 import { configuredTicketPaperMm } from '@/utils/receiptTicketPaper'
@@ -112,6 +113,12 @@ function SalesContent() {
   // Anulación de nota de venta: exige motivo, igual que la baja SUNAT de un electrónico.
   /** Solo notas de venta anuladas (sale_status=cancelled). Apagado = anuladas y no anuladas juntas. */
   const [onlyCancelled, setOnlyCancelled] = useState(false)
+  const [userFilter, setUserFilter] = useState<number | ''>('')
+  const [sellerFilter, setSellerFilter] = useState<number | ''>('')
+  const [filterUsers, setFilterUsers] = useState<TenantUser[]>([])
+  useEffect(() => {
+    usersService.listUsers().then((u) => setFilterUsers(Array.isArray(u) ? u : [])).catch(() => setFilterUsers([]))
+  }, [])
   const [cancelTarget, setCancelTarget] = useState<Sale | null>(null)
   const [cancelReason, setCancelReason] = useState('')
   const [cancelling, setCancelling] = useState(false)
@@ -159,6 +166,8 @@ function SalesContent() {
           to: dateRange.to || undefined,
           sunat_code: '00',
           sale_status: onlyCancelled ? 'cancelled' : undefined,
+          user_id: userFilter || undefined,
+          seller_user_id: sellerFilter || undefined,
           page,
           per_page: perPage,
           // Esta pantalla solo muestra filas: no pide los totales del filtro completo.
@@ -182,7 +191,7 @@ function SalesContent() {
   useEffect(() => {
     void load()
     return () => listAbortRef.current?.abort()
-  }, [debouncedQ, dateRange.from, dateRange.to, onlyCancelled, page, perPage])
+  }, [debouncedQ, dateRange.from, dateRange.to, onlyCancelled, userFilter, sellerFilter, page, perPage])
 
   useEffect(() => {
     if (!waMenu) return
@@ -540,6 +549,28 @@ function SalesContent() {
               setPage(1)
             }}
           />
+          <select
+            className="border border-gray-200 rounded-xl px-3 py-2 text-sm"
+            value={userFilter}
+            onChange={(e) => { setUserFilter(e.target.value ? Number(e.target.value) : ''); setPage(1) }}
+            title="Usuario que registró la venta"
+          >
+            <option value="">Registrado por: todos</option>
+            {filterUsers.map((u) => (
+              <option key={u.id} value={u.id}>{u.name}</option>
+            ))}
+          </select>
+          <select
+            className="border border-gray-200 rounded-xl px-3 py-2 text-sm"
+            value={sellerFilter}
+            onChange={(e) => { setSellerFilter(e.target.value ? Number(e.target.value) : ''); setPage(1) }}
+            title="Vendedor de la venta"
+          >
+            <option value="">Vendedor: todos</option>
+            {filterUsers.map((u) => (
+              <option key={u.id} value={u.id}>{u.name}</option>
+            ))}
+          </select>
           <OnlyCancelledSwitch
             checked={onlyCancelled}
             onChange={(v) => {

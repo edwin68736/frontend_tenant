@@ -497,6 +497,10 @@ export const salesService = {
     billing_status?: string
     payment_method?: string
     payment_mode?: string
+    /** Usuario que registró la venta. */
+    user_id?: number
+    /** Vendedor atribuido a la venta (si no tiene uno explícito, quien la registró). */
+    seller_user_id?: number
     sunat_code?: string
     contact_id?: number
     /** Número = esa sucursal; 'all' = todas (solo quien puede cambiar de sucursal; el resto queda en la suya). Sin valor = sucursal activa. */
