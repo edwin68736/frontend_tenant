@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Package, Upload, Download, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Barcode, Trash2, CheckCircle, Eye, EyeOff, Loader2, Tag, SlidersHorizontal, X, Store } from 'lucide-react'
+import { Plus, Pencil, Search, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Package, Upload, Download, Layers, RefreshCw, FileSpreadsheet, ScanBarcode, Barcode, Tags, Trash2, CheckCircle, Eye, EyeOff, Loader2, Tag, SlidersHorizontal, X, Store } from 'lucide-react'
 import { ProductImportModal } from '@/components/products/ProductImportModal'
 import { ProductPriceUpdateModal } from '@/components/products/ProductPriceUpdateModal'
 import { BulkDeleteProductsPinModal } from '@/components/products/BulkDeleteProductsPinModal'
@@ -43,6 +43,7 @@ import {
 } from '@/utils/productExpiry'
 import { exportCatalogProductsToExcel, type CatalogExportRow } from '@/utils/catalogProductImport'
 import { exportProductBarcodesToPdf } from '@/utils/productBarcodePdf'
+import { ProductLabelsModal } from '@/components/products/ProductLabelsModal'
 
 import {
   PRODUCT_IGV_AFFECTATION_OPTIONS,
@@ -970,6 +971,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
     })
   }
 
+  const [labelsModalOpen, setLabelsModalOpen] = useState(false)
+
   const handlePrintBarcodes = async () => {
     const selected = products.filter((p) => selectedIds.has(p.id))
     if (selected.length === 0) return
@@ -1221,6 +1224,13 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               </button>}
               <button
                 type="button"
+                onClick={() => setLabelsModalOpen(true)}
+                className="touch-target sm:min-h-0 flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50"
+              >
+                <Tags size={15} /> Etiquetas
+              </button>
+              <button
+                type="button"
                 onClick={() => setShowModifierGroups(true)}
                 className="touch-target sm:min-h-0 flex items-center gap-1.5 px-4 py-2 border border-[rgb(var(--p300))] text-[rgb(var(--p700))] rounded-xl text-sm font-medium hover:bg-[rgb(var(--p50))]"
               >
@@ -1367,6 +1377,13 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
             >
               <Tag size={15} /> Actualizar precio
             </button>}
+            <button
+              type="button"
+              onClick={() => { setFiltersModalOpen(false); setLabelsModalOpen(true) }}
+              className="touch-target flex items-center justify-center gap-1.5 px-3 py-2.5 border border-gray-200 rounded-xl text-sm font-medium hover:bg-gray-50"
+            >
+              <Tags size={15} /> Etiquetas
+            </button>
             <button
               type="button"
               onClick={() => { setFiltersModalOpen(false); setShowModifierGroups(true) }}
@@ -2818,6 +2835,8 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         variant="danger"
         loading={deletingProduct}
       />
+
+      <ProductLabelsModal open={labelsModalOpen} onClose={() => setLabelsModalOpen(false)} />
 
       <BarcodeScannerModal
         open={codeBarcodeScan.cameraScannerOpen}
