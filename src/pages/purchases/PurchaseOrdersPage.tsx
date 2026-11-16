@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Plus, Search, Pencil, Send, Ban, ShoppingCart, Eye, FileText, Ticket, Download } from 'lucide-react'
+import { Plus, Search, Pencil, Send, Ban, ShoppingCart, Eye, FileText, Ticket, Download, Mail } from 'lucide-react'
+import { WhatsAppGlyph } from '@/components/icons/WhatsAppGlyph'
+import { getCompanyConfigCache } from '@/lib/companyConfig/store'
+import { sendPurchaseOrder, type PurchaseOrderChannel } from '@/utils/purchaseOrderShare'
 import {
   buildPurchaseOrderPdfInput,
   openPurchaseOrderPdfViewer,
@@ -88,6 +91,21 @@ function PurchaseOrdersContent() {
       else await downloadPurchaseOrderPdf(input, format)
     } catch {
       toast.error('No se pudo generar el PDF de la orden')
+    } finally {
+      setPdfBusy(null)
+    }
+  }
+
+  /** Envía la PDF de la orden al proveedor por WhatsApp o correo (con selector de compartir si el equipo lo tiene). */
+  const sendToSupplier = async (channel: PurchaseOrderChannel) => {
+    if (!detail || pdfBusy) return
+    setPdfBusy(`${detail.order.id}:send:${channel}`)
+    try {
+      const input = await buildPurchaseOrderPdfInput(detail)
+      const cfg = getCompanyConfigCache()
+      await sendPurchaseOrder(input, channel, String(cfg?.trade_name || cfg?.business_name || '').trim())
+    } catch {
+      toast.error('No se pudo preparar el envío al proveedor')
     } finally {
       setPdfBusy(null)
     }
@@ -309,6 +327,16 @@ function PurchaseOrdersContent() {
                 </button>
               ))}
             </div>
+            {detail.order.status !== 'cancelled' && (
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => void sendToSupplier('whatsapp')} disabled={pdfBusy != null} className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-green-200 bg-green-50 text-sm font-medium text-green-800 hover:bg-green-100 disabled:opacity-50">
+                  <WhatsAppGlyph className="h-4 w-4" /> {pdfBusy === `${detail.order.id}:send:whatsapp` ? 'Preparando...' : 'Enviar por WhatsApp'}
+                </button>
+                <button type="button" onClick={() => void sendToSupplier('email')} disabled={pdfBusy != null} className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                  <Mail size={14} /> {pdfBusy === `${detail.order.id}:send:email` ? 'Preparando...' : 'Enviar por correo'}
+                </button>
+              </div>
+            )}
             <div className="flex flex-wrap gap-2 justify-end">
               {canCreate && detail.order.status === 'draft' && (
                 <button type="button" onClick={() => void markSent(detail.order)} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-sm hover:bg-gray-50">
