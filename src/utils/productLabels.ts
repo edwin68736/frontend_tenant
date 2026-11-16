@@ -111,7 +111,9 @@ function drawBlock(pen: Pen, lines: string[], size: number, lineH: number, cx: n
 
 /** Pinta una etiqueta de `w`×`h` mm con origen (ox, oy). */
 export function drawLabel(pen: Pen, format: LabelFormat, w: number, h: number, item: LabelItem, ox = 0, oy = 0): void {
-  const pad = Math.min(PAD_MM, w * 0.06, h * 0.06)
+  // La etiqueta de solo código lleva más aire alrededor: es la que se pega sola y el lector necesita zona de silencio.
+  const barcodeOnly = format === 'barcode'
+  const pad = barcodeOnly ? Math.min(3, w * 0.1, h * 0.12) : Math.min(PAD_MM, w * 0.06, h * 0.06)
   const innerW = w - 2 * pad
   const innerH = h - 2 * pad
   const cx = ox + w / 2
@@ -126,8 +128,11 @@ export function drawLabel(pen: Pen, format: LabelFormat, w: number, h: number, i
       return
     }
     const textH = withCode ? Math.min(3.2, bh * 0.28) : 0
+    // Zona de silencio a los lados de las barras (más ancha en la etiqueta de solo código) y aire arriba/abajo.
+    const sideQuiet = Math.min(innerW * (barcodeOnly ? 0.12 : 0.07), 6)
+    const vGap = barcodeOnly ? Math.min(1.5, bh * 0.08) : Math.min(0.8, bh * 0.05)
     const barsH = bh - textH
-    pen.image(bars, ox + pad, y, innerW, Math.max(2, barsH - (withCode ? 0.4 : 0)))
+    pen.image(bars, ox + pad + sideQuiet, y + vGap, innerW - 2 * sideQuiet, Math.max(2, barsH - (withCode ? 0.4 : 0) - 2 * vGap))
     if (withCode) {
       const fit = fitText(pen, code, innerW, textH, 1, 7, 4, false)
       drawBlock(pen, fit.lines, fit.size, fit.lineH, cx, y + barsH, false)
