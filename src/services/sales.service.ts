@@ -488,6 +488,10 @@ export const salesService = {
       reason,
     }),
 
+  /** Usuarios para los filtros "Registrado por" / "Vendedor" (no exige permiso de usuarios). */
+  filterUsers: (): Promise<{ id: number; name: string; deleted: boolean }[]> =>
+    api.get('/api/sales/filter-users').then((r) => r.data.data ?? []),
+
   list: (params?: {
     q?: string
     from?: string

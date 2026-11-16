@@ -5,7 +5,6 @@ import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Search, Eye, X, Plus, FileText, ExternalLink, RefreshCw, Download, Ticket, FileDown, ChevronDown, Ban, Truck } from 'lucide-react'
-import { usersService, type TenantUser } from '@/services/users.service'
 import { salesService, type Sale, type SaleDetail } from '@/services/sales.service'
 import { PrintDocButton } from '@/components/print/PrintDocButton'
 import { configuredTicketPaperMm } from '@/utils/receiptTicketPaper'
@@ -115,9 +114,9 @@ function SalesContent() {
   const [onlyCancelled, setOnlyCancelled] = useState(false)
   const [userFilter, setUserFilter] = useState<number | ''>('')
   const [sellerFilter, setSellerFilter] = useState<number | ''>('')
-  const [filterUsers, setFilterUsers] = useState<TenantUser[]>([])
+  const [filterUsers, setFilterUsers] = useState<{ id: number; name: string; deleted: boolean }[]>([])
   useEffect(() => {
-    usersService.listUsers().then((u) => setFilterUsers(Array.isArray(u) ? u : [])).catch(() => setFilterUsers([]))
+    salesService.filterUsers().then((u) => setFilterUsers(Array.isArray(u) ? u : [])).catch(() => setFilterUsers([]))
   }, [])
   const [cancelTarget, setCancelTarget] = useState<Sale | null>(null)
   const [cancelReason, setCancelReason] = useState('')
@@ -557,7 +556,7 @@ function SalesContent() {
           >
             <option value="">Registrado por: todos</option>
             {filterUsers.map((u) => (
-              <option key={u.id} value={u.id}>{u.name}</option>
+              <option key={u.id} value={u.id}>{u.name}{u.deleted ? ' (eliminado)' : ''}</option>
             ))}
           </select>
           <select
@@ -568,7 +567,7 @@ function SalesContent() {
           >
             <option value="">Vendedor: todos</option>
             {filterUsers.map((u) => (
-              <option key={u.id} value={u.id}>{u.name}</option>
+              <option key={u.id} value={u.id}>{u.name}{u.deleted ? ' (eliminado)' : ''}</option>
             ))}
           </select>
           <OnlyCancelledSwitch

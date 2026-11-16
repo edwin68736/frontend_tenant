@@ -3,7 +3,6 @@ import axios from 'axios'
 import { Search } from 'lucide-react'
 import { FileDown, FileSpreadsheet } from 'lucide-react'
 import { toast } from 'sonner'
-import { usersService, type TenantUser } from '@/services/users.service'
 import { salesService, type Sale, type SaleListSummary, type SaleListCurrencySummary } from '@/services/sales.service'
 import { formatSaleMoney, saleCurrencySymbol } from '@/utils/formatMoney'
 import { companyService } from '@/services/company.service'
@@ -330,9 +329,9 @@ export default function SalesReportPage() {
     user_id: '' as number | '',
     seller_user_id: '' as number | '',
   })
-  const [filterUsers, setFilterUsers] = useState<TenantUser[]>([])
+  const [filterUsers, setFilterUsers] = useState<{ id: number; name: string; deleted: boolean }[]>([])
   useEffect(() => {
-    usersService.listUsers().then((u) => setFilterUsers(Array.isArray(u) ? u : [])).catch(() => setFilterUsers([]))
+    salesService.filterUsers().then((u) => setFilterUsers(Array.isArray(u) ? u : [])).catch(() => setFilterUsers([]))
   }, [])
 
   /** Solo filtros de búsqueda (sin paginación). */
@@ -674,7 +673,7 @@ export default function SalesReportPage() {
               onChange={e => { setFilters(f => ({ ...f, user_id: e.target.value ? Number(e.target.value) : '' })); setPage(1) }}
             >
               <option value="">Todos</option>
-              {filterUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              {filterUsers.map(u => <option key={u.id} value={u.id}>{u.name}{u.deleted ? ' (eliminado)' : ''}</option>)}
             </select>
           </div>
           <div>
@@ -685,7 +684,7 @@ export default function SalesReportPage() {
               onChange={e => { setFilters(f => ({ ...f, seller_user_id: e.target.value ? Number(e.target.value) : '' })); setPage(1) }}
             >
               <option value="">Todos</option>
-              {filterUsers.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              {filterUsers.map(u => <option key={u.id} value={u.id}>{u.name}{u.deleted ? ' (eliminado)' : ''}</option>)}
             </select>
           </div>
           <div>
