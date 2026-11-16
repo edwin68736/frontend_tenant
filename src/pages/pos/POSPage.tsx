@@ -7,7 +7,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { toast } from 'sonner'
-import { Plus, Search, ShoppingCart, Trash2, X, ChevronRight, UserPlus, Package, ScanBarcode, LayoutGrid, Boxes, DollarSign, Tag } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Trash2, X, ChevronRight, UserPlus, Package, ScanBarcode, LayoutGrid, Boxes, DollarSign, Tag, Eye } from 'lucide-react'
 import { clsx } from 'clsx'
 import { productsService, getProductImageUrl, type Product, type Category } from '@/services/products.service'
 import { contactsService, type Contact } from '@/services/contacts.service'
@@ -47,6 +47,7 @@ import { BILLING_NOT_ENABLED_MESSAGE, isElectronicBillingSunatCode } from '@/uti
 import { PosMobileCartDrawer } from '@/components/pos/PosMobileCartDrawer'
 import { ManualProductModal } from '@/components/pos/ManualProductModal'
 import { PosProductInfoModal, type PosProductInfoMode } from '@/components/pos/PosProductInfoModal'
+import { PosProductPreviewModal } from '@/components/pos/PosProductPreviewModal'
 import { PosCategoriesModal } from '@/components/pos/PosCategoriesModal'
 import { enrichPrintDataWithSaleUnitNames } from '@/utils/saleUnitNames'
 import { MoneyAmountInput } from '@/components/pos/MoneyAmountInput'
@@ -149,6 +150,7 @@ function POSContent() {
   const [manualProductOpen, setManualProductOpen] = useState(false)
   // Info rápida de producto desde su tarjeta (stock por sucursal / precio de compra / precio).
   const [productInfo, setProductInfo] = useState<{ mode: PosProductInfoMode; product: Product } | null>(null)
+  const [productPreview, setProductPreview] = useState<Product | null>(null)
 
   // Cobro (modal)
   const [checkoutOpen, setCheckoutOpen] = useState(false)
@@ -1295,6 +1297,18 @@ function POSContent() {
                         </div>
                       </button>
                       <div className="flex border-t border-stone-200 divide-x divide-stone-200">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setProductPreview(p)
+                          }}
+                          title="Ver producto"
+                          aria-label="Ver producto ampliado"
+                          className="flex-1 flex items-center justify-center py-1.5 text-stone-500 hover:text-primary-600 hover:bg-primary-50"
+                        >
+                          <Eye size={13} aria-hidden />
+                        </button>
                         {canViewStockInfo && (
                           <button
                             type="button"
@@ -1628,6 +1642,12 @@ function POSContent() {
         open={manualProductOpen}
         onClose={() => setManualProductOpen(false)}
         onAdd={addManualToCart}
+      />
+
+      <PosProductPreviewModal
+        open={productPreview != null}
+        onClose={() => setProductPreview(null)}
+        product={productPreview}
       />
 
       <PosProductInfoModal
