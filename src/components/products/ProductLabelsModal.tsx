@@ -18,7 +18,8 @@ import {
   type LabelItem,
 } from '@/utils/productLabels'
 
-type Line = { product: Product; item: LabelItem; quantity: number }
+/** `qtyText` es lo que se está escribiendo (puede estar vacío mientras se borra); `quantity` es el valor válido vigente. */
+type Line = { product: Product; item: LabelItem; quantity: number; qtyText?: string }
 
 const SAMPLE: LabelItem = { name: 'Aceite Vegetal Primor Clásico Botella 900 mL', price: 7.9, code: '7750000000001' }
 
@@ -118,10 +119,19 @@ export function ProductLabelsModal({ open, onClose }: { open: boolean; onClose: 
     setShowResults(false)
   }
 
-  const setQty = (id: number, raw: string) =>
+  // Se puede borrar el campo y escribir libremente: el texto se guarda tal cual mientras se edita (vacío incluido) y el
+  // total se actualiza con cada número válido; al salir del campo, vacío o 0 vuelven a la última cantidad válida.
+  const typeQty = (id: number, raw: string) => {
+    const text = raw.replace(/\D/g, '').slice(0, 4)
     setLines((prev) =>
-      prev.map((l) => (l.product.id === id ? { ...l, quantity: Math.max(1, Math.min(LABEL_MAX_TOTAL, Math.floor(numberOr(raw, 1)))) } : l)),
+      prev.map((l) => {
+        if (l.product.id !== id) return l
+        const n = Number(text)
+        return { ...l, qtyText: text, quantity: text !== '' && n >= 1 ? Math.min(LABEL_MAX_TOTAL, n) : l.quantity }
+      }),
     )
+  }
+  const commitQty = (id: number) => setLines((prev) => prev.map((l) => (l.product.id === id ? { ...l, qtyText: undefined } : l)))
 
   const withoutCode = format !== 'name_price' ? lines.filter((l) => !l.item.code).length : 0
 
@@ -342,12 +352,12 @@ export function ProductLabelsModal({ open, onClose }: { open: boolean; onClose: 
                           <td className="px-3 py-2 hidden sm:table-cell text-gray-600">{l.product.category_name || '—'}</td>
                           <td className="px-3 py-2">
                             <input
-                              type="number"
+                              type="text"
                               inputMode="numeric"
-                              min={1}
-                              max={LABEL_MAX_TOTAL}
-                              value={l.quantity}
-                              onChange={(e) => setQty(l.product.id, e.target.value)}
+                              value={l.qtyText ?? String(l.quantity)}
+                              onChange={(e) => typeQty(l.product.id, e.target.value)}
+                              onFocus={(e) => e.currentTarget.select()}
+                              onBlur={() => commitQty(l.product.id)}
                               aria-label={`Etiquetas de ${l.product.name}`}
                               className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-sm text-center tabular-nums"
                             />
