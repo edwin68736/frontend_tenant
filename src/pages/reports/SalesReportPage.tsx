@@ -1,3 +1,4 @@
+import { reportDueDateISO } from '@/utils/reportDueDate'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import axios from 'axios'
 import { Search } from 'lucide-react'
@@ -198,8 +199,8 @@ type ReportSaleRow = Sale & {
  *  Orden fijo pedido por el usuario — no reordenar sin confirmar con él. */
 const COLS: ExcelExportColumn<ReportSaleRow>[] = [
   { key: 'issue_date', label: 'Fecha', format: formatIssueDate },
-  // Ventas al contado no tienen vencimiento: guion, igual que Cuentas por cobrar.
-  { key: 'due_date', label: 'Vencimiento', format: (v: unknown) => formatIssueDate(v) || '—' },
+  // Crédito: su vencimiento. Contado: la fecha de emisión (observación del contador). Notas de crédito/débito: guion.
+  { key: 'due_date', label: 'Vencimiento', format: (_v: unknown, r) => formatIssueDate(reportDueDateISO(r as ReportSaleRow)) || '—' },
   { key: 'doc_sunat_code', label: 'Tipo CP/Doc' },
   { key: 'doc_type_effective', label: 'Comprobante' },
   { key: 'serie_sin_ceros', label: 'Serie' },
