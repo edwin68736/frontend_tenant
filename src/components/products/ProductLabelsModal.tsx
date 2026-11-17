@@ -63,11 +63,11 @@ function LabelPreview({ format, w, h, item, maxW, maxH }: { format: LabelFormat;
 }
 
 /** Lo que saldrá en la ticketera: una fila de etiquetas a 203 dpi, en blanco y negro. */
-function PrintPreview({ format, width, height, gap, items }: { format: LabelFormat; width: number; height: number; gap: number; items: LabelItem[] }) {
+function PrintPreview({ format, width, height, gap, items, dotsPerMm }: { format: LabelFormat; width: number; height: number; gap: number; items: LabelItem[]; dotsPerMm: number }) {
   const ref = useRef<HTMLCanvasElement | null>(null)
   useEffect(() => {
-    if (ref.current) paintLabelRow(ref.current, { format, width, height, gap }, items, LABEL_DOTS_PER_MM)
-  }, [format, width, height, gap, items])
+    if (ref.current) paintLabelRow(ref.current, { format, width, height, gap }, items, dotsPerMm)
+  }, [format, width, height, gap, items, dotsPerMm])
   return <canvas ref={ref} className="bg-white border border-stone-300 shadow-sm max-w-full" />
 }
 
@@ -231,7 +231,7 @@ export function ProductLabelsModal({ open, onClose }: { open: boolean; onClose: 
         gap,
         lines: test ? [{ item: sample, quantity: columns }] : lines.map((l) => ({ item: l.item, quantity: l.quantity })),
       }
-      const res = await printLabels(job, printer, { signal: ctl.signal, onProgress: (done, tot) => setPrinting({ done, total: tot }) })
+      const res = await printLabels(job, printer, { signal: ctl.signal, frame: test && tspl, onProgress: (done, tot) => setPrinting({ done, total: tot }) })
       toast.success(`${res.labels} ${res.labels === 1 ? 'etiqueta enviada' : 'etiquetas enviadas'} a la impresora`)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'No se pudo imprimir')
@@ -526,6 +526,20 @@ export function ProductLabelsModal({ open, onClose }: { open: boolean; onClose: 
                       </select>
                     </label>
                   )}
+                  {tspl && (
+                    <label className="block">
+                      <span className="block text-xs font-medium text-gray-500 mb-1">Resolución de la impresora</span>
+                      <select
+                        value={printer.dotsPerMm ?? 8}
+                        onChange={(e) => updatePrinter({ dotsPerMm: Number(e.target.value) })}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                      >
+                        <option value={8}>203 dpi (la más común)</option>
+                        <option value={12}>300 dpi</option>
+                        <option value={16}>400 dpi</option>
+                      </select>
+                    </label>
+                  )}
                   {tspl ? (
                     <label className="block">
                       <span className="block text-xs font-medium text-gray-500 mb-1">Espacio entre etiquetas del rollo (mm)</span>
@@ -534,7 +548,7 @@ export function ProductLabelsModal({ open, onClose }: { open: boolean; onClose: 
                         min={0}
                         max={10}
                         step="0.5"
-                        value={printer.rollGapMm}
+                        value={printer.rollGapMm ?? 2}
                         onChange={(e) => updatePrinter({ rollGapMm: Math.min(10, Math.max(0, Number(e.target.value) || 0)) })}
                         className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
                       />
@@ -568,7 +582,7 @@ export function ProductLabelsModal({ open, onClose }: { open: boolean; onClose: 
                 <div>
                   <p className="text-xs font-medium text-gray-500 mb-1">Vista previa de la impresión</p>
                   <div className="rounded-lg bg-gray-100 p-3 overflow-x-auto">
-                    <PrintPreview format={format} width={width} height={height} gap={gap} items={previewItems} />
+                    <PrintPreview format={format} width={width} height={height} gap={gap} items={previewItems} dotsPerMm={tspl ? printer.dotsPerMm : LABEL_DOTS_PER_MM} />
                   </div>
                 </div>
               </div>

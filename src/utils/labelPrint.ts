@@ -41,11 +41,13 @@ export interface LabelPrinterChoice {
   language: LabelLanguage
   /** Solo TSPL: espacio entre etiquetas del rollo (mm). */
   rollGapMm: number
+  /** Resolución de la impresora en puntos por mm: 8 = 203 dpi (la mayoría), 12 = 300 dpi. */
+  dotsPerMm: number
 }
 
 export type LabelLanguage = 'escpos' | 'tspl'
 
-export const DEFAULT_LABEL_PRINTER: LabelPrinterChoice = { source: 'documentos', paperWidthMm: 80, after: 'cut', language: 'escpos', rollGapMm: 2 }
+export const DEFAULT_LABEL_PRINTER: LabelPrinterChoice = { source: 'documentos', paperWidthMm: 80, after: 'cut', language: 'escpos', rollGapMm: 2, dotsPerMm: 8 }
 
 const STORAGE_KEY = 'tukifac_label_printer_v1'
 
@@ -58,7 +60,8 @@ export function loadLabelPrinterChoice(): LabelPrinterChoice {
     const after: LabelAfter = LABEL_AFTER_OPTIONS.some((o) => o.id === p.after) ? (p.after as LabelAfter) : 'cut'
     const language: LabelLanguage = p.language === 'tspl' ? 'tspl' : 'escpos'
     const rollGapMm = Number.isFinite(p.rollGapMm) ? Math.min(10, Math.max(0, Number(p.rollGapMm))) : 2
-    return { source, printerName: p.printerName ?? '', paperWidthMm: p.paperWidthMm === 58 ? 58 : 80, after, language, rollGapMm }
+    const dotsPerMm = p.dotsPerMm === 12 || p.dotsPerMm === 16 ? p.dotsPerMm : 8
+    return { source, printerName: p.printerName ?? '', paperWidthMm: p.paperWidthMm === 58 ? 58 : 80, after, language, rollGapMm, dotsPerMm }
   } catch {
     return { ...DEFAULT_LABEL_PRINTER }
   }
@@ -207,7 +210,7 @@ export interface PrintLabelsResult {
 export async function printLabels(
   job: LabelJob,
   choice: LabelPrinterChoice,
-  opts: { onProgress?: (doneRows: number, totalRows: number) => void; signal?: AbortSignal } = {},
+  opts: { onProgress?: (doneRows: number, totalRows: number) => void; signal?: AbortSignal; frame?: boolean } = {},
 ): Promise<PrintLabelsResult> {
   if (!isNativePrintAvailable()) {
     throw new Error('La impresión directa necesita la app de escritorio, la de Android o el Servidor de impresión vinculado')
@@ -223,10 +226,11 @@ export async function printLabels(
 
   const rows = planLabelRows(job)
   if (rows.length === 0) return { labels: 0, rows: 0 }
-  const dots = tspl ? Math.ceil((rowMm * LABEL_DOTS_PER_MM) / 8) * 8 : printableDots(paper)
+  const dpm = tspl ? choice.dotsPerMm || LABEL_DOTS_PER_MM : LABEL_DOTS_PER_MM
+  const dots = tspl ? Math.ceil((rowMm * dpm) / 8) * 8 : printableDots(paper)
   const after = tspl ? [] : afterLabelBytes(choice.after)
   // Tandas de ~120 KB: con un rollo de 80 mm y etiquetas de 30 mm son unas 7 filas por envío.
-  const rowBytes = (dots / 8) * Math.round(job.height * LABEL_DOTS_PER_MM)
+  const rowBytes = (dots / 8) * Math.round(job.height * dpm)
   const perChunk = Math.max(1, Math.floor(120_000 / Math.max(1, rowBytes)))
 
   let sentRows = 0
@@ -236,9 +240,20 @@ export async function printLabels(
     const parts: Uint8Array[] = tspl ? [] : [Uint8Array.from([0x1b, 0x40])]
     for (const items of rows.slice(i, i + perChunk)) {
       const canvas = document.createElement('canvas')
-      paintLabelRow(canvas, job, items, LABEL_DOTS_PER_MM)
+      paintLabelRow(canvas, job, items, dpm)
       const ctx = canvas.getContext('2d')
       if (!ctx) throw new Error('No se pudo preparar la etiqueta para imprimir')
+      if (opts.frame) {
+        // Etiqueta de calibración: marco del tamaño exacto y marcas cada 10 mm para medir con regla.
+        ctx.fillStyle = '#000'
+        const t = 2
+        ctx.fillRect(0, 0, canvas.width, t)
+        ctx.fillRect(0, canvas.height - t, canvas.width, t)
+        ctx.fillRect(0, 0, t, canvas.height)
+        ctx.fillRect(canvas.width - t, 0, t, canvas.height)
+        for (let mmX = 10; mmX * dpm < canvas.width; mmX += 10) ctx.fillRect(mmX * dpm, 0, t, Math.round(dpm * 2.5))
+        for (let mmY = 10; mmY * dpm < canvas.height; mmY += 10) ctx.fillRect(0, mmY * dpm, Math.round(dpm * 2.5), t)
+      }
       const img = ctx.getImageData(0, 0, canvas.width, canvas.height)
       parts.push(
         tspl
