@@ -13,10 +13,26 @@ import {
   formatLabelPrice,
   openLabelsPdf,
   paintLabelPreview,
+  paintLabelRow,
   totalLabels,
   type LabelFormat,
   type LabelItem,
 } from '@/utils/productLabels'
+import {
+  LABEL_AFTER_OPTIONS,
+  LABEL_DOTS_PER_MM,
+  describePrinter,
+  isNativePrintAvailable,
+  labelRowWidthMm,
+  listInstalledPrinters,
+  loadLabelPrinterChoice,
+  printLabels,
+  printableWidthMm,
+  resolveLabelPrinter,
+  saveLabelPrinterChoice,
+  type LabelAfter,
+  type LabelPrinterChoice,
+} from '@/utils/labelPrint'
 
 /** `qtyText` es lo que se está escribiendo (puede estar vacío mientras se borra); `quantity` es el valor válido vigente. */
 type Line = { product: Product; item: LabelItem; quantity: number; qtyText?: string }
@@ -45,6 +61,15 @@ function LabelPreview({ format, w, h, item, maxW, maxH }: { format: LabelFormat;
   return <canvas ref={ref} style={{ width: w * cssPerMm, height: h * cssPerMm }} className="bg-white border border-stone-300 shadow-sm" />
 }
 
+/** Lo que saldrá en la ticketera: una fila de etiquetas a 203 dpi, en blanco y negro. */
+function PrintPreview({ format, width, height, gap, items }: { format: LabelFormat; width: number; height: number; gap: number; items: LabelItem[] }) {
+  const ref = useRef<HTMLCanvasElement | null>(null)
+  useEffect(() => {
+    if (ref.current) paintLabelRow(ref.current, { format, width, height, gap }, items, LABEL_DOTS_PER_MM)
+  }, [format, width, height, gap, items])
+  return <canvas ref={ref} className="bg-white border border-stone-300 shadow-sm max-w-full" />
+}
+
 const numberOr = (raw: string, fallback: number) => {
   const n = Number(raw.replace(',', '.'))
   return Number.isFinite(n) ? n : fallback
@@ -57,6 +82,11 @@ export function ProductLabelsModal({ open, onClose }: { open: boolean; onClose: 
   const [columns, setColumns] = useState(1)
   const [gapRaw, setGapRaw] = useState('2')
   const [lines, setLines] = useState<Line[]>([])
+  const [printer, setPrinter] = useState<LabelPrinterChoice>(() => loadLabelPrinterChoice())
+  const [winPrinters, setWinPrinters] = useState<string[]>([])
+  const [printing, setPrinting] = useState<{ done: number; total: number } | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const canPrint = isNativePrintAvailable()
 
   const [q, setQ] = useState('')
   const [results, setResults] = useState<Product[]>([])
@@ -156,6 +186,56 @@ export function ProductLabelsModal({ open, onClose }: { open: boolean; onClose: 
       if (withoutCode > 0) toast.warning(`${withoutCode} producto(s) sin código salen con el aviso "Sin código" en la etiqueta`)
     } catch {
       toast.error('No se pudo generar el PDF de etiquetas')
+    }
+  }
+
+  const updatePrinter = (patch: Partial<LabelPrinterChoice>) =>
+    setPrinter((prev) => {
+      const next = { ...prev, ...patch }
+      saveLabelPrinterChoice(next)
+      return next
+    })
+
+  useEffect(() => {
+    if (!open || !canPrint) return
+    listInstalledPrinters()
+      .then(setWinPrinters)
+      .catch(() => setWinPrinters([]))
+  }, [open, canPrint])
+
+  const printerCfg = resolveLabelPrinter(printer)
+  const rowMm = labelRowWidthMm({ width, columns, gap })
+  const tooWide = printerCfg ? rowMm > printableWidthMm(printerCfg.paperWidthMm) + 0.01 : false
+  const previewItems = useMemo(() => Array.from({ length: columns }, () => sample), [columns, sample])
+
+  const printDirect = async (test = false) => {
+    if (!test && lines.length === 0) {
+      toast.error('Agrega al menos un producto')
+      return
+    }
+    if (total > LABEL_MAX_TOTAL) {
+      toast.error(`Máximo ${LABEL_MAX_TOTAL} etiquetas por impresión (llevas ${total})`)
+      return
+    }
+    const ctl = new AbortController()
+    abortRef.current = ctl
+    setPrinting({ done: 0, total: 1 })
+    try {
+      const job = {
+        format,
+        width,
+        height,
+        columns,
+        gap,
+        lines: test ? [{ item: sample, quantity: columns }] : lines.map((l) => ({ item: l.item, quantity: l.quantity })),
+      }
+      const res = await printLabels(job, printer, { signal: ctl.signal, onProgress: (done, tot) => setPrinting({ done, total: tot }) })
+      toast.success(`${res.labels} ${res.labels === 1 ? 'etiqueta enviada' : 'etiquetas enviadas'} a la impresora`)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'No se pudo imprimir')
+    } finally {
+      abortRef.current = null
+      setPrinting(null)
     }
   }
 
@@ -385,6 +465,85 @@ export function ProductLabelsModal({ open, onClose }: { open: boolean; onClose: 
               </p>
             )}
           </section>
+
+          {/* 4. Impresión directa */}
+          <section>
+            <h4 className="text-sm font-semibold text-gray-800 mb-2">4. Imprimir directo en la ticketera</h4>
+            {!canPrint ? (
+              <p className="text-xs text-gray-500 rounded-xl bg-gray-50 border border-gray-200 px-3 py-2">
+                La impresión directa está disponible en la app de escritorio, en la de Android o con el Servidor de impresión vinculado. Mientras tanto usa «Generar PDF».
+              </p>
+            ) : (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <label className="block">
+                    <span className="block text-xs font-medium text-gray-500 mb-1">Impresora</span>
+                    <select
+                      value={printer.source === 'windows' ? `w:${printer.printerName ?? ''}` : printer.source}
+                      onChange={(e) => {
+                        const v = e.target.value
+                        if (v.startsWith('w:')) updatePrinter({ source: 'windows', printerName: v.slice(2) })
+                        else updatePrinter({ source: v as LabelPrinterChoice['source'] })
+                      }}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                    >
+                      <option value="documentos">La de comprobantes</option>
+                      <option value="precuenta">La de precuentas</option>
+                      <option value="comandas">La de comandas</option>
+                      {printer.source === 'windows' && printer.printerName && !winPrinters.includes(printer.printerName) && (
+                        <option value={`w:${printer.printerName}`}>{printer.printerName}</option>
+                      )}
+                      {winPrinters.map((n) => (
+                        <option key={n} value={`w:${n}`}>
+                          {n} (instalada)
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {printer.source === 'windows' && (
+                    <label className="block">
+                      <span className="block text-xs font-medium text-gray-500 mb-1">Ancho del rollo</span>
+                      <select
+                        value={printer.paperWidthMm}
+                        onChange={(e) => updatePrinter({ paperWidthMm: Number(e.target.value) === 58 ? 58 : 80 })}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                      >
+                        <option value={80}>80 mm</option>
+                        <option value={58}>58 mm</option>
+                      </select>
+                    </label>
+                  )}
+                  <label className="block">
+                    <span className="block text-xs font-medium text-gray-500 mb-1">Al terminar cada etiqueta</span>
+                    <select
+                      value={printer.after}
+                      onChange={(e) => updatePrinter({ after: e.target.value as LabelAfter })}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                    >
+                      {LABEL_AFTER_OPTIONS.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <p className={clsx('text-xs', !printerCfg || tooWide ? 'text-amber-600' : 'text-gray-500')}>
+                  {!printerCfg
+                    ? 'Esa impresora no está configurada. Configúrala en Ajustes → Impresoras o elige otra.'
+                    : tooWide
+                      ? `La fila mide ${rowMm.toFixed(1)} mm y el rollo de ${printerCfg.paperWidthMm} mm imprime hasta ${printableWidthMm(printerCfg.paperWidthMm)} mm: reduce el ancho o las columnas.`
+                      : `Se imprimirá en ${describePrinter(printerCfg)} (rollo de ${printerCfg.paperWidthMm} mm). ${LABEL_AFTER_OPTIONS.find((o) => o.id === printer.after)?.hint ?? ''}`}
+                </p>
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-1">Vista previa de la impresión</p>
+                  <div className="rounded-lg bg-gray-100 p-3 overflow-x-auto">
+                    <PrintPreview format={format} width={width} height={height} gap={gap} items={previewItems} />
+                  </div>
+                </div>
+              </div>
+            )}
+          </section>
         </div>
 
         <div className="flex items-center justify-between gap-3 px-5 py-3 border-t border-gray-200 bg-gray-50 shrink-0">
@@ -403,11 +562,41 @@ export function ProductLabelsModal({ open, onClose }: { open: boolean; onClose: 
             <button
               type="button"
               onClick={generate}
-              disabled={lines.length === 0}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[rgb(var(--p600))] text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
+              disabled={lines.length === 0 || printing !== null}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-gray-200 bg-white text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
             >
-              <Printer size={15} /> Generar PDF
+              Generar PDF
             </button>
+            {canPrint && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => void printDirect(true)}
+                  disabled={printing !== null || !printerCfg || tooWide}
+                  className="hidden sm:inline-flex px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Etiqueta de prueba
+                </button>
+                {printing ? (
+                  <button
+                    type="button"
+                    onClick={() => abortRef.current?.abort()}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[rgb(var(--p600))] text-white text-sm font-medium"
+                  >
+                    <Loader2 size={15} className="animate-spin" /> {printing.done}/{printing.total} · Cancelar
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void printDirect()}
+                    disabled={lines.length === 0 || !printerCfg || tooWide}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[rgb(var(--p600))] text-white text-sm font-medium hover:opacity-90 disabled:opacity-50"
+                  >
+                    <Printer size={15} /> Imprimir
+                  </button>
+                )}
+              </>
+            )}
           </div>
         </div>
       </div>

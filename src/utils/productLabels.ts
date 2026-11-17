@@ -39,7 +39,8 @@ interface TextOpts {
 interface Pen {
   text(str: string, x: number, y: number, o: TextOpts): void
   width(str: string, o: TextOpts): number
-  image(dataUrl: string, x: number, y: number, w: number, h: number): void
+  /** Código de barras: `modules` es la secuencia de módulos («1» = barra, «0» = espacio) y se dibuja en el rectángulo dado. */
+  bars(modules: string, x: number, y: number, w: number, h: number): void
 }
 
 const PT_TO_MM = 25.4 / 72
@@ -49,21 +50,26 @@ export function formatLabelPrice(n: number): string {
   return `S/ ${Number(n).toFixed(2)}`
 }
 
-/** Code128 admite códigos alfanuméricos (EAN13 exigiría 13 dígitos). Devuelve null si no se puede codificar. */
+/**
+ * Módulos del Code128 (EAN13 exigiría 13 dígitos; Code128 admite códigos alfanuméricos). Se dibujan barra por barra y no
+ * como imagen escalada: así quedan exactas en el PDF (vectorial) y con módulos de ancho entero al imprimir en la
+ * ticketera, que es lo que permite que el lector las lea. Devuelve null si no se puede codificar.
+ */
 const barcodeCache = new Map<string, string | null>()
-function barcodeBars(code: string): string | null {
+export function barcodeModules(code: string): string | null {
   const key = code.trim()
   if (barcodeCache.has(key)) return barcodeCache.get(key) ?? null
-  let url: string | null = null
+  let modules: string | null = null
   try {
-    const canvas = document.createElement('canvas')
-    JsBarcode(canvas, key, { format: 'CODE128', width: 3, height: 80, displayValue: false, margin: 0 })
-    url = canvas.toDataURL('image/png')
+    const out: { encodings?: { data: string }[] } = {}
+    JsBarcode(out, key, { format: 'CODE128', displayValue: false, margin: 0 })
+    const joined = (out.encodings ?? []).map((e) => e.data).join('')
+    modules = joined && /^[01]+$/.test(joined) ? joined : null
   } catch {
-    url = null
+    modules = null
   }
-  barcodeCache.set(key, url)
-  return url
+  barcodeCache.set(key, modules)
+  return modules
 }
 
 /** Parte `str` en líneas que caben en `maxW`. */
@@ -119,7 +125,7 @@ export function drawLabel(pen: Pen, format: LabelFormat, w: number, h: number, i
   const cx = ox + w / 2
   const top = oy + pad
   const code = item.code.trim()
-  const bars = code ? barcodeBars(code) : null
+  const bars = code ? barcodeModules(code) : null
 
   const drawBars = (y: number, bh: number, withCode: boolean) => {
     if (!bars) {
@@ -132,7 +138,7 @@ export function drawLabel(pen: Pen, format: LabelFormat, w: number, h: number, i
     const sideQuiet = Math.min(innerW * (barcodeOnly ? 0.12 : 0.07), 6)
     const vGap = barcodeOnly ? Math.min(1.5, bh * 0.08) : Math.min(0.8, bh * 0.05)
     const barsH = bh - textH
-    pen.image(bars, ox + pad + sideQuiet, y + vGap, innerW - 2 * sideQuiet, Math.max(2, barsH - (withCode ? 0.4 : 0) - 2 * vGap))
+    pen.bars(bars, ox + pad + sideQuiet, y + vGap, innerW - 2 * sideQuiet, Math.max(2, barsH - (withCode ? 0.4 : 0) - 2 * vGap))
     if (withCode) {
       const fit = fitText(pen, code, innerW, textH, 1, 7, 4, false)
       drawBlock(pen, fit.lines, fit.size, fit.lineH, cx, y + barsH, false)
@@ -167,18 +173,13 @@ export function drawLabel(pen: Pen, format: LabelFormat, w: number, h: number, i
 
 /* ───────────────────────────── Destinos de dibujo ───────────────────────────── */
 
-/** Pinta una etiqueta en un canvas (vista previa). `pxPerMm` ya incluye el factor de pantalla. */
-export function paintLabelPreview(canvas: HTMLCanvasElement, format: LabelFormat, w: number, h: number, item: LabelItem, pxPerMm: number): void {
-  canvas.width = Math.round(w * pxPerMm)
-  canvas.height = Math.round(h * pxPerMm)
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-  ctx.fillStyle = '#fff'
-  ctx.fillRect(0, 0, canvas.width, canvas.height)
-  ctx.fillStyle = '#000'
+/**
+ * Pluma sobre un canvas. Con `crisp` (impresión) el código de barras usa módulos de ancho ENTERO en puntos y se centra:
+ * un ancho fraccionario se deformaría al pasar a blanco y negro y el lector no podría leerlo.
+ */
+function createCanvasPen(ctx: CanvasRenderingContext2D, pxPerMm: number, crisp: boolean): Pen {
   const fontOf = (o: TextOpts) => `${o.bold ? 'bold ' : ''}${o.size * PT_TO_MM * pxPerMm}px Helvetica, Arial, sans-serif`
-  const imgCache: Record<string, HTMLImageElement> = {}
-  const pen: Pen = {
+  return {
     width(str, o) {
       ctx.font = fontOf(o)
       return ctx.measureText(str).width / pxPerMm
@@ -189,19 +190,58 @@ export function paintLabelPreview(canvas: HTMLCanvasElement, format: LabelFormat
       ctx.fillStyle = '#000'
       ctx.fillText(str, x * pxPerMm, y * pxPerMm)
     },
-    image(dataUrl, x, y, iw, ih) {
-      let img = imgCache[dataUrl]
-      if (!img) {
-        img = new Image()
-        img.src = dataUrl
-        imgCache[dataUrl] = img
+    bars(modules, x, y, bw, bh) {
+      const totalPx = bw * pxPerMm
+      const mw = crisp ? Math.max(1, Math.floor(totalPx / modules.length)) : totalPx / modules.length
+      const startX = x * pxPerMm + (crisp ? Math.floor((totalPx - mw * modules.length) / 2) : 0)
+      ctx.fillStyle = '#000'
+      for (let i = 0; i < modules.length; ) {
+        if (modules[i] !== '1') {
+          i++
+          continue
+        }
+        let j = i
+        while (j < modules.length && modules[j] === '1') j++
+        ctx.fillRect(startX + i * mw, y * pxPerMm, (j - i) * mw, bh * pxPerMm)
+        i = j
       }
-      // data: URL: se decodifica de forma síncrona en la práctica; si aún no está lista, se repinta al cargar.
-      if (img.complete) ctx.drawImage(img, x * pxPerMm, y * pxPerMm, iw * pxPerMm, ih * pxPerMm)
-      else img.onload = () => ctx.drawImage(img, x * pxPerMm, y * pxPerMm, iw * pxPerMm, ih * pxPerMm)
     },
   }
-  drawLabel(pen, format, w, h, item)
+}
+
+function blankCanvas(canvas: HTMLCanvasElement, wMm: number, hMm: number, pxPerMm: number): CanvasRenderingContext2D | null {
+  canvas.width = Math.round(wMm * pxPerMm)
+  canvas.height = Math.round(hMm * pxPerMm)
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return null
+  ctx.fillStyle = '#fff'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.fillStyle = '#000'
+  return ctx
+}
+
+/** Pinta una etiqueta en un canvas (vista previa). `pxPerMm` ya incluye el factor de pantalla. */
+export function paintLabelPreview(canvas: HTMLCanvasElement, format: LabelFormat, w: number, h: number, item: LabelItem, pxPerMm: number): void {
+  const ctx = blankCanvas(canvas, w, h, pxPerMm)
+  if (!ctx) return
+  drawLabel(createCanvasPen(ctx, pxPerMm, false), format, w, h, item)
+}
+
+/**
+ * Pinta una FILA de etiquetas (1 a 3 lado a lado) para imprimirla: `pxPerMm` es la resolución de la impresora (203 dpi ≈ 8
+ * puntos por mm) y las barras salen con módulos enteros. La fila mide columnas × ancho + separaciones.
+ */
+export function paintLabelRow(
+  canvas: HTMLCanvasElement,
+  job: Pick<LabelJob, 'format' | 'width' | 'height' | 'gap'>,
+  items: LabelItem[],
+  pxPerMm: number,
+): void {
+  const rowW = items.length * job.width + (items.length - 1) * job.gap
+  const ctx = blankCanvas(canvas, rowW, job.height, pxPerMm)
+  if (!ctx) return
+  const pen = createCanvasPen(ctx, pxPerMm, true)
+  items.forEach((item, i) => drawLabel(pen, job.format, job.width, job.height, item, i * (job.width + job.gap), 0))
 }
 
 export interface LabelJob {
@@ -242,8 +282,20 @@ export function buildLabelsPdf(job: LabelJob): jsPDF {
       doc.setTextColor(0, 0, 0)
       doc.text(str, x, y, { align: o.align ?? 'left' })
     },
-    image(dataUrl, x, y, iw, ih) {
-      doc.addImage(dataUrl, 'PNG', x, y, iw, ih, undefined, 'FAST')
+    bars(modules, x, y, bw, bh) {
+      // Vectorial: cada tramo de barras es un rectángulo del ancho exacto (en mm), sin imagen que se pixele.
+      const mw = bw / modules.length
+      doc.setFillColor(0, 0, 0)
+      for (let i = 0; i < modules.length; ) {
+        if (modules[i] !== '1') {
+          i++
+          continue
+        }
+        let j = i
+        while (j < modules.length && modules[j] === '1') j++
+        doc.rect(x + i * mw, y, (j - i) * mw, bh, 'F')
+        i = j
+      }
     },
   }
 
