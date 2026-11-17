@@ -240,8 +240,43 @@ export function paintLabelRow(
   const rowW = items.length * job.width + (items.length - 1) * job.gap
   const ctx = blankCanvas(canvas, rowW, job.height, pxPerMm)
   if (!ctx) return
+  const place = (pen: Pen) => items.forEach((item, i) => drawLabel(pen, job.format, job.width, job.height, item, i * (job.width + job.gap), 0))
+
+  // Texto con supersampling: se dibuja a SS veces la resolución (sin que el hinting deforme las letras) y se promedia
+  // cada bloque de SS×SS puntos a un gris; al pasar luego a blanco y negro el borde queda mucho más fino que dibujando
+  // directo a 203 dpi. El código de barras NO se promedia: se pinta después con módulos enteros para que se lea.
+  const SS = 4
+  const hi = document.createElement('canvas')
+  const hctx = blankCanvas(hi, rowW, job.height, pxPerMm * SS)
+  if (!hctx) {
+    place(createCanvasPen(ctx, pxPerMm, true))
+    return
+  }
+  const bars: { modules: string; x: number; y: number; w: number; h: number }[] = []
+  const hiPen = createCanvasPen(hctx, pxPerMm * SS, true)
+  place({ ...hiPen, bars: (modules, x, y, w, h) => void bars.push({ modules, x, y, w, h }) })
+
+  const W = canvas.width
+  const H = canvas.height
+  const src = hctx.getImageData(0, 0, hi.width, hi.height).data
+  const dst = ctx.createImageData(W, H)
+  const hw = hi.width
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      let sum = 0
+      for (let dy = 0; dy < SS; dy++) {
+        const row = Math.min(y * SS + dy, hi.height - 1) * hw
+        for (let dx = 0; dx < SS; dx++) sum += src[(row + Math.min(x * SS + dx, hw - 1)) * 4]
+      }
+      const v = Math.round(sum / (SS * SS))
+      const o = (y * W + x) * 4
+      dst.data[o] = dst.data[o + 1] = dst.data[o + 2] = v
+      dst.data[o + 3] = 255
+    }
+  }
+  ctx.putImageData(dst, 0, 0)
   const pen = createCanvasPen(ctx, pxPerMm, true)
-  items.forEach((item, i) => drawLabel(pen, job.format, job.width, job.height, item, i * (job.width + job.gap), 0))
+  for (const b of bars) pen.bars(b.modules, b.x, b.y, b.w, b.h)
 }
 
 export interface LabelJob {
