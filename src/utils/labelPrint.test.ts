@@ -42,3 +42,18 @@ describe('labelPrint', () => {
     expect(afterLabelBytes('none')).toEqual([])
   })
 })
+
+describe('TSPL', () => {
+  it('arma SIZE/GAP/BITMAP con 1 = blanco y 0 = tinta', async () => {
+    const { tsplLabelCommand } = await import('./labelPrint')
+    const rgba = new Uint8ClampedArray(8 * 2 * 4).fill(255)
+    rgba[0] = rgba[1] = rgba[2] = 0 // primer píxel negro
+    const out = tsplLabelCommand(rgba, 8, 2, 1, 0.25, 2)
+    const txt = new TextDecoder('latin1').decode(out)
+    expect(txt.startsWith('SIZE 1 mm,0.3 mm\r\nGAP 2 mm,0 mm\r\nDIRECTION 0\r\nCLS\r\nBITMAP 0,0,1,2,0,')).toBe(true)
+    const head = 'SIZE 1 mm,0.3 mm\r\nGAP 2 mm,0 mm\r\nDIRECTION 0\r\nCLS\r\nBITMAP 0,0,1,2,0,'.length
+    expect(out[head]).toBe(0x7f)
+    expect(out[head + 1]).toBe(0xff)
+    expect(txt.endsWith('\r\nPRINT 1,1\r\n')).toBe(true)
+  })
+})

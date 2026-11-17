@@ -37,9 +37,15 @@ export interface LabelPrinterChoice {
   /** Solo para 'windows': ancho del rollo (en las configuradas se usa el de su configuración). */
   paperWidthMm: PrinterPaperWidth
   after: LabelAfter
+  /** escpos = ticketera (imagen ESC/POS); tspl = impresora de etiquetas en modo etiqueta (Hoin, Xprinter, TSC…). */
+  language: LabelLanguage
+  /** Solo TSPL: espacio entre etiquetas del rollo (mm). */
+  rollGapMm: number
 }
 
-export const DEFAULT_LABEL_PRINTER: LabelPrinterChoice = { source: 'documentos', paperWidthMm: 80, after: 'cut' }
+export type LabelLanguage = 'escpos' | 'tspl'
+
+export const DEFAULT_LABEL_PRINTER: LabelPrinterChoice = { source: 'documentos', paperWidthMm: 80, after: 'cut', language: 'escpos', rollGapMm: 2 }
 
 const STORAGE_KEY = 'tukifac_label_printer_v1'
 
@@ -50,7 +56,9 @@ export function loadLabelPrinterChoice(): LabelPrinterChoice {
     const p = JSON.parse(raw) as Partial<LabelPrinterChoice>
     const source: LabelPrinterSource = ['documentos', 'precuenta', 'comandas', 'windows'].includes(String(p.source)) ? (p.source as LabelPrinterSource) : 'documentos'
     const after: LabelAfter = LABEL_AFTER_OPTIONS.some((o) => o.id === p.after) ? (p.after as LabelAfter) : 'cut'
-    return { source, printerName: p.printerName ?? '', paperWidthMm: p.paperWidthMm === 58 ? 58 : 80, after }
+    const language: LabelLanguage = p.language === 'tspl' ? 'tspl' : 'escpos'
+    const rollGapMm = Number.isFinite(p.rollGapMm) ? Math.min(10, Math.max(0, Number(p.rollGapMm))) : 2
+    return { source, printerName: p.printerName ?? '', paperWidthMm: p.paperWidthMm === 58 ? 58 : 80, after, language, rollGapMm }
   } catch {
     return { ...DEFAULT_LABEL_PRINTER }
   }
@@ -148,6 +156,33 @@ export function rgbaToEscPosRaster(rgba: Uint8ClampedArray | Uint8Array, width: 
   return Uint8Array.from(out)
 }
 
+/**
+ * TSPL: arma el comando de una fila de etiquetas. El rollo se programa con el tamaño exacto de la fila y el espacio entre
+ * etiquetas; la imagen va en BITMAP (en TSPL el bit 1 es papel en blanco y el 0 es tinta, al revés que en ESC/POS).
+ */
+export function tsplLabelCommand(rgba: Uint8ClampedArray | Uint8Array, width: number, height: number, rowMm: number, heightMm: number, gapMm: number, threshold = 160): Uint8Array {
+  const bytesPerRow = Math.ceil(width / 8)
+  const bitmap = new Uint8Array(bytesPerRow * height).fill(0xff)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4
+      const alpha = rgba[i + 3] / 255
+      const lum = (0.299 * rgba[i] + 0.587 * rgba[i + 1] + 0.114 * rgba[i + 2]) * alpha + 255 * (1 - alpha)
+      if (lum < threshold) bitmap[y * bytesPerRow + (x >> 3)] &= ~(1 << (7 - (x & 7)))
+    }
+  }
+  const mm = (n: number) => String(Math.round(n * 10) / 10)
+  const head = new TextEncoder().encode(
+    ['SIZE ' + mm(rowMm) + ' mm,' + mm(heightMm) + ' mm', 'GAP ' + mm(gapMm) + ' mm,0 mm', 'DIRECTION 0', 'CLS', `BITMAP 0,0,${bytesPerRow},${height},0,`].join('\r\n'),
+  )
+  const tail = new TextEncoder().encode('\r\nPRINT 1,1\r\n')
+  const out = new Uint8Array(head.length + bitmap.length + tail.length)
+  out.set(head, 0)
+  out.set(bitmap, head.length)
+  out.set(tail, head.length + bitmap.length)
+  return out
+}
+
 /** Reparte las etiquetas pedidas en filas de `columns` (la última puede quedar incompleta). */
 export function planLabelRows(job: Pick<LabelJob, 'columns' | 'lines'>): LabelItem[][] {
   const labels: LabelItem[] = []
@@ -181,14 +216,15 @@ export async function printLabels(
   if (!cfg) throw new Error('No hay una impresora configurada. Configúrala en Ajustes → Impresoras o elige otra')
   const paper: PrinterPaperWidth = cfg.paperWidthMm === 58 ? 58 : 80
   const rowMm = labelRowWidthMm(job)
-  if (rowMm > printableWidthMm(paper) + 0.01) {
+  const tspl = choice.language === 'tspl'
+  if (!tspl && rowMm > printableWidthMm(paper) + 0.01) {
     throw new Error(`La fila de etiquetas mide ${rowMm.toFixed(1)} mm y el rollo de ${paper} mm imprime hasta ${printableWidthMm(paper)} mm: reduce el ancho o las columnas`)
   }
 
   const rows = planLabelRows(job)
   if (rows.length === 0) return { labels: 0, rows: 0 }
-  const dots = printableDots(paper)
-  const after = afterLabelBytes(choice.after)
+  const dots = tspl ? Math.ceil((rowMm * LABEL_DOTS_PER_MM) / 8) * 8 : printableDots(paper)
+  const after = tspl ? [] : afterLabelBytes(choice.after)
   // Tandas de ~120 KB: con un rollo de 80 mm y etiquetas de 30 mm son unas 7 filas por envío.
   const rowBytes = (dots / 8) * Math.round(job.height * LABEL_DOTS_PER_MM)
   const perChunk = Math.max(1, Math.floor(120_000 / Math.max(1, rowBytes)))
@@ -197,14 +233,18 @@ export async function printLabels(
   let labels = 0
   for (let i = 0; i < rows.length; i += perChunk) {
     if (opts.signal?.aborted) throw new Error('Impresión cancelada')
-    const parts: Uint8Array[] = [Uint8Array.from([0x1b, 0x40])]
+    const parts: Uint8Array[] = tspl ? [] : [Uint8Array.from([0x1b, 0x40])]
     for (const items of rows.slice(i, i + perChunk)) {
       const canvas = document.createElement('canvas')
       paintLabelRow(canvas, job, items, LABEL_DOTS_PER_MM)
       const ctx = canvas.getContext('2d')
       if (!ctx) throw new Error('No se pudo preparar la etiqueta para imprimir')
       const img = ctx.getImageData(0, 0, canvas.width, canvas.height)
-      parts.push(rgbaToEscPosRaster(img.data, canvas.width, canvas.height, dots))
+      parts.push(
+        tspl
+          ? tsplLabelCommand(img.data, canvas.width, canvas.height, rowMm, job.height, choice.rollGapMm)
+          : rgbaToEscPosRaster(img.data, canvas.width, canvas.height, dots),
+      )
       if (after.length) parts.push(Uint8Array.from(after))
       labels += items.length
     }

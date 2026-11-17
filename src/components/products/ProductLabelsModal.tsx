@@ -31,6 +31,7 @@ import {
   resolveLabelPrinter,
   saveLabelPrinterChoice,
   type LabelAfter,
+  type LabelLanguage,
   type LabelPrinterChoice,
 } from '@/utils/labelPrint'
 
@@ -205,7 +206,8 @@ export function ProductLabelsModal({ open, onClose }: { open: boolean; onClose: 
 
   const printerCfg = resolveLabelPrinter(printer)
   const rowMm = labelRowWidthMm({ width, columns, gap })
-  const tooWide = printerCfg ? rowMm > printableWidthMm(printerCfg.paperWidthMm) + 0.01 : false
+  const tspl = printer.language === 'tspl'
+  const tooWide = !tspl && printerCfg ? rowMm > printableWidthMm(printerCfg.paperWidthMm) + 0.01 : false
   const previewItems = useMemo(() => Array.from({ length: columns }, () => sample), [columns, sample])
 
   const printDirect = async (test = false) => {
@@ -476,6 +478,17 @@ export function ProductLabelsModal({ open, onClose }: { open: boolean; onClose: 
             ) : (
               <div className="space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <label className="block sm:col-span-3">
+                    <span className="block text-xs font-medium text-gray-500 mb-1">Tipo de impresora</span>
+                    <select
+                      value={printer.language}
+                      onChange={(e) => updatePrinter({ language: e.target.value as LabelLanguage })}
+                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                    >
+                      <option value="escpos">Ticketera de recibos (ESC/POS)</option>
+                      <option value="tspl">Impresora de etiquetas en modo etiqueta (TSPL: Hoin, Xprinter, TSC…)</option>
+                    </select>
+                  </label>
                   <label className="block">
                     <span className="block text-xs font-medium text-gray-500 mb-1">Impresora</span>
                     <select
@@ -500,7 +513,7 @@ export function ProductLabelsModal({ open, onClose }: { open: boolean; onClose: 
                       ))}
                     </select>
                   </label>
-                  {printer.source === 'windows' && (
+                  {printer.source === 'windows' && !tspl && (
                     <label className="block">
                       <span className="block text-xs font-medium text-gray-500 mb-1">Ancho del rollo</span>
                       <select
@@ -513,27 +526,44 @@ export function ProductLabelsModal({ open, onClose }: { open: boolean; onClose: 
                       </select>
                     </label>
                   )}
-                  <label className="block">
-                    <span className="block text-xs font-medium text-gray-500 mb-1">Al terminar cada etiqueta</span>
-                    <select
-                      value={printer.after}
-                      onChange={(e) => updatePrinter({ after: e.target.value as LabelAfter })}
-                      className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
-                    >
-                      {LABEL_AFTER_OPTIONS.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  {tspl ? (
+                    <label className="block">
+                      <span className="block text-xs font-medium text-gray-500 mb-1">Espacio entre etiquetas del rollo (mm)</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={10}
+                        step="0.5"
+                        value={printer.rollGapMm}
+                        onChange={(e) => updatePrinter({ rollGapMm: Math.min(10, Math.max(0, Number(e.target.value) || 0)) })}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                      />
+                    </label>
+                  ) : (
+                    <label className="block">
+                      <span className="block text-xs font-medium text-gray-500 mb-1">Al terminar cada etiqueta</span>
+                      <select
+                        value={printer.after}
+                        onChange={(e) => updatePrinter({ after: e.target.value as LabelAfter })}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"
+                      >
+                        {LABEL_AFTER_OPTIONS.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                 </div>
                 <p className={clsx('text-xs', !printerCfg || tooWide ? 'text-amber-600' : 'text-gray-500')}>
                   {!printerCfg
                     ? 'Esa impresora no está configurada. Configúrala en Ajustes → Impresoras o elige otra.'
                     : tooWide
                       ? `La fila mide ${rowMm.toFixed(1)} mm y el rollo de ${printerCfg.paperWidthMm} mm imprime hasta ${printableWidthMm(printerCfg.paperWidthMm)} mm: reduce el ancho o las columnas.`
-                      : `Se imprimirá en ${describePrinter(printerCfg)} (rollo de ${printerCfg.paperWidthMm} mm). ${LABEL_AFTER_OPTIONS.find((o) => o.id === printer.after)?.hint ?? ''}`}
+                      : tspl
+                        ? `Se imprimirá en ${describePrinter(printerCfg)} con etiquetas de ${rowMm.toFixed(1).replace(/\.0$/, '')} × ${height} mm (la impresora debe estar en modo etiqueta).`
+                        : `Se imprimirá en ${describePrinter(printerCfg)} (rollo de ${printerCfg.paperWidthMm} mm). ${LABEL_AFTER_OPTIONS.find((o) => o.id === printer.after)?.hint ?? ''}`}
                 </p>
                 <div>
                   <p className="text-xs font-medium text-gray-500 mb-1">Vista previa de la impresión</p>
