@@ -538,10 +538,10 @@ async function pushCompanyHeaderEscPos(
   // Nombre principal "un poco más grande" (1.3×): tamaño intermedio imposible en
   // texto ESC/POS (solo 1×/2×), por eso se rasteriza. Si falla, cae a texto 1×.
   const mainName = tradeName || businessName
-  // 1.1× ≈ solo un poco más grande que el texto nativo del ticket (~1.0× = igual;
-  // subir hacia 1.15 si se quiere más grande, bajar hacia 1.0 si aún se ve grande).
+  // 1.2× ≈ un punto más que antes (era 1.1×); equivale al aumento de 13 a 14 pt del ticket PDF.
+  // Subir hacia 1.3 si se quiere más grande, bajar hacia 1.0 si se ve grande.
   const nameRaster = await buildEscPosCenteredTextRaster(mainName, paperWidthMm, {
-    fontScale: 1.1,
+    fontScale: 1.2,
     bold: true,
   })
   if (nameRaster?.length) {
