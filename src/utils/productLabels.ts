@@ -121,9 +121,10 @@ export function drawLabel(pen: Pen, format: LabelFormat, w: number, h: number, i
   const barcodeOnly = format === 'barcode'
   const pad = barcodeOnly ? Math.min(1.5, w * 0.05, h * 0.08) : Math.min(PAD_MM, w * 0.06, h * 0.06)
   const innerW = w - 2 * pad
-  const innerH = h - 2 * pad
+  const padV = barcodeOnly ? Math.min(3.5, h * 0.12) : pad
+  const innerH = h - 2 * padV
   const cx = ox + w / 2
-  const top = oy + pad
+  const top = oy + padV
   const code = item.code.trim()
   const bars = code ? barcodeModules(code) : null
 
