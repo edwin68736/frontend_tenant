@@ -76,7 +76,13 @@ import {
   canShowXmlGenerated,
   canShowXmlSent,
 } from '@/constants/billingStatus'
-import { CREDIT_NOTE_REASONS, DEBIT_NOTE_REASONS, CREDIT_NOTE_PARTIAL_REASON_CODES } from '@/constants/sunatnote'
+import {
+  CREDIT_NOTE_REASONS,
+  DEBIT_NOTE_REASONS,
+  CREDIT_NOTE_PARTIAL_REASON_CODES,
+  CREDIT_NOTE_AMOUNT_REASON_CODES,
+  CREDIT_NOTE_AMOUNT_ONLY_REASON_CODES,
+} from '@/constants/sunatnote'
 import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 
 const STATUS_COLORS = BILLING_STATUS_COLORS
@@ -167,6 +173,11 @@ function BillingContent() {
   const [voidNcOrigItems, setVoidNcOrigItems] = useState<SaleItem[]>([])
   const [voidNcItemsLoading, setVoidNcItemsLoading] = useState(false)
   const [voidNcSelections, setVoidNcSelections] = useState<Record<number, number>>({})
+  // Nota por monto: importe (con IGV) a acreditar, valor/moneda del comprobante y, para el motivo 10
+  // (que admite ambos), si el usuario prefiere monto o cantidades.
+  const [voidNcAmount, setVoidNcAmount] = useState('')
+  const [voidNcSaleInfo, setVoidNcSaleInfo] = useState<{ total: number; currency: string }>({ total: 0, currency: 'PEN' })
+  const [voidNcModeChoice, setVoidNcModeChoice] = useState<'amount' | 'quantity'>('quantity')
   // Nombre comercial y allow_fraction de cada SaleUnit usada en voidNcOrigItems (Fase 7G) — misma
   // caché/mecanismo de utils/saleUnitNames.ts ya usado por el historial de venta (Fase 7F).
   const [voidNcUnitNames, setVoidNcUnitNames] = useState<Map<string, string>>(new Map())
@@ -496,6 +507,9 @@ function BillingContent() {
     setVoidNcLockedToVoid(lockToVoid)
     setVoidNcOrigItems([])
     setVoidNcSelections({})
+    setVoidNcAmount('')
+    setVoidNcModeChoice('quantity')
+    setVoidNcSaleInfo({ total: Number(sale.total) || 0, currency: sale.currency || 'PEN' })
     setVoidNcOpen(true)
     if (!lockToVoid) {
       setVoidNcItemsLoading(true)
@@ -512,7 +526,15 @@ function BillingContent() {
     }
   }
 
-  const voidNcPartialMode = !voidNcLockedToVoid && CREDIT_NOTE_PARTIAL_REASON_CODES.has(voidNcReasonCode)
+  // Por monto: motivos de precio (04/05/09) siempre; "10 Otros" solo si el usuario lo elige.
+  const voidNcAmountMode =
+    !voidNcLockedToVoid &&
+    CREDIT_NOTE_AMOUNT_REASON_CODES.has(voidNcReasonCode) &&
+    (CREDIT_NOTE_AMOUNT_ONLY_REASON_CODES.has(voidNcReasonCode) || voidNcModeChoice === 'amount')
+  const voidNcPartialMode = !voidNcLockedToVoid && !voidNcAmountMode && CREDIT_NOTE_PARTIAL_REASON_CODES.has(voidNcReasonCode)
+  const voidNcAmountNum = Number(String(voidNcAmount).replace(',', '.')) || 0
+  const voidNcCurrencySym = voidNcSaleInfo.currency === 'USD' ? 'US$' : 'S/'
+  const voidNcAmountInvalid = voidNcAmountMode && (voidNcAmountNum <= 0 || voidNcAmountNum > voidNcSaleInfo.total + 0.005)
 
   // Rango de la fecha de la nota: hoy − 3 días … hoy (con hoy = 01/10 se elige hasta el 28/09) y
   // nunca futura. No depende de la fecha del comprobante que se anula.
@@ -535,13 +557,24 @@ function BillingContent() {
 
   const submitVoidWithCreditNote = async () => {
     if (!voidNcTarget) return
-    const items = voidNcPartialMode
-      ? Object.entries(voidNcSelections)
-          .map(([id, quantity]) => ({ original_item_id: Number(id), quantity }))
-          .filter((s) => s.quantity > 0)
-      : []
+    // Por monto: los ítems marcados solo delimitan DÓNDE se reparte el importe (sin marcar = todas las líneas).
+    const items = voidNcAmountMode
+      ? Object.keys(voidNcSelections).map((id) => ({ original_item_id: Number(id), quantity: 0 }))
+      : voidNcPartialMode
+        ? Object.entries(voidNcSelections)
+            .map(([id, quantity]) => ({ original_item_id: Number(id), quantity }))
+            .filter((s) => s.quantity > 0)
+        : []
     if (voidNcPartialMode && items.length === 0) {
       toast.error('Seleccione al menos un ítem para la nota parcial')
+      return
+    }
+    if (voidNcAmountMode && voidNcAmountInvalid) {
+      toast.error(
+        voidNcAmountNum <= 0
+          ? 'Indique el monto a acreditar'
+          : `El monto no puede superar el valor del comprobante (${voidNcCurrencySym} ${voidNcSaleInfo.total.toFixed(2)})`,
+      )
       return
     }
     if (voidNcIssueDateInvalid) {
@@ -558,6 +591,7 @@ function BillingContent() {
         voidNcReasonCode,
         items,
         voidNcIssueDate,
+        voidNcAmountMode ? Math.round(voidNcAmountNum * 100) / 100 : undefined,
       )
       if (res.success) {
         toast.success(res.message ?? 'Nota de crédito encolada')
@@ -1800,10 +1834,91 @@ function BillingContent() {
                 <option key={r.code} value={r.code}>{r.code} - {r.label}</option>
               ))}
             </select>
+            {voidNcReasonCode === '10' && (
+              <div className="flex gap-1 mb-2 text-xs">
+                {(['quantity', 'amount'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    disabled={voidNcSubmitting}
+                    onClick={() => setVoidNcModeChoice(m)}
+                    className={`flex-1 rounded-lg border px-2 py-1.5 font-medium ${
+                      voidNcModeChoice === m ? 'border-orange-500 bg-orange-50 text-orange-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    {m === 'quantity' ? 'Por ítems y cantidades' : 'Por monto'}
+                  </button>
+                ))}
+              </div>
+            )}
             {voidNcReasonCode === '01' ? (
               <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
                 Al aceptarse en SUNAT, este motivo anula el comprobante completo: se repone el 100% del stock y queda una devolución pendiente por el total.
               </p>
+            ) : voidNcAmountMode ? (
+              <>
+                <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-2">
+                  Indique el importe que se descuenta (incluye IGV). La nota se emite solo por ese monto: el cliente se queda con
+                  la mercadería, por eso no se repone stock. Si el comprobante ya tiene otras notas, el sistema valida que no
+                  se acredite más de lo vendido.
+                </p>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Monto a acreditar ({voidNcCurrencySym}, con IGV) *
+                </label>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={0.01}
+                  max={voidNcSaleInfo.total || undefined}
+                  step="0.01"
+                  value={voidNcAmount}
+                  onChange={(e) => setVoidNcAmount(e.target.value)}
+                  disabled={voidNcSubmitting}
+                  placeholder="0.00"
+                  className={`w-full border rounded-xl px-3 py-2 text-sm mb-1 tabular-nums ${
+                    voidNcAmount !== '' && voidNcAmountInvalid ? 'border-red-400' : 'border-gray-200'
+                  }`}
+                />
+                <p className={`text-[11px] mb-3 ${voidNcAmount !== '' && voidNcAmountInvalid ? 'text-red-600' : 'text-gray-500'}`}>
+                  Valor del comprobante: {voidNcCurrencySym} {voidNcSaleInfo.total.toFixed(2)}
+                  {voidNcAmountNum > 0 && !voidNcAmountInvalid
+                    ? ` → con esta nota: ${voidNcCurrencySym} ${(voidNcSaleInfo.total - voidNcAmountNum).toFixed(2)}`
+                    : voidNcAmount !== '' && voidNcAmountInvalid
+                      ? ' — el monto debe ser mayor a 0 y no superar ese valor'
+                      : ''}
+                </p>
+                {voidNcItemsLoading ? (
+                  <p className="text-sm text-gray-500 mb-3">Cargando ítems…</p>
+                ) : voidNcOrigItems.length > 1 ? (
+                  <div className="mb-3">
+                    <p className="text-[11px] text-gray-500 mb-1">
+                      Opcional: marque las líneas a las que aplica el descuento. Sin marcar, se reparte entre todas en proporción a su valor.
+                    </p>
+                    <div className="border border-gray-200 rounded-xl overflow-hidden">
+                      <table className="w-full text-xs">
+                        <tbody>
+                          {voidNcOrigItems.map((it) => (
+                            <tr key={it.id} className="border-t first:border-t-0 border-gray-100">
+                              <td className="px-2 py-1.5 w-8">
+                                <input
+                                  type="checkbox"
+                                  checked={it.id in voidNcSelections}
+                                  onChange={(e) => toggleVoidNcItem(it, e.target.checked)}
+                                  disabled={voidNcSubmitting || Number(it.total) <= 0}
+                                />
+                              </td>
+                              <td className="px-2 py-1.5 text-gray-700">{it.description}</td>
+                              <td className="px-2 py-1.5 text-right text-gray-500 tabular-nums">
+                                {voidNcCurrencySym} {Number(it.total).toFixed(2)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : null}
+              </>
             ) : voidNcPartialMode ? (
               <>
                 <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-2">

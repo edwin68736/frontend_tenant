@@ -39,3 +39,16 @@ export const DEBIT_NOTE_REASONS: NoteReason[] = [
  * copiando todo, sin selector.
  */
 export const CREDIT_NOTE_PARTIAL_REASON_CODES = new Set(['04', '05', '06', '07', '08', '09', '10'])
+
+/**
+ * Motivos que admiten acreditar un IMPORTE (con IGV) en vez de cantidades — espejo de
+ * amountCreditNoteReasonCodes (note_amount.go). Son ajustes de valor: la nota no devuelve
+ * mercadería. 06/07/08 siguen siendo por cantidad.
+ */
+export const CREDIT_NOTE_AMOUNT_REASON_CODES = new Set(['04', '05', '09', '10'])
+
+/**
+ * De esos, los que son SOLO de precio (el cliente se queda con la mercadería): el formulario pide
+ * únicamente el monto. "10 Otros conceptos" deja elegir entre monto y cantidades.
+ */
+export const CREDIT_NOTE_AMOUNT_ONLY_REASON_CODES = new Set(['04', '05', '09'])

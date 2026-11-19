@@ -132,6 +132,11 @@ export const billingService = {
     items: { original_item_id: number; quantity: number }[] = [],
     /** Fecha de emisión de la nota (AAAA-MM-DD, hora Perú). Vacía = hoy. */
     issueDate?: string,
+    /**
+     * Nota por monto: importe TOTAL (con IGV) a acreditar, repartido entre `items` (o todas las líneas
+     * si va vacío). Solo motivos de CREDIT_NOTE_AMOUNT_REASON_CODES; no devuelve cantidades ni repone stock.
+     */
+    amount?: number,
   ): Promise<{ success: boolean; message?: string; nc_sale?: unknown; invoice?: unknown }> =>
     api
       .post(`/api/billing/void-with-credit-note/${saleId}`, {
@@ -139,6 +144,7 @@ export const billingService = {
         reason_code: reasonCode,
         items,
         ...(issueDate ? { issue_date: issueDate } : {}),
+        ...(amount && amount > 0 ? { amount } : {}),
       })
       .then(r => r.data),
 
