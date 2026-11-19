@@ -11,6 +11,9 @@ import {
   type Category,
   type CreateCategoryInput,
 } from '@/services/products.service'
+import { companyService } from '@/services/company.service'
+import { useBranch } from '@/contexts/BranchContext'
+import { categoryBranchName } from '@/utils/categoryBranch'
 
 const FORM_INPUT =
   'w-full min-w-0 border border-gray-200 rounded-xl px-3 py-2.5 sm:py-2 text-base sm:text-sm outline-none focus:ring-2 focus:ring-[rgb(var(--p200))] focus:border-[rgb(var(--p400))]'
@@ -22,10 +25,12 @@ type CategoryFormState = {
   name: string
   description: string
   sort_order: string
+  /** '' = todas las sucursales; id en texto = solo esa sucursal. */
+  branch_id: string
 }
 
-function emptyForm(): CategoryFormState {
-  return { name: '', description: '', sort_order: '' }
+function emptyForm(branchId = ''): CategoryFormState {
+  return { name: '', description: '', sort_order: '', branch_id: branchId }
 }
 
 function formFromCategory(c: Category): CategoryFormState {
@@ -33,6 +38,7 @@ function formFromCategory(c: Category): CategoryFormState {
     name: c.name,
     description: c.description ?? '',
     sort_order: c.sort_order != null ? String(c.sort_order) : '',
+    branch_id: c.branch_id != null ? String(c.branch_id) : '',
   }
 }
 
@@ -46,9 +52,16 @@ export default function CategoriesPage() {
 
 function CategoriesContent() {
   const access = useCatalogAccess()
-  const canCreate = access.canCreateGlobal
-  const canEdit = access.canEditGlobal
-  const canDelete = access.canDeleteGlobal
+  const { activeBranchId } = useBranch()
+  // Quien administra el catálogo global gestiona todas las categorías. Quien no, solo las de SU sucursal activa (el backend
+  // lo exige igual): puede crearlas, y editar/eliminar las que son de su sucursal.
+  const canCreate = access.canCreateGlobal || access.canCreateBranchData
+  const canEditRow = (c: Category) =>
+    access.canEditGlobal || (access.canEditBranchData && c.branch_id != null && c.branch_id === activeBranchId)
+  const canDeleteRow = (c: Category) =>
+    access.canDeleteGlobal || (access.canDeleteBranchData && c.branch_id != null && c.branch_id === activeBranchId)
+  const [branches, setBranches] = useState<{ id: number; name: string }[]>([])
+  const multiBranch = branches.length > 1
 
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
@@ -107,6 +120,10 @@ function CategoriesContent() {
     load()
   }, [load])
 
+  useEffect(() => {
+    companyService.listBranches().then((b) => setBranches(b ?? [])).catch(() => {})
+  }, [])
+
   const filtered = useMemo(() => {
     const term = q.trim().toLowerCase()
     if (!term) return categories
@@ -120,7 +137,8 @@ function CategoriesContent() {
   const openCreate = () => {
     resetImage()
     setEditing(null)
-    setForm(emptyForm())
+    // Quien no administra el catálogo global solo puede crear en su sucursal: la propone ya elegida.
+    setForm(emptyForm(!access.canManageGlobal && activeBranchId > 0 ? String(activeBranchId) : ''))
     setModalOpen(true)
   }
 
@@ -156,10 +174,13 @@ function CategoriesContent() {
       sort_order = Math.floor(n)
     }
 
+    // Con una sola sucursal no hay ámbito que elegir (la categoría es de todas, como siempre).
+    const branchId = multiBranch ? (form.branch_id === '' ? null : Number(form.branch_id)) : undefined
     const payload: CreateCategoryInput = {
       name,
       description: form.description.trim(),
       ...(sort_order != null ? { sort_order } : {}),
+      ...(branchId !== undefined ? { branch_id: branchId } : {}),
     }
 
     setSaving(true)
@@ -170,6 +191,8 @@ function CategoriesContent() {
           name: payload.name,
           description: payload.description,
           sort_order: sort_order ?? editing.sort_order ?? 0,
+          // Solo quien administra el catálogo global puede cambiar el ámbito; el resto lo conserva.
+          ...(access.canManageGlobal && branchId !== undefined ? { branch_id: branchId } : {}),
         })
       } else {
         const created = await productsService.createCategory(payload)
@@ -261,7 +284,7 @@ function CategoriesContent() {
           <table className="w-full min-w-[560px] text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
               <tr>
-                {['Orden', 'Imagen', 'Nombre', 'Descripción', 'Productos', ''].map((h) => (
+                {['Orden', 'Imagen', 'Nombre', ...(multiBranch ? ['Sucursal'] : []), 'Descripción', 'Productos', ''].map((h) => (
                   <th
                     key={h || 'actions'}
                     className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase"
@@ -274,7 +297,7 @@ function CategoriesContent() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-gray-400 text-sm">
+                  <td colSpan={multiBranch ? 7 : 6} className="px-4 py-12 text-center text-gray-400 text-sm">
                     {loading
                       ? 'Cargando…'
                       : q.trim()
@@ -298,6 +321,17 @@ function CategoriesContent() {
                       )}
                     </td>
                     <td className="px-4 py-3 font-medium text-gray-800">{c.name}</td>
+                    {multiBranch && (
+                      <td className="px-4 py-3">
+                        {c.branch_id == null ? (
+                          <span className="text-xs text-gray-500">Todas</span>
+                        ) : (
+                          <span className="inline-flex px-2 py-0.5 rounded-full bg-[rgb(var(--p50))] text-[rgb(var(--p700))] text-xs font-medium">
+                            {categoryBranchName(c, branches)}
+                          </span>
+                        )}
+                      </td>
+                    )}
                     <td className="px-4 py-3 text-gray-600 max-w-xs truncate">
                       {c.description?.trim() || '—'}
                     </td>
@@ -306,7 +340,7 @@ function CategoriesContent() {
                     </td>
                     <td className="px-4 py-3 w-24">
                       <div className="flex items-center justify-end gap-1">
-                        {canEdit && (
+                        {canEditRow(c) && (
                           <button
                             type="button"
                             onClick={() => openEdit(c)}
@@ -316,7 +350,7 @@ function CategoriesContent() {
                             <Pencil size={15} />
                           </button>
                         )}
-                        {canDelete && (
+                        {canDeleteRow(c) && (
                           <button
                             type="button"
                             onClick={() => {
@@ -365,6 +399,31 @@ function CategoriesContent() {
               autoFocus
             />
           </div>
+          {multiBranch && (
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Disponible en</label>
+              <select
+                className={FORM_INPUT}
+                value={form.branch_id}
+                onChange={(e) => setForm((f) => ({ ...f, branch_id: e.target.value }))}
+                disabled={!access.canManageGlobal}
+              >
+                {access.canManageGlobal && <option value="">Todas las sucursales</option>}
+                {branches
+                  .filter((b) => access.canManageGlobal || b.id === activeBranchId)
+                  .map((b) => (
+                    <option key={b.id} value={String(b.id)}>
+                      Solo {b.name}
+                    </option>
+                  ))}
+              </select>
+              <p className="text-xs text-gray-400 mt-1">
+                {access.canManageGlobal
+                  ? 'Una categoría de una sola sucursal solo admite productos que se vendan únicamente allí. Si ya tiene productos de otras sucursales no se podrá limitar.'
+                  : 'Tu usuario administra las categorías de su sucursal.'}
+              </p>
+            </div>
+          )}
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Descripción (opcional)</label>
             <textarea

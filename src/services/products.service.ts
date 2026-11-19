@@ -113,6 +113,8 @@ export interface Category {
   active?: boolean
   /** Imagen de la categoría (se muestra en la tienda virtual). */
   image_url?: string
+  /** Sucursal de la categoría. null/ausente = todas las sucursales; con valor, solo esa sucursal. */
+  branch_id?: number | null
 }
 
 /** Imagen adicional de la galería de un producto (la principal es Product.image_url). */
@@ -127,12 +129,16 @@ export interface CreateCategoryInput {
   name: string
   description?: string
   sort_order?: number
+  /** null = todas las sucursales (también si se omite); número = solo esa sucursal. */
+  branch_id?: number | null
 }
 
 export interface UpdateCategoryInput {
   name: string
   description?: string
   sort_order?: number
+  /** Omitido = no cambiar el ámbito; null = todas las sucursales; número = solo esa sucursal. */
+  branch_id?: number | null
 }
 
 export interface Brand {
@@ -610,10 +616,20 @@ export const productsService = {
       })
       .then((r) => r.data),
 
-  listCategories: (opts?: { withCounts?: boolean }) =>
+  /**
+   * branchId: solo las categorías visibles en esa sucursal (las de todas + las suyas). Sin él, quien administra todas las
+   * sucursales ve todas las categorías (vista de administración) y el resto solo las de su sucursal activa.
+   */
+  listCategories: (opts?: { withCounts?: boolean; branchId?: number }) =>
     api
       .get<{ data: Category[] }>('/api/categories', {
-        params: opts?.withCounts ? { with_counts: 'true' } : undefined,
+        params:
+          opts?.withCounts || opts?.branchId
+            ? {
+                ...(opts.withCounts ? { with_counts: 'true' } : {}),
+                ...(opts.branchId ? { branch_id: opts.branchId } : {}),
+              }
+            : undefined,
       })
       .then((r) => r.data.data ?? []),
 
@@ -625,6 +641,7 @@ export const productsService = {
         name: body.name,
         description: body.description ?? '',
         ...(body.sort_order != null ? { sort_order: body.sort_order } : {}),
+        ...(body.branch_id != null ? { branch_id: body.branch_id } : {}),
       })
       .then((r) => r.data.data)
   },
@@ -635,6 +652,8 @@ export const productsService = {
         name: input.name,
         description: input.description ?? '',
         sort_order: input.sort_order ?? 0,
+        // undefined = no cambiar el ámbito (JSON omite la clave); null = todas las sucursales.
+        ...(input.branch_id !== undefined ? { branch_id: input.branch_id } : {}),
       })
       .then((r) => r.data.data),
 

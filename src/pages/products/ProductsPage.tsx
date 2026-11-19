@@ -33,6 +33,7 @@ import { ScannerModeControl } from '@/components/barcode/ScannerModeControl'
 import { useBranch } from '@/contexts/BranchContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCatalogAccess } from '@/hooks/useCatalogAccess'
+import { categoriesForProduct, categoryLabel, categoryProductConflict } from '@/utils/categoryBranch'
 import { useBranchWriteGuard } from '@/hooks/useBranchWriteGuard'
 import { clsx } from 'clsx'
 import ProductGalleryEditor from '@/components/products/ProductGalleryEditor'
@@ -1122,6 +1123,16 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
 
   const branchName = (id: number) => branches.find(b => b.id === id)?.name ?? `Sucursal ${id}`
 
+  // Sucursales donde se vende lo que se está editando ([] = todas): define qué categorías admite (una categoría de sucursal
+  // solo admite productos que se vendan únicamente allí).
+  const formBranchSet = branchRestrict ? (form.branch_ids ?? []) : []
+  const formCategories = categoriesForProduct(categories.filter(Boolean), formBranchSet, form.category_id)
+  const formCategoryConflict = categoryProductConflict(
+    categories.find((c) => c?.id === form.category_id),
+    formBranchSet,
+    branches,
+  )
+
   const categoryField = (
     <div className="min-w-0">
       <div className="flex items-center justify-between gap-2 mb-1">
@@ -1133,9 +1144,9 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           <input ref={catInputRef} className={`flex-1 ${PRODUCT_FORM_INPUT}`} placeholder="Nombre categoría" value={newCatName} onChange={e => setNewCatName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') handleAddCategory(); if (e.key === 'Escape') setAddingCat(false) }} />
           <button type="button" onClick={handleAddCategory} className="touch-target sm:min-h-0 sm:min-w-0 px-4 py-2.5 sm:px-2 sm:py-1.5 bg-[rgb(var(--p600))] text-white rounded-xl text-sm sm:text-xs font-medium shrink-0">OK</button>
         </div>
-      ) : categories.filter(Boolean).length >= MIN_OPTIONS_FOR_SEARCH ? (
+      ) : formCategories.length >= MIN_OPTIONS_FOR_SEARCH ? (
         <SearchSelect
-          options={categories.filter(Boolean).map(c => ({ value: String(c.id), label: c.name }))}
+          options={formCategories.map(c => ({ value: String(c.id), label: categoryLabel(c, branches) }))}
           value={String(form.category_id ?? '')}
           onChange={(v) => setF('category_id', v ? Number(v) : null)}
           placeholder="Sin categoría"
@@ -1143,9 +1154,10 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
       ) : (
         <select className={PRODUCT_FORM_INPUT} value={form.category_id ?? ''} onChange={e => setF('category_id', e.target.value ? Number(e.target.value) : null)}>
           <option value="">Sin categoría</option>
-          {categories.filter(Boolean).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          {formCategories.map(c => <option key={c.id} value={c.id}>{categoryLabel(c, branches)}</option>)}
         </select>
       )}
+      {formCategoryConflict && <p className="text-[11px] text-amber-700 mt-1">{formCategoryConflict}</p>}
     </div>
   )
 
@@ -1289,7 +1301,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
         </div>
         {categories.filter(Boolean).length >= MIN_OPTIONS_FOR_SEARCH ? (
           <SearchSelect
-            options={categories.filter(Boolean).map(c => ({ value: String(c.id), label: c.name }))}
+            options={categories.filter(Boolean).map(c => ({ value: String(c.id), label: categoryLabel(c, branches) }))}
             value={String(catFilter ?? '')}
             onChange={(v) => setCatFilter(v ? Number(v) : undefined)}
             placeholder="Todas las categorías"
@@ -1298,7 +1310,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
           <select className="border border-gray-200 rounded-xl px-3 py-2 text-sm"
             value={catFilter ?? ''} onChange={e => setCatFilter(e.target.value ? Number(e.target.value) : undefined)}>
             <option value="">Todas las categorías</option>
-            {categories.filter(Boolean).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            {categories.filter(Boolean).map(c => <option key={c.id} value={c.id}>{categoryLabel(c, branches)}</option>)}
           </select>
         )}
         {brands.filter(Boolean).length >= MIN_OPTIONS_FOR_SEARCH ? (
@@ -1398,7 +1410,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
             <label className="block text-xs font-medium text-gray-600 mb-1">Categoría</label>
             {categories.filter(Boolean).length >= MIN_OPTIONS_FOR_SEARCH ? (
               <SearchSelect
-                options={categories.filter(Boolean).map(c => ({ value: String(c.id), label: c.name }))}
+                options={categories.filter(Boolean).map(c => ({ value: String(c.id), label: categoryLabel(c, branches) }))}
                 value={String(catFilter ?? '')}
                 onChange={(v) => setCatFilter(v ? Number(v) : undefined)}
                 placeholder="Todas las categorías"
@@ -1407,7 +1419,7 @@ export function ProductsContent({ pageMode }: { pageMode: ProductCatalogType }) 
               <select className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm"
                 value={catFilter ?? ''} onChange={e => setCatFilter(e.target.value ? Number(e.target.value) : undefined)}>
                 <option value="">Todas las categorías</option>
-                {categories.filter(Boolean).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {categories.filter(Boolean).map(c => <option key={c.id} value={c.id}>{categoryLabel(c, branches)}</option>)}
               </select>
             )}
           </div>

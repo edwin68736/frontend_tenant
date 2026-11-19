@@ -210,7 +210,8 @@ function POSContent() {
 
     if (activeBranchId) {
       productsService
-        .listCategories()
+        // Solo las categorías de esta sucursal (las de todas + las suyas): el administrador, sin esto, vería las de todas.
+        .listCategories({ branchId: activeBranchId })
         .then(cats => {
           if (!cancelled) setCategories(Array.isArray(cats) ? cats : [])
         })
