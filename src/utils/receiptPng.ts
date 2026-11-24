@@ -8,6 +8,7 @@ import { shareBlobFile } from '@/utils/receiptShare'
 import { downloadBlob } from '@/utils/downloadBlob'
 import { openExternalUrl } from '@/utils/supportWhatsApp'
 import { isTauriDesktop } from '@/lib/platform/detect'
+import { getConfiguredPrinter } from '@/services/printers.service'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker
 
@@ -238,6 +239,60 @@ img { display: block; image-rendering: pixelated; width: ${printMm}mm; height: $
     // La imagen ya está en el iframe; se libera tras un respiro (la impresión puede seguir leyéndola).
     window.setTimeout(() => URL.revokeObjectURL(imgUrl), 5_000)
   }
+}
+
+export type ReceiptImageType = 'png' | 'jpeg'
+
+/**
+ * Ticket del comprobante como imagen PNG o JPG (misma maquetación que el PDF ticket). El JPG no admite
+ * transparencia: se compone sobre fondo blanco para que no salga negro.
+ */
+export async function generateReceiptTicketImageBlob(
+  data: PrintData,
+  type: ReceiptImageType = 'png',
+  scale = 2.25,
+): Promise<Blob> {
+  const cfg = getConfiguredPrinter('documentos')
+  const options: ReceiptPdfOptions = {
+    paperWidthMm: normalizeTicketPaperWidth(cfg?.paperWidthMm ?? configuredTicketPaperMm()),
+  }
+  const png = await generateReceiptPngBlob(data, 'ticket', scale, options)
+  if (type === 'png') return png
+  const bmp = await createImageBitmap(png)
+  const canvas = document.createElement('canvas')
+  canvas.width = bmp.width
+  canvas.height = bmp.height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('No se pudo crear el canvas')
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
+  ctx.drawImage(bmp, 0, 0)
+  bmp.close()
+  return await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('No se pudo generar JPG'))), 'image/jpeg', 0.92)
+  })
+}
+
+/** Comparte el ticket como imagen (selector nativo / Web Share) y, si no hay, la descarga. Devuelve cómo salió. */
+export async function shareReceiptTicketImage(opts: {
+  printData: PrintData
+  type: ReceiptImageType
+  message?: string
+}): Promise<'shared' | 'downloaded'> {
+  const blob = await generateReceiptTicketImageBlob(opts.printData, opts.type)
+  const ext = opts.type === 'jpeg' ? 'jpg' : 'png'
+  const num = String(opts.printData.number).replace(/\s/g, '')
+  const fname = `comprobante-${num.includes('-') ? num : `${opts.printData.series}-${num}`}-ticket.${ext}`
+  const msg =
+    opts.message ?? `Comprobante ${opts.printData.series}-${String(opts.printData.number).padStart(8, '0')}`
+  const shared = await shareBlobFile(blob, fname, {
+    title: 'Comprobante',
+    text: msg,
+    mimeType: opts.type === 'jpeg' ? 'image/jpeg' : 'image/png',
+  })
+  if (shared) return 'shared'
+  await downloadBlob(blob, fname)
+  return 'downloaded'
 }
 
 export type ShareReceiptWhatsAppOpts = {
