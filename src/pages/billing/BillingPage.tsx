@@ -57,7 +57,7 @@ import {
   saleLineUnitLabel,
 } from '@/utils/saleUnitNames'
 import { normalizeSaleUnitQuantity } from '@/utils/posCart'
-import { shareReceiptPngViaWhatsApp, shareReceiptTicketImage, type ReceiptImageType } from '@/utils/receiptPng'
+import { shareReceiptPngViaWhatsApp, shareReceiptTicketImage } from '@/utils/receiptPng'
 import { WhatsAppGlyph } from '@/components/icons/WhatsAppGlyph'
 import { useBillingEvents } from '@/hooks/useBillingEvents'
 import {
@@ -687,10 +687,10 @@ function BillingContent() {
     }
   }
 
-  /** Comparte el ticket como imagen PNG/JPG (no solo por WhatsApp: selector del sistema o descarga). */
-  const handleShareTicketImage = async (saleId: number, type: ReceiptImageType) => {
+  /** Comparte el ticket como imagen PNG (no solo por WhatsApp: selector del sistema o descarga). */
+  const handleShareTicketImage = async (saleId: number) => {
     setWaBusyId(saleId)
-    const tid = toast.loading(`Generando imagen ticket (${type === 'jpeg' ? 'JPG' : 'PNG'})…`)
+    const tid = toast.loading('Generando imagen del ticket…')
     try {
       const d = await salesService.get(saleId)
       if (!d.print_data) {
@@ -700,7 +700,6 @@ function BillingContent() {
       const label = viewMode === 'credit_notes' ? `Nota de ${noteKind === 'debit' ? 'débito' : 'crédito'}` : 'Comprobante'
       const how = await shareReceiptTicketImage({
         printData: await enrichPrintDataWithSaleUnitNames(d.print_data),
-        type,
         message: `${label} ${formatSaleDocumentNumber(d.sale.series, d.sale.number)} (formato ticket)`,
       })
       toast.success(how === 'shared' ? 'Selector de compartir abierto' : 'Imagen descargada', { id: tid })
@@ -1764,24 +1763,21 @@ function BillingContent() {
             </button>
             <div className="my-1 border-t border-gray-100" role="separator" />
             <p className="px-3 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-              Compartir ticket como imagen
+              Compartir imagen
             </p>
-            {(['png', 'jpeg'] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                role="menuitem"
-                className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-800 hover:bg-gray-50"
-                onClick={() => {
-                  const id = waMenu.saleId
-                  setWaMenu(null)
-                  void handleShareTicketImage(id, t)
-                }}
-              >
-                <Ticket size={14} className="text-orange-600 shrink-0" aria-hidden />
-                Ticket · imagen {t === 'jpeg' ? 'JPG' : 'PNG'}
-              </button>
-            ))}
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-800 hover:bg-gray-50"
+              onClick={() => {
+                const id = waMenu.saleId
+                setWaMenu(null)
+                void handleShareTicketImage(id)
+              }}
+            >
+              <Ticket size={14} className="text-orange-600 shrink-0" aria-hidden />
+              Ticket como imagen
+            </button>
           </div>,
           document.body,
         )}
