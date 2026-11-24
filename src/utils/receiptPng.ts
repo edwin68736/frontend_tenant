@@ -8,7 +8,6 @@ import { shareBlobFile } from '@/utils/receiptShare'
 import { downloadBlob } from '@/utils/downloadBlob'
 import { openExternalUrl } from '@/utils/supportWhatsApp'
 import { isTauriDesktop } from '@/lib/platform/detect'
-import { getConfiguredPrinter } from '@/services/printers.service'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker
 
@@ -241,34 +240,6 @@ img { display: block; image-rendering: pixelated; width: ${printMm}mm; height: $
   }
 }
 
-/**
- * Ticket del comprobante como imagen PNG (sin pérdida: el texto pequeño y el QR se mantienen nítidos).
- * Misma maquetación y ancho de papel que el PDF ticket.
- */
-export async function generateReceiptTicketImageBlob(data: PrintData, scale = 2.25): Promise<Blob> {
-  const cfg = getConfiguredPrinter('documentos')
-  const options: ReceiptPdfOptions = {
-    paperWidthMm: normalizeTicketPaperWidth(cfg?.paperWidthMm ?? configuredTicketPaperMm()),
-  }
-  return generateReceiptPngBlob(data, 'ticket', scale, options)
-}
-
-/** Comparte el ticket como imagen (selector nativo / Web Share) y, si no hay, la descarga. Devuelve cómo salió. */
-export async function shareReceiptTicketImage(opts: {
-  printData: PrintData
-  message?: string
-}): Promise<'shared' | 'downloaded'> {
-  const blob = await generateReceiptTicketImageBlob(opts.printData)
-  const num = String(opts.printData.number).replace(/\s/g, '')
-  const fname = `comprobante-${num.includes('-') ? num : `${opts.printData.series}-${num}`}-ticket.png`
-  const msg =
-    opts.message ?? `Comprobante ${opts.printData.series}-${String(opts.printData.number).padStart(8, '0')}`
-  const shared = await shareBlobFile(blob, fname, { title: 'Comprobante', text: msg, mimeType: 'image/png' })
-  if (shared) return 'shared'
-  await downloadBlob(blob, fname)
-  return 'downloaded'
-}
-
 export type ShareReceiptWhatsAppOpts = {
   printData: PrintData
   format?: 'a4' | 'ticket'
@@ -286,10 +257,11 @@ export async function shareReceiptPngViaWhatsApp(opts: ShareReceiptWhatsAppOpts)
   const format = opts.format ?? 'a4'
   const blob = await generateReceiptPngBlob(opts.printData, format)
   const suffix = format === 'ticket' ? '-ticket' : ''
-  const fname = `comprobante-${opts.printData.series}-${String(opts.printData.number).replace(/\s/g, '')}${suffix}.png`
+  const numRaw = String(opts.printData.number).replace(/\s/g, '')
+  const fname = `comprobante-${numRaw.includes('-') ? numRaw : `${opts.printData.series}-${numRaw}`}${suffix}.png`
   const msg =
     opts.message ??
-    `Comprobante ${opts.printData.series}-${String(opts.printData.number).padStart(8, '0')}`
+    `Comprobante ${String(opts.printData.number).includes('-') ? opts.printData.number : `${opts.printData.series}-${String(opts.printData.number).padStart(8, '0')}`}`
 
   const waNum = normalizePhoneForWhatsApp(opts.phone ?? '')
   const waBase = waNum ? `https://wa.me/${waNum}` : 'https://wa.me/'

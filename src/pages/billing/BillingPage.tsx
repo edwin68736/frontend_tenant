@@ -57,7 +57,7 @@ import {
   saleLineUnitLabel,
 } from '@/utils/saleUnitNames'
 import { normalizeSaleUnitQuantity } from '@/utils/posCart'
-import { shareReceiptPngViaWhatsApp, shareReceiptTicketImage } from '@/utils/receiptPng'
+import { shareReceiptPngViaWhatsApp } from '@/utils/receiptPng'
 import { WhatsAppGlyph } from '@/components/icons/WhatsAppGlyph'
 import { useBillingEvents } from '@/hooks/useBillingEvents'
 import {
@@ -687,29 +687,6 @@ function BillingContent() {
     }
   }
 
-  /** Comparte el ticket como imagen PNG (no solo por WhatsApp: selector del sistema o descarga). */
-  const handleShareTicketImage = async (saleId: number) => {
-    setWaBusyId(saleId)
-    const tid = toast.loading('Generando imagen del ticket…')
-    try {
-      const d = await salesService.get(saleId)
-      if (!d.print_data) {
-        toast.error('No hay datos para generar el comprobante (misma base que el PDF).', { id: tid })
-        return
-      }
-      const label = viewMode === 'credit_notes' ? `Nota de ${noteKind === 'debit' ? 'débito' : 'crédito'}` : 'Comprobante'
-      const how = await shareReceiptTicketImage({
-        printData: await enrichPrintDataWithSaleUnitNames(d.print_data),
-        message: `${label} ${formatSaleDocumentNumber(d.sale.series, d.sale.number)} (formato ticket)`,
-      })
-      toast.success(how === 'shared' ? 'Selector de compartir abierto' : 'Imagen descargada', { id: tid })
-    } catch (e: unknown) {
-      toast.error((e as Error)?.message ?? 'No se pudo generar la imagen del ticket', { id: tid })
-    } finally {
-      setWaBusyId(null)
-    }
-  }
-
   const openLocalPdfViewer = async (saleId: number, format: 'a4' | 'ticket' = 'a4') => {
     if (documentViewerUrlRef.current) {
       URL.revokeObjectURL(documentViewerUrlRef.current)
@@ -1334,7 +1311,7 @@ function BillingContent() {
                             return
                           }
                           const r = (e.currentTarget as HTMLButtonElement).getBoundingClientRect()
-                          const w = 208
+                          const w = 168
                           setWaMenu({
                             saleId: s.id,
                             top: r.bottom + 6,
@@ -1730,7 +1707,7 @@ function BillingContent() {
         createPortal(
           <div
             data-wa-portal-menu
-            className="fixed z-[300] w-[208px] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 text-sm shadow-xl"
+            className="fixed z-[300] w-[168px] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 text-sm shadow-xl"
             style={{ top: waMenu.top, left: waMenu.left }}
             role="menu"
             aria-label="Enviar por WhatsApp"
@@ -1760,23 +1737,6 @@ function BillingContent() {
             >
               <Ticket size={14} className="text-orange-600 shrink-0" aria-hidden />
               Formato ticket
-            </button>
-            <div className="my-1 border-t border-gray-100" role="separator" />
-            <p className="px-3 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-              Compartir imagen
-            </p>
-            <button
-              type="button"
-              role="menuitem"
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-gray-800 hover:bg-gray-50"
-              onClick={() => {
-                const id = waMenu.saleId
-                setWaMenu(null)
-                void handleShareTicketImage(id)
-              }}
-            >
-              <Ticket size={14} className="text-orange-600 shrink-0" aria-hidden />
-              Ticket como imagen
             </button>
           </div>,
           document.body,

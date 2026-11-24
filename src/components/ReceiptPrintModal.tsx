@@ -1,5 +1,5 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Download, FileText, Loader2, Mail, MessageCircle, Printer, Receipt, RefreshCw, X } from 'lucide-react'
+import { Download, FileText, Image as ImageIcon, Loader2, Mail, MessageCircle, Printer, Receipt, RefreshCw, X } from 'lucide-react'
 import { clsx } from 'clsx'
 import { toast } from 'sonner'
 import type { PrintData } from '@/types/printData'
@@ -10,6 +10,7 @@ import { resolvePrintChangeAmount, receiptDirectPaidAmount } from '@/utils/recei
 import { downloadReceiptPdf, printDataToPdfBlob, printReceiptPdf, type ReceiptPdfOptions } from '@/utils/receiptPdf'
 import { printTicketPreferDirect } from '@/utils/receiptTicketPrint'
 import { shareReceiptPdf } from '@/utils/receiptShare'
+import { shareReceiptPngViaWhatsApp } from '@/utils/receiptPng'
 import {
   getConfiguredPrinter,
   isAutoPrintEnabled,
@@ -287,6 +288,24 @@ export function ReceiptPrintModal({
     }
   }
 
+  /** WhatsApp con el ticket como imagen PNG (en vez del PDF): selector de compartir o portapapeles + WhatsApp. */
+  const handleShareWhatsAppImage = async () => {
+    if (!printData) return
+    setBusy('share-image')
+    try {
+      await shareReceiptPngViaWhatsApp({
+        printData,
+        format: 'ticket',
+        message: `Comprobante ${String(printData.number).includes('-') ? printData.number : `${printData.series}-${String(printData.number).padStart(8, '0')}`}`,
+      })
+    } catch (e) {
+      console.error(e)
+      toast.error((e as Error)?.message ?? 'No se pudo compartir la imagen')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const handleDownloadPdf = async (format: PdfFormat) => {
     if (!printData) return
     const busyKey = format === 'ticket' ? 'download-ticket' : 'download-a4'
@@ -435,8 +454,8 @@ export function ReceiptPrintModal({
                     type="button"
                     disabled={!!busy || !printData}
                     onClick={() => void handleShareWhatsApp()}
-                    title="Enviar por WhatsApp"
-                    aria-label="Enviar por WhatsApp"
+                    title="Enviar el PDF por WhatsApp"
+                    aria-label="Enviar el PDF por WhatsApp"
                     className={clsx(ACTION_ICON_BTN, 'bg-[#25D366]')}
                   >
                     {busy === 'share' ? (
@@ -444,7 +463,23 @@ export function ReceiptPrintModal({
                     ) : (
                       <MessageCircle className={ACTION_ICON} strokeWidth={2.25} />
                     )}
-                    <span className={ACTION_LABEL}>Whatsapp</span>
+                    <span className={ACTION_LABEL}>WhatsApp PDF</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={!!busy || !printData}
+                    onClick={() => void handleShareWhatsAppImage()}
+                    title="Enviar el ticket como imagen por WhatsApp"
+                    aria-label="Enviar el ticket como imagen por WhatsApp"
+                    className={clsx(ACTION_ICON_BTN, 'bg-[#128C7E] hover:bg-[#0f7a6e]')}
+                  >
+                    {busy === 'share-image' ? (
+                      <Loader2 className={clsx(ACTION_ICON, 'animate-spin')} />
+                    ) : (
+                      <ImageIcon className={ACTION_ICON} strokeWidth={2.25} />
+                    )}
+                    <span className={ACTION_LABEL}>WhatsApp PNG</span>
                   </button>
 
                   <button
