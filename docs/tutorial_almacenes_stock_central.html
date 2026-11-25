@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Tutorial: stock y almacenes en el panel central</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1e293b; font-size: 11pt; line-height: 1.5; }
+  h1 { font-size: 24pt; margin: 0 0 4px; color: #3730a3; }
+  .sub { color: #64748b; margin-bottom: 18px; }
+  h2 { font-size: 15pt; color: #3730a3; border-bottom: 2px solid #c7d2fe; padding-bottom: 4px; margin: 26px 0 10px; page-break-after: avoid; }
+  h3 { font-size: 12pt; margin: 16px 0 6px; color: #0f172a; page-break-after: avoid; }
+  p { margin: 6px 0; }
+  ol, ul { margin: 6px 0 6px 22px; padding: 0; }
+  li { margin: 3px 0; }
+  .nav { display: inline-block; background: #eef2ff; border: 1px solid #c7d2fe; color: #3730a3; border-radius: 6px; padding: 1px 8px; font-weight: 600; font-size: 10pt; }
+  .btn { display: inline-block; background: #4f46e5; color: #fff; border-radius: 6px; padding: 1px 8px; font-size: 10pt; font-weight: 600; }
+  .btn2 { display: inline-block; background: #fff; border: 1px solid #94a3b8; color: #334155; border-radius: 6px; padding: 1px 8px; font-size: 10pt; font-weight: 600; }
+  .box { border-radius: 8px; padding: 9px 12px; margin: 10px 0; page-break-inside: avoid; }
+  .tip { background: #ecfdf5; border-left: 4px solid #10b981; }
+  .warn { background: #fffbeb; border-left: 4px solid #f59e0b; }
+  .rule { background: #eef2ff; border-left: 4px solid #6366f1; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; page-break-inside: avoid; font-size: 10pt; }
+  th { background: #f1f5f9; text-align: left; }
+  th, td { border: 1px solid #e2e8f0; padding: 5px 8px; vertical-align: top; }
+  .flow { display: flex; align-items: center; gap: 6px; margin: 12px 0; page-break-inside: avoid; }
+  .node { flex: 1; border: 2px solid #6366f1; background: #eef2ff; border-radius: 10px; padding: 8px; text-align: center; font-size: 10pt; font-weight: 600; }
+  .node small { display: block; font-weight: 400; color: #475569; }
+  .node.sell { border-color: #10b981; background: #ecfdf5; }
+  .arrow { font-size: 18pt; color: #6366f1; }
+  .cover { text-align: center; padding: 70px 0 30px; }
+  .cover h1 { font-size: 30pt; }
+  code { background: #f1f5f9; padding: 0 4px; border-radius: 4px; }
+  .pb { page-break-before: always; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <h1>Stock y almacenes</h1>
+  <p class="sub" style="font-size:14pt">Panel central · módulo Gestión de Equipos</p>
+  <p class="sub">Cómo agregar stock, manejar los almacenes, pedir mercadería con requerimientos y moverla con transferencias</p>
+</div>
+
+<h2>1. Para qué sirve y cómo está organizado</h2>
+<p>Los productos del módulo de equipos pueden estar en más de un <b>almacén</b>. Cada almacén tiene su propio stock, y todo movimiento queda registrado en el kardex con su nota y su usuario.</p>
+
+<table>
+  <tr><th style="width:26%">Almacén</th><th>Rol</th><th>Qué se puede hacer</th></tr>
+  <tr><td><b>Almacén 1</b> (código ALM1)</td><td><b>Operativo (vende)</b></td><td>Es el único del que salen los pedidos de clientes. Es el que existe desde el inicio y no se puede desactivar.</td></tr>
+  <tr><td><b>Otros almacenes</b> (por ejemplo, el depósito donde llega la mercadería importada)</td><td><b>Depósito</b></td><td>Guarda mercadería, pero <b>no vende al cliente</b>. Para venderla hay que transferirla antes al Almacén 1.</td></tr>
+</table>
+
+<div class="box rule"><b>Regla de oro:</b> solo el Almacén 1 vende. Lo que está en un depósito se pide al Almacén 1 con un <b>requerimiento</b> y se mueve con una <b>transferencia</b>.</div>
+
+<div class="flow">
+  <div class="node">Compra o importación<small>mercadería nueva</small></div><div class="arrow">→</div>
+  <div class="node">Ingreso al depósito<small>pestaña Stock</small></div><div class="arrow">→</div>
+  <div class="node">Requerimiento (RQ)<small>Almacén 1 pide</small></div><div class="arrow">→</div>
+  <div class="node">Transferencia (TR)<small>el depósito envía</small></div><div class="arrow">→</div>
+  <div class="node sell">Almacén 1<small>ya se puede vender</small></div>
+</div>
+
+<h3>Dónde está cada cosa</h3>
+<p>En el menú del panel central, entra a <span class="nav">Gestión de Equipos</span>. Usarás dos pestañas:</p>
+<table>
+  <tr><th style="width:22%">Pestaña</th><th>Para qué</th></tr>
+  <tr><td><span class="nav">Stock</span></td><td>Ver el stock del mes por producto y registrar <b>Ingresos</b>, <b>Ajustes</b> y <b>Bajas</b>. También se abre el kardex de cada producto.</td></tr>
+  <tr><td><span class="nav">Almacenes</span></td><td>Cuatro sub-pestañas: <b>Stock por almacén</b>, <b>Requerimientos</b>, <b>Transferencias</b> y <b>Almacenes</b> (crear y administrar).</td></tr>
+</table>
+
+<div class="box warn"><b>Permisos.</b> Si no ves una pestaña o un botón, tu rol no tiene el permiso. Se asignan en Roles:
+<ul>
+  <li><code>equipos.stock_view</code>: ver Stock y Almacenes.</li>
+  <li><code>equipos.stock_adjust</code>: registrar ingresos, ajustes y bajas.</li>
+  <li><code>equipos.stock_transfer</code>: crear requerimientos y transferencias.</li>
+  <li><code>equipos.stock_transfer_cancel</code>: anular requerimientos y transferencias.</li>
+  <li><code>equipos.warehouses</code>: crear, editar y activar/desactivar almacenes.</li>
+</ul></div>
+
+<h2 class="pb">2. Crear o editar un almacén</h2>
+<ol>
+  <li>Entra a <span class="nav">Almacenes</span> → sub-pestaña <span class="nav">Almacenes</span>.</li>
+  <li>Pulsa <span class="btn">+ Nuevo almacén</span>.</li>
+  <li>Escribe el <b>Nombre</b> (obligatorio) y, si quieres, unas <b>Notas</b> (por ejemplo «Depósito de importados»).</li>
+  <li>Pulsa <span class="btn">Guardar</span>. El sistema le asigna un código solo.</li>
+</ol>
+<p>Todo almacén nuevo nace como <b>Depósito</b>: no vende. El rol «Operativo (vende)» es solo del Almacén 1.</p>
+<p>En la misma tabla puedes <span class="btn2">Editar</span> el nombre o las notas, y <span class="btn2">Desactivar</span> o <span class="btn2">Activar</span> un almacén. Uno inactivo desaparece de los selectores, pero conserva su historial. El Almacén 1 no se puede desactivar.</p>
+
+<h2>3. Agregar stock (ingreso de mercadería)</h2>
+<p>Se hace en la pestaña <span class="nav">Stock</span>.</p>
+<ol>
+  <li>Elige el <b>Mes</b> en la parte de arriba (normalmente el actual) y, si hace falta, busca el producto por código o nombre.</li>
+  <li>Pulsa <span class="btn">Ingreso</span>.</li>
+  <li>Completa el formulario <b>Ingreso de mercadería</b>:
+    <ul>
+      <li><b>Producto *</b>: búscalo por código o nombre.</li>
+      <li><b>Cantidad *</b>: número entero, positivo.</li>
+      <li><b>Fecha</b> (opcional): si la dejas vacía, se usa la de hoy.</li>
+      <li><b>Almacén</b>: aparece cuando hay más de un almacén. Elige a cuál entra la mercadería.</li>
+      <li><b>Costo unitario de compra</b> (opcional): sirve para calcular la utilidad.</li>
+      <li><b>Nota *</b>: obligatoria. Queda en el kardex y en la auditoría. Ejemplo: «Reposición 2026-11-17».</li>
+    </ul>
+  </li>
+  <li>Pulsa <span class="btn">Registrar</span> y confirma el aviso que muestra la cantidad.</li>
+</ol>
+
+<div class="box tip"><b>Mercadería importada:</b> ingrésala al <b>depósito</b>, no al Almacén 1. Luego pídela al Almacén 1 con un requerimiento (sección 5). Así queda registrado cuándo llegó y cuándo pasó a la venta. Si ingresas al Almacén 1, queda lista para vender de inmediato.</div>
+
+<h3>Otros movimientos de la misma pantalla</h3>
+<table>
+  <tr><th style="width:16%">Botón</th><th>Cuándo usarlo</th><th style="width:26%">Cuidado</th></tr>
+  <tr><td><span class="btn">Ingreso</span></td><td>Llegó mercadería nueva (reposición, compra, importación).</td><td>Cantidad en positivo.</td></tr>
+  <tr><td><span class="btn2">Ajuste</span></td><td>Corregir un conteo: sumar o restar para que el stock coincida con la realidad. Un valor negativo resta.</td><td>Pide tu <b>PIN</b>.</td></tr>
+  <tr><td><span class="btn2">Baja</span></td><td>Merma, pérdida, producto dañado o salida que no es una venta.</td><td>Pide tu <b>PIN</b>. Cantidad en positivo.</td></tr>
+</table>
+<p>También hay un botón <span class="btn2">Excel</span> que descarga todo el stock del mes elegido, sin filtros, y un filtro <b>Solo stock bajo</b> para ver qué reponer. En la tabla, cada fila muestra Inicial, Ingresos, Salidas directas, Salidas por combos, Ajustes y Stock actual con su semáforo.</p>
+
+<h3>Ver el kardex de un producto</h3>
+<p>Pulsa el icono de kardex de la fila. Verás cada movimiento con su fecha, tipo, detalle y quién lo hizo. Desde ahí también puedes registrar un <b>Ajuste</b> de ese producto.</p>
+
+<h2 class="pb">4. Ver el stock de cada almacén</h2>
+<p>Entra a <span class="nav">Almacenes</span> → <span class="nav">Stock por almacén</span>. Es una tabla con una columna por almacén y una de <b>Total</b>. Usa el buscador para encontrar un código o nombre.</p>
+<p>Úsala para saber, de un vistazo, <b>dónde está</b> cada producto antes de pedirlo o transferirlo.</p>
+
+<h2>5. Pedir mercadería a otro almacén: el requerimiento (RQ)</h2>
+<p>Lo crea quien necesita la mercadería (normalmente el Almacén 1) para pedírsela a un depósito. Genera un documento firmable.</p>
+<ol>
+  <li>Entra a <span class="nav">Almacenes</span> → <span class="nav">Requerimientos</span>.</li>
+  <li>Pulsa <span class="btn">+ Nuevo requerimiento</span>.</li>
+  <li>En <b>Almacén que abastece *</b> elige el depósito que enviará la mercadería. Si no aparece ninguno, primero crea uno (sección 2).</li>
+  <li>Pon la <b>Fecha</b> (no puede ser futura) y agrega los <b>Productos *</b> con su cantidad. Con el botón de agregar línea sumas más productos.</li>
+  <li>Escribe una <b>Observación</b> si hace falta y pulsa <span class="btn">Registrar y generar documento</span>.</li>
+</ol>
+<p>Aparece un aviso con el número (por ejemplo RQ-000012) y el enlace <b>Ver documento</b>, que abre el PDF para imprimir y firmar. Después lo puedes volver a abrir con el botón <span class="btn2">Documento</span> de la fila.</p>
+
+<h3>Estados de un requerimiento</h3>
+<table>
+  <tr><th style="width:22%">Estado</th><th>Qué significa</th></tr>
+  <tr><td><b>Pendiente</b></td><td>Todavía no se transfirió nada. Se puede atender o anular.</td></tr>
+  <tr><td><b>Parcial</b></td><td>Se transfirió una parte. Faltan unidades por atender.</td></tr>
+  <tr><td><b>Atendido</b></td><td>Se transfirió todo lo pedido.</td></tr>
+  <tr><td><b>Anulado</b></td><td>Se canceló. Solo es posible si todavía no tiene transferencias; pide tu PIN y un motivo.</td></tr>
+</table>
+<p>Los botones de filtro <b>Abiertos</b>, <b>Atendidos</b> y <b>Todos</b> ayudan a ver cada grupo.</p>
+
+<h2 class="pb">6. Mover la mercadería: la transferencia (TR)</h2>
+<p>Hay dos formas de hacer una transferencia.</p>
+
+<h3>A) Atendiendo un requerimiento (la normal)</h3>
+<ol>
+  <li>En <span class="nav">Requerimientos</span>, busca el RQ pendiente o parcial.</li>
+  <li>Pulsa <span class="btn">Atender</span>. Se abre el formulario con el origen, el destino y los productos ya cargados.</li>
+  <li>Revisa las cantidades. No puedes enviar más de lo que falta por atender del requerimiento; puedes enviar menos y dejarlo en <b>Parcial</b>.</li>
+  <li>Pulsa <span class="btn">Transferir y generar documento</span>.</li>
+</ol>
+
+<h3>B) Transferencia libre</h3>
+<ol>
+  <li>Entra a <span class="nav">Almacenes</span> → <span class="nav">Transferencias</span> y pulsa <span class="btn">+ Nueva transferencia</span>.</li>
+  <li>Elige el <b>Origen *</b> y el <b>Destino *</b> (deben ser distintos), la <b>Fecha</b> y los <b>Productos *</b>.</li>
+  <li>Pulsa <span class="btn">Transferir y generar documento</span>.</li>
+</ol>
+
+<div class="box warn"><b>Stock insuficiente.</b> Si el origen no tiene suficientes unidades, el sistema avisa que quedaría en negativo. Solo continúa si estás seguro: exige escribir una <b>nota</b> que justifique el stock negativo y queda registrada.</div>
+
+<p>Al terminar se genera el documento TR (por ejemplo TR-000007) para imprimir y firmar el envío y la recepción. Descuenta del origen y suma al destino en el mismo momento.</p>
+
+<h3>Consultar el historial</h3>
+<p>En <span class="nav">Transferencias</span> puedes filtrar por <b>Desde</b>, <b>Hasta</b>, <b>Almacén</b>, <b>Producto</b> y <b>Estado</b> (registradas o anuladas). Cada fila muestra el origen → destino, los productos y el requerimiento al que pertenece.</p>
+
+<h3>Anular una transferencia</h3>
+<ol>
+  <li>En la fila pulsa <span class="btn2" style="color:#b91c1c">Anular</span>.</li>
+  <li>Escribe el <b>motivo</b> y confirma con tu <b>PIN</b>.</li>
+</ol>
+<p>Lo enviado vuelve al almacén de origen. <b>Si el destino ya no tiene lo recibido</b> (porque lo vendió), <b>no se puede anular</b>; el sistema lo bloquea. Más adelante ese caso se resolverá con una nota.</p>
+
+<h2>7. Ejemplo completo: llegó mercadería importada</h2>
+<table>
+  <tr><th style="width:6%">#</th><th style="width:34%">Dónde</th><th>Qué hacer</th></tr>
+  <tr><td>1</td><td><span class="nav">Almacenes</span> → Almacenes</td><td>Crea «Depósito importados» si todavía no existe.</td></tr>
+  <tr><td>2</td><td><span class="nav">Stock</span> → <span class="btn">Ingreso</span></td><td>Ingresa 50 unidades de cada producto al <b>Depósito importados</b>, con nota «Importación contenedor 24» y el costo de compra.</td></tr>
+  <tr><td>3</td><td><span class="nav">Almacenes</span> → Requerimientos</td><td>Crea un requerimiento: el Almacén 1 pide 20 unidades al Depósito importados. Imprime el RQ para firma.</td></tr>
+  <tr><td>4</td><td>Requerimientos → <span class="btn">Atender</span></td><td>Transfiere las 20 unidades. El RQ pasa a <b>Atendido</b> y se genera el TR para firma.</td></tr>
+  <tr><td>5</td><td><span class="nav">Almacenes</span> → Stock por almacén</td><td>Comprueba: Depósito 30, Almacén 1 +20. Ya se pueden vender en los pedidos.</td></tr>
+</table>
+
+<h2>8. Preguntas frecuentes</h2>
+<h3>No veo el selector de almacén al registrar un ingreso</h3>
+<p>Solo aparece cuando existe más de un almacén activo. Con uno solo, todo entra al Almacén 1.</p>
+<h3>Hice un ingreso por error</h3>
+<p>Registra un <b>Ajuste</b> con la cantidad en negativo y una nota que lo explique (pide PIN). Así el kardex conserva toda la historia en vez de borrar movimientos.</p>
+<h3>El requerimiento no deja anularse</h3>
+<p>Solo se anula si no tiene transferencias. Si ya tiene una, anula primero la transferencia (si el destino aún conserva lo recibido).</p>
+<h3>Un pedido no encuentra stock</h3>
+<p>Revisa <b>Stock por almacén</b>: probablemente la mercadería está en un depósito. Pídela al Almacén 1 con un requerimiento.</p>
+<h3>Mis productos de importación y los del Excel</h3>
+<p>Son cosas distintas: los <b>productos importados</b> son mercadería que llega del exterior y se maneja con almacenes como en este tutorial. El <b>Importar Excel</b> es solo una carga de datos del control mensual.</p>
+
+<p class="sub" style="margin-top:30px; font-size:9pt">Tukifac · Panel central · Tutorial de stock y almacenes</p>
+</body>
+</html>
