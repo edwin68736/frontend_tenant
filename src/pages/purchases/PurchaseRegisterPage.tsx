@@ -19,6 +19,7 @@ import RequireModule from '@/components/ui/RequireModule'
 import { Modal } from '@/components/ui/Modal'
 import { UnitQuantityInput } from '@/components/ui/UnitQuantityInput'
 import { PurchaseSaleUnitSelector } from '@/components/purchases/PurchaseSaleUnitSelector'
+import { SupplyBadge } from '@/components/products/SupplyBadge'
 import { ProductPickerModal } from '@/components/sales/ProductPickerModal'
 import { formatTipoDocIdentidadDisplay } from '@/constants/sunat'
 import { useBranch } from '@/contexts/BranchContext'
@@ -49,6 +50,8 @@ type PurchaseLineItem = PurchaseItem & {
    *  UnitQuantityInput sepa si admite decimales sin volver a pedir la lista de SaleUnits al
    *  backend. undefined = sin SaleUnit elegida (comportamiento legacy intacto). */
   sale_unit_allow_fraction?: boolean
+  /** Solo UI: la línea es un insumo (no tiene precio de venta que actualizar). Se descarta al guardar. */
+  is_supply?: boolean
 }
 
 function buildPurchaseLine(
@@ -81,6 +84,7 @@ function buildPurchaseLine(
     current_sale_price: only ? only.sale_price : (p.sale_price ?? 0),
     has_presentations: opts?.hasPresentations ?? false,
     is_newly_created: opts?.isNewlyCreated ?? false,
+    is_supply: p.is_supply === true,
     update_sale_price: false,
     new_sale_price: only ? only.sale_price : (p.sale_price ?? 0),
   }
@@ -228,11 +232,13 @@ function PurchaseRegisterContent() {
         const lines: PurchaseLineItem[] = await Promise.all(
           orderItems.map(async oi => {
             let manageSeries = false
+            let isSupply = false
             let presentations: { id: number; name: string; sale_price: number }[] = []
             if (oi.product_id) {
               try {
                 const detail = await productsService.get(oi.product_id)
                 manageSeries = detail.data.manage_series === true
+                isSupply = detail.data.is_supply === true
                 presentations = (detail.presentations ?? [])
                   .filter(pr => pr.id && pr.name.trim() && (pr as { active?: boolean }).active !== false)
                   .map(pr => ({ id: pr.id as number, name: pr.name.trim(), sale_price: Number(pr.sale_price) || 0 }))
@@ -254,6 +260,7 @@ function PurchaseRegisterContent() {
               presentation_options: presentations.length > 0 && !oi.presentation_id ? presentations : undefined,
               manage_series: manageSeries,
               serials: [],
+              is_supply: isSupply,
               update_sale_price: false,
             }
           }),
@@ -537,6 +544,7 @@ function PurchaseRegisterContent() {
           has_presentations: _hp,
           is_newly_created: _nc,
           sale_unit_allow_fraction: _suaf,
+          is_supply: _is,
           presentation_options: _po,
           base_name: _bn,
           update_sale_price,
@@ -922,7 +930,8 @@ function PurchaseRegisterContent() {
                           />
                         </div>
                       )}
-                      {!it.is_newly_created && (
+                      {it.is_supply && <div className="mt-1"><SupplyBadge /></div>}
+                      {!it.is_newly_created && !it.is_supply && (
                         <div className="mt-2 space-y-1.5">
                           <label className="flex items-center gap-1.5 cursor-pointer">
                             <input

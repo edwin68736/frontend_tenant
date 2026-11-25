@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { Boxes, DollarSign, Search, Tag, X } from 'lucide-react'
 import { productsService, getProductImageUrl, type Product } from '@/services/products.service'
+import { SupplyBadge } from '@/components/products/SupplyBadge'
 import { useBranch } from '@/contexts/BranchContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { formatSaleMoney } from '@/utils/formatMoney'
@@ -69,7 +70,10 @@ export function ProductPickerModal({
   const loadProducts = () => {
     setLoading(true)
     productsService
-      .list(search, undefined, undefined, true, page, PER_PAGE, undefined, undefined, activeBranchId)
+      .list(
+        search, undefined, undefined, true, page, PER_PAGE, undefined, undefined, activeBranchId,
+        undefined, undefined, undefined, undefined, variant === 'purchase',
+      )
       .then(({ data, total: t }) => {
         setProducts(data ?? [])
         setTotal(t ?? 0)
@@ -208,6 +212,7 @@ export function ProductPickerModal({
                   </td>
                   <td className="px-2 md:px-4 py-2.5">
                     <span className="font-medium text-gray-800">{p.name}</span>
+                    {p.is_supply ? <SupplyBadge /> : null}
                     {isLastAdded(p.id) ? (
                       <span className="ml-1.5 inline-flex align-middle rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-amber-200 text-amber-900">
                         Último

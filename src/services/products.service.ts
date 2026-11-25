@@ -76,6 +76,8 @@ export interface Product {
   /** YYYY-MM-DD cuando has_expiry_date es true. */
   expiry_date?: string | null
   is_restaurant: boolean
+  /** Insumo (materia prima de Tukichef): solo llega si el listado se pide con includeSupplies. */
+  is_supply?: boolean
   /** Canal de difusión: visible en el Catálogo Digital (tienda virtual pública). Independiente de is_restaurant. */
   show_in_digital_catalog?: boolean
   active: boolean
@@ -484,7 +486,9 @@ export const productsService = {
     /** Muestra solo los inactivos (en vez de incluirlos junto con los activos). */
     inactive_only?: boolean,
     /** Orden del servidor (id | code | name | category | price | stock | catalog). catalog = agrupado por categoría. */
-    sort_by?: string
+    sort_by?: string,
+    /** Compras e inventario: suma los insumos. Venta, POS y catálogo NO lo usan. */
+    includeSupplies?: boolean
   ) =>
     api
       .get<{ data: Product[]; total?: number }>('/api/products', {
@@ -502,6 +506,7 @@ export const productsService = {
           ...(brand_id ? { brand_id } : {}),
           ...(inactive_only ? { inactive_only: true } : {}),
           ...(sort_by ? { sort_by } : {}),
+          ...(includeSupplies ? { supplies: 'include' } : {}),
         },
       })
       .then(r => ({
@@ -546,6 +551,8 @@ export const productsService = {
     stock_less_than?: number
     /** Solo productos con manage_stock=true (vista de stock actual). */
     manage_stock_only?: boolean
+    /** Inventario: suma los insumos. */
+    includeSupplies?: boolean
   }) =>
     api
       .get<{ data: ProductReportRow[]; total?: number }>('/api/products', {
@@ -558,6 +565,7 @@ export const productsService = {
           per_page: params.per_page,
           stock_less_than: params.stock_less_than,
           manage_stock_only: params.manage_stock_only,
+          supplies: params.includeSupplies ? 'include' : undefined,
           report: true,
         },
       })
