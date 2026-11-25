@@ -691,6 +691,10 @@ export async function buildSaleDocumentEscPos(
 
   const out: number[] = []
   out.push(...escposInit())
+  // La gaveta va ANTES del ticket, nunca después del corte: hay impresoras sin cortador automático
+  // (habituales en 58 mm) que interpretan mal el comando de corte y se pierden el pulso que viene
+  // detrás. Así el trabajo empieza igual que el botón «Abrir gaveta», sea cual sea el papel.
+  if (opts?.openDrawer) out.push(...escposOpenDrawer())
 
   // Logo: el de la sucursal emisora si tiene uno propio (ya resuelto por el backend en
   // printData.company.logo_url), si no el global de la empresa cargado al iniciar sesión.
@@ -807,7 +811,6 @@ export async function buildSaleDocumentEscPos(
   escposPushLines(out, footerLines, 'center')
   out.push(...Array.from(textBytes('\n\n')))
   out.push(...escposCutPartial())
-  if (opts?.openDrawer) out.push(...escposOpenDrawer())
   return new Uint8Array(out)
 }
 
