@@ -255,16 +255,15 @@ export function validateDraft(d: DespatchDraft, ctx: ValidationContext): Section
     } else {
       if (!d.party.num_doc.trim() || !d.party.rzn_social.trim()) {
         add('party', `Busca al ${partyRoleLabel(d).toLowerCase()} por RUC o DNI.`)
-      } else if (ruc && cleanDoc(d.party.num_doc) === ruc) {
-        add('party', 'No puedes enviarte a tu propia empresa con este motivo; usa «Traslado entre establecimientos».')
+      } else if (d.motivo !== 'otros' && ruc && cleanDoc(d.party.num_doc) === ruc) {
+        add('party', 'No puedes enviarte a tu propia empresa con este motivo; usa «Traslado entre establecimientos» u «Otros».')
       }
     }
   } else {
+    // Guía transportista: tu propia empresa puede ser el remitente, el destinatario o ambos.
     if (!d.party.num_doc.trim() || !d.party.rzn_social.trim()) add('party', 'Indica quién entrega la mercadería (remitente).')
-    else if (ruc && cleanDoc(d.party.num_doc) === ruc) add('party', 'El remitente no puede ser tu propia empresa.')
     if (!d.party.address.trim() || !d.party.ubigeo.trim()) add('party', 'Falta la dirección fiscal del remitente (con su distrito).')
     if (!d.receiver.num_doc.trim() || !d.receiver.rzn_social.trim()) add('party', 'Indica quién recibe la mercadería (destinatario).')
-    else if (ruc && cleanDoc(d.receiver.num_doc) === ruc) add('party', 'El destinatario no puede ser tu propia empresa.')
   }
 
   // Ruta
