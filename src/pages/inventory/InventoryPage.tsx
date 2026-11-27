@@ -9,6 +9,7 @@ import { StockAdjustmentModal } from '@/components/inventory/StockAdjustmentModa
 import { ProductKardexModal } from '@/components/inventory/ProductKardexModal'
 import { ProductTransferModal } from '@/components/inventory/ProductTransferModal'
 import { productsService, type ProductReportRow } from '@/services/products.service'
+import { SupplyBadge } from '@/components/products/SupplyBadge'
 import { companyService } from '@/services/company.service'
 import { useBranch } from '@/contexts/BranchContext'
 import { useAuth } from '@/contexts/AuthContext'
@@ -146,6 +147,7 @@ function InventoryContent() {
       branch_id: branchId || undefined,
       active_only: true,
       manage_stock_only: true,
+      includeSupplies: true,
       stock_less_than: stockLessThanNum,
     }
     const load = needsClientFilter
@@ -176,7 +178,7 @@ function InventoryContent() {
 
   const refreshRow = (productId: number) => {
     productsService
-      .listReport({ q: q || undefined, category_id: categoryId || undefined, branch_id: branchId || undefined, active_only: true, manage_stock_only: true, per_page: CLIENT_FILTER_FETCH_LIMIT })
+      .listReport({ q: q || undefined, category_id: categoryId || undefined, branch_id: branchId || undefined, active_only: true, manage_stock_only: true, includeSupplies: true, per_page: CLIENT_FILTER_FETCH_LIMIT })
       .then(({ data }) => {
         const fresh = data.find((r) => r.id === productId)
         if (!fresh) return
@@ -329,6 +331,7 @@ function InventoryContent() {
                               className="flex items-center gap-1 text-left font-medium text-gray-800 disabled:cursor-default"
                             >
                               {row.name}
+                              {row.is_supply && <SupplyBadge />}
                               {canExpand && (expanded ? <ChevronUp size={13} className="text-gray-400" /> : <ChevronDown size={13} className="text-gray-400" />)}
                             </button>
                           </td>

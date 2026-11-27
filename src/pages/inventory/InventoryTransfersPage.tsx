@@ -8,6 +8,7 @@ import { SearchSelect } from '@/components/ui/SearchSelect'
 import { UnitQuantityInput } from '@/components/ui/UnitQuantityInput'
 import { companyService } from '@/services/company.service'
 import { productsService, type Product, type ProductPresentation } from '@/services/products.service'
+import { SupplyBadge } from '@/components/products/SupplyBadge'
 import { inventoryService, type TransferInput } from '@/services/inventory.service'
 import { useBranch } from '@/contexts/BranchContext'
 import { usePendingWork } from '@/lib/branchScope/pendingWork'
@@ -87,7 +88,10 @@ function InventoryTransfersContent() {
     if (!modalOpen) return
     setModalLoading(true)
     productsService
-      .list(modalSearch, undefined, undefined, true, modalPage, PER_PAGE, true)
+      .list(
+        modalSearch, undefined, undefined, true, modalPage, PER_PAGE, true,
+        undefined, undefined, undefined, undefined, undefined, undefined, true,
+      )
       .then(({ data, total }) => {
         setModalProducts(data)
         setModalTotal(total ?? 0)
@@ -463,6 +467,7 @@ function InventoryTransfersContent() {
                       <td className="py-2 px-2">
                         <div>
                           <span className="font-medium text-gray-800">{p.name}</span>
+                          {p.is_supply && <SupplyBadge />}
                           {p.code && <span className="text-gray-500 text-xs ml-1">({p.code})</span>}
                           {p.manage_series && (
                             <span className="ml-1.5 text-[10px] bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded">Con series</span>
