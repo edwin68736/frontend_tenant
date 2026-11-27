@@ -255,8 +255,8 @@ export function validateDraft(d: DespatchDraft, ctx: ValidationContext): Section
     } else {
       if (!d.party.num_doc.trim() || !d.party.rzn_social.trim()) {
         add('party', `Busca al ${partyRoleLabel(d).toLowerCase()} por RUC o DNI.`)
-      } else if (ruc && cleanDoc(d.party.num_doc) === ruc) {
-        add('party', 'No puedes enviarte a tu propia empresa con este motivo; usa «Traslado entre establecimientos».')
+      } else if (d.motivo !== 'otros' && ruc && cleanDoc(d.party.num_doc) === ruc) {
+        add('party', 'No puedes enviarte a tu propia empresa con este motivo; usa «Traslado entre establecimientos» u «Otros».')
       }
     }
   } else {

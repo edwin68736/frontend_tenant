@@ -21,7 +21,16 @@ describe('guía transportista con la propia empresa', () => {
     expect(partyErrors({})).toHaveLength(3) // remitente, su dirección y destinatario
   })
 
-  it('la guía remitente (venta) sigue sin admitir enviarse a la propia empresa', () => {
-    expect(partyErrors({ party: party(RUC) }, '09').join(' ')).toContain('tu propia empresa')
+})
+
+describe('guía remitente con la propia empresa', () => {
+  const errs = (motivo: DespatchDraft['motivo']) => partyErrors({ motivo, party: party(RUC) }, '09').join(' ')
+
+  it('«Otros» lo admite', () => {
+    expect(errs('otros')).toBe('')
+  })
+
+  it.each(['venta', 'devolucion'] as const)('%s sigue sin admitirlo', (motivo) => {
+    expect(errs(motivo)).toContain('tu propia empresa')
   })
 })
