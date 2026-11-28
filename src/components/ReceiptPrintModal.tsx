@@ -1,5 +1,5 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Download, FileText, Image as ImageIcon, Loader2, Mail, MessageCircle, Printer, Receipt, RefreshCw, X } from 'lucide-react'
+import { Download, FileText, Image as ImageIcon, Loader2, Mail, MessageCircle, Printer, Receipt, RefreshCw, Unlock, X } from 'lucide-react'
 import { clsx } from 'clsx'
 import { toast } from 'sonner'
 import type { PrintData } from '@/types/printData'
@@ -15,8 +15,10 @@ import {
   getConfiguredPrinter,
   isAutoPrintEnabled,
   isNativePrintAvailable,
+  openCashDrawer,
   printDocumentAuto,
 } from '@/services/printers.service'
+import { useAuth } from '@/contexts/AuthContext'
 import { PdfBlobViewer } from '@/components/PdfBlobViewer'
 import { configuredTicketPaperMm, normalizeTicketPaperWidth } from '@/utils/receiptTicketPaper'
 import { salePaymentMethodLabelEs } from '@/utils/paymentMethodLabels'
@@ -91,6 +93,9 @@ export function ReceiptPrintModal({
   const hasDirectPrinter = isNativePrintAvailable() && Boolean(printerCfg)
   const isNativeApp = isNativePrintAvailable()
   const isWebBrowser = !isNativeApp
+  const { hasPermission } = useAuth()
+  // Solo en la app instalada y con el mismo permiso que en Caja. Una cotización no mueve dinero.
+  const canOpenDrawer = isNativeApp && documentKind !== 'quotation' && hasPermission('cashbank.movements')
 
   const heading =
     documentKind === 'quotation'
@@ -275,6 +280,24 @@ export function ReceiptPrintModal({
     }
   }
 
+  /** Abre la gaveta sin imprimir nada: la misma función del botón de Caja. */
+  const handleOpenDrawer = async () => {
+    if (!printerCfg) {
+      toast.error('Configura la impresora en Ajustes para abrir la gaveta')
+      return
+    }
+    setBusy('drawer')
+    try {
+      const msg = await openCashDrawer()
+      toast.success(msg || 'Gaveta abierta')
+    } catch (e) {
+      console.error('[venta] abrir gaveta', e)
+      toast.error(e instanceof Error ? e.message : 'No se pudo abrir la gaveta')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const handleShareWhatsApp = async () => {
     if (!printData) return
     setBusy('share')
@@ -421,7 +444,7 @@ export function ReceiptPrintModal({
                       onClick={() => void handleDirectPrint()}
                       title="Volver a imprimir"
                       aria-label="Volver a imprimir"
-                      className={clsx(ACTION_ICON_BTN, 'col-span-2 bg-stone-700')}
+                      className={clsx(ACTION_ICON_BTN, !canOpenDrawer && 'col-span-2', 'bg-stone-700')}
                     >
                       {busy === 'print' ? (
                         <Loader2 className={clsx(ACTION_ICON, 'animate-spin')} />
@@ -429,6 +452,24 @@ export function ReceiptPrintModal({
                         <Printer className={ACTION_ICON} strokeWidth={2.25} />
                       )}
                       <span className={ACTION_LABEL}>Reimprimir</span>
+                    </button>
+                  )}
+
+                  {canOpenDrawer && (
+                    <button
+                      type="button"
+                      disabled={!!busy}
+                      onClick={() => void handleOpenDrawer()}
+                      title="Abrir gaveta de dinero"
+                      aria-label="Abrir gaveta"
+                      className={clsx(ACTION_ICON_BTN, 'bg-teal-700 hover:bg-teal-800')}
+                    >
+                      {busy === 'drawer' ? (
+                        <Loader2 className={clsx(ACTION_ICON, 'animate-spin')} />
+                      ) : (
+                        <Unlock className={ACTION_ICON} strokeWidth={2.25} />
+                      )}
+                      <span className={ACTION_LABEL}>Abrir gaveta</span>
                     </button>
                   )}
 
